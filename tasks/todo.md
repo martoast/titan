@@ -1,5 +1,12 @@
 # Project Titan — Roadmap / TODO
 
+> **STATUS — first full build complete.** Foundation + all 8 verticals built by parallel
+> agents, integrated, migrated, seeded, and browser-tested (every route 200). OpenAI + Gemini
+> verified live. App runs at http://localhost:8088 (login alex@titan.test / password).
+> Built: Brain, Bloodwork/Biomarkers, Body, Meals, Workouts, Sleep, Recovery, Physique,
+> Coach, Duo. Next: polish each vertical, wire notifications/streak automation, real photo
+> flows for the living goal image, adaptive targets, wearable imports.
+
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Phase 0 — Foundation (in progress)
