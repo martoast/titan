@@ -35,6 +35,16 @@ return [
         ],
     ],
 
+    // Terra — unified wearable API (https://tryterra.co). One integration covers
+    // Whoop, Oura, Garmin, Apple Health, etc. Connect flow = the Terra widget;
+    // data arrives via signed webhooks. Get these from the Terra dashboard.
+    'terra' => [
+        'dev_id' => env('TERRA_DEV_ID'),
+        'api_key' => env('TERRA_API_KEY'),
+        'signing_secret' => env('TERRA_SIGNING_SECRET'),
+        'base_url' => env('TERRA_BASE_URL', 'https://api.tryterra.co/v2'),
+    ],
+
     // Mailgun — transactional email (password resets + notifications). The active
     // mailer is SMTP (MAIL_MAILER=smtp, Mailgun's SMTP relay); these credentials
     // also enable the `mailgun` API transport. Same account as fullstack-suite.
