@@ -1,24 +1,26 @@
 <x-titan-layout :title="$page->title" subtitle="Brain page">
 
-    <div class="mb-5 flex items-center justify-between gap-3">
-        <a href="/brain" class="text-sm text-gray-500 hover:text-gray-300">&larr; Back to the brain</a>
-        <div class="flex items-center gap-2">
-            <a href="/brain/{{ $page->slug }}/edit" class="rounded-lg bg-white/5 border border-white/10 px-4 py-1.5 text-sm font-medium text-gray-200 hover:bg-white/10 transition">Edit</a>
-            <form method="POST" action="/brain/{{ $page->slug }}" onsubmit="return confirm('Delete this page?');">
-                @csrf
-                @method('DELETE')
-                <button type="submit" class="rounded-lg bg-white/5 border border-white/10 px-4 py-1.5 text-sm font-medium text-rose-300/80 hover:bg-rose-500/10 hover:text-rose-300 transition">Delete</button>
-            </form>
-        </div>
+    <div class="mb-4">
+        <a href="/brain" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-300 active:text-gray-200">&larr; Back to the brain</a>
     </div>
 
-    <article class="rounded-2xl border border-white/5 bg-gray-900/50 p-6">
+    {{-- Actions — full-width on mobile, side-by-side from sm: --}}
+    <div class="mb-4 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+        <a href="/brain/{{ $page->slug }}/edit" class="h-11 grid place-items-center rounded-xl bg-white/5 border border-white/10 px-5 text-sm font-semibold text-gray-200 transition hover:bg-white/10 active:bg-white/[0.14]">Edit</a>
+        <form method="POST" action="/brain/{{ $page->slug }}" onsubmit="return confirm('Delete this page?');">
+            @csrf
+            @method('DELETE')
+            <button type="submit" class="w-full h-11 rounded-xl bg-white/5 border border-white/10 px-5 text-sm font-semibold text-rose-300/80 transition hover:bg-rose-500/10 hover:text-rose-300 active:bg-rose-500/20">Delete</button>
+        </form>
+    </div>
+
+    <article class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-6">
         <header class="mb-4 pb-4 border-b border-white/5">
-            <div class="flex items-center gap-2">
-                @if ($page->is_pinned)<span class="text-indigo-400" title="Pinned (core memory)">★</span>@endif
-                <h2 class="text-2xl font-bold text-gray-100">{{ $page->title }}</h2>
+            <div class="flex items-start gap-2">
+                @if ($page->is_pinned)<span class="mt-1 shrink-0 text-indigo-400" title="Pinned (core memory)">★</span>@endif
+                <h2 class="font-display text-xl md:text-2xl font-bold text-gray-100 break-words min-w-0">{{ $page->title }}</h2>
             </div>
-            <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+            <div class="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-500">
                 <span class="uppercase tracking-wide border border-white/10 rounded px-1.5 py-0.5">{{ $page->type }}</span>
                 <span>Updated {{ $page->updated_at?->diffForHumans() }}</span>
             </div>
@@ -61,20 +63,20 @@
             if ($inList) { $html .= '</ul>'; }
         @endphp
 
-        <div class="text-sm text-gray-300 leading-relaxed">
+        <div class="text-[15px] text-gray-300 leading-relaxed break-words">
             {!! $html !!}
         </div>
     </article>
 
     {{-- Backlinks --}}
-    <div class="mt-6">
-        <h3 class="text-sm font-semibold text-gray-400 mb-2">Backlinks</h3>
+    <div class="mt-5 md:mt-6">
+        <h3 class="font-display text-sm font-bold text-gray-400 mb-2">Backlinks</h3>
         @if ($backlinks->isEmpty())
             <p class="text-sm text-gray-600">No pages link here yet.</p>
         @else
             <div class="flex flex-wrap gap-2">
                 @foreach ($backlinks as $b)
-                    <a href="/brain/{{ $b->slug }}" class="rounded-lg bg-gray-900/50 border border-white/5 px-3 py-1.5 text-sm text-gray-300 hover:border-indigo-500/40 transition">{{ $b->title }}</a>
+                    <a href="/brain/{{ $b->slug }}" class="max-w-full truncate rounded-xl bg-white/[0.03] border border-white/5 px-3 py-2 text-sm text-gray-300 transition hover:border-indigo-500/40 active:bg-white/[0.06]">{{ $b->title }}</a>
                 @endforeach
             </div>
         @endif

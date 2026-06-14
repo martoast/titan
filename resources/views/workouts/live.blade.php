@@ -20,42 +20,46 @@
     <div x-data="liveSession({{ \Illuminate\Support\Js::from($initial) }}, {{ $aiReady ? 'true' : 'false' }})" class="max-w-3xl">
 
         @unless ($aiReady)
-            <div class="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+            <div class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                 Photo identification needs the AI to be configured. You can still add exercises by typing the name.
             </div>
         @endunless
 
         {{-- ===== Snap / add an exercise ===== --}}
-        <div class="rounded-2xl border border-white/5 bg-gray-900/50 p-5 mb-5">
-            <div class="flex items-center justify-between">
-                <h3 class="font-semibold text-gray-100">Add exercise</h3>
-                <span class="text-xs text-gray-500" x-show="workoutId" x-cloak>Session live · saving as you go</span>
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-5">
+            <div class="flex items-center justify-between gap-2">
+                <h3 class="font-display font-bold text-gray-100">Add exercise</h3>
+                <span class="text-[11px] text-emerald-400 shrink-0" x-show="workoutId" x-cloak>● Live · auto-saving</span>
             </div>
 
-            <div class="mt-4 flex flex-col sm:flex-row gap-3">
-                {{-- Camera / photo capture --}}
-                <label class="flex-1 cursor-pointer">
-                    <input type="file" accept="image/*" capture="environment" class="hidden"
-                           x-ref="photo" @change="identify($event)" :disabled="!aiReady || busy">
-                    <span class="flex items-center justify-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 px-4 py-3 text-sm font-semibold text-white transition"
-                          :class="(!aiReady || busy) && 'opacity-50 pointer-events-none'">
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        <span x-text="busy ? 'Identifying…' : 'Snap the machine'"></span>
-                    </span>
-                </label>
-                {{-- Type it instead --}}
-                <form @submit.prevent="addExercise(manualName)" class="flex-1 flex gap-2">
-                    <input type="text" x-model="manualName" placeholder="…or type the exercise"
-                           class="flex-1 rounded-xl bg-gray-950 border border-white/10 px-3 py-3 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-                    <button type="submit" :disabled="!manualName || busy"
-                            class="rounded-xl bg-white/10 hover:bg-white/20 px-4 text-sm font-medium text-gray-100 transition disabled:opacity-40">Add</button>
-                </form>
+            {{-- Camera / photo capture — big primary thumb target --}}
+            <label class="mt-4 block cursor-pointer">
+                <input type="file" accept="image/*" capture="environment" class="hidden"
+                       x-ref="photo" @change="identify($event)" :disabled="!aiReady || busy">
+                <span class="flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-cyan-400 active:from-indigo-400 active:to-cyan-300 px-4 h-16 text-base font-semibold text-white transition"
+                      :class="(!aiReady || busy) && 'opacity-50 pointer-events-none'">
+                    <svg class="h-7 w-7 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span x-text="busy ? 'Identifying…' : 'Snap the machine'"></span>
+                </span>
+            </label>
+
+            {{-- Type it instead --}}
+            <div class="mt-3 flex items-center gap-3">
+                <div class="flex-1 h-px bg-white/5"></div>
+                <span class="text-[11px] uppercase tracking-wide text-gray-600">or type it</span>
+                <div class="flex-1 h-px bg-white/5"></div>
             </div>
+            <form @submit.prevent="addExercise(manualName)" class="mt-3 flex gap-2">
+                <input type="text" x-model="manualName" placeholder="Exercise name"
+                       class="flex-1 min-w-0 h-12 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">
+                <button type="submit" :disabled="!manualName || busy"
+                        class="shrink-0 h-12 rounded-xl bg-white/10 active:bg-white/20 px-5 text-sm font-semibold text-gray-100 transition disabled:opacity-40">Add</button>
+            </form>
 
             {{-- Identification result --}}
             <template x-if="pending">
-                <div class="mt-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-4">
-                    <div class="flex items-center gap-2">
+                <div class="mt-4 rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-4">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-sm text-gray-400">Looks like</span>
                         <span class="font-semibold text-indigo-200" x-text="pending.name || 'not sure'"></span>
                         <span class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded"
@@ -65,14 +69,14 @@
                     <p class="text-xs text-gray-500 mt-1" x-text="pending.note"></p>
                     <div class="mt-3 flex flex-wrap gap-2">
                         <button @click="addExercise(pending.name)" x-show="pending.name"
-                                class="rounded-lg bg-indigo-500 hover:bg-indigo-400 px-3 py-1.5 text-sm font-semibold text-white">
+                                class="h-11 rounded-xl bg-indigo-500 active:bg-indigo-400 px-4 text-sm font-semibold text-white">
                             Add “<span x-text="pending.name"></span>”
                         </button>
                         <template x-for="alt in pending.alternates" :key="alt">
                             <button @click="addExercise(alt)"
-                                    class="rounded-lg bg-white/5 hover:bg-white/10 px-3 py-1.5 text-sm text-gray-200" x-text="alt"></button>
+                                    class="h-11 rounded-xl bg-white/5 active:bg-white/10 px-4 text-sm text-gray-200" x-text="alt"></button>
                         </template>
-                        <button @click="pending=null" class="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:text-gray-300">Dismiss</button>
+                        <button @click="pending=null" class="h-11 rounded-xl px-4 text-sm text-gray-500 active:text-gray-300">Dismiss</button>
                     </div>
                 </div>
             </template>
@@ -80,57 +84,62 @@
 
         {{-- ===== Running session ===== --}}
         <template x-if="exercises.length === 0">
-            <p class="text-center text-gray-600 text-sm py-8">No exercises yet. Snap a machine or type one to begin.</p>
+            <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-8 text-center">
+                <p class="text-gray-500 text-sm">No exercises yet.</p>
+                <p class="text-gray-600 text-xs mt-1">Snap a machine or type one to begin.</p>
+            </div>
         </template>
 
         <div class="space-y-4">
             <template x-for="(ex, i) in exercises" :key="ex.id">
-                <div class="rounded-2xl border border-white/5 bg-gray-900/50 p-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h4 class="font-semibold text-gray-100" x-text="ex.name"></h4>
+                <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                            <h4 class="font-semibold text-gray-100 truncate" x-text="ex.name"></h4>
                             <span class="text-xs text-gray-500 capitalize" x-text="ex.muscle_group"></span>
                         </div>
-                        <span class="text-xs text-gray-500"><span x-text="ex.sets.length"></span> sets</span>
+                        <span class="text-xs text-gray-500 shrink-0 nums"><span x-text="ex.sets.length"></span> sets</span>
                     </div>
 
                     {{-- logged sets --}}
-                    <div class="mt-3 space-y-1" x-show="ex.sets.length">
+                    <div class="mt-3 space-y-1.5" x-show="ex.sets.length">
                         <template x-for="(s, j) in ex.sets" :key="j">
-                            <div class="flex items-center gap-3 text-sm text-gray-300 bg-gray-950/60 rounded-lg px-3 py-1.5">
-                                <span class="text-gray-600 w-6" x-text="(j+1)+'.'"></span>
-                                <span><span class="font-medium text-gray-100" x-text="s.reps"></span> reps</span>
-                                <span><span class="font-medium text-gray-100" x-text="s.weight"></span> kg</span>
-                                <span x-show="s.rpe" class="text-gray-500">@ RPE <span x-text="s.rpe"></span></span>
+                            <div class="flex items-center gap-3 text-sm text-gray-300 bg-gray-950/60 rounded-lg px-3 py-2">
+                                <span class="text-gray-600 w-5 shrink-0 nums" x-text="(j+1)+'.'"></span>
+                                <span class="nums"><span class="font-semibold text-gray-100" x-text="s.reps"></span> reps</span>
+                                <span class="nums"><span class="font-semibold text-gray-100" x-text="s.weight"></span> kg</span>
+                                <span x-show="s.rpe" class="text-gray-500 nums ml-auto">RPE <span x-text="s.rpe"></span></span>
                             </div>
                         </template>
                     </div>
 
-                    {{-- add-set row --}}
-                    <form @submit.prevent="addSet(i)" class="mt-3 flex items-end gap-2">
-                        <label class="flex-1"><span class="text-[11px] text-gray-500">Reps</span>
-                            <input type="number" min="0" x-model.number="draft[ex.id].reps" inputmode="numeric"
-                                   class="mt-0.5 w-full rounded-lg bg-gray-950 border border-white/10 px-2 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0"></label>
-                        <label class="flex-1"><span class="text-[11px] text-gray-500">Weight (kg)</span>
-                            <input type="number" min="0" step="0.5" x-model.number="draft[ex.id].weight" inputmode="decimal"
-                                   class="mt-0.5 w-full rounded-lg bg-gray-950 border border-white/10 px-2 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0"></label>
-                        <label class="w-20"><span class="text-[11px] text-gray-500">RPE</span>
-                            <input type="number" min="0" max="10" step="0.5" x-model.number="draft[ex.id].rpe" inputmode="decimal"
-                                   class="mt-0.5 w-full rounded-lg bg-gray-950 border border-white/10 px-2 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0"></label>
+                    {{-- add-set form --}}
+                    <form @submit.prevent="addSet(i)" class="mt-3">
+                        <div class="flex items-end gap-2">
+                            <label class="flex-1 min-w-0"><span class="block text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">Reps</span>
+                                <input type="number" min="0" x-model.number="draft[ex.id].reps" inputmode="numeric"
+                                       class="w-full h-12 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0"></label>
+                            <label class="flex-1 min-w-0"><span class="block text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">Weight (kg)</span>
+                                <input type="number" min="0" step="0.5" x-model.number="draft[ex.id].weight" inputmode="decimal"
+                                       class="w-full h-12 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0"></label>
+                            <label class="w-16 shrink-0"><span class="block text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">RPE</span>
+                                <input type="number" min="0" max="10" step="0.5" x-model.number="draft[ex.id].rpe" inputmode="decimal"
+                                       class="w-full h-12 rounded-xl bg-gray-950 border border-white/10 px-2 text-base text-gray-100 focus:border-indigo-500 focus:ring-0"></label>
+                        </div>
                         <button type="submit"
-                                class="rounded-lg bg-emerald-500/90 hover:bg-emerald-400 px-4 py-2 text-sm font-semibold text-white transition">Add set</button>
+                                class="mt-2.5 w-full h-12 rounded-xl bg-emerald-500/90 active:bg-emerald-400 text-base font-semibold text-white transition">Add set</button>
                     </form>
                 </div>
             </template>
         </div>
 
         {{-- ===== Finish ===== --}}
-        <form method="POST" action="{{ route('workouts.live.finish') }}" class="mt-6 flex items-center gap-3" x-show="workoutId" x-cloak>
+        <form method="POST" action="{{ route('workouts.live.finish') }}" class="mt-6 flex flex-col sm:flex-row sm:items-center gap-3" x-show="workoutId" x-cloak>
             @csrf
             <input type="hidden" name="workout_id" :value="workoutId">
             <input type="text" name="name" placeholder="Name this session (optional)"
-                   class="flex-1 rounded-xl bg-gray-950 border border-white/10 px-3 py-2.5 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            <button type="submit" class="rounded-xl bg-indigo-500 hover:bg-indigo-400 px-5 py-2.5 text-sm font-semibold text-white transition">Finish session</button>
+                   class="flex-1 min-w-0 h-12 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">
+            <button type="submit" class="w-full sm:w-auto h-12 rounded-xl bg-indigo-500 active:bg-indigo-400 px-5 text-sm font-semibold text-white transition">Finish session</button>
         </form>
 
         <p x-show="error" x-cloak class="mt-4 text-sm text-rose-400" x-text="error"></p>

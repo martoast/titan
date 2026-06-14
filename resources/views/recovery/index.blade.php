@@ -1,12 +1,11 @@
 <x-titan-layout title="Recovery" subtitle="HRV, resting HR, stress, soreness & readiness">
     @if ($errors->any())
-        <div class="mb-4 rounded-lg bg-rose-500/10 border border-rose-500/20 px-4 py-2 text-sm text-rose-300">
+        <div class="mb-4 rounded-xl bg-rose-500/10 border border-rose-500/20 px-4 py-3 text-sm text-rose-300">
             {{ $errors->first() }}
         </div>
     @endif
 
     @php
-        $readinessRing = $readiness ?? 0;
         $readinessTone = match (true) {
             $readiness === null => 'text-gray-400',
             $readiness >= 80 => 'text-emerald-300',
@@ -27,125 +26,125 @@
         $dash = $readiness !== null ? $circ * ($readiness / 100) : 0;
     @endphp
 
-    {{-- Readiness hero --}}
-    <div class="rounded-xl border border-white/5 bg-gradient-to-br from-gray-900/80 to-gray-900/40 p-6 mb-4">
-        <div class="flex flex-col sm:flex-row items-center gap-6">
-            <div class="relative h-36 w-36 shrink-0">
-                <svg viewBox="0 0 120 120" class="h-36 w-36 -rotate-90">
-                    <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" />
-                    <circle cx="60" cy="60" r="52" fill="none" stroke="{{ $ringStroke }}" stroke-width="10"
-                            stroke-linecap="round" stroke-dasharray="{{ $circ }}" stroke-dashoffset="{{ $circ - $dash }}" />
-                </svg>
-                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                    <span class="text-4xl font-black {{ $readinessTone }}">{{ $readiness ?? '—' }}</span>
-                    <span class="text-[10px] uppercase tracking-wider text-gray-500">Readiness</span>
+    <div class="space-y-4 md:space-y-5">
+        {{-- Readiness hero --}}
+        <div class="rounded-2xl border border-white/5 bg-gradient-to-br from-gray-900/80 to-gray-900/40 p-6">
+            <div class="flex flex-col items-center text-center gap-5">
+                <div class="relative h-40 w-40 shrink-0">
+                    <svg viewBox="0 0 120 120" class="h-40 w-40 -rotate-90">
+                        <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" />
+                        <circle cx="60" cy="60" r="52" fill="none" stroke="{{ $ringStroke }}" stroke-width="10"
+                                stroke-linecap="round" stroke-dasharray="{{ $circ }}" stroke-dashoffset="{{ $circ - $dash }}" />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                        <span class="font-display text-5xl font-black nums {{ $readinessTone }} leading-none">{{ $readiness ?? '—' }}</span>
+                        <span class="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Readiness</span>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-[11px] uppercase tracking-wider text-gray-500">Today's readiness</p>
+                    <h2 class="font-display text-2xl font-bold {{ $readinessTone }} mt-0.5">{{ $readinessLabel }}</h2>
+                    <p class="text-sm text-gray-400 mt-1.5 max-w-xs mx-auto">{{ $readinessNote }}</p>
                 </div>
             </div>
-            <div class="text-center sm:text-left">
-                <p class="text-sm uppercase tracking-wider text-gray-500">Today's readiness</p>
-                <h2 class="text-2xl font-bold {{ $readinessTone }}">{{ $readinessLabel }}</h2>
-                <p class="text-sm text-gray-400 mt-1 max-w-md">{{ $readinessNote }}</p>
-            </div>
         </div>
-    </div>
 
-    {{-- Latest signal cards --}}
-    @php
-        $cards = [
-            ['HRV',        $latest?->hrv_ms,     'ms',   'text-indigo-300'],
-            ['Resting HR', $latest?->resting_hr, 'bpm',  'text-cyan-300'],
-            ['Stress',     $latest?->stress,     '/10',  'text-amber-300'],
-            ['Soreness',   $latest?->soreness,   '/10',  'text-orange-300'],
-            ['Mood',       $latest?->mood,       '/10',  'text-emerald-300'],
-            ['Energy',     $latest?->energy,     '/10',  'text-violet-300'],
-        ];
-    @endphp
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
-        @foreach ($cards as [$label, $value, $unit, $tone])
-            <div class="rounded-xl border border-white/5 bg-gray-900/50 p-4">
-                <p class="text-xs text-gray-500">{{ $label }}</p>
-                <p class="text-2xl font-bold {{ $tone }} mt-1">
-                    {{ $value !== null ? $value : '—' }}<span class="text-xs text-gray-500">{{ $value !== null ? $unit : '' }}</span>
-                </p>
-            </div>
-        @endforeach
-    </div>
+        {{-- Latest signal cards --}}
+        @php
+            $cards = [
+                ['HRV',        $latest?->hrv_ms,     'ms',   'text-indigo-300'],
+                ['Resting HR', $latest?->resting_hr, 'bpm',  'text-cyan-300'],
+                ['Stress',     $latest?->stress,     '/10',  'text-amber-300'],
+                ['Soreness',   $latest?->soreness,   '/10',  'text-orange-300'],
+                ['Mood',       $latest?->mood,       '/10',  'text-emerald-300'],
+                ['Energy',     $latest?->energy,     '/10',  'text-violet-300'],
+            ];
+        @endphp
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
+            @foreach ($cards as [$label, $value, $unit, $tone])
+                <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">{{ $label }}</div>
+                    <div class="font-display text-2xl font-bold nums {{ $tone }} mt-1">
+                        {{ $value !== null ? $value : '—' }}<span class="text-gray-500 text-sm font-normal">{{ $value !== null ? $unit : '' }}</span>
+                    </div>
+                </div>
+            @endforeach
+        </div>
 
-    @if ($latest)
-        <p class="text-xs text-gray-600 mb-4">Latest entry: {{ $latest->logged_at->format('D, M j') }}@if ($lastSleep) · last sleep {{ $lastSleep->durationLabel() }} @endif</p>
-    @endif
+        @if ($latest)
+            <p class="text-xs text-gray-600 -mt-1">Latest entry: {{ $latest->logged_at->format('D, M j') }}@if ($lastSleep) · last sleep {{ $lastSleep->durationLabel() }} @endif</p>
+        @endif
 
-    {{-- Trends --}}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5">
-            <h3 class="font-semibold text-gray-100 mb-4">HRV &amp; resting HR — 14 days</h3>
+        {{-- Trends --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <h3 class="font-display font-bold text-gray-100 mb-4">HRV &amp; resting HR — 14 days</h3>
             @if ($trend->count())
-                <div class="relative h-64"><canvas id="hrvTrend"></canvas></div>
+                <div class="relative h-44 md:h-56"><canvas id="hrvTrend" class="w-full"></canvas></div>
             @else
                 <p class="text-sm text-gray-500">Not enough data yet.</p>
             @endif
         </div>
-        <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5">
-            <h3 class="font-semibold text-gray-100 mb-4">Subjective signals — 14 days</h3>
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <h3 class="font-display font-bold text-gray-100 mb-4">Subjective signals — 14 days</h3>
             @if ($trend->count())
-                <div class="relative h-64"><canvas id="subjTrend"></canvas></div>
+                <div class="relative h-44 md:h-56"><canvas id="subjTrend" class="w-full"></canvas></div>
             @else
                 <p class="text-sm text-gray-500">Not enough data yet.</p>
             @endif
         </div>
-    </div>
 
-    {{-- Manual log form --}}
-    <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5">
-        <h3 class="font-semibold text-gray-100 mb-4">Log recovery</h3>
-        <form method="POST" action="/recovery" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            @csrf
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Date</label>
-                <input type="date" name="logged_at" value="{{ old('logged_at', now()->toDateString()) }}" max="{{ now()->toDateString() }}" required
-                       class="w-full rounded-lg bg-gray-800 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">HRV (ms)</label>
-                <input type="number" name="hrv_ms" min="1" max="400" value="{{ old('hrv_ms') }}" placeholder="optional"
-                       class="w-full rounded-lg bg-gray-800 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Resting HR (bpm)</label>
-                <input type="number" name="resting_hr" min="20" max="200" value="{{ old('resting_hr') }}" placeholder="optional"
-                       class="w-full rounded-lg bg-gray-800 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Stress (1-10)</label>
-                <input type="number" name="stress" min="1" max="10" value="{{ old('stress') }}" placeholder="optional"
-                       class="w-full rounded-lg bg-gray-800 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Soreness (1-10)</label>
-                <input type="number" name="soreness" min="1" max="10" value="{{ old('soreness') }}" placeholder="optional"
-                       class="w-full rounded-lg bg-gray-800 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Mood (1-10)</label>
-                <input type="number" name="mood" min="1" max="10" value="{{ old('mood') }}" placeholder="optional"
-                       class="w-full rounded-lg bg-gray-800 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Energy (1-10)</label>
-                <input type="number" name="energy" min="1" max="10" value="{{ old('energy') }}" placeholder="optional"
-                       class="w-full rounded-lg bg-gray-800 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            </div>
-            <div class="sm:col-span-2 lg:col-span-4">
-                <label class="block text-xs text-gray-500 mb-1">Notes</label>
-                <input type="text" name="notes" value="{{ old('notes') }}" placeholder="Felt drained, big leg day yesterday…"
-                       class="w-full rounded-lg bg-gray-800 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
-            </div>
-            <div class="lg:col-span-4">
-                <button type="submit" class="rounded-lg bg-indigo-500 hover:bg-indigo-400 px-5 py-2 text-sm font-semibold text-white transition">
-                    Save recovery
-                </button>
-            </div>
-        </form>
+        {{-- Manual log form --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <h3 class="font-display font-bold text-gray-100 mb-4">Log recovery</h3>
+            <form method="POST" action="/recovery" class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                @csrf
+                <div class="sm:col-span-2">
+                    <label class="block text-xs text-gray-500 mb-1">Date</label>
+                    <input type="date" name="logged_at" value="{{ old('logged_at', now()->toDateString()) }}" max="{{ now()->toDateString() }}" required
+                           class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">HRV (ms)</label>
+                    <input type="number" name="hrv_ms" min="1" max="400" value="{{ old('hrv_ms') }}" placeholder="optional"
+                           class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 nums placeholder-gray-600 focus:border-indigo-500 focus:ring-0">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Resting HR (bpm)</label>
+                    <input type="number" name="resting_hr" min="20" max="200" value="{{ old('resting_hr') }}" placeholder="optional"
+                           class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 nums placeholder-gray-600 focus:border-indigo-500 focus:ring-0">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Stress (1-10)</label>
+                    <input type="number" name="stress" min="1" max="10" value="{{ old('stress') }}" placeholder="optional"
+                           class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 nums placeholder-gray-600 focus:border-indigo-500 focus:ring-0">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Soreness (1-10)</label>
+                    <input type="number" name="soreness" min="1" max="10" value="{{ old('soreness') }}" placeholder="optional"
+                           class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 nums placeholder-gray-600 focus:border-indigo-500 focus:ring-0">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Mood (1-10)</label>
+                    <input type="number" name="mood" min="1" max="10" value="{{ old('mood') }}" placeholder="optional"
+                           class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 nums placeholder-gray-600 focus:border-indigo-500 focus:ring-0">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Energy (1-10)</label>
+                    <input type="number" name="energy" min="1" max="10" value="{{ old('energy') }}" placeholder="optional"
+                           class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 nums placeholder-gray-600 focus:border-indigo-500 focus:ring-0">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-xs text-gray-500 mb-1">Notes</label>
+                    <input type="text" name="notes" value="{{ old('notes') }}" placeholder="Felt drained, big leg day yesterday…"
+                           class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 placeholder-gray-600 focus:border-indigo-500 focus:ring-0">
+                </div>
+                <div class="sm:col-span-2">
+                    <button type="submit" class="w-full md:w-auto h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-400 px-6 font-semibold text-white active:opacity-90 transition">
+                        Save recovery
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     @if ($trend->count())
@@ -155,7 +154,9 @@
                 if (!window.Chart) return;
                 const data = @json($trend);
                 const labels = data.map(d => d.date);
-                const axis = (extra = {}) => Object.assign({ ticks: { color: '#6b7280' }, grid: { color: 'rgba(255,255,255,0.04)' } }, extra);
+                const legend = { labels: { color: '#9ca3af', boxWidth: 10, font: { size: 11 } } };
+                const xAxis = { ticks: { color: '#6b7280', font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 7 }, grid: { display: false } };
+                const yAxis = (extra = {}) => Object.assign({ ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } }, extra);
 
                 const hrv = document.getElementById('hrvTrend');
                 if (hrv) new Chart(hrv, {
@@ -170,11 +171,11 @@
                     options: {
                         responsive: true, maintainAspectRatio: false,
                         interaction: { mode: 'index', intersect: false },
-                        plugins: { legend: { labels: { color: '#9ca3af' } } },
+                        plugins: { legend },
                         scales: {
-                            x: axis(),
-                            y: axis({ position: 'left' }),
-                            y1: { position: 'right', ticks: { color: '#6b7280' }, grid: { drawOnChartArea: false } },
+                            x: xAxis,
+                            y: yAxis({ position: 'left' }),
+                            y1: { position: 'right', ticks: { color: '#6b7280', font: { size: 10 } }, grid: { drawOnChartArea: false } },
                         },
                     },
                 });
@@ -194,8 +195,8 @@
                     options: {
                         responsive: true, maintainAspectRatio: false,
                         interaction: { mode: 'index', intersect: false },
-                        plugins: { legend: { labels: { color: '#9ca3af' } } },
-                        scales: { x: axis(), y: axis({ min: 0, max: 10 }) },
+                        plugins: { legend },
+                        scales: { x: xAxis, y: yAxis({ min: 0, max: 10 }) },
                     },
                 });
             });
