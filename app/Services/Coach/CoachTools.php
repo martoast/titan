@@ -1,0 +1,403 @@
+<?php
+
+namespace App\Services\Coach;
+
+use App\Models\Profile;
+use Illuminate\Support\Carbon;
+
+/**
+ * The coach's READ-only toolbox over a single profile's data, plus knowledge save.
+ *
+ * Every cross-domain model is guarded with class_exists so the coach keeps working
+ * before those verticals are integrated — a missing domain returns a friendly
+ * "no data yet" note instead of fatally erroring the tool loop. Each tool returns a
+ * compact array/string suitable for feeding straight back into the model.
+ */
+class CoachTools
+{
+    public function __construct(protected Profile $profile) {}
+
+    /**
+     * OpenAI tool schemas advertised to the model. Knowledge tools are only offered
+     * when the Brain vertical exists, so the coach never promises a capability it
+     * cannot fulfil.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function schemas(): array
+    {
+        $tools = [];
+
+        if (class_exists(\App\Models\KnowledgePage::class)) {
+            $tools[] = $this->fn('search_knowledge', "Search this person's long-term-memory health wiki (the brain) for relevant notes, history, preferences, goals, doctor's notes, etc.", [
+                'query' => ['type' => 'string', 'description' => 'What to look for, in natural language.'],
+            ], ['query']);
+
+            $tools[] = $this->fn('save_knowledge', 'Save or update a durable fact about this person in the brain so it is remembered in future conversations. Use for stable facts (preferences, history, goals), not transient chatter.', [
+                'title' => ['type' => 'string', 'description' => 'Short page title.'],
+                'content' => ['type' => 'string', 'description' => 'Markdown content of the note.'],
+                'pinned' => ['type' => 'boolean', 'description' => 'Pin as core memory (injected into every future conversation). Use sparingly.'],
+            ], ['title', 'content']);
+        }
+
+        if (class_exists(\App\Models\BiomarkerReading::class)) {
+            $tools[] = $this->fn('recent_biomarkers', "Get the latest bloodwork value for each tracked marker, with its out-of-range flag.", [], []);
+        }
+
+        if (class_exists(\App\Models\Meal::class)) {
+            $tools[] = $this->fn('recent_meals', 'Get recently logged meals and per-day macro totals (calories, protein, carbs, fat).', [
+                'days' => ['type' => 'integer', 'description' => 'How many days back to include (default 7).'],
+            ], []);
+        }
+
+        if (class_exists(\App\Models\Workout::class)) {
+            $tools[] = $this->fn('recent_workouts', 'Get a summary of recently logged training sessions (volume, top sets).', [
+                'days' => ['type' => 'integer', 'description' => 'How many days back to include (default 14).'],
+            ], []);
+        }
+
+        if (class_exists(\App\Models\SleepLog::class) || class_exists(\App\Models\RecoveryLog::class)) {
+            $tools[] = $this->fn('sleep_recovery_summary', 'Get recent sleep duration/quality and recovery markers (HRV, resting HR, stress, soreness) with averages.', [], []);
+        }
+
+        if (class_exists(\App\Models\PhysiqueGoal::class) || class_exists(\App\Models\PhysiqueAnalysis::class)) {
+            $tools[] = $this->fn('physique_status', "Get the active physique goal and the latest physique analysis (body-fat range, % of the way to the goal image).", [], []);
+        }
+
+        return $tools;
+    }
+
+    /** Build one OpenAI function-tool schema. */
+    private function fn(string $name, string $description, array $properties, array $required): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => $name,
+                'description' => $description,
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => (object) $properties,
+                    'required' => $required,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Run a tool by name. Always returns a compact array or string; never throws
+     * (the AiService loop also guards, but we degrade gracefully here too).
+     */
+    public function dispatch(string $name, array $args): mixed
+    {
+        return match ($name) {
+            'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
+            'save_knowledge' => $this->saveKnowledge($args),
+            'recent_biomarkers' => $this->recentBiomarkers(),
+            'recent_meals' => $this->recentMeals((int) ($args['days'] ?? 7)),
+            'recent_workouts' => $this->recentWorkouts((int) ($args['days'] ?? 14)),
+            'sleep_recovery_summary' => $this->sleepRecoverySummary(),
+            'physique_status' => $this->physiqueStatus(),
+            default => ['error' => "Unknown tool: {$name}"],
+        };
+    }
+
+    // ---- Tool implementations -------------------------------------------------
+
+    private function searchKnowledge(string $query): mixed
+    {
+        if (! class_exists(\App\Models\KnowledgePage::class) || ! class_exists(\App\Services\Brain\KnowledgeSearch::class)) {
+            return 'The brain is not available yet — no notes to search.';
+        }
+
+        try {
+            $search = app(\App\Services\Brain\KnowledgeSearch::class);
+            $hits = $search->search($this->profile, $query, 6);
+        } catch (\Throwable $e) {
+            return ['error' => 'Knowledge search failed: '.$e->getMessage()];
+        }
+
+        if ($hits === []) {
+            return 'No matching notes found in the brain.';
+        }
+
+        return array_map(fn ($h) => [
+            'title' => $h['page']->title ?? null,
+            'snippet' => $h['snippet'] ?? null,
+            'score' => $h['score'] ?? null,
+        ], $hits);
+    }
+
+    private function saveKnowledge(array $args): mixed
+    {
+        if (! class_exists(\App\Models\KnowledgePage::class)) {
+            return 'The brain is not available yet — cannot save notes.';
+        }
+
+        $title = trim((string) ($args['title'] ?? ''));
+        $content = trim((string) ($args['content'] ?? ''));
+        if ($title === '' || $content === '') {
+            return ['error' => 'Both title and content are required to save a note.'];
+        }
+
+        try {
+            $model = \App\Models\KnowledgePage::class;
+            $page = $model::query()
+                ->where('profile_id', $this->profile->id)
+                ->where('title', $title)
+                ->first();
+
+            $payload = [
+                'profile_id' => $this->profile->id,
+                'title' => $title,
+                'content' => $content,
+                'is_pinned' => (bool) ($args['pinned'] ?? false),
+            ];
+            // slug/type are nice-to-haves the Brain schema may require.
+            if (method_exists($model, 'slugFor')) {
+                $payload['slug'] = $model::slugFor($title);
+            }
+            $payload['type'] ??= 'note';
+
+            if ($page) {
+                $page->fill($payload)->save();
+            } else {
+                $page = $model::create($payload);
+            }
+
+            // Best-effort re-embed so the new note is searchable immediately.
+            if (class_exists(\App\Services\Brain\KnowledgeSearch::class) && method_exists(app(\App\Services\Brain\KnowledgeSearch::class), 'embedPage')) {
+                try {
+                    app(\App\Services\Brain\KnowledgeSearch::class)->embedPage($page);
+                } catch (\Throwable) {
+                    // embedding is optional; keyword search still works.
+                }
+            }
+
+            return ['saved' => true, 'title' => $title, 'pinned' => (bool) ($args['pinned'] ?? false)];
+        } catch (\Throwable $e) {
+            return ['error' => 'Could not save note: '.$e->getMessage()];
+        }
+    }
+
+    private function recentBiomarkers(): mixed
+    {
+        if (! class_exists(\App\Models\BiomarkerReading::class)) {
+            return 'No biomarker data yet.';
+        }
+
+        try {
+            $rows = \App\Models\BiomarkerReading::query()
+                ->where('profile_id', $this->profile->id)
+                ->orderByDesc('taken_at')
+                ->get();
+        } catch (\Throwable) {
+            return 'No biomarker data yet.';
+        }
+
+        if ($rows->isEmpty()) {
+            return 'No biomarker readings logged yet.';
+        }
+
+        // Latest reading per marker.
+        $latest = $rows->groupBy('marker')->map(fn ($g) => $g->first());
+
+        return $latest->map(fn ($r) => [
+            'marker' => $r->label ?? $r->marker,
+            'value' => (float) $r->value,
+            'unit' => $r->unit,
+            'flag' => $r->flag,
+            'taken_at' => optional($r->taken_at)->toDateString(),
+        ])->values()->all();
+    }
+
+    private function recentMeals(int $days): mixed
+    {
+        if (! class_exists(\App\Models\Meal::class)) {
+            return 'No meal data yet.';
+        }
+        $days = max(1, min($days, 60));
+
+        try {
+            $since = Carbon::now()->subDays($days)->startOfDay();
+            $meals = \App\Models\Meal::query()
+                ->where('profile_id', $this->profile->id)
+                ->where('eaten_at', '>=', $since)
+                ->orderByDesc('eaten_at')
+                ->get();
+        } catch (\Throwable) {
+            return 'No meal data yet.';
+        }
+
+        if ($meals->isEmpty()) {
+            return "No meals logged in the last {$days} days.";
+        }
+
+        $daily = $meals->groupBy(fn ($m) => optional($m->eaten_at)->toDateString())
+            ->map(fn ($g) => [
+                'meals' => $g->count(),
+                'calories' => (int) $g->sum('calories'),
+                'protein_g' => round((float) $g->sum('protein_g'), 1),
+                'carbs_g' => round((float) $g->sum('carbs_g'), 1),
+                'fat_g' => round((float) $g->sum('fat_g'), 1),
+            ]);
+
+        return [
+            'window_days' => $days,
+            'daily_totals' => $daily,
+            'recent_meals' => $meals->take(12)->map(fn ($m) => [
+                'name' => $m->name,
+                'eaten_at' => optional($m->eaten_at)->toDateTimeString(),
+                'calories' => (int) $m->calories,
+                'protein_g' => round((float) $m->protein_g, 1),
+            ])->values()->all(),
+        ];
+    }
+
+    private function recentWorkouts(int $days): mixed
+    {
+        if (! class_exists(\App\Models\Workout::class)) {
+            return 'No workout data yet.';
+        }
+        $days = max(1, min($days, 90));
+
+        try {
+            $since = Carbon::now()->subDays($days)->startOfDay();
+            $workouts = \App\Models\Workout::query()
+                ->where('profile_id', $this->profile->id)
+                ->where('performed_at', '>=', $since)
+                ->with('exercises.sets', 'exercises.exercise')
+                ->orderByDesc('performed_at')
+                ->get();
+        } catch (\Throwable) {
+            return 'No workout data yet.';
+        }
+
+        if ($workouts->isEmpty()) {
+            return "No workouts logged in the last {$days} days.";
+        }
+
+        return [
+            'window_days' => $days,
+            'session_count' => $workouts->count(),
+            'sessions' => $workouts->take(12)->map(function ($w) {
+                $row = [
+                    'name' => $w->name,
+                    'performed_at' => optional($w->performed_at)->toDateTimeString(),
+                    'duration_min' => $w->duration_min,
+                ];
+                // Volume/top sets are derived from set rows — guard in case relations are absent.
+                try {
+                    $row['total_volume_kg'] = round($w->totalVolume(), 1);
+                    $row['working_sets'] = $w->workingSetCount();
+                    $row['top_sets'] = $w->topSets()->all();
+                } catch (\Throwable) {
+                    // leave the basic summary
+                }
+
+                return $row;
+            })->values()->all(),
+        ];
+    }
+
+    private function sleepRecoverySummary(): mixed
+    {
+        $out = [];
+
+        if (class_exists(\App\Models\SleepLog::class)) {
+            try {
+                $sleep = \App\Models\SleepLog::query()
+                    ->where('profile_id', $this->profile->id)
+                    ->latest('id')->take(14)->get();
+                if ($sleep->isNotEmpty()) {
+                    $out['sleep'] = [
+                        'nights' => $sleep->count(),
+                        'avg_duration_h' => $this->avg($sleep, ['duration_hours', 'hours', 'duration_min']),
+                        'avg_quality' => $this->avg($sleep, ['quality', 'quality_score', 'score']),
+                    ];
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        if (class_exists(\App\Models\RecoveryLog::class)) {
+            try {
+                $rec = \App\Models\RecoveryLog::query()
+                    ->where('profile_id', $this->profile->id)
+                    ->latest('id')->take(14)->get();
+                if ($rec->isNotEmpty()) {
+                    $out['recovery'] = [
+                        'entries' => $rec->count(),
+                        'avg_hrv' => $this->avg($rec, ['hrv', 'hrv_ms']),
+                        'avg_resting_hr' => $this->avg($rec, ['resting_hr', 'rhr', 'resting_heart_rate']),
+                        'avg_stress' => $this->avg($rec, ['stress', 'stress_level']),
+                        'avg_soreness' => $this->avg($rec, ['soreness', 'soreness_level']),
+                    ];
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        return $out === [] ? 'No sleep or recovery data yet.' : $out;
+    }
+
+    private function physiqueStatus(): mixed
+    {
+        $out = [];
+
+        if (class_exists(\App\Models\PhysiqueGoal::class)) {
+            try {
+                $q = \App\Models\PhysiqueGoal::query()->where('profile_id', $this->profile->id);
+                // Prefer an "active" goal if the column exists; else the latest.
+                $goal = (clone $q)->latest('id')->first();
+                try {
+                    $active = (clone $q)->where('is_active', true)->latest('id')->first();
+                    $goal = $active ?: $goal;
+                } catch (\Throwable) {
+                    // no is_active column — keep latest
+                }
+                if ($goal) {
+                    $out['goal'] = collect($goal->getAttributes())
+                        ->only(['title', 'description', 'target', 'target_body_fat_pct', 'target_weight_kg', 'is_active'])
+                        ->filter(fn ($v) => $v !== null)
+                        ->all() ?: ['summary' => 'Active physique goal set.'];
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        if (class_exists(\App\Models\PhysiqueAnalysis::class)) {
+            try {
+                $analysis = \App\Models\PhysiqueAnalysis::query()
+                    ->where('profile_id', $this->profile->id)
+                    ->latest('id')->first();
+                if ($analysis) {
+                    $out['latest_analysis'] = collect($analysis->getAttributes())
+                        ->only(['body_fat_pct', 'body_fat_low', 'body_fat_high', 'pct_to_goal', 'summary', 'notes', 'created_at'])
+                        ->filter(fn ($v) => $v !== null)
+                        ->all() ?: ['summary' => 'Physique analysis available.'];
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        return $out === [] ? 'No physique goal or analysis yet.' : $out;
+    }
+
+    /** Average of the first present numeric attribute among $keys, rounded; null if none. */
+    private function avg(\Illuminate\Support\Collection $rows, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            $vals = $rows->map(fn ($r) => $r->getAttribute($key))->filter(fn ($v) => is_numeric($v));
+            if ($vals->isNotEmpty()) {
+                return round((float) $vals->avg(), 1);
+            }
+        }
+
+        return null;
+    }
+}

@@ -34,5 +34,20 @@ class DatabaseSeeder extends Seeder
                 ['display_name' => $b['name'], 'primary_goal' => $b['goal'], 'coach_tone' => 'balanced'],
             );
         }
+
+        // Domain seeders (built by the parallel verticals). Order: the exercise
+        // library before workouts that reference it; everything else hangs off the
+        // two profiles seeded above.
+        $this->call([
+            BrainSeeder::class,
+            HealthDataSeeder::class,
+            ExerciseLibrarySeeder::class,
+            WorkoutsSeeder::class,
+            MealsSeeder::class,
+            SleepRecoverySeeder::class,
+            PhysiqueSeeder::class,
+            CoachSeeder::class,
+            DuoSeeder::class,
+        ]);
     }
 }
