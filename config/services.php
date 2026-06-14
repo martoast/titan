@@ -35,6 +35,17 @@ return [
         ],
     ],
 
+    // Mailgun — transactional email (password resets + notifications). The active
+    // mailer is SMTP (MAIL_MAILER=smtp, Mailgun's SMTP relay); these credentials
+    // also enable the `mailgun` API transport. Same account as fullstack-suite.
+    'mailgun' => [
+        'domain' => env('MAILGUN_DOMAIN'),
+        'secret' => env('MAILGUN_SECRET'),
+        'endpoint' => env('MAILGUN_ENDPOINT', 'api.mailgun.net'),
+        'scheme' => 'https',
+        'webhook_signing_key' => env('MAILGUN_WEBHOOK_SIGNING_KEY'),
+    ],
+
     // OpenAI — the Titan coach's brain: conversation (chat_model), fast/cheap
     // turns (fast_model), vision for meal + progress photos (vision_model), and
     // embeddings for semantic search over each profile's health wiki.
