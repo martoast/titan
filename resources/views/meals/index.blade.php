@@ -4,27 +4,26 @@
         $isToday = $day->isToday();
     @endphp
 
-    {{-- Day switcher --}}
-    <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center gap-2">
-            <a href="/meals?day={{ $day->copy()->subDay()->format('Y-m-d') }}"
-               class="h-8 w-8 grid place-items-center rounded-lg border border-white/5 bg-gray-900/50 text-gray-400 hover:text-gray-100 hover:border-white/10">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-            </a>
-            <div class="text-center min-w-[10rem]">
-                <div class="text-sm font-semibold text-gray-100">{{ $isToday ? 'Today' : $day->format('D, M j') }}</div>
-                <div class="text-xs text-gray-500">{{ $day->format('M j, Y') }}</div>
-            </div>
-            <a href="/meals?day={{ $day->copy()->addDay()->format('Y-m-d') }}"
-               class="h-8 w-8 grid place-items-center rounded-lg border border-white/5 bg-gray-900/50 text-gray-400 hover:text-gray-100 hover:border-white/10 {{ $isToday ? 'opacity-30 pointer-events-none' : '' }}">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-            </a>
-            @unless($isToday)
-                <a href="/meals" class="text-xs text-indigo-400 hover:text-indigo-300 ml-2">Today</a>
-            @endunless
+    {{-- Day switcher — full-width on mobile, arrows pinned to the edges --}}
+    <div class="flex items-center gap-3 mb-5">
+        <a href="/meals?day={{ $day->copy()->subDay()->format('Y-m-d') }}"
+           class="h-10 w-10 shrink-0 grid place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 active:bg-white/10">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+        </a>
+        <div class="flex-1 text-center">
+            <div class="font-display text-base font-bold text-gray-100">{{ $isToday ? 'Today' : $day->format('l') }}</div>
+            <div class="text-xs text-gray-500 nums">{{ $day->format('M j, Y') }}</div>
         </div>
-        <a href="/meals/add" class="text-sm rounded-lg border border-white/10 bg-gray-900/60 px-3 py-2 text-gray-300 hover:text-gray-100 hover:border-white/20">+ Manual entry</a>
+        <a href="/meals?day={{ $day->copy()->addDay()->format('Y-m-d') }}"
+           class="h-10 w-10 shrink-0 grid place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 active:bg-white/10 {{ $isToday ? 'opacity-30 pointer-events-none' : '' }}">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </a>
     </div>
+    @unless($isToday)
+        <div class="-mt-3 mb-4 text-center">
+            <a href="/meals" class="text-xs font-medium text-indigo-400 active:text-indigo-300">↩ Back to today</a>
+        </div>
+    @endunless
 
     {{-- Daily totals bar --}}
     <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5 mb-6"
@@ -58,9 +57,9 @@
             @foreach ($macros as [$label, $key, $grad])
                 @php $mp = $pct($totals[$key], $targets[$key]); @endphp
                 <div>
-                    <div class="flex items-baseline justify-between text-xs mb-1.5">
-                        <span class="text-gray-400">{{ $label }}</span>
-                        <span class="text-gray-500">{{ rtrim(rtrim(number_format($totals[$key], 1), '0'), '.') }} / {{ $targets[$key] }}g</span>
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">{{ $label }}</div>
+                    <div class="text-sm font-semibold text-gray-100 nums mb-1.5">
+                        {{ rtrim(rtrim(number_format($totals[$key], 1), '0'), '.') }}<span class="text-gray-500 font-normal">/{{ $targets[$key] }}g</span>
                     </div>
                     <div class="h-2 w-full rounded-full bg-white/5 overflow-hidden">
                         <div class="h-full rounded-full bg-gradient-to-r {{ $grad }}" style="width: {{ $mp }}%"></div>
@@ -92,9 +91,10 @@
         <div class="lg:col-span-2 space-y-6">
             {{-- Snap-a-meal + text entry --}}
             <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5" x-data="{ tab: 'photo' }">
-                <div class="flex gap-1 mb-4 text-sm">
+                <div class="flex items-center gap-1 mb-4 text-sm">
                     <button @click="tab='photo'" :class="tab==='photo' ? 'bg-indigo-500/15 text-indigo-300' : 'text-gray-400 hover:text-gray-100'" class="rounded-lg px-3 py-1.5 font-medium transition">Snap a meal</button>
                     <button @click="tab='text'" :class="tab==='text' ? 'bg-indigo-500/15 text-indigo-300' : 'text-gray-400 hover:text-gray-100'" class="rounded-lg px-3 py-1.5 font-medium transition">Describe it</button>
+                    <a href="/meals/add" class="ml-auto text-xs text-gray-500 active:text-gray-300">Manual</a>
                 </div>
 
                 {{-- Photo upload --}}

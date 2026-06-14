@@ -1,3 +1,44 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---- Titan design tokens ---------------------------------------------- */
+:root {
+    --font-body: 'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-display: 'Archivo', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --titan-bg: #07080a;
+}
+
+html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+}
+
+body {
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Distinctive display face for titles + the big metric numbers. */
+.font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+}
+
+/* Aligned, even-width figures for all the stats this app is made of. */
+.nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+}
+
+[x-cloak] { display: none !important; }
+
+/* Horizontal scrollers (chips, day strips) without an ugly bar. */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* iOS safe-area helpers (used with viewport-fit=cover). */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.h-bottom-nav { height: calc(4.25rem + env(safe-area-inset-bottom)); }
