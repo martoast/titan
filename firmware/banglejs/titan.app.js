@@ -86,7 +86,8 @@ var CFG = {
   //   - stand down after GPS_OFF_SEC below it (workout ended / went indoors-still)
   GPS_ON_MOTION: 0.18,               // mean |Δaccel| (g) per sample that counts as locomotion
   GPS_ARM_SEC: 25,                   // sustained motion before GPS powers on (covers ~30s cold fix)
-  GPS_OFF_SEC: 90,                   // quiet time before GPS powers back off
+  GPS_OFF_SEC: 90,                   // quiet time before an AUTO workout ends
+  GPS_FIX_TIMEOUT: 90,               // no satellite fix this long → indoors; drop GPS, keep the workout
   GPS_PROTO_VERSION: 4,              // T4 frame: per-fix speed + altitude (+ grade source)
 
   // During a WORKOUT we also stream the on-chip HR (bpm) — in-motion PPG→IBI is unreliable, so
@@ -114,7 +115,9 @@ var state = {
   logFull: false,      // hit LOG_MAX_BYTES → stop appending (preserve the night)
   lastAccel: { x: 0, y: 0, z: 0 }, // most recent accel reading (g)
   battery: 0,
-  gps: false,          // is the GPS receiver powered right now?
+  workout: false,      // a workout is in progress (drives HR/accel capture + 25 Hz rate)
+  workoutManual: false,// started by hand (a gym session) → only ends by hand, not on a motion lull
+  gps: false,          // is the GPS receiver powered right now? (a subset of a workout)
   gpsFix: false,       // do we have a satellite fix yet?
   speed: 0             // last GPS speed (m/s), UI only
 };
@@ -124,6 +127,7 @@ var state = {
 var motionEMA = 0;
 var motionAboveSince = 0;   // getTime() when motion first crossed the on-threshold (0 = below)
 var motionBelowSince = 0;   // getTime() when motion first dropped below it (0 = above)
+var gpsArmedT = 0;          // getTime() when GPS was last powered (for the indoor fix-timeout)
 var lastAltitude = null;    // last barometric altitude (m), for grade
 
 // Offline workout-accel log (T6): buffered 3-axis accel flushed to flash while a workout runs
@@ -211,7 +215,7 @@ function logSample(ppg) {
   if (state.logFull) return;
   // During a workout we log 3-axis accel (T6), not PPG — PPG in motion is noise, and dropping
   // it saves the flash for the accel the classifier actually needs.
-  if (state.gps) return;
+  if (state.workout) return;
   if (logAccum.length === 0) logEpochMs = Math.round(getTime() * 1000);
   logAccum.push(clampI16(ppg));
   if (logAccum.length >= CFG.LOG_FRAME_SAMPLES) writeLogFrame();
@@ -330,7 +334,7 @@ function onHRM(e) {
   // in-motion PPG→IBI is unreliable — so we stream it as a T5 frame.
   state.bpm = e.bpm | 0;
   state.conf = e.confidence | 0;
-  if (state.streaming && state.gps) emitHrFrame(state.bpm, state.conf);
+  if (state.streaming && state.workout) emitHrFrame(state.bpm, state.conf);
   if (uiVisible) drawUI();
 }
 
@@ -372,7 +376,7 @@ function onAccel(a) {
   state.lastAccel.y = a.y;
   state.lastAccel.z = a.z;
   // Offline + in a workout → log the 3-axis accel (T6) so it classifies on sync.
-  if (state.streaming && !state.connected && state.gps) logWorkoutAccel(a);
+  if (state.streaming && !state.connected && state.workout) logWorkoutAccel(a);
 }
 
 // Append one accel sample to the current T6 frame; flush when full.
@@ -411,37 +415,61 @@ function writeWorkoutAccelFrame() {
   woAccel = [];
 }
 
-// ----- GPS gating: power the receiver only during real locomotion -----------
-// This is the battery story. We never leave GPS on; the accel motion gate decides.
+// ----- Workout + GPS gating -------------------------------------------------
+// A WORKOUT (state.workout) drives HR + 3-axis-accel capture. GPS (state.gps) is a battery-
+// hungry SUBSET of a workout — powered only when a fix can plausibly help (outdoors), and dropped
+// indoors. Two ways a workout starts: AUTO (sustained locomotion — running/walking) or MANUAL
+// (long-press BTN for a gym session: lifting isn't locomotion, so the motion gate won't catch it).
 function updateGpsGate() {
   var now = getTime();
   if (motionEMA >= CFG.GPS_ON_MOTION) {
     motionBelowSince = 0;
     if (!motionAboveSince) motionAboveSince = now;
-    // Sustained locomotion → arm GPS (and the barometer, for grade).
-    if (!state.gps && (now - motionAboveSince) >= CFG.GPS_ARM_SEC) setGps(true);
+    // Sustained locomotion → auto-start a workout (which powers GPS to look for pace).
+    if (!state.workout && (now - motionAboveSince) >= CFG.GPS_ARM_SEC) startWorkout(false);
   } else {
     motionAboveSince = 0;
     if (!motionBelowSince) motionBelowSince = now;
-    // Quiet long enough → workout over, stand GPS back down.
-    if (state.gps && (now - motionBelowSince) >= CFG.GPS_OFF_SEC) setGps(false);
+    // An AUTO workout ends after a motion lull; a MANUAL (gym) one only ends by hand — lifting
+    // has long still gaps between sets that must NOT be read as "workout over".
+    if (state.workout && !state.workoutManual && (now - motionBelowSince) >= CFG.GPS_OFF_SEC) endWorkout();
   }
+  // Indoors (treadmill / weights room): GPS never gets a fix → stop wasting battery on it, but
+  // KEEP the workout. The accel still classifies run/walk/lift and logs via T6.
+  if (state.gps && !state.gpsFix && (now - gpsArmedT) >= CFG.GPS_FIX_TIMEOUT) powerGps(false);
 }
 
-function setGps(on) {
+function startWorkout(manual) {
+  if (state.workout) { if (manual) state.workoutManual = true; return; }
+  state.workout = true;
+  state.workoutManual = !!manual;
+  powerGps(true);          // try for outdoor pace; dropped after GPS_FIX_TIMEOUT if no fix
+  applyAccelRate();        // 25 Hz accel for the classifier, even offline
+  if (manual) { try { Bangle.buzz(120); } catch (e) {} }
+  if (uiVisible) drawUI();
+}
+
+function endWorkout() {
+  if (!state.workout) return;
+  state.workout = false;
+  state.workoutManual = false;
+  powerGps(false);
+  if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
+  applyAccelRate();
+  if (uiVisible) drawUI();
+}
+
+// Power the GPS receiver (+ the cheap barometer for grade) on/off. Independent of the workout
+// flag so we can drop GPS indoors while the workout continues.
+function powerGps(on) {
   if (on === state.gps) return;
   state.gps = on;
+  if (on) gpsArmedT = getTime();
   try {
     Bangle.setGPSPower(on ? 1 : 0, "titan");
-    // The barometer (BMP280) is cheap; run it alongside GPS for altitude→grade + temperature.
     if (Bangle.setBarometerPower) Bangle.setBarometerPower(on ? 1 : 0, "titan");
   } catch (e) {}
-  if (!on) {
-    state.gpsFix = false; state.speed = 0; lastAltitude = null;
-    if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
-  }
-  applyAccelRate(); // workout on → 25 Hz accel even offline; off → back to 12.5 Hz
-  if (uiVisible) drawUI();
+  if (!on) { state.gpsFix = false; state.speed = 0; lastAltitude = null; }
 }
 
 function onGPS(g) {
@@ -512,8 +540,8 @@ function onDisconnect() {
 // locomotion gate has armed) so the classifier sees its validated rate; 12.5 Hz the rest of the
 // time (overnight actigraphy + power).
 function applyAccelRate() {
-  var workout = state.streaming && (state.connected || state.gps);
-  try { Bangle.setPollInterval(workout ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT); } catch (e) {}
+  var fast = state.streaming && (state.connected || state.workout);
+  try { Bangle.setPollInterval(fast ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT); } catch (e) {}
 }
 
 function startStreaming() {
@@ -533,7 +561,7 @@ function stopStreaming() {
   state.streaming = false;
   flushFrame(); // emit whatever partial frame we have
   Bangle.setHRMPower(0, "titan");
-  setGps(false); // never leave GPS on once capture stops
+  endWorkout(); // close any workout (flushes T6, powers GPS down)
   motionEMA = 0;
   motionAboveSince = motionBelowSince = 0;
   drawUI();
@@ -578,14 +606,19 @@ function drawUI() {
   g.drawString("samples: " + state.ppgCount, 6, y); y += 12;
   g.drawString("frames:  " + state.framesSent, 6, y); y += 12;
   g.drawString("logged:  " + (state.logged / 1024).toFixed(1) + "KB", 6, y); y += 12;
-  // GPS only powers on during a detected workout — show why the battery is (or isn't) spending.
-  g.drawString("gps:     " + (state.gps ? (state.gpsFix ? "fix " + state.speed.toFixed(1) : "search") : "off"), 6, y); y += 12;
+  // Workout state: gym (manual) vs auto, and whether GPS is searching / has a fix / went indoors.
+  var woTxt = state.workout
+    ? (state.workoutManual ? "GYM " : "auto ") + (state.gps ? (state.gpsFix ? "·gps" : "·sat") : "·indoor")
+    : "—";
+  g.drawString("workout: " + woTxt, 6, y); y += 12;
   g.drawString("batt:    " + state.battery + "%", 6, y);
 
   // Footer hint
   g.setFontAlign(0, 0);
   g.setFont("6x8", 1);
-  g.drawString(state.streaming ? "BTN: stop" : "BTN: start", g.getWidth() / 2, g.getHeight() - 10);
+  var hint = !state.streaming ? "BTN: start"
+    : (state.workout && state.workoutManual ? "hold BTN: end gym" : "hold BTN: gym");
+  g.drawString(hint, g.getWidth() / 2, g.getHeight() - 10);
 }
 
 function refreshBattery() {
@@ -604,7 +637,20 @@ NRF.on("connect", onConnect);
 NRF.on("disconnect", onDisconnect);
 
 // Hardware button toggles capture.
-setWatch(toggleStreaming, BTN1, { repeat: true, edge: "rising" });
+// Short press toggles capture; LONG press (>1.2 s) starts/stops a manual gym workout — lifting
+// isn't locomotion so the motion gate won't catch it, and a treadmill/weights room has no GPS.
+var btnDownT = 0;
+setWatch(function () { btnDownT = getTime(); }, BTN1, { repeat: true, edge: "rising" });
+setWatch(function () {
+  var held = getTime() - btnDownT;
+  if (held > 1.2) { if (state.streaming) toggleManualWorkout(); }
+  else toggleStreaming();
+}, BTN1, { repeat: true, edge: "falling" });
+
+function toggleManualWorkout() {
+  if (state.workout && state.workoutManual) endWorkout();
+  else startWorkout(true);
+}
 
 // Reflect the current connection state at boot (in case a central is already
 // bonded/connected when the app launches).
