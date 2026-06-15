@@ -25,6 +25,32 @@
             </div>
         @endunless
 
+        {{-- ===== Say your set (voice logging) ===== --}}
+        <div class="rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.04] p-4 md:p-5 mb-5" x-show="voiceSupported" x-cloak>
+            <h3 class="font-display font-bold text-gray-100">Say your set</h3>
+            <p class="text-xs text-gray-500 mt-0.5">Tap, then say it — e.g. “bench press, 80 kilos, 8 reps”.</p>
+
+            <button type="button" @click="toggleVoice()"
+                    class="mt-4 w-full h-20 rounded-2xl flex items-center justify-center gap-3 text-lg font-semibold text-white transition"
+                    :class="listening ? 'bg-rose-500/90 animate-pulse' : 'bg-gradient-to-r from-emerald-500 to-cyan-400 active:from-emerald-400 active:to-cyan-300'">
+                <svg class="h-8 w-8 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 1.5a3 3 0 00-3 3v6a3 3 0 006 0v-6a3 3 0 00-3-3z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 10.5a7 7 0 0014 0M12 17.5V21M8.5 21h7"/></svg>
+                <span x-text="listening ? 'Listening… tap to stop' : 'Tap & speak'"></span>
+            </button>
+
+            <p x-show="heard" x-cloak class="mt-3 text-sm text-gray-400 italic">“<span x-text="heard"></span>”</p>
+
+            <template x-if="lastAdded">
+                <div class="mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm text-emerald-200">
+                    Added <span class="font-semibold" x-text="lastAdded.name"></span> —
+                    <span class="nums" x-text="lastAdded.weight"></span> kg ×
+                    <span class="nums" x-text="lastAdded.reps"></span><span x-show="lastAdded.rpe"> @ RPE <span class="nums" x-text="lastAdded.rpe"></span></span>
+                </div>
+            </template>
+        </div>
+        <div x-show="!voiceSupported" x-cloak class="mb-5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-gray-400">
+            Voice logging needs Chrome or Android. You can still snap a photo or type each set below.
+        </div>
+
         {{-- ===== Snap / add an exercise ===== --}}
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-5">
             <div class="flex items-center justify-between gap-2">
@@ -157,10 +183,59 @@
                 busy: false,
                 error: '',
                 csrf: document.querySelector('meta[name=csrf-token]').content,
+                // Voice logging (Web Speech API — on-device; no audio leaves the phone).
+                voiceSupported: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
+                listening: false,
+                heard: '',
+                lastAdded: null,
+                _rec: null,
+                _final: '',
 
                 init() {
                     // ensure a draft input object exists per exercise
                     this.exercises.forEach(e => this.ensureDraft(e.id));
+                },
+
+                toggleVoice() {
+                    if (!this.voiceSupported) { this.error = 'Voice not supported on this browser — type the set instead.'; return; }
+                    if (this.listening) { try { this._rec && this._rec.stop(); } catch (e) {} return; }
+                    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    const rec = new SR();
+                    rec.lang = 'en-US'; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = false;
+                    this.heard = ''; this.error = ''; this.lastAdded = null; this._final = '';
+                    rec.onresult = (e) => {
+                        let txt = '';
+                        for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+                        this.heard = txt.trim();
+                        if (e.results[e.results.length - 1].isFinal) this._final = txt.trim();
+                    };
+                    rec.onerror = (e) => { this.error = e.error === 'not-allowed' ? 'Mic permission denied.' : ('Mic error: ' + e.error); this.listening = false; };
+                    rec.onend = () => {
+                        this.listening = false;
+                        const t = this._final || this.heard;
+                        if (t) { this._final = ''; this.voiceLog(t); }
+                    };
+                    this._rec = rec; this.listening = true;
+                    try { rec.start(); } catch (e) { this.listening = false; this.error = e.message; }
+                },
+
+                async voiceLog(transcript) {
+                    if (!transcript) return;
+                    this.busy = true; this.error = '';
+                    try {
+                        const res = await this.post('{{ route('workouts.live.voice') }}', { transcript, workout_id: this.workoutId });
+                        if (!res.ok) { this.error = res.message || "Didn't catch that."; return; }
+                        this.workoutId = res.workout_id;
+                        let ex = this.exercises.find(x => x.id === res.workout_exercise_id);
+                        if (!ex) {
+                            ex = { id: res.workout_exercise_id, name: res.exercise_name, muscle_group: res.muscle_group, sets: [] };
+                            this.ensureDraft(ex.id);
+                            this.exercises.push(ex);
+                        }
+                        ex.sets.push({ reps: res.reps, weight: res.weight_kg, rpe: res.rpe });
+                        this.lastAdded = { name: res.exercise_name, reps: res.reps, weight: res.weight_kg, rpe: res.rpe };
+                    } catch (e) { this.error = e.message; }
+                    finally { this.busy = false; }
                 },
                 ensureDraft(id) {
                     if (!this.draft[id]) this.draft[id] = { reps: null, weight: null, rpe: null };

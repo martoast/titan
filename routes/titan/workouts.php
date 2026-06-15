@@ -18,6 +18,7 @@ Route::get('/workouts/live', [LiveWorkoutController::class, 'page'])->name('work
 Route::post('/workouts/live/identify', [LiveWorkoutController::class, 'identify'])->name('workouts.live.identify');
 Route::post('/workouts/live/exercise', [LiveWorkoutController::class, 'addExercise'])->name('workouts.live.exercise');
 Route::post('/workouts/live/set', [LiveWorkoutController::class, 'addSet'])->name('workouts.live.set');
+Route::post('/workouts/live/voice', [LiveWorkoutController::class, 'voiceLog'])->name('workouts.live.voice');
 Route::post('/workouts/live/finish', [LiveWorkoutController::class, 'finish'])->name('workouts.live.finish');
 
 Route::get('/workouts/{workout}', [WorkoutController::class, 'show'])->name('workouts.show');
