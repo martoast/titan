@@ -30,10 +30,32 @@
     <meta name="theme-color" content="#07080a">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }} · Titan</title>
+
+    {{-- PWA --}}
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.svg">
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+    <meta name="application-name" content="Titan">
+    <meta name="apple-mobile-web-app-title" content="Titan">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+
+    {{-- Register the service worker (PWA offline shell) --}}
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('/sw.js').catch(function (e) {
+                    console.warn('SW registration failed:', e);
+                });
+            });
+        }
+    </script>
 </head>
 <body class="min-h-dvh text-gray-100 antialiased" style="background: var(--titan-bg);"
       x-data="{ moreOpen: false }">

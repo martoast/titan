@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07080a">
+  <title>Offline · Titan</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #e5e7eb;
+      background:
+        radial-gradient(36rem 36rem at 50% -10%, rgba(99,102,241,0.15), transparent 70%),
+        radial-gradient(28rem 28rem at 110% 33%, rgba(34,211,238,0.10), transparent 70%),
+        #07080a;
+      text-align: center;
+    }
+    .card { max-width: 22rem; }
+    .logo {
+      width: 72px; height: 72px; margin: 0 auto 1.5rem;
+      display: block;
+    }
+    h1 {
+      font-family: "Archivo", system-ui, sans-serif;
+      font-weight: 800;
+      font-size: 1.5rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+    .brand {
+      background: linear-gradient(90deg, #818cf8, #22d3ee);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    p { color: #9ca3af; font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.75rem; }
+    button {
+      font: inherit; font-weight: 600; font-size: 0.9rem;
+      color: #e5e7eb; cursor: pointer;
+      padding: 0.7rem 1.5rem;
+      border-radius: 0.9rem;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+      transition: background 0.15s ease;
+    }
+    button:active { background: rgba(255,255,255,0.10); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <svg class="logo" viewBox="0 0 512 512" aria-hidden="true">
+      <defs>
+        <linearGradient id="g" x1="96" y1="96" x2="416" y2="416" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#818cf8"/><stop offset="1" stop-color="#22d3ee"/>
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="114" fill="#0d0f14"/>
+      <path d="M141 150 H371 V206 H311 V378 H201 V206 H141 Z" fill="url(#g)"/>
+    </svg>
+    <h1>You're <span class="brand">offline</span></h1>
+    <p>Titan can't reach the network right now. Check your connection — your data is safe and will sync when you're back.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </div>
+</body>
+</html>
