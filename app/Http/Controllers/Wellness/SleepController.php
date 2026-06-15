@@ -47,6 +47,7 @@ class SleepController extends Controller
                 : null,
             'avgQuality' => $avgQuality,
             'count7' => $last7->count(),
+            'fromWearable' => $latest && str_starts_with((string) $latest->updated_via, 'biosignal'),
         ]);
     }
 

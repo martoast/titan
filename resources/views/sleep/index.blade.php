@@ -20,7 +20,15 @@
             <div class="flex items-center justify-between mb-4">
                 <h3 class="font-display font-bold text-gray-100">Last night</h3>
                 @if ($latest)
-                    <span class="text-xs text-gray-500 nums">{{ $latest->slept_at->format('D, M j') }}</span>
+                    <div class="flex items-center gap-2">
+                        @if ($fromWearable)
+                            <span class="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.55a11 11 0 0114 0M8.5 16.05a6 6 0 017 0M2 9.05a16 16 0 0120 0M12 20h.01"/></svg>
+                                Wearable
+                            </span>
+                        @endif
+                        <span class="text-xs text-gray-500 nums">{{ $latest->slept_at->format('D, M j') }}</span>
+                    </div>
                 @endif
             </div>
 

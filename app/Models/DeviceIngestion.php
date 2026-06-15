@@ -24,6 +24,12 @@ class DeviceIngestion extends Model
     public const STATUS_FAILED = 'failed';
     public const STATUS_DUPLICATE = 'duplicate';
 
+    /**
+     * Terminal state for a raw window that has been folded into an authoritative
+     * whole-night metric by SealNightJob. Sealed windows are never re-aggregated.
+     */
+    public const STATUS_SEALED = 'sealed';
+
     protected $fillable = [
         'batch_uid', 'profile_id', 'source', 'kind', 'object_key',
         'window_start', 'window_end', 'status', 'algo_version',

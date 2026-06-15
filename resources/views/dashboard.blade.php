@@ -1,5 +1,22 @@
 <x-titan-layout title="Dashboard" subtitle="Your operating system for the strongest version of yourself">
-    @php $p = auth()->user()?->profile; @endphp
+    @php
+        $p = auth()->user()?->profile;
+
+        // Today strip: latest objective recovery row + last night's sleep, pulled live.
+        $todayRecovery = $p?->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
+        $todaySleep = $p?->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        $todayReadiness = $p ? \App\Support\Readiness::compute($p, $todayRecovery?->logged_at) : ['score' => null, 'label' => '', 'note' => '', 'components' => [], 'provisional' => false];
+        $hasToday = ($todayReadiness['score'] ?? null) !== null || $todaySleep || ($todayRecovery?->resting_hr);
+
+        $rTone = match (true) {
+            ($todayReadiness['score'] ?? null) === null => 'text-gray-400',
+            $todayReadiness['score'] >= 80 => 'text-emerald-300',
+            $todayReadiness['score'] >= 60 => 'text-cyan-300',
+            $todayReadiness['score'] >= 40 => 'text-amber-300',
+            $todayReadiness['score'] >= 20 => 'text-orange-300',
+            default => 'text-rose-300',
+        };
+    @endphp
 
     <div class="space-y-4 md:space-y-5">
         {{-- Welcome / goal banner --}}
@@ -7,6 +24,44 @@
             <div class="text-[11px] uppercase tracking-wide text-gray-500">Welcome back</div>
             <h2 class="font-display text-xl md:text-2xl font-bold text-gray-100 mt-0.5">{{ auth()->user()->name }}</h2>
             <p class="text-sm text-gray-400 mt-1.5">{{ $p?->primary_goal ?? 'Set your goal to start tracking toward your dream physique.' }}</p>
+        </div>
+
+        {{-- Today strip: readiness · last night's sleep · resting HR --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <div class="flex items-center justify-between mb-3">
+                <div class="text-[11px] uppercase tracking-wide text-gray-500">Today</div>
+                @if ($hasToday && str_starts_with((string) ($todayRecovery?->updated_via), 'biosignal'))
+                    <span class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400/80">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.55a11 11 0 0114 0M8.5 16.05a6 6 0 017 0M2 9.05a16 16 0 0120 0M12 20h.01"/></svg>
+                        Wearable
+                    </span>
+                @endif
+            </div>
+
+            @if ($hasToday)
+                <div class="grid grid-cols-3 gap-3 md:gap-4">
+                    <a href="/recovery" class="block active:opacity-80">
+                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Readiness</div>
+                        <div class="font-display text-2xl md:text-3xl font-bold nums {{ $rTone }} mt-0.5 leading-none">{{ $todayReadiness['score'] ?? '—' }}</div>
+                        <div class="text-xs text-gray-500 mt-1 truncate">{{ $todayReadiness['label'] ?? '' }}</div>
+                    </a>
+                    <a href="/sleep" class="block active:opacity-80">
+                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Last sleep</div>
+                        <div class="font-display text-2xl md:text-3xl font-bold nums text-indigo-300 mt-0.5 leading-none">{{ $todaySleep ? $todaySleep->durationLabel() : '—' }}</div>
+                        <div class="text-xs text-gray-500 mt-1 truncate">{{ $todaySleep?->quality !== null ? $todaySleep->quality.'/100 quality' : 'duration' }}</div>
+                    </a>
+                    <a href="/recovery" class="block active:opacity-80">
+                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Resting HR</div>
+                        <div class="font-display text-2xl md:text-3xl font-bold nums text-cyan-300 mt-0.5 leading-none">{{ $todayRecovery?->resting_hr ?? '—' }}<span class="text-gray-500 text-sm font-normal">{{ $todayRecovery?->resting_hr !== null ? ' bpm' : '' }}</span></div>
+                        <div class="text-xs text-gray-500 mt-1 truncate">overnight</div>
+                    </a>
+                </div>
+            @else
+                <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm text-gray-400">Connect a device or run the Simulator to see your readiness, sleep and resting HR here.</p>
+                    <a href="/recovery" class="shrink-0 text-xs font-medium text-indigo-400 active:text-indigo-300">Recovery →</a>
+                </div>
+            @endif
         </div>
 
         {{-- Section cards. Each links to a domain the feature builds fill in. --}}

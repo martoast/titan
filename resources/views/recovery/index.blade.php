@@ -45,39 +45,107 @@
                     <p class="text-[11px] uppercase tracking-wider text-gray-500">Today's readiness</p>
                     <h2 class="font-display text-2xl font-bold {{ $readinessTone }} mt-0.5">{{ $readinessLabel }}</h2>
                     <p class="text-sm text-gray-400 mt-1.5 max-w-xs mx-auto">{{ $readinessNote }}</p>
+
+                    {{-- Source indicator: whole-night sealed > per-window > manual --}}
+                    @if ($fromWearable)
+                        <div class="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300">
+                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.55a11 11 0 0114 0M8.5 16.05a6 6 0 017 0M2 9.05a16 16 0 0120 0M12 20h.01"/></svg>
+                            {{ $sealed ? 'From wearable · whole-night HRV' : 'From wearable' }}
+                        </div>
+                    @endif
                 </div>
+
+                {{-- Component breakdown chips (HRV / RHR / Sleep) --}}
+                @if (!empty($readinessComponents))
+                    <div class="flex flex-wrap justify-center gap-2">
+                        @php
+                            $compMeta = ['hrv' => 'HRV', 'rhr' => 'Resting HR', 'sleep' => 'Sleep'];
+                        @endphp
+                        @foreach ($readinessComponents as $key => $val)
+                            <div class="rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-center min-w-[5rem]">
+                                <div class="text-[10px] uppercase tracking-wide text-gray-500">{{ $compMeta[$key] ?? ucfirst($key) }}</div>
+                                <div class="font-display text-lg font-bold nums text-gray-200 leading-none mt-0.5">{{ $val }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         </div>
 
-        {{-- Latest signal cards --}}
+        {{-- Objective signals — HRV (RMSSD) + RHR, lead with a vs-baseline read --}}
+        @php
+            // Whole-night HRV (RMSSD) vs the 14-day baseline. A positive delta = recovered.
+            $hrvDelta = ($latest?->hrv_ms !== null && $hrvBaseline) ? $latest->hrv_ms - $hrvBaseline : null;
+            // Lower resting HR is better, so an upward arrow on a drop reads as good.
+            $rhrDelta = ($latest?->resting_hr !== null && $rhrBaseline) ? $latest->resting_hr - $rhrBaseline : null;
+        @endphp
+        <div class="grid grid-cols-2 gap-3 md:gap-4">
+            {{-- HRV (RMSSD) --}}
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                <div class="flex items-center justify-between">
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">HRV · RMSSD</div>
+                    @if ($sealed)
+                        <span class="text-[10px] text-emerald-400/80" title="Computed over the whole night">night</span>
+                    @endif
+                </div>
+                <div class="font-display text-3xl font-bold nums text-indigo-300 mt-1 leading-none">
+                    {{ $latest?->hrv_ms !== null ? $latest->hrv_ms : '—' }}<span class="text-gray-500 text-base font-normal">{{ $latest?->hrv_ms !== null ? 'ms' : '' }}</span>
+                </div>
+                @if ($hrvDelta !== null)
+                    <div class="mt-1.5 text-xs nums {{ $hrvDelta >= 0 ? 'text-emerald-400' : 'text-rose-400' }}">
+                        {{ $hrvDelta >= 0 ? '▲' : '▼' }} {{ abs($hrvDelta) }} ms <span class="text-gray-600">vs 14d avg</span>
+                    </div>
+                @elseif ($hrvBaseline)
+                    <div class="mt-1.5 text-xs text-gray-600 nums">14d avg {{ $hrvBaseline }} ms</div>
+                @endif
+            </div>
+
+            {{-- Resting HR --}}
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                <div class="text-[11px] uppercase tracking-wide text-gray-500">Resting HR</div>
+                <div class="font-display text-3xl font-bold nums text-cyan-300 mt-1 leading-none">
+                    {{ $latest?->resting_hr !== null ? $latest->resting_hr : '—' }}<span class="text-gray-500 text-base font-normal">{{ $latest?->resting_hr !== null ? 'bpm' : '' }}</span>
+                </div>
+                @if ($rhrDelta !== null)
+                    <div class="mt-1.5 text-xs nums {{ $rhrDelta <= 0 ? 'text-emerald-400' : 'text-rose-400' }}">
+                        {{ $rhrDelta <= 0 ? '▼' : '▲' }} {{ abs($rhrDelta) }} bpm <span class="text-gray-600">vs 14d avg</span>
+                    </div>
+                @elseif ($rhrBaseline)
+                    <div class="mt-1.5 text-xs text-gray-600 nums">14d avg {{ $rhrBaseline }} bpm</div>
+                @endif
+            </div>
+        </div>
+
+        {{-- Subjective self-ratings --}}
         @php
             $cards = [
-                ['HRV',        $latest?->hrv_ms,     'ms',   'text-indigo-300'],
-                ['Resting HR', $latest?->resting_hr, 'bpm',  'text-cyan-300'],
-                ['Stress',     $latest?->stress,     '/10',  'text-amber-300'],
-                ['Soreness',   $latest?->soreness,   '/10',  'text-orange-300'],
-                ['Mood',       $latest?->mood,       '/10',  'text-emerald-300'],
-                ['Energy',     $latest?->energy,     '/10',  'text-violet-300'],
+                ['Stress',   $latest?->stress,   'text-amber-300'],
+                ['Soreness', $latest?->soreness, 'text-orange-300'],
+                ['Mood',     $latest?->mood,     'text-emerald-300'],
+                ['Energy',   $latest?->energy,   'text-violet-300'],
             ];
         @endphp
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
-            @foreach ($cards as [$label, $value, $unit, $tone])
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
+            @foreach ($cards as [$label, $value, $tone])
                 <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
                     <div class="text-[11px] uppercase tracking-wide text-gray-500">{{ $label }}</div>
                     <div class="font-display text-2xl font-bold nums {{ $tone }} mt-1">
-                        {{ $value !== null ? $value : '—' }}<span class="text-gray-500 text-sm font-normal">{{ $value !== null ? $unit : '' }}</span>
+                        {{ $value !== null ? $value : '—' }}<span class="text-gray-500 text-sm font-normal">{{ $value !== null ? '/10' : '' }}</span>
                     </div>
                 </div>
             @endforeach
         </div>
 
         @if ($latest)
-            <p class="text-xs text-gray-600 -mt-1">Latest entry: {{ $latest->logged_at->format('D, M j') }}@if ($lastSleep) · last sleep {{ $lastSleep->durationLabel() }} @endif</p>
+            <p class="text-xs text-gray-600 -mt-1">
+                Latest entry: {{ $latest->logged_at->format('D, M j') }}@if ($lastSleep) · last sleep {{ $lastSleep->durationLabel() }} @endif
+                @if ($fromWearable) · <span class="text-emerald-400/70">wearable</span> @elseif ($latest->updated_via) · {{ ucfirst(explode(':', $latest->updated_via)[0]) }} @endif
+            </p>
         @endif
 
         {{-- Trends --}}
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
-            <h3 class="font-display font-bold text-gray-100 mb-4">HRV &amp; resting HR — 14 days</h3>
+            <h3 class="font-display font-bold text-gray-100 mb-4">HRV (RMSSD) &amp; resting HR — 14 days</h3>
             @if ($trend->count())
                 <div class="relative h-44 md:h-56"><canvas id="hrvTrend" class="w-full"></canvas></div>
             @else
