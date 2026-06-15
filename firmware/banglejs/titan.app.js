@@ -51,13 +51,19 @@ var CFG = {
   FRAME_SAMPLES: 12,
   // Accelerometer is reported by Bangle in g; multiply to milli-g and round.
   ACCEL_SCALE: 1000,
-  // Offline buffer file (StorageFile, append-only). One per session epoch.
-  BUFFER_FILE: "titan.buf",
-  // Max buffered bytes before we start dropping oldest (protect flash/RAM).
-  // 200 KB ~ a few minutes of raw; server is the system of record once synced.
-  BUFFER_MAX_BYTES: 200 * 1024,
-  // Protocol version embedded in every frame header.
-  PROTO_VERSION: 1
+  // Protocol version embedded in every live (T1) frame header.
+  PROTO_VERSION: 1,
+
+  // --- Overnight logging (Path B: wear to bed, sync in the morning) ----------
+  // When NOT connected, PPG is logged to flash in a COMPACT, PPG-only format (no
+  // accel, no per-sample timestamps — a frame carries its start epoch + duration,
+  // the server reconstructs the timeline). ~2.8 B/sample vs ~16 B/sample for live
+  // T1, so a full 8 h night (~720k samples) is ~2 MB and fits the 8 MB flash. On
+  // connect, the whole log streams out then erases — the morning sync.
+  LOG_FILE: "titan.log",
+  LOG_FRAME_SAMPLES: 125,            // ~5 s @ 25 Hz per compact frame (low overhead)
+  LOG_MAX_BYTES: 4 * 1024 * 1024,    // ~16 h ceiling; STOP appending (never wipe the night)
+  LOG_PROTO_VERSION: 2
 };
 
 // ----- State ----------------------------------------------------------------
@@ -67,8 +73,9 @@ var state = {
   bpm: 0,              // last HRM bpm (UI only)
   conf: 0,             // last HRM confidence (UI only)
   ppgCount: 0,         // samples captured this session (UI counter)
-  framesSent: 0,       // BLE frames emitted
-  buffered: 0,         // approx bytes sitting in the offline buffer
+  framesSent: 0,       // BLE frames emitted/flushed
+  logged: 0,           // approx bytes in the overnight log file
+  logFull: false,      // hit LOG_MAX_BYTES → stop appending (preserve the night)
   lastAccel: { x: 0, y: 0, z: 0 }, // most recent accel reading (g)
   battery: 0
 };
@@ -128,67 +135,73 @@ function b64(buf) {
   return btoa(buf);
 }
 
-// Send one already-built binary frame (ArrayBuffer of `len` bytes) out. If a
-// central is connected we Bluetooth.println a base64 line; otherwise we append
-// to the offline StorageFile buffer.
+// Send one already-built live (T1) binary frame over NUS. Only used while
+// connected (desk/real-time); when offline we log compact T2 frames instead.
 function emitFrame(buf, len) {
-  var slice = buf.slice(0, len);
-  var line = "T1:" + b64(slice); // "T1:" tag = Titan proto, NUS-safe text line
-  if (state.connected) {
-    try {
-      Bluetooth.println(line);
-      state.framesSent++;
-    } catch (err) {
-      // Write failed (buffer full / just disconnected) -> fall back to buffer.
-      bufferLine(line);
-    }
-  } else {
-    bufferLine(line);
-  }
-}
-
-// Append a frame line to the offline buffer file.
-function bufferLine(line) {
+  if (!state.connected) return; // offline → logged via writeLogFrame(), drop stray T1
   try {
-    var f = require("Storage").open(CFG.BUFFER_FILE, "a");
-    f.write(line + "\n");
-    state.buffered += line.length + 1;
-    // Crude cap: if we blew the budget, reset the buffer (drop oldest by
-    // truncating). P0 favours staying alive over perfect history; the server
-    // is authoritative once any sync lands.
-    if (state.buffered > CFG.BUFFER_MAX_BYTES) {
-      require("Storage").open(CFG.BUFFER_FILE, "r").erase();
-      state.buffered = 0;
-    }
-  } catch (err) {
-    // Storage unavailable — nothing we can safely do; drop the frame.
-  }
+    Bluetooth.println("T1:" + b64(buf.slice(0, len)));
+    state.framesSent++;
+  } catch (err) { /* link hiccup — drop this frame */ }
 }
 
-// Flush the offline buffer over NUS, oldest first, then clear it.
-function flushBuffer() {
+// ----- Overnight log (compact, PPG-only) ------------------------------------
+// A T2 frame: 20-byte header [ver u8, rsvd u8, count u16, startLo u32, startHi
+// u32, durMs u32, rsvd u16] + int16 PPG samples. No accel, no per-sample
+// timestamps — the receiver spreads `count` samples evenly over [start, start+dur].
+var logAccum = [];   // pending PPG samples for the current compact frame
+var logEpochMs = 0;  // unix-ms of the first sample in the current frame
+
+function logSample(ppg) {
+  if (state.logFull) return;
+  if (logAccum.length === 0) logEpochMs = Math.round(getTime() * 1000);
+  logAccum.push(clampI16(ppg));
+  if (logAccum.length >= CFG.LOG_FRAME_SAMPLES) writeLogFrame();
+}
+
+function writeLogFrame() {
+  var n = logAccum.length;
+  if (n === 0) return;
+  var durMs = Math.round(getTime() * 1000) - logEpochMs;
+  if (durMs < 0) durMs = 0;
+  var buf = new ArrayBuffer(20 + n * 2);
+  var dv = new DataView(buf);
+  dv.setUint8(0, CFG.LOG_PROTO_VERSION);
+  dv.setUint16(2, n, true);
+  var hi = Math.floor(logEpochMs / 4294967296);
+  dv.setUint32(4, (logEpochMs - hi * 4294967296) >>> 0, true);
+  dv.setUint32(8, hi >>> 0, true);
+  dv.setUint32(12, durMs >>> 0, true);
+  for (var i = 0; i < n; i++) dv.setInt16(20 + i * 2, logAccum[i], true);
+  var line = "T2:" + b64(buf);
+  try {
+    require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n");
+    state.logged += line.length + 1;
+    if (state.logged >= CFG.LOG_MAX_BYTES) state.logFull = true; // preserve, never wipe
+  } catch (err) { /* storage unavailable — drop */ }
+  logAccum = [];
+}
+
+// Morning sync: stream the whole overnight log over NUS, then erase it.
+function flushLog() {
   if (!state.connected) return;
+  writeLogFrame(); // flush any partial frame first
   var sf;
-  try {
-    sf = require("Storage").open(CFG.BUFFER_FILE, "r");
-  } catch (err) { return; }
+  try { sf = require("Storage").open(CFG.LOG_FILE, "r"); } catch (err) { return; }
   var line = sf.readLine();
-  if (line === undefined) return; // empty
-  // Stream buffered lines. readLine() includes the trailing newline; trim it
-  // and re-println so framing stays clean.
   while (line !== undefined) {
     var trimmed = line.charCodeAt(line.length - 1) === 10
       ? line.substr(0, line.length - 1) : line;
     if (trimmed.length) {
       try { Bluetooth.println(trimmed); state.framesSent++; }
-      catch (err) { break; } // link died mid-flush; keep remaining buffer
+      catch (err) { return; } // link died mid-sync — keep the log, retry next connect
     }
     line = sf.readLine();
   }
-  // Erase the buffer file (we either sent it all or the link died and we'll
-  // retry next reconnect; simplest correct behaviour for P0 is erase-on-flush).
-  try { require("Storage").open(CFG.BUFFER_FILE, "r").erase(); } catch (e) {}
-  state.buffered = 0;
+  try { require("Storage").open(CFG.LOG_FILE, "r").erase(); } catch (e) {}
+  state.logged = 0;
+  state.logFull = false;
+  if (uiVisible) drawUI();
 }
 
 // Reset the in-RAM frame to empty.
@@ -216,8 +229,15 @@ function flushFrame() {
   resetFrame();
 }
 
-// Append one (ppg, accel, timestamp) sample into the current frame.
+// Route each PPG sample: live T1 frames while connected (desk/real-time), compact
+// T2 logging to flash while offline (overnight → morning sync).
 function pushSample(ppg) {
+  state.ppgCount++;
+  if (state.connected) pushLiveSample(ppg); else logSample(ppg);
+}
+
+// Append one (ppg, accel, timestamp) sample into the current live T1 frame.
+function pushLiveSample(ppg) {
   var nowMs = Math.round(getTime() * 1000);
   if (frameCount === 0) frameEpochMs = nowMs;
   var relT = nowMs - frameEpochMs;
@@ -229,7 +249,6 @@ function pushSample(ppg) {
   frameView.setInt16(off + 8, clampI16(Math.round(state.lastAccel.y * CFG.ACCEL_SCALE)), true);
   frameView.setInt16(off + 10, clampI16(Math.round(state.lastAccel.z * CFG.ACCEL_SCALE)), true);
   frameCount++;
-  state.ppgCount++;
   if (frameCount >= CFG.FRAME_SAMPLES) flushFrame();
 }
 
@@ -261,15 +280,16 @@ function onAccel(a) {
 
 function onConnect() {
   state.connected = true;
-  // Give the link a beat to settle, then drain anything we buffered offline.
-  setTimeout(flushBuffer, 1500);
+  // Give the link a beat to settle, then sync the overnight log (morning sync).
+  setTimeout(flushLog, 1500);
   if (uiVisible) drawUI();
 }
 
 function onDisconnect() {
   state.connected = false;
-  // In-flight partial frame should not be lost — push it to the buffer.
-  flushFrame();
+  // Abandon any partial live frame; resume compact overnight logging fresh.
+  resetFrame();
+  logAccum = [];
   if (uiVisible) drawUI();
 }
 
@@ -319,7 +339,7 @@ function drawUI() {
   var statusY = 55;
   g.drawString(state.streaming ? "REC" : "idle", 6, statusY);
   g.setFontAlign(1, 0);
-  g.drawString(state.connected ? "BLE ↑" : "buffer", g.getWidth() - 6, statusY);
+  g.drawString(state.connected ? "BLE ↑" : "log", g.getWidth() - 6, statusY);
 
   // BPM (UI only)
   g.setFontAlign(0, 0);
@@ -334,7 +354,7 @@ function drawUI() {
   var y = 145;
   g.drawString("samples: " + state.ppgCount, 6, y); y += 12;
   g.drawString("frames:  " + state.framesSent, 6, y); y += 12;
-  g.drawString("buffer:  " + (state.buffered / 1024).toFixed(1) + "KB", 6, y); y += 12;
+  g.drawString("logged:  " + (state.logged / 1024).toFixed(1) + "KB", 6, y); y += 12;
   g.drawString("batt:    " + state.battery + "%", 6, y);
 
   // Footer hint

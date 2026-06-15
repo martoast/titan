@@ -85,7 +85,7 @@
                         <span x-text="line.msg"></span>
                     </div>
                 </template>
-                <p x-show="log.length===0" class="text-gray-600">No activity yet. Connect a Bangle, or send a test window to prove the pipeline.</p>
+                <p x-show="log.length===0" class="text-gray-600">No activity yet. <strong>Morning sync:</strong> wear the band overnight (it logs to its own memory), then Connect here in the morning — it streams the whole night in seconds. Or stream live, or send a test window.</p>
             </div>
         </section>
     </div>
@@ -103,7 +103,7 @@
                 statusLabel: 'Disconnected',
                 btSupported: !!(navigator.bluetooth && navigator.bluetooth.requestDevice),
                 _device: null, _rx: '', _wave: [], waveHasData: false,
-                _samples: [], _winTimer: null, WINDOW_SEC: 120,
+                _samples: [], _trailTimer: null, WINDOW_MS: 120000,
                 log: [],
 
                 get hasCreds() { return this.deviceId.trim().length > 4 && this.secret.trim().length >= 32; },
@@ -141,7 +141,6 @@
                         await tx.startNotifications();
                         tx.addEventListener('characteristicvaluechanged', (e) => this._onBytes(e.target.value));
                         this.connected = true;
-                        this._startWindowTimer();
                         this.statusLabel = 'Streaming · ' + (this._device.name || 'Bangle');
                         this._log('ok', 'Connected to ' + (this._device.name || 'Bangle.js'));
                     } catch (err) {
@@ -155,13 +154,14 @@
                 },
                 _onDrop() {
                     this.connected = false; this.statusLabel = 'Disconnected';
-                    this._stopWindowTimer();
                     this._flushWindow(); // ship whatever's accumulated
                     this._log('info', 'Disconnected');
                 },
 
-                // The firmware streams newline-delimited "T1:<base64>" binary frames over NUS
-                // (16-byte header + 12-byte samples). Reassemble lines, decode each frame.
+                // The firmware sends newline-delimited frames over NUS:
+                //   T1: live raw (16-B header + 12-B samples, with accel + per-sample ts)
+                //   T2: overnight log, compact PPG-only (20-B header + int16 samples),
+                //       streamed as a burst on connect — the morning sync.
                 _onBytes(dataview) {
                     this._rx += new TextDecoder().decode(dataview);
                     let nl;
@@ -169,17 +169,14 @@
                         const line = this._rx.slice(0, nl).trim();
                         this._rx = this._rx.slice(nl + 1);
                         if (line.startsWith('T1:')) this._decodeFrame(line.slice(3));
+                        else if (line.startsWith('T2:')) this._decodeT2(line.slice(3));
                     }
                 },
 
-                // One binary frame → samples appended to the current window buffer.
-                // Layout (LE): hdr[ver u8, ppgField u8, count u16, epochLo u32, epochHi u32, rsvd u32];
-                //              sample[relT u32, ppg i16, ax i16, ay i16, az i16] = 12 B.
+                // T1 live frame. hdr[ver u8, ppgField u8, count u16, epochLo u32, epochHi u32, rsvd u32];
+                // sample[relT u32, ppg i16, ax i16, ay i16, az i16] = 12 B.
                 _decodeFrame(b64) {
-                    let bin; try { bin = atob(b64); } catch (e) { return; }
-                    const bytes = new Uint8Array(bin.length);
-                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                    if (bytes.length < 16) return;
+                    const bytes = this._b64bytes(b64); if (!bytes || bytes.length < 16) return;
                     const dv = new DataView(bytes.buffer);
                     const count = dv.getUint16(2, true);
                     const epoch = dv.getUint32(8, true) * 4294967296 + dv.getUint32(4, true);
@@ -187,28 +184,74 @@
                     for (let i = 0; i < count; i++) {
                         const off = 16 + i * 12;
                         if (off + 12 > bytes.length) break;
-                        const relT = dv.getUint32(off, true);
                         const ppg = dv.getInt16(off + 4, true);
                         const ax = dv.getInt16(off + 6, true), ay = dv.getInt16(off + 8, true), az = dv.getInt16(off + 10, true);
-                        const mag = Math.round(Math.sqrt(ax * ax + ay * ay + az * az) / 10); // milli-g → centi-g
-                        this._samples.push({ t: epoch + relT, ppg, mag });
+                        this._samples.push({ t: epoch + dv.getUint32(off, true), ppg, mag: Math.round(Math.sqrt(ax * ax + ay * ay + az * az) / 10) });
                         live.push(ppg);
                     }
                     this.samples += live.length;
                     this._pushWave(live);
+                    this._drainWindows();
                 },
 
-                _startWindowTimer() {
-                    this._stopWindowTimer();
-                    this._winTimer = setInterval(() => this._flushWindow(), this.WINDOW_SEC * 1000);
+                // T2 compact log frame. hdr[ver u8, rsvd u8, count u16, startLo u32, startHi u32, durMs u32, rsvd u16];
+                // samples = int16 PPG. Timestamps are spread evenly across [start, start+durMs].
+                _decodeT2(b64) {
+                    const bytes = this._b64bytes(b64); if (!bytes || bytes.length < 20) return;
+                    const dv = new DataView(bytes.buffer);
+                    const count = dv.getUint16(2, true);
+                    const start = dv.getUint32(8, true) * 4294967296 + dv.getUint32(4, true);
+                    const durMs = dv.getUint32(12, true);
+                    const denom = Math.max(1, count - 1);
+                    const live = [];
+                    for (let i = 0; i < count; i++) {
+                        const off = 20 + i * 2;
+                        if (off + 2 > bytes.length) break;
+                        const ppg = dv.getInt16(off, true);
+                        this._samples.push({ t: start + Math.round(durMs * i / denom), ppg, mag: 0 });
+                        live.push(ppg);
+                    }
+                    this.samples += live.length;
+                    this._pushWave(live);
+                    this._drainWindows();
                 },
-                _stopWindowTimer() { if (this._winTimer) { clearInterval(this._winTimer); this._winTimer = null; } },
 
-                // Build a ppg_raw window from accumulated samples and ship it (sign + POST).
-                async _flushWindow() {
-                    const s = this._samples;
-                    if (s.length < 30) return; // too few — keep collecting
-                    this._samples = [];
+                _b64bytes(b64) {
+                    let bin; try { bin = atob(b64); } catch (e) { return null; }
+                    const a = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+                    return a;
+                },
+
+                // Timestamp-driven windowing: emit every complete 120 s window by the samples'
+                // OWN timestamps. Works for both a live trickle and a burst-synced night.
+                _drainWindows() {
+                    while (this._samples.length > 1) {
+                        const t0 = this._samples[0].t;
+                        if (this._samples[this._samples.length - 1].t - t0 < this.WINDOW_MS) break;
+                        const cut = t0 + this.WINDOW_MS;
+                        let i = 0;
+                        while (i < this._samples.length && this._samples[i].t < cut) i++;
+                        const win = this._samples.slice(0, i);
+                        this._samples = this._samples.slice(i);
+                        this._shipSamples(win);
+                    }
+                    // After a burst (or live idle) settles, ship the trailing partial window.
+                    clearTimeout(this._trailTimer);
+                    this._trailTimer = setTimeout(() => this._flushWindow(), 3000);
+                },
+
+                _flushWindow() {
+                    if (this._samples.length < 1) return;
+                    const span = this._samples[this._samples.length - 1].t - this._samples[0].t;
+                    if (span < 30000 && this.connected) return; // too short while still live — keep collecting
+                    const w = this._samples; this._samples = [];
+                    this._shipSamples(w);
+                },
+
+                // Build a ppg_raw window from a sample array and ship it (sign + POST).
+                async _shipSamples(s) {
+                    if (s.length < 30) return;
                     const startMs = s[0].t, endMs = s[s.length - 1].t;
                     const durSec = Math.max(1, (endMs - startMs) / 1000);
                     const rate = Math.max(1, Math.round(s.length / durSec));

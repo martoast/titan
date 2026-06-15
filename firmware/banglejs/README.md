@@ -48,9 +48,9 @@ Bangle.js 2  ──────────────────────�
                                   → recovery_logs / sleep_logs / workouts
 ```
 
-When **no central is connected**, the watch appends frames to a flash file
-(`titan.buf`, a StorageFile) and **flushes them oldest-first on reconnect** —
-so an overnight wear that briefly loses the phone doesn't lose data.
+When **no central is connected**, the watch logs compact PPG-only `T2` frames to a
+flash file (`titan.log`, a StorageFile) and **streams the whole log out on reconnect,
+then erases it** — this is the overnight-logging / morning-sync path (see "Path B" below).
 
 ## Install
 
@@ -70,10 +70,31 @@ so an overnight wear that briefly loses the phone doesn't lose data.
 2. Run the loader locally (`npx http-server` in the BangleApps root) or use the
    hosted loader, connect the watch, and install **Titan Streamer** from the
    list. The loader writes `titan.app.js`, `titan.img`, and `titan.info` to
-   watch storage and reserves the `titan.buf` data file.
+   watch storage and reserves the `titan.log` overnight-log data file.
 3. Launch **Titan** from the watch's app menu.
 
-## Two data paths to Titan
+## Path B — overnight logging + morning sync (simplest for iPhone)
+
+**No phone needed by the bed, no companion app.** When the watch is *not* connected, it
+logs PPG to its own flash in a compact PPG-only format (`T2` frames: ~2.8 B/sample, so a
+full 8 h night ≈ ~2 MB, fits the 8 MB flash; the log is preserved, never wiped). On the
+next connection it streams the whole night out in a few seconds, then erases.
+
+**The routine:**
+1. **Before bed:** make sure the watch clock is set (so timestamps are right), open Titan,
+   press **BTN** to start (screen shows `REC` + `log` + a growing `logged: …KB`). Charge it
+   first — continuous PPG is ~1 day.
+2. **Wear it to sleep.** It logs to flash all night. No phone required.
+3. **In the morning:** open Titan → **Devices → Live stream** on your Mac (or any
+   desktop/Android Chrome), click **Connect**. The watch auto-dumps the night; the page
+   decodes it, cuts it into 2-minute windows, signs each, and POSTs to `/api/devices/ingest`
+   → HRV/sleep land on your dashboards. Takes seconds.
+
+> Verified end-to-end: a simulated 6-min night (72 `T2` frames) synced as one burst →
+> decoded → 3× 120 s windows → all accepted (202) → NeuroKit2. Live (`T1`) and synced
+> (`T2`) both flow through the same bridge.
+
+## Live / always-on paths
 
 ### (a) Gadgetbridge (Android — the real-wear path)
 Espruino exposes the stream over the **Nordic UART Service**, which
