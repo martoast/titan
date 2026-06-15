@@ -9,6 +9,7 @@
         "php": "^8.3",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.0",
         "smalot/pdfparser": "^2.12",
         "symfony/http-client": "^8.1",
         "symfony/mailgun-mailer": "^8.1"

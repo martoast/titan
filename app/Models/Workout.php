@@ -15,7 +15,7 @@ class Workout extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['profile_id', 'performed_at', 'name', 'notes', 'duration_min'];
+    protected $fillable = ['profile_id', 'performed_at', 'name', 'notes', 'duration_min', 'updated_via'];
 
     protected function casts(): array
     {

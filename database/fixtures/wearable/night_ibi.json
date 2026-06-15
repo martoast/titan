@@ -1,0 +1,23 @@
+{
+  "_comment": "Shape A — a simulated overnight IBI + accel window from the Titan band. ibi_ms are inter-beat intervals (ms); accel_counts are per-minute activity counts (low = still = good HRV window). This is the cheapest, default band payload. Fed through POST /api/devices/ingest by `php artisan devices:simulate`. Window kind=ibi → persisted to the raw disk → ProcessWindowJob → biosignal /process/hrv → recovery_logs.hrv_ms.",
+  "batch_uid": "01JZ0RAWIBIFIXTURE000000001",
+  "device_id": "titan_band_fixture",
+  "timezone": "America/Mexico_City",
+  "windows": [
+    {
+      "kind": "ibi",
+      "start": "2026-06-14T07:30:00Z",
+      "end": "2026-06-14T08:10:00Z",
+      "confidence": 0.94,
+      "ibi_ms": [
+        1012, 998, 1005, 1021, 1018, 996, 1003, 1031, 1009, 988,
+        1015, 1024, 1001, 992, 1007, 1019, 1033, 1011, 985, 1002,
+        1016, 1027, 999, 994, 1008, 1022, 1035, 1013, 987, 1004,
+        1018, 1029, 1006, 991, 1010, 1023, 1037, 1014, 989, 1001,
+        1190, 1017, 1028, 1003, 996, 1009, 1020, 1031, 1012, 990,
+        1006, 1019, 1030, 1005, 993, 1011, 1024, 1036, 1015, 988
+      ],
+      "accel_counts": [3, 1, 0, 0, 2, 1, 0, 0, 0, 1, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0]
+    }
+  ]
+}

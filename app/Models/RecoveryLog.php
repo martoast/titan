@@ -17,7 +17,7 @@ class RecoveryLog extends Model
 
     protected $fillable = [
         'profile_id', 'logged_at', 'hrv_ms', 'resting_hr',
-        'stress', 'soreness', 'mood', 'energy', 'notes',
+        'stress', 'soreness', 'mood', 'energy', 'notes', 'updated_via',
     ];
 
     protected function casts(): array

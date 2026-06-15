@@ -24,6 +24,66 @@ services:
         depends_on:
             - mysql
             - redis
+            - minio
+    # Dedicated queue worker for the biosignal pipeline (and default jobs). Same image
+    # as the app so it shares the codebase; processes the `biosignal` queue first.
+    queue:
+        image: sail-8.5/app
+        build:
+            context: ./vendor/laravel/sail/runtimes/8.5
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        command: php artisan queue:work redis --queue=biosignal,default --tries=3 --timeout=120 --sleep=1
+        restart: unless-stopped
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - mysql
+            - redis
+            - minio
+            - biosignal
+    # Python biosignal microservice (FastAPI). Internal-only — no host port published;
+    # Laravel reaches it over the sail network at http://biosignal:8000. Built by the
+    # other agent from ./biosignal.
+    biosignal:
+        build:
+            context: ./biosignal
+        image: titan/biosignal
+        restart: unless-stopped
+        environment:
+            BIOSIGNAL_TOKEN: '${BIOSIGNAL_TOKEN}'
+        expose:
+            - '8000'
+        networks:
+            - sail
+    # MinIO — S3-compatible object store for raw biosignal blobs (the `raw` disk).
+    minio:
+        image: 'minio/minio:latest'
+        command: server /data --console-address ":8900"
+        ports:
+            - '${FORWARD_MINIO_PORT:-9000}:9000'
+            - '${FORWARD_MINIO_CONSOLE_PORT:-8900}:8900'
+        environment:
+            MINIO_ROOT_USER: '${MINIO_ACCESS_KEY:-sail}'
+            MINIO_ROOT_PASSWORD: '${MINIO_SECRET_KEY:-password}'
+        volumes:
+            - 'sail-minio:/data'
+        networks:
+            - sail
+        healthcheck:
+            test:
+                - CMD
+                - mc
+                - ready
+                - local
+            retries: 3
+            timeout: 5s
     mysql:
         image: 'mysql:8.4'
         ports:
@@ -71,4 +131,6 @@ volumes:
     sail-mysql:
         driver: local
     sail-redis:
+        driver: local
+    sail-minio:
         driver: local

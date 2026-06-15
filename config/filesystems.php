@@ -60,6 +60,21 @@ return [
             'report' => false,
         ],
 
+        // Titan Wearable raw biosignal store (MinIO, S3-compatible). Holds write-once /
+        // read-rarely IBI/PPG/accel blobs under raw/{profile}/{date}/{batch_uid}.*. Self-
+        // hosted alongside the app; never a third-party cloud. Path-style for MinIO.
+        'raw' => [
+            'driver' => 's3',
+            'key' => env('MINIO_ACCESS_KEY', env('AWS_ACCESS_KEY_ID', 'sail')),
+            'secret' => env('MINIO_SECRET_KEY', env('AWS_SECRET_ACCESS_KEY', 'password')),
+            'region' => env('MINIO_REGION', 'us-east-1'),
+            'bucket' => env('MINIO_BUCKET', 'titan-raw'),
+            'endpoint' => env('MINIO_ENDPOINT', 'http://minio:9000'),
+            'use_path_style_endpoint' => true,
+            'throw' => true,
+            'report' => false,
+        ],
+
     ],
 
     /*

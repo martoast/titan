@@ -1,0 +1,32 @@
+{
+  "_comment": "Shape C — provider summary metrics (Apple Health export / Polar nightly). NO Python needed: these write straight into recovery_logs / sleep_logs / body_metrics via DeviceIngestionService. Demonstrates that summary sources work day one. Dates are local calendar dates; taken_at is a UTC timestamp localized via the device timezone.",
+  "batch_uid": "01JZ0SUMMARYFIXTURE00000001",
+  "device_id": "apple_health_fixture",
+  "timezone": "America/Mexico_City",
+  "summaries": [
+    {
+      "kind": "sleep",
+      "date": "2026-06-14",
+      "duration_min": 433,
+      "deep_min": 61,
+      "rem_min": 95,
+      "light_min": 255,
+      "awake_min": 22,
+      "bedtime": "23:48",
+      "wake_time": "07:01",
+      "quality": 78
+    },
+    {
+      "kind": "recovery",
+      "date": "2026-06-14",
+      "hrv_ms": 64,
+      "resting_hr": 52
+    },
+    {
+      "kind": "body",
+      "taken_at": "2026-06-14T13:30:00Z",
+      "weight_kg": 78.4,
+      "body_fat_pct": 14.2
+    }
+  ]
+}

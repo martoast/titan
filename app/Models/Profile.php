@@ -92,6 +92,17 @@ class Profile extends Model
         return $this->hasMany(Conversation::class);
     }
 
+    // --- Wearable / biosignal ingestion ---
+    public function wearableConnections(): HasMany
+    {
+        return $this->hasMany(WearableConnection::class);
+    }
+
+    public function deviceIngestions(): HasMany
+    {
+        return $this->hasMany(DeviceIngestion::class);
+    }
+
     /** Convenience: the "other" profile in the duo (the brother). */
     public function duoPartner(): ?Profile
     {

@@ -18,7 +18,7 @@ class SleepLog extends Model
     protected $fillable = [
         'profile_id', 'slept_at', 'duration_min', 'quality',
         'deep_min', 'rem_min', 'light_min', 'awake_min',
-        'bedtime', 'wake_time', 'notes',
+        'bedtime', 'wake_time', 'notes', 'updated_via',
     ];
 
     protected function casts(): array

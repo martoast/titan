@@ -98,4 +98,40 @@ class TerraClient
 
         return hash_equals($expected, $v1);
     }
+
+    /**
+     * Verify a Titan device signature against an explicit per-device secret. Identical
+     * HMAC scheme to verifySignature() — header `X-Titan-Signature: t=<ts>,v1=<hmac>`
+     * where hmac = HMAC-SHA256("<ts>.<raw body>", secret) — but used for the open-source
+     * band / device ingestion path where each device has its own 32-byte secret. Also
+     * enforces a replay window: rejects when |now − ts| exceeds $toleranceSeconds.
+     *
+     * One verifier covers both Terra webhooks and device batches.
+     */
+    public function verifyDeviceSignature(string $rawBody, ?string $signatureHeader, string $secret, int $toleranceSeconds = 300): bool
+    {
+        if ($secret === '' || ! $signatureHeader) {
+            return false;
+        }
+
+        $parts = [];
+        foreach (explode(',', $signatureHeader) as $kv) {
+            [$k, $v] = array_pad(explode('=', trim($kv), 2), 2, '');
+            $parts[$k] = $v;
+        }
+        $t = $parts['t'] ?? '';
+        $v1 = $parts['v1'] ?? '';
+        if ($t === '' || $v1 === '' || ! ctype_digit($t)) {
+            return false;
+        }
+
+        // Replay protection: reject stale or future-dated timestamps.
+        if (abs(time() - (int) $t) > $toleranceSeconds) {
+            return false;
+        }
+
+        $expected = hash_hmac('sha256', $t.'.'.$rawBody, $secret);
+
+        return hash_equals($expected, $v1);
+    }
 }

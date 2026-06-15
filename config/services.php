@@ -45,6 +45,17 @@ return [
         'base_url' => env('TERRA_BASE_URL', 'https://api.tryterra.co/v2'),
     ],
 
+    // Biosignal — the self-hosted FastAPI service (NeuroKit2 HRV, Walch sleep, TRIMP
+    // activity). Internal-only on the docker network; Laravel reaches it at
+    // http://biosignal:8000 and authenticates with a shared bearer token. Stateless:
+    // it gets a window of raw signal and returns metrics; it never touches the DB.
+    'biosignal' => [
+        'url' => env('BIOSIGNAL_URL', 'http://biosignal:8000'),
+        'token' => env('BIOSIGNAL_TOKEN'),
+        'algo_version' => env('BIOSIGNAL_ALGO_VERSION', 'v1'),
+        'timeout' => (int) env('BIOSIGNAL_TIMEOUT', 60),
+    ],
+
     // Mailgun — transactional email (password resets + notifications). The active
     // mailer is SMTP (MAIL_MAILER=smtp, Mailgun's SMTP relay); these credentials
     // also enable the `mailgun` API transport. Same account as fullstack-suite.
