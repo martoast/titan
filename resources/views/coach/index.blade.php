@@ -10,15 +10,19 @@
 
     {{-- Today's briefing: the proactive coach speaking first. Latest stored morning/evening
          briefing, grounded in real data, with a regenerate button. Mobile-first, dark. --}}
-    <div class="mb-4 rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.07] to-cyan-400/[0.04] p-4">
+    <div class="mb-4 rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.07] to-cyan-400/[0.04] p-4"
+         x-data="{ briefingOpen: true }">
         <div class="flex items-start gap-3">
             <div class="shrink-0 h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 grid place-items-center">
                 <svg class="h-5 w-5 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </div>
             <div class="min-w-0 flex-1">
                 <div class="flex items-center justify-between gap-2">
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-300/80">Today's briefing</p>
-                    <form method="POST" action="/coach/briefing" class="shrink-0">
+                    <button type="button" @click="briefingOpen = !briefingOpen" class="flex items-center gap-1.5 min-w-0">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-300/80">Today's briefing</p>
+                        <svg class="h-3.5 w-3.5 text-indigo-300/60 transition" :class="briefingOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <form method="POST" action="/coach/briefing" class="shrink-0" x-show="briefingOpen">
                         @csrf
                         <button type="submit"
                                 class="inline-flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 active:bg-white/10 border border-white/10 px-2.5 py-1.5 text-xs text-gray-300 transition">
@@ -27,15 +31,18 @@
                         </button>
                     </form>
                 </div>
-                @if (session('status'))
-                    <p class="mt-2 text-xs text-cyan-300/90">{{ session('status') }}</p>
-                @endif
-                @if ($latestBriefing)
-                    <p class="mt-1.5 text-sm leading-relaxed text-gray-200 whitespace-pre-wrap break-words">{{ $latestBriefing->content }}</p>
-                    <p class="mt-2 text-[11px] text-gray-500">{{ $latestBriefing->created_at?->diffForHumans() }}</p>
-                @else
-                    <p class="mt-1.5 text-sm text-gray-400">No briefing yet. Tap <span class="text-gray-300">Regenerate</span> to get a grounded read on your recovery, sleep and nutrition — or it'll arrive each morning.</p>
-                @endif
+                <div x-show="briefingOpen" x-collapse>
+                    @if (session('status'))
+                        <p class="mt-2 text-xs text-cyan-300/90">{{ session('status') }}</p>
+                    @endif
+                    @if ($latestBriefing)
+                        <p class="mt-1.5 text-sm leading-relaxed text-gray-200 whitespace-pre-wrap break-words">{{ $latestBriefing->content }}</p>
+                        <p class="mt-2 text-[11px] text-gray-500">{{ $latestBriefing->created_at?->diffForHumans() }}</p>
+                    @else
+                        <p class="mt-1.5 text-sm text-gray-400">No briefing yet. Tap <span class="text-gray-300">Regenerate</span> to get a grounded read on your recovery, sleep and nutrition — or it'll arrive each morning.</p>
+                    @endif
+                </div>
+                <p x-show="!briefingOpen" x-cloak class="mt-1 text-xs text-gray-500 truncate">{{ $latestBriefing ? \Illuminate\Support\Str::limit($latestBriefing->content, 60) : 'Tap to expand your daily briefing' }}</p>
             </div>
         </div>
     </div>
