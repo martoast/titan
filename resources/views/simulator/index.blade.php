@@ -35,8 +35,15 @@
                 <span class="h-2 w-2 rounded-full" :style="`background:${stateColorCss}; box-shadow:0 0 8px ${stateColorCss}`"></span>
                 <span class="text-xs font-medium text-gray-200" x-text="states[state].label"></span>
             </div>
-            <div class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 text-[10px] text-gray-600">drag to rotate · pinch / scroll to zoom</div>
+            <div x-show="!band3dFailed" class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 text-[10px] text-gray-600">drag to rotate · pinch / scroll to zoom</div>
             <canvas x-ref="canvas" class="block w-full" style="height: 56vw; max-height: 360px;"></canvas>
+            {{-- Graceful fallback when the browser has no WebGL (the data still flows) --}}
+            <div x-show="band3dFailed" x-cloak class="absolute inset-0 z-10 flex items-center justify-center p-6 text-center" style="height: 56vw; max-height: 360px;">
+                <div class="max-w-xs">
+                    <svg class="mx-auto h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM5 9h14M7 9V6a1 1 0 011-1h8a1 1 0 011 1v3"/></svg>
+                    <p class="mt-3 text-sm text-gray-400">3D preview needs WebGL, which looks disabled in this browser. Everything else works — your live metrics and the night simulation still run.</p>
+                </div>
+            </div>
         </div>
 
         {{-- ===== Live readout ===== --}}
@@ -490,6 +497,7 @@
                 delivered: false,
 
                 _band: null,
+                band3dFailed: false,
                 _ibiBuf: [],          // rolling IBI for live RMSSD
                 _beatTimer: null,
                 _rsaPhase: 0,
@@ -513,7 +521,7 @@
                             if (window.__titanBand) {
                                 try {
                                     this._band = window.__titanBand(this.$refs.canvas, () => this.state, () => this.states, () => ({ bpm: this.bpm, rmssd: this.rmssd }));
-                                } catch (e) { console.warn('3D init failed', e); }
+                                } catch (e) { console.warn('3D init failed', e); this.band3dFailed = true; }
                             } else if (tries++ < 300) {
                                 requestAnimationFrame(boot);
                             } else {
