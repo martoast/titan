@@ -36,9 +36,16 @@ class CoachController extends Controller
         if ($request->filled('c')) {
             $conversation = $profile->conversations()->whereKey($request->integer('c'))->first();
         }
-        $conversation ??= $profile->conversations()->latest('id')->first();
+        // Default to the latest CHAT thread, not the "Daily Briefings" thread — the
+        // briefing already has its own card up top, so chats shouldn't land in it.
+        $conversation ??= $profile->conversations()
+            ->where(fn ($q) => $q->whereNull('title')->orWhere('title', '!=', 'Daily Briefings'))
+            ->latest('id')->first();
 
-        $conversations = $profile->conversations()->latest('id')->get();
+        // Briefings thread is shown via the card, not the conversation switcher.
+        $conversations = $profile->conversations()
+            ->where(fn ($q) => $q->whereNull('title')->orWhere('title', '!=', 'Daily Briefings'))
+            ->latest('id')->get();
 
         return view('coach.index', [
             'profile' => $profile,
