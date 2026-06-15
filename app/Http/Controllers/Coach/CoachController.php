@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Coach;
 use App\Exceptions\AiException;
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
+use App\Services\Coach\CoachBriefingService;
 use App\Services\Coach\CoachService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +22,10 @@ use Illuminate\View\View;
  */
 class CoachController extends Controller
 {
-    public function __construct(protected CoachService $coach) {}
+    public function __construct(
+        protected CoachService $coach,
+        protected CoachBriefingService $briefings,
+    ) {}
 
     /** The chat page — opens the requested conversation, else the most recent, else a fresh one. */
     public function index(Request $request): View
@@ -45,7 +49,31 @@ class CoachController extends Controller
                 : collect(),
             'starters' => CoachService::STARTERS,
             'aiOffline' => ! app(\App\Services\Ai\AiService::class)->configured(),
+            'latestBriefing' => $this->briefings->latestBriefing($profile),
         ]);
+    }
+
+    /**
+     * Regenerate today's briefing on demand (the "Today's briefing" card button). Picks
+     * morning vs evening by local time, stores it in the Daily Briefings thread, and
+     * redirects back to the coach. Never 500s — AI failure shows a friendly status.
+     */
+    public function briefing(Request $request): RedirectResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        try {
+            $hour = (int) now(config('app.timezone'))->format('G');
+            $hour >= 15
+                ? $this->briefings->eveningNudge($profile)
+                : $this->briefings->morningBriefing($profile);
+        } catch (AiException $e) {
+            Log::warning('[Coach] briefing regenerate failed', ['error' => $e->getMessage()]);
+
+            return redirect('/coach')->with('status', 'Your coach is offline right now — try regenerating your briefing in a moment.');
+        }
+
+        return redirect('/coach')->with('status', 'Fresh briefing ready.');
     }
 
     /** Start a fresh conversation and open it. */

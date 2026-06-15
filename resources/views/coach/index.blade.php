@@ -8,9 +8,41 @@
         $sendUrl = '/coach/' . ($conversation?->id ?? '') . '/send';
     @endphp
 
+    {{-- Today's briefing: the proactive coach speaking first. Latest stored morning/evening
+         briefing, grounded in real data, with a regenerate button. Mobile-first, dark. --}}
+    <div class="mb-4 rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.07] to-cyan-400/[0.04] p-4">
+        <div class="flex items-start gap-3">
+            <div class="shrink-0 h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 grid place-items-center">
+                <svg class="h-5 w-5 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-2">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-300/80">Today's briefing</p>
+                    <form method="POST" action="/coach/briefing" class="shrink-0">
+                        @csrf
+                        <button type="submit"
+                                class="inline-flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 active:bg-white/10 border border-white/10 px-2.5 py-1.5 text-xs text-gray-300 transition">
+                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            Regenerate
+                        </button>
+                    </form>
+                </div>
+                @if (session('status'))
+                    <p class="mt-2 text-xs text-cyan-300/90">{{ session('status') }}</p>
+                @endif
+                @if ($latestBriefing)
+                    <p class="mt-1.5 text-sm leading-relaxed text-gray-200 whitespace-pre-wrap break-words">{{ $latestBriefing->content }}</p>
+                    <p class="mt-2 text-[11px] text-gray-500">{{ $latestBriefing->created_at?->diffForHumans() }}</p>
+                @else
+                    <p class="mt-1.5 text-sm text-gray-400">No briefing yet. Tap <span class="text-gray-300">Regenerate</span> to get a grounded read on your recovery, sleep and nutrition — or it'll arrive each morning.</p>
+                @endif
+            </div>
+        </div>
+    </div>
+
     {{-- Full-height chat: fills viewport minus the sticky header and bottom tab bar.
          The shell reserves bottom space (main has pb-28); we sit above it. --}}
-    <div class="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-4 h-[calc(100dvh-12rem)] md:h-[calc(100dvh-10rem)]">
+    <div class="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-4 h-[calc(100dvh-20rem)] md:h-[calc(100dvh-16rem)]">
 
         {{-- Conversations sidebar — desktop only --}}
         <aside class="hidden lg:flex lg:flex-col rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden">
