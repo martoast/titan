@@ -78,6 +78,33 @@ export function decodeT5(b64) {
 }
 
 /**
+ * T6 → [{t, ax, ay, az}] — the OFFLINE workout-accel log frame (milli-g). 16-B header
+ * [ver u8, rsvd u8, count u16, startLo u32, startHi u32, durMs u32] + count × 3 × int16.
+ * Per-sample timestamps are reconstructed by spreading `count` samples across [start, start+dur].
+ */
+export function decodeT6(b64) {
+  const bytes = b64ToBytes(b64);
+  if (bytes.length < 16) return [];
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = dv.getUint16(2, true);
+  const start = u64(dv, 4);
+  const durMs = dv.getUint32(12, true);
+  const denom = Math.max(1, count - 1);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const o = 16 + i * 6;
+    if (o + 6 > bytes.length) break;
+    out.push({
+      t: start + Math.round((durMs * i) / denom),
+      ax: dv.getInt16(o, true),
+      ay: dv.getInt16(o + 2, true),
+      az: dv.getInt16(o + 4, true),
+    });
+  }
+  return out;
+}
+
+/**
  * Accumulates the live frames of a workout and emits `kind=workout` windows (the shape
  * SealActivityJob ingests). A workout is "active" while GPS fixes (T4) keep arriving; it ends
  * after END_GAP_MS without one (GPS stood down) or on an explicit flush (disconnect). Long
@@ -86,7 +113,7 @@ export function decodeT5(b64) {
  */
 export class WorkoutAssembler {
   constructor(opts = {}) {
-    this.END_GAP_MS = opts.endGapMs ?? 120000;  // ~GPS_OFF_SEC + margin
+    this.END_GAP_MS = opts.endGapMs ?? 120000;  // device-time gap that ends a workout
     this.FLUSH_MS = opts.flushMs ?? 180000;     // cap one window at ~3 min of data
     this.MIN_MS = opts.minMs ?? 60000;          // don't emit windows shorter than this
     this.reset();
@@ -94,55 +121,80 @@ export class WorkoutAssembler {
 
   reset() {
     this.active = false;
-    this.accel = [];   // {t, ax, ay, az} milli-g
-    this.hr = [];      // {t, bpm}
-    this.gps = [];     // {t, speedKmh, alt}
-    this.lastGpsT = 0;
+    this.accel = [];        // {t, ax, ay, az} milli-g
+    this.hr = [];           // {t, bpm}
+    this.gps = [];          // {t, speedKmh, alt}
+    this.lastActivityT = 0; // device-time of the last WORKOUT-defining frame (T4/T6)
     this.winStart = 0;
   }
 
-  addAccel(samples) {
-    if (!this.active) return; // accel only matters once a workout is under way
-    for (const s of samples) this.accel.push({ t: s.t, ax: s.ax, ay: s.ay, az: s.az });
-  }
-
-  addHr(hr) {
-    if (hr) this.hr.push(hr);
-  }
-
-  /** A GPS fix means we're in a workout. Returns a window if a flush boundary was crossed. */
-  addGps(fix) {
-    if (!fix) return null;
-    if (!this.active) { this.active = true; this.winStart = fix.t; }
-    this.lastGpsT = fix.t;
-    this.gps.push(fix);
-    if (fix.t - this.winStart >= this.FLUSH_MS) return this._build(fix.t);
-    return null;
-  }
-
-  /** Call on each tick / new frame with the latest timestamp → a window when the workout ends.
-   * The window spans the actual DATA (up to the last GPS fix), not the wall-clock `nowT`. */
-  tick(nowT) {
-    if (this.active && this.lastGpsT && nowT - this.lastGpsT >= this.END_GAP_MS) {
-      return this._build(this.lastGpsT);
+  // A workout-defining frame at device-time `t` that's far past the previous one means the prior
+  // workout ended — finalize it (works for the morning-sync burst AND for back-to-back sessions).
+  _gapFinalize(t) {
+    if (this.active && this.lastActivityT && t - this.lastActivityT > this.END_GAP_MS) {
+      const w = this._build(this.lastActivityT);
+      this.reset();
+      return w;
     }
     return null;
   }
 
-  /** Force-emit whatever is buffered (e.g. on disconnect). */
+  _open(t) { if (!this.active) { this.active = true; this.winStart = t; } }
+
+  _periodic(t) {
+    if (this.active && t - this.winStart >= this.FLUSH_MS) {
+      const w = this._build(t);
+      this.accel = this.accel.filter((s) => s.t >= t);
+      this.hr = this.hr.filter((s) => s.t >= t);
+      this.gps = this.gps.filter((s) => s.t >= t);
+      this.winStart = this.gps.length ? this.gps[0].t : t;
+      return w;
+    }
+    return null;
+  }
+
+  /** T4 GPS fix — opens/keeps a workout (GPS only powers on once a workout is detected). */
+  addGps(fix) {
+    if (!fix) return null;
+    const ended = this._gapFinalize(fix.t);
+    this._open(fix.t);
+    this.gps.push(fix);
+    this.lastActivityT = Math.max(this.lastActivityT, fix.t);
+    return ended || this._periodic(fix.t);
+  }
+
+  /** T6 offline-logged accel — opens/keeps a workout (T6 only exists during a workout). */
+  addWorkoutAccel(samples) {
+    if (!samples || !samples.length) return null;
+    const ended = this._gapFinalize(samples[0].t);
+    this._open(samples[0].t);
+    for (const s of samples) this.accel.push({ t: s.t, ax: s.ax, ay: s.ay, az: s.az });
+    this.lastActivityT = Math.max(this.lastActivityT, samples[samples.length - 1].t);
+    return ended || this._periodic(this.lastActivityT);
+  }
+
+  /** T1 live accel — buffered only while a workout is already open (GPS opened it). */
+  addAccel(samples) {
+    if (!this.active || !samples) return null;
+    for (const s of samples) this.accel.push({ t: s.t, ax: s.ax, ay: s.ay, az: s.az });
+    return null;
+  }
+
+  addHr(hr) { if (this.active && hr) this.hr.push(hr); }
+
+  /** Finalize when device-time has advanced past the end-gap (live: T1 keeps `deviceNowT` moving). */
+  tick(deviceNowT) { return this._gapFinalize(deviceNowT); }
+
+  /** Force-emit whatever is buffered (disconnect, or the sync burst has settled). */
   flush() {
-    return this.active ? this._build(this.lastGpsT || this.winStart) : null;
+    if (!this.active) return null;
+    const w = this._build(this.lastActivityT || this.winStart);
+    this.reset();
+    return w;
   }
 
   _build(endT) {
-    const startT = this.winStart;
-    const win = buildWorkoutWindow(this.accel, this.hr, this.gps, startT, endT, this.MIN_MS);
-    // Keep only data after this window for the next one (periodic flush continuity).
-    this.accel = this.accel.filter((s) => s.t >= endT);
-    this.hr = this.hr.filter((s) => s.t >= endT);
-    this.gps = this.gps.filter((s) => s.t >= endT);
-    if (this.gps.length) { this.winStart = this.gps[0].t; } else { this.active = false; }
-    return win;
+    return buildWorkoutWindow(this.accel, this.hr, this.gps, this.winStart, endT, this.MIN_MS);
   }
 }
 
@@ -218,5 +270,5 @@ function perSecond(events, startT, secs, pick) {
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 if (typeof window !== 'undefined') {
-  window.TitanBridge = { decodeT1, decodeT4, decodeT5, buildWorkoutWindow, WorkoutAssembler };
+  window.TitanBridge = { decodeT1, decodeT4, decodeT5, decodeT6, buildWorkoutWindow, WorkoutAssembler };
 }

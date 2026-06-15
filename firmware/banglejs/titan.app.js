@@ -92,7 +92,14 @@ var CFG = {
   // During a WORKOUT we also stream the on-chip HR (bpm) — in-motion PPG→IBI is unreliable, so
   // workout HR uses the watch's hardware bpm register, not server-side peak detection. T5 frames
   // only flow while a workout is active (GPS armed), so sleep/rest never stream bpm.
-  HR_PROTO_VERSION: 5                // T5 frame: per-reading bpm + confidence
+  HR_PROTO_VERSION: 5,               // T5 frame: per-reading bpm + confidence
+
+  // OFFLINE workouts (a run with no phone, or a gym session): when not connected we log the
+  // 3-axis accel to flash as compact T6 frames so the workout still CLASSIFIES on morning sync
+  // (the overnight T2 log is PPG-only and can't). During a workout we log T6 instead of T2 PPG
+  // (PPG in motion is noise; accel is the signal).
+  WORKOUT_LOG_PROTO_VERSION: 6,      // T6 frame: compact 3-axis accel batch (milli-g)
+  WORKOUT_LOG_SAMPLES: 125           // ~5 s @ 25 Hz per T6 frame
 };
 
 // ----- State ----------------------------------------------------------------
@@ -118,6 +125,11 @@ var motionEMA = 0;
 var motionAboveSince = 0;   // getTime() when motion first crossed the on-threshold (0 = below)
 var motionBelowSince = 0;   // getTime() when motion first dropped below it (0 = above)
 var lastAltitude = null;    // last barometric altitude (m), for grade
+
+// Offline workout-accel log (T6): buffered 3-axis accel flushed to flash while a workout runs
+// and we're not connected, so the session classifies on morning sync.
+var woAccel = [];           // pending [ax,ay,az,...] milli-g triples for the current T6 frame
+var woAccelEpochMs = 0;     // unix-ms of the first sample in the current T6 frame
 
 // A frame is built up sample-by-sample then flushed. We use an ArrayBuffer
 // sized for the worst case so we never reallocate in the hot path.
@@ -197,6 +209,9 @@ var lastAccelV = null; // previous accel sample, for the delta
 
 function logSample(ppg) {
   if (state.logFull) return;
+  // During a workout we log 3-axis accel (T6), not PPG — PPG in motion is noise, and dropping
+  // it saves the flash for the accel the classifier actually needs.
+  if (state.gps) return;
   if (logAccum.length === 0) logEpochMs = Math.round(getTime() * 1000);
   logAccum.push(clampI16(ppg));
   if (logAccum.length >= CFG.LOG_FRAME_SAMPLES) writeLogFrame();
@@ -356,6 +371,44 @@ function onAccel(a) {
   state.lastAccel.x = a.x;
   state.lastAccel.y = a.y;
   state.lastAccel.z = a.z;
+  // Offline + in a workout → log the 3-axis accel (T6) so it classifies on sync.
+  if (state.streaming && !state.connected && state.gps) logWorkoutAccel(a);
+}
+
+// Append one accel sample to the current T6 frame; flush when full.
+function logWorkoutAccel(a) {
+  if (state.logFull) return;
+  if (woAccel.length === 0) woAccelEpochMs = Math.round(getTime() * 1000);
+  woAccel.push(clampI16(Math.round(a.x * CFG.ACCEL_SCALE)),
+               clampI16(Math.round(a.y * CFG.ACCEL_SCALE)),
+               clampI16(Math.round(a.z * CFG.ACCEL_SCALE)));
+  if (woAccel.length >= CFG.WORKOUT_LOG_SAMPLES * 3) writeWorkoutAccelFrame();
+}
+
+// T6 frame: 16-B header [ver u8, rsvd u8, count u16, startLo u32, startHi u32, durMs u32] +
+// count × 3 × int16 accel (milli-g). Timestamps are reconstructed by spreading count samples
+// evenly across [start, start+dur] on the receiver (same scheme as T2).
+function writeWorkoutAccelFrame() {
+  var count = woAccel.length / 3;
+  if (count < 1) return;
+  var durMs = Math.round(getTime() * 1000) - woAccelEpochMs;
+  if (durMs < 0) durMs = 0;
+  var buf = new ArrayBuffer(16 + count * 6);
+  var dv = new DataView(buf);
+  dv.setUint8(0, CFG.WORKOUT_LOG_PROTO_VERSION);
+  dv.setUint16(2, count, true);
+  var hi = Math.floor(woAccelEpochMs / 4294967296);
+  dv.setUint32(4, (woAccelEpochMs - hi * 4294967296) >>> 0, true);
+  dv.setUint32(8, hi >>> 0, true);
+  dv.setUint32(12, durMs >>> 0, true);
+  for (var i = 0; i < woAccel.length; i++) dv.setInt16(16 + i * 2, woAccel[i], true);
+  var line = "T6:" + b64(buf);
+  try {
+    require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n");
+    state.logged += line.length + 1;
+    if (state.logged >= CFG.LOG_MAX_BYTES) state.logFull = true;
+  } catch (err) { /* storage unavailable — drop */ }
+  woAccel = [];
 }
 
 // ----- GPS gating: power the receiver only during real locomotion -----------
@@ -383,7 +436,11 @@ function setGps(on) {
     // The barometer (BMP280) is cheap; run it alongside GPS for altitude→grade + temperature.
     if (Bangle.setBarometerPower) Bangle.setBarometerPower(on ? 1 : 0, "titan");
   } catch (e) {}
-  if (!on) { state.gpsFix = false; state.speed = 0; lastAltitude = null; }
+  if (!on) {
+    state.gpsFix = false; state.speed = 0; lastAltitude = null;
+    if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
+  }
+  applyAccelRate(); // workout on → 25 Hz accel even offline; off → back to 12.5 Hz
   if (uiVisible) drawUI();
 }
 
@@ -428,6 +485,8 @@ function emitGpsFrame(speedKmh, altM, sats) {
 
 function onConnect() {
   state.connected = true;
+  // Flush any pending offline workout-accel to flash so the morning sync includes it.
+  if (woAccel.length) writeWorkoutAccelFrame();
   // Entering the live/workout path: sample accel at 25 Hz for the classifier.
   applyAccelRate();
   // Give the link a beat to settle, then sync the overnight log (morning sync).
@@ -449,11 +508,12 @@ function onDisconnect() {
 
 // ----- Start / stop streaming -----------------------------------------------
 
-// Pick the accel poll cadence: 25 Hz for a live (connected) workout so the server's
-// classifier sees the rate it was validated at; 12.5 Hz overnight for actigraphy + power.
+// Pick the accel poll cadence: 25 Hz during any WORKOUT (connected live, OR offline once the
+// locomotion gate has armed) so the classifier sees its validated rate; 12.5 Hz the rest of the
+// time (overnight actigraphy + power).
 function applyAccelRate() {
-  var ms = (state.streaming && state.connected) ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT;
-  try { Bangle.setPollInterval(ms); } catch (e) {}
+  var workout = state.streaming && (state.connected || state.gps);
+  try { Bangle.setPollInterval(workout ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT); } catch (e) {}
 }
 
 function startStreaming() {

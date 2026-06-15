@@ -5,7 +5,7 @@
 import assert from 'node:assert';
 import { test } from 'node:test';
 
-import { decodeT1, decodeT4, decodeT5, WorkoutAssembler } from '../../resources/js/bridge-decode.js';
+import { decodeT1, decodeT4, decodeT5, decodeT6, WorkoutAssembler } from '../../resources/js/bridge-decode.js';
 
 // --- frame encoders mirroring the firmware byte layouts ---
 const b64 = (buf) => buf.toString('base64');
@@ -50,6 +50,22 @@ function encT5(t, bpm, conf) {
   buf.writeUInt8(0, 3);
   buf.writeUInt32LE(lo(t), 4);
   buf.writeUInt32LE(hi(t), 8);
+  return b64(buf);
+}
+
+function encT6(startMs, durMs, samples) {
+  const buf = Buffer.alloc(16 + samples.length * 6);
+  buf.writeUInt8(6, 0);
+  buf.writeUInt16LE(samples.length, 2);
+  buf.writeUInt32LE(lo(startMs), 4);
+  buf.writeUInt32LE(hi(startMs), 8);
+  buf.writeUInt32LE(durMs, 12);
+  samples.forEach((s, i) => {
+    const o = 16 + i * 6;
+    buf.writeInt16LE(s.ax, o);
+    buf.writeInt16LE(s.ay, o + 2);
+    buf.writeInt16LE(s.az, o + 4);
+  });
   return b64(buf);
 }
 
@@ -119,3 +135,52 @@ test('accel before the first GPS fix is ignored (no workout yet)', () => {
   assert.equal(wa.accel.length, 0);
   assert.equal(wa.flush(), null);                           // nothing to emit
 });
+
+test('decodeT6 reconstructs offline accel samples + spread timestamps', () => {
+  const samples = [{ ax: 100, ay: 200, az: 980 }, { ax: 110, ay: 210, az: 990 }, { ax: 120, ay: 220, az: 1000 }];
+  const out = decodeT6(encT6(BASE, 80, samples)); // 3 samples over 80 ms
+  assert.equal(out.length, 3);
+  assert.deepEqual({ t: out[0].t, ax: out[0].ax, az: out[0].az }, { t: BASE, ax: 100, az: 980 });
+  assert.equal(out[2].t, BASE + 80);             // last sample at start+dur
+  assert.equal(out[1].ay, 210);
+});
+
+test('offline morning-sync: a T6/T5 burst (no live GPS) assembles a workout', () => {
+  const wa = new WorkoutAssembler();
+  const fs = 25, secs = 90;
+  // The watch logged a phone-free run: T6 accel batches + T5 HR, no fix indoors (no T4).
+  for (let s = 0; s < secs; s++) {
+    const t0 = BASE + s * 1000;
+    const batch = [];
+    for (let i = 0; i < fs; i++) batch.push({ ax: 300 * Math.sin(i), ay: 150, az: 980 });
+    wa.addWorkoutAccel(decodeT6(encT6(t0, 1000, batch)));
+    wa.addHr(decodeT5(encT5(t0, 158, 88)));
+  }
+  // Burst settled → flush emits the session.
+  const win = wa.flush();
+  assert.ok(win, 'offline workout should assemble from T6 alone');
+  assert.equal(win.accel_xyz.x.length, secs * fs);
+  assert.ok(win.hr_bpm.every((b) => b === 158));
+  assert.deepEqual(win.gps, { speed_kmh: expectZeros(win.gps.speed_kmh.length), grade: win.gps.grade });
+});
+
+test('a device-time gap splits a sync burst into two workouts', () => {
+  const wa = new WorkoutAssembler();
+  const out = [];
+  const run = (base) => {
+    for (let s = 0; s < 70; s++) {
+      const t0 = base + s * 1000;
+      const batch = [];
+      for (let i = 0; i < 25; i++) batch.push({ ax: 250 * Math.sin(i), ay: 120, az: 980 });
+      const w = wa.addWorkoutAccel(decodeT6(encT6(t0, 1000, batch)));
+      if (w) out.push(w);
+    }
+  };
+  run(BASE);                       // morning workout
+  run(BASE + 4 * 3600 * 1000);     // afternoon workout, 4 h later → gap finalizes the first
+  const tail = wa.flush();
+  if (tail) out.push(tail);
+  assert.equal(out.length, 2, 'two separate sessions');
+});
+
+function expectZeros(n) { return new Array(n).fill(0); }

@@ -143,10 +143,11 @@
                         this.connected = true;
                         this.statusLabel = 'Streaming · ' + (this._device.name || 'Bangle');
                         this._log('ok', 'Connected to ' + (this._device.name || 'Bangle.js'));
-                        // Finalize a workout once its GPS frames stop (the watch stood GPS down).
+                        // Finalize a live workout once its GPS frames stop: T1 keeps the device
+                        // clock advancing, so the assembler sees the end-gap and emits the session.
                         clearInterval(this._waTimer);
                         this._waTimer = setInterval(() => {
-                            const win = this._wa && this._wa.tick(Date.now());
+                            const win = this._wa && this._wa.tick(this._maxDeviceT);
                             if (win) this._ship(win);
                         }, 5000);
                     } catch (err) {
@@ -161,6 +162,7 @@
                 _onDrop() {
                     this.connected = false; this.statusLabel = 'Disconnected';
                     clearInterval(this._waTimer);
+                    clearTimeout(this._woTrail);
                     this._flushWindow(); // ship whatever PPG samples are accumulated
                     const win = this._wa && this._wa.flush(); // ship any in-progress workout
                     if (win) this._ship(win);
@@ -181,6 +183,7 @@
                         else if (line.startsWith('T2:')) this._decodeT2(line.slice(3));
                         else if (line.startsWith('T4:')) this._onGps(line.slice(3));   // workout GPS fix
                         else if (line.startsWith('T5:')) this._onWorkoutHr(line.slice(3)); // workout HR
+                        else if (line.startsWith('T6:')) this._onWorkoutAccel(line.slice(3)); // offline workout accel
                     }
                 },
 
@@ -188,20 +191,40 @@
                 // GPS only powers on once the watch detects a workout, so a T4 frame means a
                 // workout is under way; the assembler bundles the 3-axis accel (from T1) + HR +
                 // GPS and emits the window SealActivityJob ingests. See resources/js/bridge-decode.js.
-                _wa: null,
+                _wa: null, _maxDeviceT: 0, _woTrail: null,
                 _ensureWa() {
                     if (!this._wa && window.TitanBridge) this._wa = new window.TitanBridge.WorkoutAssembler();
                     return this._wa;
                 },
+                // Track the latest DEVICE timestamp across all frames — the assembler finalizes by
+                // device-time gaps (so a morning-sync burst, which arrives in milliseconds of
+                // wall-clock but spans a real workout, finalizes correctly). After a quiet spell
+                // (live workout ended, or the burst settled) flush the trailing session.
+                _seen(t) {
+                    if (t > this._maxDeviceT) this._maxDeviceT = t;
+                    clearTimeout(this._woTrail);
+                    this._woTrail = setTimeout(() => {
+                        const win = this._wa && this._wa.flush();
+                        if (win) this._ship(win);
+                    }, 4000);
+                },
                 _onGps(b64) {
                     const wa = this._ensureWa(); if (!wa) return;
-                    const win = wa.addGps(window.TitanBridge.decodeT4(b64));
-                    if (win) this._ship(win); // periodic flush on long workouts
+                    const fix = window.TitanBridge.decodeT4(b64); if (fix) this._seen(fix.t);
+                    const win = wa.addGps(fix);
+                    if (win) this._ship(win); // periodic flush / gap-split
                 },
                 _onWorkoutHr(b64) {
                     const wa = this._ensureWa(); if (!wa) return;
                     const hr = window.TitanBridge.decodeT5(b64);
-                    if (hr) { wa.addHr(hr); this.bpm = hr.bpm; }
+                    if (hr) { this._seen(hr.t); wa.addHr(hr); this.bpm = hr.bpm; }
+                },
+                _onWorkoutAccel(b64) {
+                    const wa = this._ensureWa(); if (!wa) return;
+                    const samples = window.TitanBridge.decodeT6(b64);
+                    if (samples.length) this._seen(samples[samples.length - 1].t);
+                    const win = wa.addWorkoutAccel(samples);
+                    if (win) this._ship(win); // gap-split between back-to-back offline sessions
                 },
 
                 // T1 live frame. hdr[ver u8, ppgField u8, count u16, epochLo u32, epochHi u32, rsvd u32];
@@ -225,6 +248,8 @@
                     }
                     // Feed the workout assembler — it ignores accel until a GPS fix opens a workout.
                     const wa = this._ensureWa(); if (wa) wa.addAccel(accel);
+                    // T1 keeps the device clock moving so a live workout can detect its end-gap.
+                    if (accel.length) this._maxDeviceT = Math.max(this._maxDeviceT, accel[accel.length - 1].t);
                     this.samples += live.length;
                     this._pushWave(live);
                     this._drainWindows();
