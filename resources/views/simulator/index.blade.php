@@ -166,6 +166,11 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
         // Expose a factory the Alpine component calls; it owns the 3D scene + sim loop.
         window.__titanBand = function (canvas, getState, getStates) {
@@ -204,40 +209,62 @@
             fill.position.set(-3, 1, 4);
             scene.add(fill);
 
+            // ---- Realistic reflections (the #1 premium lever): a generated studio env ----
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
             const band = new THREE.Group();
             scene.add(band);
 
-            // ---- Silicone strap: two curved arcs sweeping back, matte dark ----
-            const siliconeMat = new THREE.MeshStandardMaterial({
-                color: 0x14171c, roughness: 0.85, metalness: 0.0,
+            // ---- Continuous silicone strap: one closed, flattened loop (solid, no hollow
+            //      back). The sensor case sits at the centre; the band wraps top→bottom. ----
+            const siliconeMat = new THREE.MeshPhysicalMaterial({
+                color: 0x0d0f14, roughness: 0.5, metalness: 0.0,
+                clearcoat: 0.55, clearcoatRoughness: 0.45,
+                sheen: 0.6, sheenRoughness: 0.5, sheenColor: new THREE.Color(0x4456a0),
+                envMapIntensity: 0.9,
             });
-            function strap(dir) {
-                const curve = new THREE.CatmullRomCurve3([
-                    new THREE.Vector3(0, 0.45 * dir, 0.18),
-                    new THREE.Vector3(0, 1.05 * dir, -0.25),
-                    new THREE.Vector3(0, 1.35 * dir, -1.05),
-                    new THREE.Vector3(0, 1.1 * dir, -1.95),
-                ]);
-                const geo = new THREE.TubeGeometry(curve, 40, 0.42, 16, false);
-                // flatten into a strap cross-section
-                geo.scale(1.7, 1, 0.34);
-                return new THREE.Mesh(geo, siliconeMat);
+            const loopPts = [];
+            const RX = 1.02, RY = 2.05;                       // narrow + tall → a watch band
+            for (let i = 0; i < 56; i++) {
+                const a = (i / 56) * Math.PI * 2;
+                loopPts.push(new THREE.Vector3(Math.sin(a) * RX, Math.cos(a) * RY, 0));
             }
-            band.add(strap(1), strap(-1));
+            const loopCurve = new THREE.CatmullRomCurve3(loopPts, true);
+            const strapGeo = new THREE.TubeGeometry(loopCurve, 260, 0.34, 32, true);
+            strapGeo.scale(1, 1, 0.46);                        // flatten into a band section
+            const strap = new THREE.Mesh(strapGeo, siliconeMat);
+            band.add(strap);
 
-            // ---- Sensor module: rounded "pill" body ----
-            const bodyMat = new THREE.MeshStandardMaterial({
-                color: 0x202732, roughness: 0.35, metalness: 0.55,
+            // a soft stitched-edge highlight line down each side of the band
+            const seamMat = new THREE.MeshStandardMaterial({ color: 0x2a3552, roughness: 0.6, metalness: 0.1, emissive: 0x141a2e, emissiveIntensity: 0.4 });
+
+            // ---- Sensor module: brushed-metal case ----
+            const bodyMat = new THREE.MeshPhysicalMaterial({
+                color: 0x1c2230, roughness: 0.28, metalness: 0.92,
+                clearcoat: 0.4, clearcoatRoughness: 0.25, envMapIntensity: 1.4,
             });
-            const body = new THREE.Mesh(new RoundedBox(1.9, 1.15, 0.62, 0.22, 6), bodyMat);
+            const body = new THREE.Mesh(new RoundedBox(1.95, 1.22, 0.6, 0.26, 8), bodyMat);
             band.add(body);
 
-            // Glossy top glass
-            const glass = new THREE.Mesh(
-                new RoundedBox(1.7, 0.95, 0.06, 0.18, 5),
-                new THREE.MeshPhysicalMaterial({ color: 0x0a0c10, roughness: 0.08, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.05 })
+            // polished chamfer/bezel ring around the glass for a jewellery edge
+            const bezel = new THREE.Mesh(
+                new RoundedBox(1.82, 1.08, 0.12, 0.22, 8),
+                new THREE.MeshPhysicalMaterial({ color: 0x39435e, roughness: 0.12, metalness: 1.0, envMapIntensity: 1.8 })
             );
-            glass.position.z = 0.33;
+            bezel.position.z = 0.27;
+            band.add(bezel);
+
+            // Glossy domed top glass (clearcoat + faint transmission) — reads like a screen
+            const glass = new THREE.Mesh(
+                new RoundedBox(1.66, 0.92, 0.08, 0.2, 6),
+                new THREE.MeshPhysicalMaterial({
+                    color: 0x05070c, roughness: 0.04, metalness: 0.0,
+                    clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6,
+                    reflectivity: 0.9,
+                })
+            );
+            glass.position.z = 0.34;
             band.add(glass);
 
             // ---- Underside optical stack: matte-black cavity + dual windows ----
@@ -294,7 +321,31 @@
             ring.position.set(0, 0, 0.37);
             band.add(ring);
 
-            band.rotation.x = -0.35;
+            band.rotation.x = -0.28;
+            band.rotation.y = 0.18;
+
+            // ---- Studio backdrop gradient: gives the product depth and lets bloom
+            //      composite cleanly (no transparent-background artefacts) ----
+            const bgC = document.createElement('canvas'); bgC.width = 4; bgC.height = 256;
+            const bx = bgC.getContext('2d');
+            const bgGrad = bx.createLinearGradient(0, 0, 0, 256);
+            bgGrad.addColorStop(0, '#121723'); bgGrad.addColorStop(0.5, '#0a0d15'); bgGrad.addColorStop(1, '#05070b');
+            bx.fillStyle = bgGrad; bx.fillRect(0, 0, 4, 256);
+            const bgTex = new THREE.CanvasTexture(bgC); bgTex.colorSpace = THREE.SRGBColorSpace;
+            scene.background = bgTex;
+
+            // ---- Soft contact shadow grounding the band ----
+            const shC = document.createElement('canvas'); shC.width = shC.height = 256;
+            const sx = shC.getContext('2d');
+            const shGrad = sx.createRadialGradient(128, 128, 6, 128, 128, 128);
+            shGrad.addColorStop(0, 'rgba(0,0,0,0.55)'); shGrad.addColorStop(0.7, 'rgba(0,0,0,0.18)'); shGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            sx.fillStyle = shGrad; sx.fillRect(0, 0, 256, 256);
+            const shadow = new THREE.Mesh(
+                new THREE.PlaneGeometry(9, 5.5),
+                new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shC), transparent: true, depthWrite: false })
+            );
+            shadow.rotation.x = -Math.PI / 2; shadow.position.y = -2.75;
+            scene.add(shadow);
 
             // ---- RoundedBox helper (Three has one in addons, but keep CDN deps minimal) ----
             function RoundedBox(w, h, d, r, s) {
@@ -312,10 +363,21 @@
                 return geo;
             }
 
+            // ---- Bloom: makes the optical LEDs + polished edges glow (premium). Guarded:
+            //      falls back to a direct render if the composer can't initialise. ----
+            let composer = null;
+            try {
+                composer = new EffectComposer(renderer);
+                composer.addPass(new RenderPass(scene, camera));
+                composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.7, 0.82));
+                composer.addPass(new OutputPass());
+            } catch (e) { composer = null; }
+
             function resize() {
                 const w = canvas.clientWidth, h = canvas.clientHeight;
                 if (w === 0 || h === 0) return;
                 renderer.setSize(w, h, false);
+                if (composer) composer.setSize(w, h);
                 camera.aspect = w / h;
                 camera.updateProjectionMatrix();
             }
@@ -329,7 +391,7 @@
             let pulse = 0;          // 0..1, set on each beat, decays
             const api = {
                 beat() { pulse = 1; },
-                dispose() { renderer.dispose(); },
+                dispose() { renderer.dispose(); if (composer) composer.dispose && composer.dispose(); },
             };
 
             const clock = new THREE.Clock();
@@ -341,17 +403,16 @@
                 const calm = st === 'deep' || st === 'rest';
                 // calm green vs elevated amber
                 const baseColor = calm ? new THREE.Color(0x18ff7a) : new THREE.Color(0xffb020);
-                const lit = baseColor.clone().multiplyScalar(0.6 + pulse * 1.4);
+                const lit = baseColor.clone().multiplyScalar(0.7 + pulse * 1.5);
                 ledMat.emissive.copy(baseColor);
-                ledMat.emissiveIntensity = 0.8 + pulse * 2.6;
+                ledMat.emissiveIntensity = 1.0 + pulse * 3.4;
                 ledMat.color.copy(lit);
                 ppgGlow.color.copy(baseColor);
-                ppgGlow.intensity = pulse * 5.5;
+                ppgGlow.intensity = 1.2 + pulse * 6.5;
                 ring.material.color.copy(calm ? new THREE.Color(0x6366f1) : new THREE.Color(0xf59e0b));
 
-                resize();
                 controls.update();
-                renderer.render(scene, camera);
+                if (composer) composer.render(); else renderer.render(scene, camera);
             }
             loop();
             return api;
