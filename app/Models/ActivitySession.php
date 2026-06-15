@@ -44,6 +44,7 @@ class ActivitySession extends Model
             'walk' => 'Walk',
             'cycle' => 'Ride',
             'stairs' => 'Stairs',
+            'strength' => 'Strength',
             'rest' => 'Rest',
             default => 'Workout',
         };

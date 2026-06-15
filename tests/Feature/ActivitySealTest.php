@@ -90,6 +90,48 @@ class ActivitySealTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_non_locomotion_workout_seals_a_strength_session(): void
+    {
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+
+        Http::fake([
+            // Not locomotion → the gym path runs.
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'start' => '2026-06-15T18:00:00Z', 'duration_min' => 25.0, 'mean_hr' => 120.0,
+                'trimp' => 30.0, 'calories_kcal' => 200, 'activity_type' => 'other', 'activity_confidence' => 0.8,
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 48.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'good', 'fitness_percentile_band' => 2, 'hrr' => null]),
+            '*/process/gym' => Http::response(['algo_version' => 'v1',
+                'sets' => [
+                    ['exercise' => 'squats', 'reps' => 10, 'confidence' => 1.0, 'is_lift' => true],
+                    ['exercise' => 'squats', 'reps' => 9, 'confidence' => 1.0, 'is_lift' => true],
+                    ['exercise' => 'dumbbell_shoulder_press', 'reps' => 10, 'confidence' => 1.0, 'is_lift' => true],
+                ],
+                'summary' => ['n_sets' => 3, 'total_reps' => 29, 'exercises' => []],
+            ]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        $this->storeWorkoutWindow($profile->id);
+
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        // A strength workout with the detected exercises + sets + reps.
+        $workout = \App\Models\Workout::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($workout);
+        $this->assertSame(2, $workout->exercises()->count());        // squats + shoulder press
+        $squats = $workout->exercises()->whereHas('exercise', fn ($q) => $q->where('slug', 'squats'))->first();
+        $this->assertSame(2, $squats->sets()->count());              // two squat sets
+        $this->assertEqualsWithDelta(10, $squats->sets()->max('reps'), 0);
+
+        // The activity row is labelled a strength session.
+        $this->assertSame('strength', ActivitySession::where('profile_id', $profile->id)->value('activity_type'));
+    }
+
     public function test_fitness_page_renders_with_and_without_sessions(): void
     {
         $user = User::factory()->create();

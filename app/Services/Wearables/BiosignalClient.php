@@ -65,4 +65,13 @@ class BiosignalClient
     {
         return $this->client()->post('/process/fitness', $request)->throw()->json();
     }
+
+    /**
+     * @param  array<string,mixed>  $request
+     * @return array<string,mixed>
+     */
+    public function processGym(array $request): array
+    {
+        return $this->client()->post('/process/gym', $request)->throw()->json();
+    }
 }
