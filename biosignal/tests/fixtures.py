@@ -89,3 +89,18 @@ def synthetic_workout_accel(seed: int = 3) -> list[float]:
     run = rng.normal(45, 8, size=70).clip(min=20)  # 70 epochs * 30s = 35 min
     quiet2 = rng.poisson(1.0, size=40).astype(float)
     return [float(x) for x in np.concatenate([quiet1, run, quiet2])]
+
+
+def synthetic_workout_xyz(minutes: float = 16.0, fs: int = 25, cadence_hz: float = 2.7, seed: int = 7):
+    """A raw 3-axis accel stream (m/s²) for a rhythmic, gravity-offset workout. NOT meant to
+    match a real activity label (synthetic motion can't) — it exists to exercise the classify
+    WIRING: unit conversion, windowing, session annotation. Real-label accuracy is validated
+    separately on PAMAP2 (scripts/classify_pamap2.py)."""
+    rng = np.random.default_rng(seed)
+    n = int(minutes * 60 * fs)
+    t = np.arange(n) / fs
+    osc = lambda ph, amp: amp * np.sin(2 * np.pi * cadence_hz * t + ph) + rng.normal(0, 0.4, n)
+    x = osc(0.0, 2.5)
+    y = osc(1.0, 1.8)
+    z = 9.8 + osc(2.0, 3.0)  # gravity offset on the vertical axis
+    return {"x": x.tolist(), "y": y.tolist(), "z": z.tolist()}

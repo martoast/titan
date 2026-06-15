@@ -81,9 +81,57 @@ def test_activity_detects_run():
     assert s["trimp"] > 0
     assert s["calories_kcal"] > 0
     assert m["total_trimp"] > 0
+    # No 3-axis stream supplied → classification is a no-op, sessions still detected.
+    assert s["activity_type"] is None
 
 
 def test_activity_no_session_when_quiet():
     resp = client.post("/process/activity", json={"accel_counts": [0, 1, 0, 0, 1, 0]})
     assert resp.status_code == 200
     assert resp.json()["metrics"]["session_count"] == 0
+
+
+def test_activity_classifies_session_from_xyz():
+    """When a raw 3-axis accel stream rides along, each session is annotated with a workout
+    type. Asserts the WIRING contract (the model's real-label accuracy is validated on PAMAP2,
+    not here): a label from the model's groups, a sane confidence, and a mix that sums to ~1."""
+    from app.core.activity_classify import GROUPS
+    from tests.fixtures import synthetic_workout_xyz
+
+    xyz = synthetic_workout_xyz(minutes=16.0, fs=25)
+    n_epochs = int(16 * 60 / 30)  # 30-s epochs spanning the stream
+    resp = client.post(
+        "/process/activity",
+        json={
+            "accel_counts": [40.0] * n_epochs,
+            "start": "2026-06-15T12:00:00Z",
+            "accel_xyz": xyz,
+            "accel_fs": 25,
+            "accel_unit": "ms2",
+            "accel_start": "2026-06-15T12:00:00Z",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    s = resp.json()["metrics"]["sessions"][0]
+    assert s["activity_type"] in GROUPS, s
+    assert 0.0 <= s["activity_confidence"] <= 1.0
+    assert abs(sum(s["activity_mix"].values()) - 1.0) < 0.05
+
+
+def test_activity_classification_is_unit_invariant():
+    """The Bangle streams milli-g, the model trains in m/s². Identical motion in 'g' vs 'mg'
+    (a 1000× scale) must classify identically — proves the unit normalization works."""
+    import numpy as np
+
+    from app.core import activity_classify as ac
+    from tests.fixtures import synthetic_workout_xyz
+
+    xyz = synthetic_workout_xyz(minutes=8.0, fs=25)
+    ms2 = {k: np.asarray(v) for k, v in xyz.items()}
+    g = {k: v / 9.80665 for k, v in ms2.items()}        # m/s² → g
+    mg = {k: v * 1000.0 for k, v in g.items()}           # g → milli-g
+
+    d_ms2 = ac.dominant_activity(ms2["x"], ms2["y"], ms2["z"], fs=25, unit="ms2")
+    d_g = ac.dominant_activity(g["x"], g["y"], g["z"], fs=25, unit="g")
+    d_mg = ac.dominant_activity(mg["x"], mg["y"], mg["z"], fs=25, unit="mg")
+    assert d_ms2["activity"] == d_g["activity"] == d_mg["activity"]

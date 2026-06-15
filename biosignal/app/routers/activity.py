@@ -13,6 +13,12 @@ from ..core import activity as activity_core
 router = APIRouter(prefix="/process", tags=["activity"])
 
 
+class AccelXYZ(BaseModel):
+    x: List[float] = Field(..., description="Raw accel X axis (the wrist's live 3-axis stream).")
+    y: List[float]
+    z: List[float]
+
+
 class ActivityWindow(BaseModel):
     accel_counts: List[float] = Field(..., description="Per-30s-epoch activity counts.")
     hr_bpm: Optional[List[float]] = Field(default=None, description="Per-30s-epoch heart rate (refines TRIMP).")
@@ -20,6 +26,11 @@ class ActivityWindow(BaseModel):
     hr_max: int = Field(default=190, description="User HRmax (avoid 220-age; field-test if possible).")
     hr_rest: int = Field(default=55, description="User resting HR.")
     weight_kg: float = Field(default=75.0, description="User weight (kg) for calorie estimate.")
+    # Optional raw 3-axis accel stream (the Bangle's live/T1 frames) → workout classification.
+    accel_xyz: Optional[AccelXYZ] = Field(default=None, description="Raw 3-axis accel for activity classification (rest/walk/run/cycle/stairs/other).")
+    accel_fs: int = Field(default=25, description="Sample rate of accel_xyz (Hz). Bangle live ≈ 25.")
+    accel_unit: str = Field(default="ms2", description="Unit of accel_xyz: 'ms2', 'g', or 'mg'. Bangle sends 'mg' (milli-g).")
+    accel_start: Optional[str] = Field(default=None, description="accel_xyz start time (ISO-8601 UTC); defaults to `start`.")
 
 
 class ActivitySession(BaseModel):
@@ -31,6 +42,9 @@ class ActivitySession(BaseModel):
     intensity: float
     trimp: float
     calories_kcal: float
+    activity_type: Optional[str] = Field(default=None, description="Classified workout type (when a 3-axis accel stream is supplied).")
+    activity_confidence: Optional[float] = None
+    activity_mix: Optional[dict] = Field(default=None, description="Share of windows per activity within the session.")
 
 
 class ActivityMetrics(BaseModel):
@@ -56,6 +70,10 @@ async def process_activity(window: ActivityWindow) -> ActivityResponse:
             hr_max=window.hr_max,
             hr_rest=window.hr_rest,
             weight_kg=window.weight_kg,
+            accel_xyz=window.accel_xyz.model_dump() if window.accel_xyz else None,
+            accel_fs=window.accel_fs,
+            accel_unit=window.accel_unit,
+            accel_start=window.accel_start,
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Activity processing failed: {exc}")

@@ -63,7 +63,17 @@ var CFG = {
   LOG_FILE: "titan.log",
   LOG_FRAME_SAMPLES: 125,            // ~5 s @ 25 Hz per compact frame (low overhead)
   LOG_MAX_BYTES: 4 * 1024 * 1024,    // ~16 h ceiling; STOP appending (never wipe the night)
-  LOG_PROTO_VERSION: 2
+  LOG_PROTO_VERSION: 2,
+
+  // --- Accel cadence (poll interval, ms) -------------------------------------
+  // The live T1 frame carries 3-axis accel, which the server classifies into a
+  // workout type (rest/walk/run/cycle/stairs/other). That model was validated on
+  // real data at 25 Hz; at 12.5 Hz accuracy drops ~3 pts (84% vs 87%). So while
+  // CONNECTED (a live workout, plugged into a phone/laptop's attention) we sample
+  // accel at 25 Hz to match the model; OVERNIGHT (offline, T2) we stay at 12.5 Hz,
+  // which is ample for actigraphy sleep/wake and saves battery.
+  ACCEL_MS_LIVE: 40,                 // 25 Hz — matches the workout classifier's training rate
+  ACCEL_MS_OVERNIGHT: 80             // 12.5 Hz — actigraphy + power
 };
 
 // ----- State ----------------------------------------------------------------
@@ -295,6 +305,8 @@ function onAccel(a) {
 
 function onConnect() {
   state.connected = true;
+  // Entering the live/workout path: sample accel at 25 Hz for the classifier.
+  applyAccelRate();
   // Give the link a beat to settle, then sync the overnight log (morning sync).
   setTimeout(flushLog, 1500);
   if (uiVisible) drawUI();
@@ -302,6 +314,8 @@ function onConnect() {
 
 function onDisconnect() {
   state.connected = false;
+  // Back to the overnight path: drop accel to 12.5 Hz (actigraphy + power).
+  applyAccelRate();
   // Abandon any partial live frame; resume compact overnight logging fresh.
   resetFrame();
   logAccum = [];
@@ -312,6 +326,13 @@ function onDisconnect() {
 
 // ----- Start / stop streaming -----------------------------------------------
 
+// Pick the accel poll cadence: 25 Hz for a live (connected) workout so the server's
+// classifier sees the rate it was validated at; 12.5 Hz overnight for actigraphy + power.
+function applyAccelRate() {
+  var ms = (state.streaming && state.connected) ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT;
+  try { Bangle.setPollInterval(ms); } catch (e) {}
+}
+
 function startStreaming() {
   if (state.streaming) return;
   state.streaming = true;
@@ -320,8 +341,7 @@ function startStreaming() {
   // LED + AFE; without it no HRM/HRM-raw events fire.
   Bangle.setHRMPower(1, "titan");
   // Accel is on by default on Bangle.js 2; setPollInterval tightens cadence.
-  // 80 ms ~ 12.5 Hz, plenty for actigraphy and motion-gating per the plan.
-  try { Bangle.setPollInterval(80); } catch (e) {}
+  applyAccelRate();
   drawUI();
 }
 
