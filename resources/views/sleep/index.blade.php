@@ -107,6 +107,46 @@
             <p class="text-xs text-gray-600 mt-3">Based on your {{ $count7 }} most recent night{{ $count7 === 1 ? '' : 's' }}.</p>
         </div>
 
+        {{-- Sleep regularity (SRI) — consistency of timing; predicts mortality more than duration --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h3 class="font-display font-bold text-gray-100">Sleep regularity</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">How consistent your sleep & wake times are — one of the strongest sleep-longevity signals.</p>
+                </div>
+                @if ($regularity)
+                    @php
+                        $sriTone = match ($regularity['band']) {
+                            'excellent' => 'text-emerald-300', 'good' => 'text-cyan-300',
+                            'fair' => 'text-amber-300', default => 'text-orange-300',
+                        };
+                    @endphp
+                    <div class="text-right shrink-0">
+                        <div class="font-display text-4xl font-black nums {{ $sriTone }} leading-none">{{ $regularity['sri'] }}</div>
+                        <div class="text-[10px] uppercase tracking-wider text-gray-500 mt-1">SRI / 100</div>
+                    </div>
+                @endif
+            </div>
+
+            @if ($regularity)
+                <div class="mt-4">
+                    {{-- 0..100 scale bar (SRI can be negative; clamp the marker for display) --}}
+                    <div class="relative h-2 rounded-full bg-gradient-to-r from-orange-500/40 via-amber-400/40 to-emerald-400/60">
+                        <div class="absolute -top-1 h-4 w-1 rounded-full bg-white shadow" style="left: {{ max(0, min(100, $regularity['sri'])) }}%"></div>
+                    </div>
+                    <div class="mt-3 flex items-center justify-between">
+                        <span class="text-sm font-semibold {{ $sriTone }}">{{ $regularity['label'] }}</span>
+                        <span class="text-xs text-gray-600 nums">{{ $regularity['nights'] }} timed nights</span>
+                    </div>
+                    @if ($regularity['sri'] < 70)
+                        <p class="mt-2 text-xs text-gray-400">Going to bed and waking within a tighter window — even on weekends — is the single biggest lever here.</p>
+                    @endif
+                </div>
+            @else
+                <p class="mt-3 text-sm text-gray-500">Log (or sync) at least {{ \App\Support\SleepRegularity::MIN_NIGHTS }} nights <span class="text-gray-600">with bedtime + wake time</span> to see your regularity score.</p>
+            @endif
+        </div>
+
         {{-- 14-day trend --}}
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100 mb-4">14-day trend</h3>

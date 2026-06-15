@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Wellness;
 
 use App\Http\Controllers\Controller;
 use App\Models\SleepLog;
+use App\Support\SleepRegularity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -37,10 +38,15 @@ class SleepController extends Controller
         $qualityVals = $last7->whereNotNull('quality');
         $avgQuality = $qualityVals->count() ? (int) round($qualityVals->avg('quality')) : null;
 
+        // Sleep Regularity Index over the last ~4 weeks of timed nights (mortality predictor; §08 research).
+        $month = $profile->sleepLogs()->where('slept_at', '>=', Carbon::today()->subDays(27))->get();
+        $regularity = SleepRegularity::compute($month);
+
         return view('sleep.index', [
             'profile' => $profile,
             'latest' => $latest,
             'trend' => $trend,
+            'regularity' => $regularity,
             'avgDuration' => $avgDuration,
             'avgDurationLabel' => $avgDuration !== null
                 ? intdiv($avgDuration, 60).'h '.str_pad((string) ($avgDuration % 60), 2, '0', STR_PAD_LEFT).'m'
