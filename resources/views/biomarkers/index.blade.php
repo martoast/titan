@@ -14,6 +14,70 @@
         </div>
     @endif
 
+    {{-- Coach assessment — "what to work on" after a scan --}}
+    @php $assessment = session('assessment'); @endphp
+    @if ($assessment)
+        <div class="rounded-2xl border border-indigo-500/25 bg-gradient-to-b from-indigo-500/[0.08] to-transparent p-4 md:p-6">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="grid place-items-center h-8 w-8 rounded-xl bg-indigo-500/20 text-indigo-300">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </span>
+                <h3 class="font-display font-bold text-indigo-100 text-lg">Your scan — what to work on</h3>
+            </div>
+            <p class="text-[15px] leading-relaxed text-gray-100 font-medium">{{ $assessment['headline'] }}</p>
+
+            @if (! empty($assessment['priorities']))
+                <div class="mt-4 rounded-xl bg-gray-950/50 border border-white/5 p-3.5">
+                    <p class="text-[11px] uppercase tracking-wide text-indigo-300/80 font-semibold mb-2">Attack first</p>
+                    <ol class="space-y-1.5">
+                        @foreach ($assessment['priorities'] as $i => $p)
+                            <li class="flex gap-2.5 text-sm text-gray-200">
+                                <span class="shrink-0 grid place-items-center h-5 w-5 rounded-full bg-indigo-500 text-[11px] font-bold text-white nums">{{ $i + 1 }}</span>
+                                <span>{{ $p }}</span>
+                            </li>
+                        @endforeach
+                    </ol>
+                </div>
+            @endif
+
+            @if (! empty($assessment['concerns']))
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    @foreach ($assessment['concerns'] as $c)
+                        <div class="rounded-xl border border-rose-500/15 bg-rose-500/[0.05] p-3.5">
+                            <div class="flex items-baseline justify-between gap-2">
+                                <span class="font-semibold text-gray-100">{{ $c['marker'] ?? '' }}</span>
+                                @if (! empty($c['reading']))<span class="text-xs text-rose-300/90 nums shrink-0">{{ $c['reading'] }}</span>@endif
+                            </div>
+                            @if (! empty($c['why']))<p class="text-[13px] text-gray-400 mt-1 leading-snug">{{ $c['why'] }}</p>@endif
+                            @if (! empty($c['action']))
+                                <p class="text-[13px] text-emerald-300/90 mt-2 flex gap-1.5 leading-snug">
+                                    <svg class="h-4 w-4 shrink-0 mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                                    <span>{{ $c['action'] }}</span>
+                                </p>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            @if (! empty($assessment['wins']))
+                <div class="mt-4">
+                    <p class="text-[11px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-2">Dialled in</p>
+                    <div class="flex flex-wrap gap-2">
+                        @foreach ($assessment['wins'] as $w)
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/25 px-3 py-1 text-[13px] text-emerald-200">
+                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                {{ $w }}
+                            </span>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            <p class="mt-5 text-[11px] text-gray-600 border-t border-white/5 pt-3">Titan is a coach, not a doctor. This is guidance to inform a conversation with your physician — not a diagnosis or prescription.</p>
+        </div>
+    @endif
+
     {{-- Parsed-upload confirmation --}}
     @if ($parsed)
         <div class="rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-4 md:p-5">

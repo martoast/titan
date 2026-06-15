@@ -157,8 +157,11 @@ class BiomarkerController extends Controller
             ]);
         }
 
-        // 4) File a narrative summary into the brain (guard: ingestor may not exist).
-        $this->ingestNarrative($profile, $saved);
+        // 4) Coach reads the labs: a prioritised "what's off / what to work on" assessment.
+        $assessment = $this->buildAssessment($saved);
+
+        // 5) File a narrative summary into the brain (guard: ingestor may not exist).
+        $this->ingestNarrative($profile, $saved, $assessment);
 
         return back()->with([
             'status' => count($saved).' marker(s) imported from your lab report.',
@@ -170,7 +173,78 @@ class BiomarkerController extends Controller
                 'taken_at' => $r->taken_at->format('M j, Y'),
             ], $saved),
             'parsedMeta' => ['count' => count($saved)],
+            'assessment' => $assessment,
         ]);
+    }
+
+    /**
+     * Coach assessment of the imported labs: a prioritised, plain-English read of
+     * what's off and what to do about it, plus the wins. Best-effort — returns null
+     * if the AI is unavailable so the import itself still succeeds.
+     *
+     * @param  array<int,BiomarkerReading>  $saved
+     * @return array{headline:string,concerns:array<int,array<string,string>>,wins:array<int,string>,priorities:array<int,string>}|null
+     */
+    private function buildAssessment(array $saved): ?array
+    {
+        $lines = array_map(function ($r) {
+            $range = Biomarkers::rangeLabel($r->marker);
+
+            return sprintf(
+                '%s: %s %s [flag: %s; optimal %s]',
+                Biomarkers::label($r->marker),
+                rtrim(rtrim(number_format((float) $r->value, 2, '.', ''), '0'), '.'),
+                $r->unit,
+                $r->flag ?? 'n/a',
+                $range ?: 'n/a',
+            );
+        }, $saved);
+
+        $system = <<<SYS
+        You are Titan — a sharp, encouraging longevity & performance coach reading a
+        man's bloodwork. You are NOT a doctor and never prescribe drugs or doses; you
+        speak in training, nutrition, sleep, lifestyle and "ask your doctor about X"
+        terms. Be specific, prioritised, and motivating — no vague hedging.
+
+        Return STRICT JSON:
+        {
+          "headline": "one punchy sentence on the overall picture",
+          "concerns": [
+            {"marker":"<label>","reading":"<value + unit>","why":"<one plain sentence on why it matters>","action":"<one concrete first step>"}
+          ],
+          "wins": ["<short praise for an optimal / strong marker>"],
+          "priorities": ["<the 1-3 things to attack first, ordered>"]
+        }
+
+        Rules: concerns ordered worst-first; include only markers genuinely off
+        (low/high, or a borderline-normal worth watching); 1-5 concerns; 1-4 wins;
+        1-3 priorities. Keep every string tight.
+        SYS;
+
+        try {
+            $result = $this->ai->json([
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => "MARKERS:\n".implode("\n", $lines)],
+            ], ['temperature' => 0.3, 'max_tokens' => 1200]);
+        } catch (AiException $e) {
+            Log::info('[biomarkers] assessment skipped', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        if (! is_array($result) || ! is_string($result['headline'] ?? null)) {
+            return null;
+        }
+
+        return [
+            'headline' => (string) $result['headline'],
+            'concerns' => array_values(array_filter(
+                (array) ($result['concerns'] ?? []),
+                fn ($c) => is_array($c) && isset($c['marker']),
+            )),
+            'wins' => array_values(array_filter((array) ($result['wins'] ?? []), 'is_string')),
+            'priorities' => array_values(array_filter((array) ($result['priorities'] ?? []), 'is_string')),
+        ];
     }
 
     /** Extract document text via the Brain build's DocumentText service, if present. */
@@ -277,7 +351,7 @@ class BiomarkerController extends Controller
     }
 
     /** Write a short bloodwork narrative page into the brain, if the ingestor exists. */
-    private function ingestNarrative(Profile $profile, array $saved): void
+    private function ingestNarrative(Profile $profile, array $saved, ?array $assessment = null): void
     {
         $class = 'App\\Services\\Brain\\KnowledgeIngestor';
         if (! class_exists($class)) {
@@ -291,6 +365,13 @@ class BiomarkerController extends Controller
             $saved,
         );
         $summary = "Bloodwork from {$date}: ".implode(', ', $lines).'.';
+
+        if ($assessment) {
+            $summary .= "\n\nCoach read: ".$assessment['headline'];
+            if (! empty($assessment['priorities'])) {
+                $summary .= "\nFocus: ".implode('; ', $assessment['priorities']).'.';
+            }
+        }
 
         try {
             $ingestor = app($class);
