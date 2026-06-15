@@ -108,8 +108,21 @@ def correct_peaks_kubios(peaks: np.ndarray, sampling_rate: int = 1000) -> tuple[
     return corrected, corrected_pct
 
 
+# Peak detection on a low-rate PPG quantizes each beat to the sample step (40 ms @
+# 25 Hz), which inflates/poisons RMSSD — the very metric we care about. The fix
+# (Béres & Hejjel 2021; Choi & Shin 2017; and the Bora Band 25 Hz→200 Hz validation,
+# Lee 2022) is to cubic-spline upsample the raw waveform BEFORE peak detection so beat
+# timing is recovered sub-sample. With this, 25 Hz PPG yields RMSSD statistically
+# equivalent to ECG; without it, 25 Hz is below the ~50 Hz no-interpolation floor.
+PPG_PROC_HZ = 250  # interpolate low-rate PPG up to this before peak detection
+
+
 def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float]:
     """Raw PPG → IBI (ms) using nk.ppg_process (band-pass 0.5-8 Hz, Elgendi peaks).
+
+    Low-rate PPG (e.g. a Bangle.js at 25 Hz) is cubic-spline upsampled to PPG_PROC_HZ
+    first, so inter-beat intervals aren't quantized to the native sample step — the
+    condition under which 25 Hz HRV is valid in the literature.
 
     Returns (ibi_ms, quality_mean) where quality_mean is the mean nk PPG quality
     (template-matching SQI, Orphanidou 2015) over the window in [0, 1].
@@ -117,11 +130,21 @@ def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float]
     if nk is None:  # pragma: no cover
         raise RuntimeError("neurokit2 not installed")
     ppg = _to_array(ppg)
-    signals, info = nk.ppg_process(ppg, sampling_rate=sample_rate_hz)
+
+    proc_rate = sample_rate_hz
+    if sample_rate_hz < 100 and ppg.size >= 4:
+        from scipy.interpolate import CubicSpline
+
+        t = np.arange(ppg.size) / sample_rate_hz
+        t_up = np.arange(0.0, t[-1], 1.0 / PPG_PROC_HZ)
+        ppg = CubicSpline(t, ppg)(t_up)
+        proc_rate = PPG_PROC_HZ
+
+    signals, info = nk.ppg_process(ppg, sampling_rate=proc_rate)
     peaks_idx = np.asarray(info.get("PPG_Peaks", []), dtype=int)
     if peaks_idx.size < 2:
         return np.array([]), 0.0
-    ibi_ms = np.diff(peaks_idx) / sample_rate_hz * 1000.0
+    ibi_ms = np.diff(peaks_idx) / proc_rate * 1000.0
     quality_mean = float(np.nanmean(signals.get("PPG_Quality", [0.0])))
     return ibi_ms, quality_mean
 

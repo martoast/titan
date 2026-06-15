@@ -46,6 +46,31 @@ def test_poor_signal_is_gated_invalid():
     assert result["valid"] is False
 
 
+def test_ppg_25hz_rmssd_matches_truth():
+    """A 25 Hz PPG (Bangle.js rate) must recover RMSSD close to ground truth — this
+    only holds because ppg_to_ibi cubic-spline upsamples before peak detection. Without
+    that, beat timing is quantized to 40 ms and RMSSD blows up (regression guard)."""
+    import numpy as np
+
+    rng = np.random.default_rng(7)
+    ibi_true = np.clip(1000 + np.cumsum(rng.normal(0, 12, 180)) + rng.normal(0, 28, 180), 600, 1400)
+    beat_t = np.cumsum(ibi_true) / 1000.0
+    gt_rmssd = float(np.sqrt(np.mean(np.diff(ibi_true) ** 2)))
+
+    fs0, T = 500, beat_t[-1] + 1
+    t = np.arange(0, T, 1 / fs0)
+    ppg = sum(np.exp(-((t - bt - 0.05) ** 2) / (2 * 0.04 ** 2)) for bt in beat_t)
+    ppg = ppg + 0.02 * rng.normal(size=ppg.size)
+    idx = np.round(np.arange(0, T, 1 / 25) * fs0).astype(int)
+    ppg25 = ppg[idx[idx < ppg.size]]
+
+    ibi_ms, _ = hrv_core.ppg_to_ibi(ppg25, sample_rate_hz=25)
+    got = float(np.sqrt(np.mean(np.diff(ibi_ms) ** 2)))
+    # Upsampled path should land within ~10 ms of truth; the old native-25 Hz path
+    # was off by hundreds of ms.
+    assert abs(got - gt_rmssd) < 10.0, (got, gt_rmssd)
+
+
 def test_missing_signal_is_422():
     resp = client.post("/process/hrv", json={"start": "x"})
     assert resp.status_code == 422
