@@ -118,7 +118,11 @@ def stage_night(
     accel_e = _to_epochs(accel, n_epochs)
     hr_e = _to_epochs(np.asarray(hr_bpm, dtype=float), n_epochs) if hr_bpm else np.full(n_epochs, np.nan)
     has_hr = np.isfinite(hr_e).any()
-    rmssd_e = _to_epochs(_clean_floats(rmssd_ms), n_epochs) if rmssd_ms else None
+    # Only treat RMSSD as present if at least one real value exists — an all-missing list
+    # must stay None (the HMM fallback handles None), never become zeros ("no HRV", a signal
+    # the stagers never trained on).
+    rmssd_e = (_to_epochs(_clean_floats(rmssd_ms), n_epochs)
+               if rmssd_ms and any(v is not None for v in rmssd_ms) else None)
 
     hypnogram: Optional[list[str]] = None
 
