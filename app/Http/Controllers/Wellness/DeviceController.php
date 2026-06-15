@@ -81,6 +81,56 @@ class DeviceController extends Controller
     }
 
     /**
+     * The validation lab: capture a Bangle.js and a Polar H10 (reference) over the same
+     * window, then compare their HRV beat-for-beat. The Polar's RR intervals are computed
+     * client-side (they're already gold-standard IBI); the Bangle's raw PPG is run through
+     * the real server pipeline via hrvPreview() so we validate what Titan actually ships.
+     */
+    public function validate(Request $request)
+    {
+        $request->user()->ensureProfile();
+
+        return view('devices.validate');
+    }
+
+    /**
+     * Synchronous HRV compute for the validation lab: a logged-in user POSTs one raw
+     * window ({ppg, sample_rate_hz}) and gets the REAL biosignal-service metrics straight
+     * back (no queue, no HMAC — session-auth'd). Only used for live validation/preview,
+     * never the ingestion path.
+     */
+    public function hrvPreview(Request $request, \App\Services\Wearables\BiosignalClient $biosignal)
+    {
+        $request->user()->ensureProfile();
+
+        $data = $request->validate([
+            'ppg' => ['required', 'array', 'min:30', 'max:60000'],
+            'ppg.*' => ['numeric'],
+            'sample_rate_hz' => ['required', 'integer', 'min:1', 'max:1000'],
+            'start' => ['nullable', 'string'],
+            'end' => ['nullable', 'string'],
+        ]);
+
+        if (! $biosignal->configured()) {
+            return response()->json(['error' => 'biosignal service not configured'], 503);
+        }
+
+        try {
+            $result = $biosignal->processHrv([
+                'kind' => 'ppg_raw',
+                'ppg' => array_map('floatval', $data['ppg']),
+                'sample_rate_hz' => $data['sample_rate_hz'],
+                'start' => $data['start'] ?? null,
+                'end' => $data['end'] ?? null,
+            ]);
+
+            return response()->json($result['metrics'] ?? $result);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'compute failed: '.$e->getMessage()], 502);
+        }
+    }
+
+    /**
      * Pair a device. Mirrors the API pair endpoint but redirects back to the page with
      * the one-time secret flashed so it can be shown once. After this, only the sha256
      * hash remains server-side.

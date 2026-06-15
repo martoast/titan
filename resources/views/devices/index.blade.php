@@ -56,6 +56,20 @@
             </div>
         </a>
 
+        {{-- Validation lab — Bangle vs Polar H10 --}}
+        <a href="{{ route('devices.validate') }}" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 transition hover:border-emerald-500/40 active:bg-white/[0.04]">
+            <div class="flex items-center gap-3">
+                <span class="shrink-0 grid place-items-center h-10 w-10 rounded-xl bg-emerald-500/15 text-emerald-300">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l2 5 4-12 2 7h6"/></svg>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <div class="font-display font-bold text-gray-100">Validation lab</div>
+                    <p class="text-sm text-gray-400 mt-0.5">Prove HRV accuracy against a Polar H10 chest strap — beat-for-beat, with a Bland–Altman agreement plot.</p>
+                </div>
+                <svg class="h-5 w-5 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </div>
+        </a>
+
         {{-- Pair a new device --}}
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ open: {{ $connections->isEmpty() ? 'true' : 'false' }} }">
             <button type="button" @click="open = !open" class="w-full flex items-center justify-between gap-3">
