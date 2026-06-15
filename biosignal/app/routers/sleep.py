@@ -22,6 +22,7 @@ class SleepWindow(BaseModel):
 
     accel_counts: List[float] = Field(..., description="Per-30s-epoch activity counts.")
     hr_bpm: Optional[List[float]] = Field(default=None, description="Per-30s-epoch heart rate.")
+    rmssd_ms: Optional[List[Optional[float]]] = Field(default=None, description="Per-30s-epoch RMSSD (deep/REM discriminator).")
     start: Optional[str] = Field(default=None, description="Bedtime / window start (ISO-8601 UTC).")
     end: Optional[str] = Field(default=None, description="Window end (ISO-8601 UTC).")
 
@@ -49,6 +50,7 @@ async def process_sleep(window: SleepWindow) -> SleepResponse:
         metrics = staging_core.stage_night(
             accel_counts=window.accel_counts,
             hr_bpm=window.hr_bpm,
+            rmssd_ms=window.rmssd_ms,
             start=window.start,
             end=window.end,
         )

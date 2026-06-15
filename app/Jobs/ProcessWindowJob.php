@@ -128,6 +128,7 @@ class ProcessWindowJob implements ShouldQueue
                     'artifact_pct' => $metrics['artifact_pct'] ?? null,
                     'epoch_hr' => $result['epoch_hr'] ?? null,
                     'epoch_motion' => $result['epoch_motion'] ?? null,
+                    'epoch_rmssd' => $result['epoch_rmssd'] ?? null,
                 ], fn ($v) => $v !== null),
             ]);
 
@@ -163,6 +164,7 @@ class ProcessWindowJob implements ShouldQueue
                 // Per-30s-epoch sleep features → concatenated whole-night to stage sleep.
                 'epoch_hr' => $result['epoch_hr'] ?? null,
                 'epoch_motion' => $result['epoch_motion'] ?? null,
+                'epoch_rmssd' => $result['epoch_rmssd'] ?? null,
             ], fn ($v) => $v !== null),
         ]);
     }

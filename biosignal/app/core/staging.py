@@ -30,7 +30,7 @@ from typing import Optional
 import joblib
 import numpy as np
 
-from . import sleep_features
+from . import sleep_features, sleep_hmm
 
 EPOCH_SEC = 30
 
@@ -89,13 +89,16 @@ def _rolling_std(x: np.ndarray, win: int = 5) -> np.ndarray:
 def stage_night(
     accel_counts: list,
     hr_bpm: Optional[list] = None,
+    rmssd_ms: Optional[list] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
 ) -> dict:
-    """Produce a 30-s hypnogram + summary from per-epoch accel counts (+ optional HR).
+    """Produce a 30-s hypnogram + summary from per-epoch accel (+ HR + RMSSD).
 
-    accel_counts / hr_bpm are resampled to a common epoch grid spanning [start, end]
-    (or, if no timestamps, one epoch per accel sample).
+    Default = the cardio-respiratory HMM stager (motion + HR + per-epoch HRV, Viterbi-
+    decoded over physiological transitions) — robust and untrained. The opt-in trained
+    model (SLEEP_MODEL_ENABLED) and the simple threshold heuristic remain as alternatives.
+    All emit a per-epoch stage list over the SAME epoch grid; we smooth + summarise identically.
     """
     accel = np.asarray(accel_counts, dtype=float).ravel()
     if accel.size == 0:
@@ -111,29 +114,45 @@ def stage_night(
         t0 = _parse_ts(start) or datetime.now(timezone.utc)
 
     accel_e = _to_epochs(accel, n_epochs)
-
-    if hr_bpm:
-        hr_e = _to_epochs(np.asarray(hr_bpm, dtype=float), n_epochs)
-    else:
-        hr_e = np.full(n_epochs, np.nan)
-
+    hr_e = _to_epochs(np.asarray(hr_bpm, dtype=float), n_epochs) if hr_bpm else np.full(n_epochs, np.nan)
     has_hr = np.isfinite(hr_e).any()
+    rmssd_e = _to_epochs(_clean_floats(rmssd_ms), n_epochs) if rmssd_ms else None
 
-    # Trained model if available, else the transparent heuristic. Both emit a per-epoch
-    # stage list over the SAME features/epoch grid; we then smooth + summarise identically.
-    bundle = _load_model()
     hypnogram: Optional[list[str]] = None
+
+    # 1) Opt-in trained model.
+    bundle = _load_model()
     if bundle is not None:
         try:
             X = sleep_features.extract_features(accel_e, hr_e if has_hr else None, has_hr)
             hypnogram = [str(s) for s in bundle["model"].predict(X)]
         except Exception:
             hypnogram = None
+
+    # 2) Default: physiology-grounded HMM (motion + HR + HRV, Viterbi).
+    if hypnogram is None:
+        try:
+            hypnogram = sleep_hmm.stage_hmm(accel_e, hr_e if has_hr else None, rmssd_e, n_epochs)
+        except Exception:
+            hypnogram = None
+
+    # 3) Last-resort transparent heuristic.
     if hypnogram is None:
         hypnogram = _heuristic_stage(accel_e, hr_e, has_hr, n_epochs)
 
     hypnogram = _smooth_hypnogram(hypnogram)
     return _summarize(hypnogram, t0)
+
+
+def _clean_floats(seq) -> np.ndarray:
+    """[float | None] → float array with None/NaN forward-filled, for resampling."""
+    arr = np.array([np.nan if v is None else float(v) for v in seq], dtype=float)
+    if np.isfinite(arr).any():
+        med = np.nanmedian(arr)
+        arr = np.where(np.isfinite(arr), arr, med)
+    else:
+        arr = np.zeros_like(arr)
+    return arr
 
 
 def _heuristic_stage(accel_e: np.ndarray, hr_e: np.ndarray, has_hr: bool, n_epochs: int) -> list[str]:

@@ -290,6 +290,7 @@ class SealNightJob implements ShouldQueue
 
         $motion = [];
         $hr = [];
+        $rmssd = [];
         $start = null;
         $end = null;
 
@@ -300,9 +301,11 @@ class SealNightJob implements ShouldQueue
                 continue;
             }
             $eh = (array) ($ingestion->result_refs['epoch_hr'] ?? []);
+            $er = (array) ($ingestion->result_refs['epoch_rmssd'] ?? []);
             foreach ($em as $k => $v) {
                 $motion[] = is_numeric($v) ? (float) $v : 0.0;
                 $hr[] = (isset($eh[$k]) && is_numeric($eh[$k])) ? (float) $eh[$k] : 0.0;
+                $rmssd[] = (isset($er[$k]) && is_numeric($er[$k])) ? (float) $er[$k] : null;
             }
             $start = $start ?? ($ingestion->window_start ?? null);
             $end = $ingestion->window_end ?? $end;
@@ -319,6 +322,7 @@ class SealNightJob implements ShouldQueue
                 'end' => $end ? CarbonImmutable::parse($end)->toIso8601ZuluString() : null,
                 'accel_counts' => $motion,
                 'hr_bpm' => $hr,
+                'rmssd_ms' => $rmssd,
                 'whole_night' => true,
             ]);
             $metrics = $result['metrics'] ?? [];

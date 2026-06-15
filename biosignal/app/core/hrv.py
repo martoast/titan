@@ -157,7 +157,8 @@ def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float,
     if dur_sec >= 1.0:
         n_ep = max(1, int(round(dur_sec / SLEEP_EPOCH_SEC)))
         peak_t = peaks_idx / proc_rate  # beat times (s)
-        ep_hr, ep_motion = [], []
+        ibi_t = peak_t[1:]              # each ibi_ms[i] ends at peak_t[i+1]
+        ep_hr, ep_motion, ep_rmssd = [], [], []
         for e in range(n_ep):
             lo, hi = e * SLEEP_EPOCH_SEC, (e + 1) * SLEEP_EPOCH_SEC
             beats = peak_t[(peak_t >= lo) & (peak_t < hi)]
@@ -165,12 +166,21 @@ def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float,
                 ep_hr.append(float(60000.0 / np.mean(np.diff(beats) * 1000.0)))
             else:
                 ep_hr.append(float(beats.size * (60.0 / SLEEP_EPOCH_SEC)))
+            # Per-epoch RMSSD — the deep(high)/REM(low) HRV discriminator. Reject
+            # implausible IBIs first, clip to a physiologic ceiling.
+            seg = ibi_ms[(ibi_t >= lo) & (ibi_t < hi)]
+            seg = seg[(seg >= 300) & (seg <= 2000)]
+            if seg.size >= 3:
+                d = np.diff(seg)
+                ep_rmssd.append(float(min(np.sqrt(np.mean(d * d)), 250.0)))
+            else:
+                ep_rmssd.append(float("nan"))
             if quality.size:
                 q = quality[int(lo * proc_rate):int(hi * proc_rate)]
                 ep_motion.append(float((1.0 - np.nanmean(q)) * 100.0) if q.size else 0.0)
             else:
                 ep_motion.append(0.0)
-        epochs = {"hr": ep_hr, "motion": ep_motion}
+        epochs = {"hr": ep_hr, "motion": ep_motion, "rmssd": ep_rmssd}
 
     return ibi_ms, quality_mean, epochs
 
@@ -310,4 +320,5 @@ def process_hrv(
         # concatenated whole-night at seal time to stage sleep without an accelerometer.
         "epoch_hr": [round(x, 1) for x in epochs["hr"]] if epochs else None,
         "epoch_motion": [round(x, 2) for x in epochs["motion"]] if epochs else None,
+        "epoch_rmssd": [None if np.isnan(x) else round(x, 1) for x in epochs["rmssd"]] if epochs else None,
     }

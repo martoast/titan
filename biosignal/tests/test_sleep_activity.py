@@ -53,14 +53,14 @@ def test_sleep_model_is_opt_in():
     os.environ.pop("SLEEP_MODEL_ENABLED", None)
     importlib.reload(staging)
     assert staging._load_model() is None
-    r_def = staging.stage_night(accel, hr, "2026-06-09T00:00:00Z", "2026-06-09T04:00:00Z")
+    r_def = staging.stage_night(accel, hr, start="2026-06-09T00:00:00Z", end="2026-06-09T04:00:00Z")
     assert set(r_def["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
 
     # Enabled: model loads (artifact ships in app/models/) and predicts.
     os.environ["SLEEP_MODEL_ENABLED"] = "1"
     importlib.reload(staging)
     assert staging._load_model() is not None
-    r_on = staging.stage_night(accel, hr, "2026-06-09T00:00:00Z", "2026-06-09T04:00:00Z")
+    r_on = staging.stage_night(accel, hr, start="2026-06-09T00:00:00Z", end="2026-06-09T04:00:00Z")
     assert set(r_on["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
 
     os.environ.pop("SLEEP_MODEL_ENABLED", None)

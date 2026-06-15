@@ -54,6 +54,7 @@ class HrvResponse(BaseModel):
     # Per-30s-epoch sleep features (PPG path only) — concatenated whole-night to stage sleep.
     epoch_hr: Optional[List[float]] = None
     epoch_motion: Optional[List[float]] = None
+    epoch_rmssd: Optional[List[Optional[float]]] = None
 
 
 @router.post("/hrv", response_model=HrvResponse)
@@ -73,10 +74,12 @@ async def process_hrv(window: HrvWindow) -> HrvResponse:
     ibi = metrics.pop("ibi_ms", None)  # not part of HrvMetrics; returned at top level
     epoch_hr = metrics.pop("epoch_hr", None)
     epoch_motion = metrics.pop("epoch_motion", None)
+    epoch_rmssd = metrics.pop("epoch_rmssd", None)
     return HrvResponse(
         algo_version=ALGO_VERSION,
         metrics=HrvMetrics(**metrics),
         ibi_ms=ibi,
         epoch_hr=epoch_hr,
         epoch_motion=epoch_motion,
+        epoch_rmssd=epoch_rmssd,
     )
