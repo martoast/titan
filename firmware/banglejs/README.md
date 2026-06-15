@@ -20,7 +20,8 @@ off-the-shelf watch, no firmware toolchain required.
 | `titan.icon.js` | App Loader icon source (`evaluate:true` → `titan.img`). |
 | `titan.app.json` | Bangle App Loader app entry (storage manifest). |
 | `titan.info` | Per-app metadata written to watch storage by the loader. |
-| `bridge.html` | Standalone Web Bluetooth page: connect → parse → batch → POST to Titan with HMAC. Laptop/desktop debug path. |
+| `bridge.html` | Standalone Web Bluetooth page: connect → parse → batch → POST to Titan with HMAC. No-login fallback. |
+| **in-app bridge** | The recommended path: **Titan → Devices → Live stream** (`/devices/bridge`). Same frame-decode + HMAC math, but inside your logged-in session, with a live waveform + ingest log + a no-hardware test window. |
 
 ## Data flow
 
@@ -88,17 +89,26 @@ survives Doze and works overnight — unlike Web Bluetooth.
 > the reference implementation to port into that forwarder (or a small companion
 > app) — it is identical math.
 
-### (b) `bridge.html` (laptop — desktop debug path)
-Open `bridge.html` in Chrome/Edge on a Bluetooth-equipped machine
-(`file://` works; Web Bluetooth needs a secure context). Fill in the Titan
-**Ingest URL**, **Device ID**, **secret**, and **timezone**, click **Connect
-watch**, then press **BTN** on the watch. The page parses frames, batches every
-N seconds, and POSTs signed batches. This gives **end-to-end testing the moment
-a watch arrives**, with no Android required.
+### (b) In-app bridge — Titan → **Devices → Live stream** (recommended desktop path)
+The bridge is built into Titan at **`/devices/bridge`** (linked from the Devices
+page). Pair a Bangle.js there to get a device ID + one-time secret, click
+**Connect Bangle over Bluetooth**, and Titan decodes the `T1:` frames, assembles
+`ppg_raw` windows, HMAC-signs each batch (key = `sha256hex(secret)`, via WebCrypto)
+and POSTs to `/api/devices/ingest` — all inside your logged-in session, with a live
+PPG waveform, bpm, counters, and an ingest log. A **"Send test window"** button
+synthesizes a 120 s / 25 Hz window through the *real* sign + ingest + NeuroKit2 path,
+so the pipeline is verifiable before the hardware lands (proven to produce a recovery
+RMSSD end-to-end).
 
-Web Bluetooth is **desktop-only and has no background mode / no iOS** — it is a
-debug tool, not the shipping path. (`02-firmware.md` §6 disqualifies it for
-release.)
+### (c) `bridge.html` (standalone, no-login fallback)
+`bridge.html` is the original standalone version — open it in Chrome/Edge
+(`file://` works), paste the Ingest URL + Device ID + secret, **Connect watch**.
+Same frame parsing + HMAC math as the in-app bridge; useful when you want a bridge
+without a Titan session.
+
+Web Bluetooth is **desktop/Android-only — no iOS, no background mode** — a debug/
+dogfood tool, not the shipping path. (`02-firmware.md` §6 disqualifies it for
+release; the overnight path is Gadgetbridge today, a native companion at P5.)
 
 ## Wire format (watch → bridge)
 

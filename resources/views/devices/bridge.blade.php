@@ -103,6 +103,7 @@
                 statusLabel: 'Disconnected',
                 btSupported: !!(navigator.bluetooth && navigator.bluetooth.requestDevice),
                 _device: null, _rx: '', _wave: [], waveHasData: false,
+                _samples: [], _winTimer: null, WINDOW_SEC: 120,
                 log: [],
 
                 get hasCreds() { return this.deviceId.trim().length > 4 && this.secret.trim().length >= 32; },
@@ -140,6 +141,7 @@
                         await tx.startNotifications();
                         tx.addEventListener('characteristicvaluechanged', (e) => this._onBytes(e.target.value));
                         this.connected = true;
+                        this._startWindowTimer();
                         this.statusLabel = 'Streaming · ' + (this._device.name || 'Bangle');
                         this._log('ok', 'Connected to ' + (this._device.name || 'Bangle.js'));
                     } catch (err) {
@@ -153,27 +155,73 @@
                 },
                 _onDrop() {
                     this.connected = false; this.statusLabel = 'Disconnected';
+                    this._stopWindowTimer();
+                    this._flushWindow(); // ship whatever's accumulated
                     this._log('info', 'Disconnected');
                 },
 
-                // Reassemble newline-delimited JSON windows from the NUS stream.
+                // The firmware streams newline-delimited "T1:<base64>" binary frames over NUS
+                // (16-byte header + 12-byte samples). Reassemble lines, decode each frame.
                 _onBytes(dataview) {
                     this._rx += new TextDecoder().decode(dataview);
                     let nl;
                     while ((nl = this._rx.indexOf('\n')) >= 0) {
                         const line = this._rx.slice(0, nl).trim();
                         this._rx = this._rx.slice(nl + 1);
-                        if (!line) continue;
-                        let win;
-                        try { win = JSON.parse(line); } catch (e) { continue; }
-                        if (win && win.kind === 'ppg_raw' && Array.isArray(win.ppg)) this._handleWindow(win);
+                        if (line.startsWith('T1:')) this._decodeFrame(line.slice(3));
                     }
                 },
 
-                async _handleWindow(win) {
-                    this.samples += win.ppg.length;
-                    this.rateHz = win.sample_rate_hz || this.rateHz;
-                    this._pushWave(win.ppg);
+                // One binary frame → samples appended to the current window buffer.
+                // Layout (LE): hdr[ver u8, ppgField u8, count u16, epochLo u32, epochHi u32, rsvd u32];
+                //              sample[relT u32, ppg i16, ax i16, ay i16, az i16] = 12 B.
+                _decodeFrame(b64) {
+                    let bin; try { bin = atob(b64); } catch (e) { return; }
+                    const bytes = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                    if (bytes.length < 16) return;
+                    const dv = new DataView(bytes.buffer);
+                    const count = dv.getUint16(2, true);
+                    const epoch = dv.getUint32(8, true) * 4294967296 + dv.getUint32(4, true);
+                    const live = [];
+                    for (let i = 0; i < count; i++) {
+                        const off = 16 + i * 12;
+                        if (off + 12 > bytes.length) break;
+                        const relT = dv.getUint32(off, true);
+                        const ppg = dv.getInt16(off + 4, true);
+                        const ax = dv.getInt16(off + 6, true), ay = dv.getInt16(off + 8, true), az = dv.getInt16(off + 10, true);
+                        const mag = Math.round(Math.sqrt(ax * ax + ay * ay + az * az) / 10); // milli-g → centi-g
+                        this._samples.push({ t: epoch + relT, ppg, mag });
+                        live.push(ppg);
+                    }
+                    this.samples += live.length;
+                    this._pushWave(live);
+                },
+
+                _startWindowTimer() {
+                    this._stopWindowTimer();
+                    this._winTimer = setInterval(() => this._flushWindow(), this.WINDOW_SEC * 1000);
+                },
+                _stopWindowTimer() { if (this._winTimer) { clearInterval(this._winTimer); this._winTimer = null; } },
+
+                // Build a ppg_raw window from accumulated samples and ship it (sign + POST).
+                async _flushWindow() {
+                    const s = this._samples;
+                    if (s.length < 30) return; // too few — keep collecting
+                    this._samples = [];
+                    const startMs = s[0].t, endMs = s[s.length - 1].t;
+                    const durSec = Math.max(1, (endMs - startMs) / 1000);
+                    const rate = Math.max(1, Math.round(s.length / durSec));
+                    this.rateHz = rate;
+                    const win = {
+                        kind: 'ppg_raw',
+                        start: new Date(startMs).toISOString(),
+                        end: new Date(endMs).toISOString(),
+                        sample_rate_hz: rate,
+                        ppg: s.map(x => x.ppg),
+                        accel_mag_cg: s.map(x => x.mag),
+                        src: 'banglejs2',
+                    };
                     this._estimateBpm(win);
                     await this._ship(win);
                 },
