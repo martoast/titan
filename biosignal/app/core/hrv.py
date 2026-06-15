@@ -235,6 +235,7 @@ def process_hrv(
     ibi_ms: Optional[list] = None,
     ppg: Optional[list] = None,
     sample_rate_hz: Optional[int] = None,
+    accel: Optional[list] = None,
 ) -> dict:
     """End-to-end overnight HRV pipeline. Returns the metrics dict for the API.
 
@@ -250,6 +251,14 @@ def process_hrv(
         ibi_arr = _to_array(ibi_ms)
     else:
         raise ValueError("Provide either ibi_ms or (ppg + sample_rate_hz).")
+
+    # Real actigraphy beats the PPG-quality motion proxy for sleep/wake — if the device
+    # sent per-sample activity, override each epoch's motion with its accel sum.
+    if epochs and accel:
+        a = _to_array(accel)
+        if a.size and len(epochs["motion"]):
+            parts = np.array_split(np.abs(a), len(epochs["motion"]))
+            epochs["motion"] = [round(float(np.sum(p)), 2) for p in parts]
 
     n_raw = int(ibi_arr.size)
 

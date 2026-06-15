@@ -63,6 +63,7 @@ async def process_hrv(window: HrvWindow) -> HrvResponse:
             ibi_ms=window.ibi_ms,
             ppg=window.ppg,
             sample_rate_hz=window.sample_rate_hz,
+            accel=window.accel_counts,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

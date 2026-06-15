@@ -145,12 +145,16 @@ function emitFrame(buf, len) {
   } catch (err) { /* link hiccup — drop this frame */ }
 }
 
-// ----- Overnight log (compact, PPG-only) ------------------------------------
+// ----- Overnight log (compact, PPG + activity) ------------------------------
 // A T2 frame: 20-byte header [ver u8, rsvd u8, count u16, startLo u32, startHi
-// u32, durMs u32, rsvd u16] + int16 PPG samples. No accel, no per-sample
-// timestamps — the receiver spreads `count` samples evenly over [start, start+dur].
-var logAccum = [];   // pending PPG samples for the current compact frame
-var logEpochMs = 0;  // unix-ms of the first sample in the current frame
+// u32, durMs u32, activity u32] + int16 PPG samples. The header's last 4 bytes
+// carry a per-frame ACTIVITY count (summed |Δaccel|, gravity-cancelled) — real
+// actigraphy for sleep/wake staging. No per-sample timestamps — the receiver
+// spreads `count` samples evenly over [start, start+dur].
+var logAccum = [];    // pending PPG samples for the current compact frame
+var logEpochMs = 0;   // unix-ms of the first sample in the current frame
+var logMotion = 0;    // accumulated movement (sum |Δaccel|, g) for the current frame
+var lastAccelV = null; // previous accel sample, for the delta
 
 function logSample(ppg) {
   if (state.logFull) return;
@@ -172,6 +176,12 @@ function writeLogFrame() {
   dv.setUint32(4, (logEpochMs - hi * 4294967296) >>> 0, true);
   dv.setUint32(8, hi >>> 0, true);
   dv.setUint32(12, durMs >>> 0, true);
+  // Per-frame activity count (movement). Scaled to integer milli-g·samples; the
+  // receiver/stager use it RELATIVELY so the exact scale doesn't matter.
+  var activity = Math.round(logMotion * 1000);
+  if (activity < 0) activity = 0;
+  if (activity > 4294967295) activity = 4294967295;
+  dv.setUint32(16, activity >>> 0, true);
   for (var i = 0; i < n; i++) dv.setInt16(20 + i * 2, logAccum[i], true);
   var line = "T2:" + b64(buf);
   try {
@@ -180,6 +190,7 @@ function writeLogFrame() {
     if (state.logged >= CFG.LOG_MAX_BYTES) state.logFull = true; // preserve, never wipe
   } catch (err) { /* storage unavailable — drop */ }
   logAccum = [];
+  logMotion = 0;
 }
 
 // Morning sync: stream the whole overnight log over NUS, then erase it.
@@ -267,10 +278,14 @@ function onHRM(e) {
 }
 
 function onAccel(a) {
-  // Bangle reports accel in g as {x,y,z,...}. We just cache the latest; PPG
-  // (25 Hz) is the master clock and each PPG sample is tagged with the most
-  // recent accel. This keeps PPG/accel time-synced on one timeline, which is
-  // exactly what the server's accel-referenced artifact removal wants.
+  // Bangle reports accel in g as {x,y,z,...}. We cache the latest for live T1
+  // frames, AND accumulate movement (sum of |Δaccel|, which cancels the constant
+  // 1 g of gravity) into the current overnight frame — a real actigraphy count
+  // for sleep/wake staging.
+  if (lastAccelV !== null) {
+    logMotion += Math.abs(a.x - lastAccelV.x) + Math.abs(a.y - lastAccelV.y) + Math.abs(a.z - lastAccelV.z);
+  }
+  lastAccelV = { x: a.x, y: a.y, z: a.z };
   state.lastAccel.x = a.x;
   state.lastAccel.y = a.y;
   state.lastAccel.z = a.z;
@@ -290,6 +305,8 @@ function onDisconnect() {
   // Abandon any partial live frame; resume compact overnight logging fresh.
   resetFrame();
   logAccum = [];
+  logMotion = 0;
+  lastAccelV = null;
   if (uiVisible) drawUI();
 }
 

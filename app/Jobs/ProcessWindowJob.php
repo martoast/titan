@@ -105,6 +105,13 @@ class ProcessWindowJob implements ShouldQueue
      */
     private function processHrv(DeviceIngestion $ingestion, BiosignalClient $biosignal, array $window): void
     {
+        // The device stores per-sample activity under accel_mag_cg; expose it to the
+        // biosignal service as accel_counts so it can derive a real per-epoch motion
+        // signal (actigraphy) for sleep staging instead of the PPG-quality proxy.
+        if (! isset($window['accel_counts']) && isset($window['accel_mag_cg'])) {
+            $window['accel_counts'] = $window['accel_mag_cg'];
+        }
+
         $result = $biosignal->processHrv($window);
         $metrics = $result['metrics'] ?? [];
         $algoVersion = $result['algo_version'] ?? config('services.biosignal.algo_version', 'v1');

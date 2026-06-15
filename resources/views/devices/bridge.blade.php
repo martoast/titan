@@ -194,21 +194,25 @@
                     this._drainWindows();
                 },
 
-                // T2 compact log frame. hdr[ver u8, rsvd u8, count u16, startLo u32, startHi u32, durMs u32, rsvd u16];
-                // samples = int16 PPG. Timestamps are spread evenly across [start, start+durMs].
+                // T2 compact log frame. hdr[ver u8, rsvd u8, count u16, startLo u32, startHi u32, durMs u32, activity u32];
+                // samples = int16 PPG. Timestamps spread evenly across [start, start+durMs];
+                // the frame's actigraphy `activity` is spread per sample so a per-epoch sum
+                // recovers the total movement (the stager uses it relatively).
                 _decodeT2(b64) {
                     const bytes = this._b64bytes(b64); if (!bytes || bytes.length < 20) return;
                     const dv = new DataView(bytes.buffer);
                     const count = dv.getUint16(2, true);
                     const start = dv.getUint32(8, true) * 4294967296 + dv.getUint32(4, true);
                     const durMs = dv.getUint32(12, true);
+                    const activity = dv.getUint32(16, true);
+                    const perSample = count > 0 ? activity / count : 0;
                     const denom = Math.max(1, count - 1);
                     const live = [];
                     for (let i = 0; i < count; i++) {
                         const off = 20 + i * 2;
                         if (off + 2 > bytes.length) break;
                         const ppg = dv.getInt16(off, true);
-                        this._samples.push({ t: start + Math.round(durMs * i / denom), ppg, mag: 0 });
+                        this._samples.push({ t: start + Math.round(durMs * i / denom), ppg, mag: perSample });
                         live.push(ppg);
                     }
                     this.samples += live.length;
