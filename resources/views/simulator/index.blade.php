@@ -216,56 +216,70 @@
             const band = new THREE.Group();
             scene.add(band);
 
-            // ---- Continuous silicone strap: one closed, flattened loop (solid, no hollow
-            //      back). The sensor case sits at the centre; the band wraps top→bottom. ----
-            const siliconeMat = new THREE.MeshPhysicalMaterial({
-                color: 0x0d0f14, roughness: 0.5, metalness: 0.0,
-                clearcoat: 0.55, clearcoatRoughness: 0.45,
-                sheen: 0.6, sheenRoughness: 0.5, sheenColor: new THREE.Color(0x4456a0),
-                envMapIntensity: 0.9,
-            });
-            const loopPts = [];
-            const RX = 1.02, RY = 2.05;                       // narrow + tall → a watch band
-            for (let i = 0; i < 56; i++) {
-                const a = (i / 56) * Math.PI * 2;
-                loopPts.push(new THREE.Vector3(Math.sin(a) * RX, Math.cos(a) * RY, 0));
+            // rounded-rectangle profile (used as the strap cross-section)
+            function roundRectShape(w, h, r) {
+                const s = new THREE.Shape();
+                s.moveTo(-w / 2 + r, -h / 2);
+                s.lineTo(w / 2 - r, -h / 2); s.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+                s.lineTo(w / 2, h / 2 - r); s.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
+                s.lineTo(-w / 2 + r, h / 2); s.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
+                s.lineTo(-w / 2, -h / 2 + r); s.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+                return s;
             }
-            const loopCurve = new THREE.CatmullRomCurve3(loopPts, true);
-            const strapGeo = new THREE.TubeGeometry(loopCurve, 260, 0.34, 32, true);
-            strapGeo.scale(1, 1, 0.46);                        // flatten into a band section
-            const strap = new THREE.Mesh(strapGeo, siliconeMat);
-            band.add(strap);
 
-            // a soft stitched-edge highlight line down each side of the band
-            const seamMat = new THREE.MeshStandardMaterial({ color: 0x2a3552, roughness: 0.6, metalness: 0.1, emissive: 0x141a2e, emissiveIntensity: 0.4 });
-
-            // ---- Sensor module: brushed-metal case ----
-            const bodyMat = new THREE.MeshPhysicalMaterial({
-                color: 0x1c2230, roughness: 0.28, metalness: 0.92,
-                clearcoat: 0.4, clearcoatRoughness: 0.25, envMapIntensity: 1.4,
+            // ---- Matte silicone straps: SOLID (extruded along a path, capped ends — no
+            //      hollow tubes). Two straps emerge from the case top & bottom and curve
+            //      back, like the band wrapping an (invisible) wrist. ----
+            const siliconeMat = new THREE.MeshStandardMaterial({
+                color: 0x15181f, roughness: 0.86, metalness: 0.04, envMapIntensity: 0.3,
             });
-            const body = new THREE.Mesh(new RoundedBox(1.95, 1.22, 0.6, 0.26, 8), bodyMat);
+            function buildStrap(dir) {
+                const curve = new THREE.CatmullRomCurve3([
+                    new THREE.Vector3(0, 1.0 * dir, 0.06),
+                    new THREE.Vector3(0, 1.65 * dir, -0.12),
+                    new THREE.Vector3(0, 2.1 * dir, -0.9),
+                    new THREE.Vector3(0, 1.95 * dir, -1.85),
+                    new THREE.Vector3(0, 1.3 * dir, -2.45),
+                ]);
+                const profile = roundRectShape(0.94, 0.22, 0.1);
+                const geo = new THREE.ExtrudeGeometry(profile, { extrudePath: curve, steps: 96, bevelEnabled: false });
+                return new THREE.Mesh(geo, siliconeMat);
+            }
+            band.add(buildStrap(1), buildStrap(-1));
+
+            // ---- Watch case: tall rounded-rectangle, dark titanium ----
+            const bodyMat = new THREE.MeshPhysicalMaterial({
+                color: 0x22262e, roughness: 0.38, metalness: 0.85,
+                clearcoat: 0.5, clearcoatRoughness: 0.3, envMapIntensity: 1.2,
+            });
+            const body = new THREE.Mesh(new RoundedBox(1.85, 2.25, 0.58, 0.5, 10), bodyMat);
             band.add(body);
 
-            // polished chamfer/bezel ring around the glass for a jewellery edge
-            const bezel = new THREE.Mesh(
-                new RoundedBox(1.82, 1.08, 0.12, 0.22, 8),
-                new THREE.MeshPhysicalMaterial({ color: 0x39435e, roughness: 0.12, metalness: 1.0, envMapIntensity: 1.8 })
-            );
-            bezel.position.z = 0.27;
+            // polished bezel ring for a jewellery edge around the screen
+            const bezelMat = new THREE.MeshPhysicalMaterial({ color: 0x3b465f, roughness: 0.16, metalness: 1.0, envMapIntensity: 1.6 });
+            const bezel = new THREE.Mesh(new RoundedBox(1.74, 2.12, 0.1, 0.46, 10), bezelMat);
+            bezel.position.z = 0.25;
             band.add(bezel);
 
-            // Glossy domed top glass (clearcoat + faint transmission) — reads like a screen
+            // Glossy black screen glass
             const glass = new THREE.Mesh(
-                new RoundedBox(1.66, 0.92, 0.08, 0.2, 6),
+                new RoundedBox(1.62, 2.0, 0.08, 0.42, 8),
                 new THREE.MeshPhysicalMaterial({
-                    color: 0x05070c, roughness: 0.04, metalness: 0.0,
-                    clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6,
-                    reflectivity: 0.9,
+                    color: 0x05070c, roughness: 0.05, metalness: 0.0,
+                    clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.4, reflectivity: 0.85,
                 })
             );
-            glass.position.z = 0.34;
+            glass.position.z = 0.33;
             band.add(glass);
+
+            // side crown/button
+            const crown = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.085, 0.085, 0.16, 24),
+                new THREE.MeshPhysicalMaterial({ color: 0x3b465f, roughness: 0.2, metalness: 1.0, envMapIntensity: 1.4 })
+            );
+            crown.rotation.z = Math.PI / 2;
+            crown.position.set(0.95, 0.35, 0.02);
+            band.add(crown);
 
             // ---- Underside optical stack: matte-black cavity + dual windows ----
             const cavityMat = new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 1.0, metalness: 0 });
@@ -321,8 +335,8 @@
             ring.position.set(0, 0, 0.37);
             band.add(ring);
 
-            band.rotation.x = -0.28;
-            band.rotation.y = 0.18;
+            band.rotation.x = -0.1;
+            band.rotation.y = 0.42;
 
             // ---- Studio backdrop gradient: gives the product depth and lets bloom
             //      composite cleanly (no transparent-background artefacts) ----
@@ -369,7 +383,7 @@
             try {
                 composer = new EffectComposer(renderer);
                 composer.addPass(new RenderPass(scene, camera));
-                composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.7, 0.82));
+                composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.42, 0.6, 0.86));
                 composer.addPass(new OutputPass());
             } catch (e) { composer = null; }
 
