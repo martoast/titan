@@ -49,6 +49,8 @@ class HrvMetrics(BaseModel):
 class HrvResponse(BaseModel):
     algo_version: str
     metrics: HrvMetrics
+    # Per-window clean IBI (PPG path only) — persisted by the platform for whole-night sealing.
+    ibi_ms: Optional[List[float]] = None
 
 
 @router.post("/hrv", response_model=HrvResponse)
@@ -64,4 +66,5 @@ async def process_hrv(window: HrvWindow) -> HrvResponse:
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"HRV processing failed: {exc}")
 
-    return HrvResponse(algo_version=ALGO_VERSION, metrics=HrvMetrics(**metrics))
+    ibi = metrics.pop("ibi_ms", None)  # not part of HrvMetrics; returned at top level
+    return HrvResponse(algo_version=ALGO_VERSION, metrics=HrvMetrics(**metrics), ibi_ms=ibi)

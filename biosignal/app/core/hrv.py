@@ -216,7 +216,8 @@ def process_hrv(
     """
     quality_mean = 1.0  # IBI path has no waveform SQI; assume edge already gated.
 
-    if ppg is not None and sample_rate_hz:
+    from_ppg = ppg is not None and sample_rate_hz is not None
+    if from_ppg:
         ibi_arr, quality_mean = ppg_to_ibi(ppg, sample_rate_hz)
     elif ibi_ms is not None:
         ibi_arr = _to_array(ibi_ms)
@@ -264,4 +265,9 @@ def process_hrv(
         "valid": bool(valid),
         "n_beats_raw": n_raw,
         "n_beats_clean": int(clean.size),
+        # The clean, artifact-corrected IBI series — only echoed for the PPG path so the
+        # platform can persist it per window and aggregate a true WHOLE-NIGHT RMSSD at seal
+        # time (raw blobs store ppg, not ibi). Omitted for the IBI path to avoid echoing a
+        # whole-night series straight back.
+        "ibi_ms": [round(float(x), 1) for x in clean] if from_ppg else None,
     }

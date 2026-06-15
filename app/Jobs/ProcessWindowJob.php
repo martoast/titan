@@ -137,12 +137,15 @@ class ProcessWindowJob implements ShouldQueue
         $ingestion->update([
             'status' => DeviceIngestion::STATUS_PROCESSED,
             'algo_version' => $algoVersion,
-            'result_refs' => [
+            'result_refs' => array_filter([
                 'recovery_log_id' => $log->id,
                 'rmssd' => $metrics['rmssd'] ?? null,
                 'sdnn' => $metrics['sdnn'] ?? null,
                 'artifact_pct' => $metrics['artifact_pct'] ?? null,
-            ],
+                // Persist the clean per-window IBI so SealNightJob can compute a true
+                // whole-night RMSSD (ppg_raw blobs hold samples, not IBI).
+                'ibi_ms' => $result['ibi_ms'] ?? null,
+            ], fn ($v) => $v !== null),
         ]);
     }
 

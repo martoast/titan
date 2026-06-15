@@ -43,6 +43,20 @@ class SealNightJob implements ShouldQueue
     /** A night is "complete" once no new windows have arrived for this many minutes. */
     public const QUIET_MINUTES = 45;
 
+    /**
+     * Per-window RMSSD ceiling (ms). A 2-minute window above this is almost certainly a
+     * peak-detection artifact (a missed/extra beat creates a huge successive difference),
+     * not real overnight HRV — excluded from the whole-night aggregate so a handful of
+     * bad windows can't inflate the sealed number. (Observed in dogfooding: a few windows
+     * came back at 200-380 ms and dragged a true ~66 ms night up to ~99 ms.)
+     *
+     * Set conservatively at 200 ms — physiologically, even elite resting HRV tops out
+     * around there for an ultra-short window, so this only removes clear artifacts without
+     * cutting genuine deep-sleep HRV. Exact calibration is a real-data (Polar H10) job, not
+     * a threshold to tune against synthetic signals.
+     */
+    public const ARTIFACT_RMSSD_CEIL_MS = 200;
+
     public int $tries = 2;
 
     public int $backoff = 15;
@@ -157,6 +171,27 @@ class SealNightJob implements ShouldQueue
             $windowEnd = null;
 
             foreach ($ibiWindows as $ingestion) {
+                // Prefer the per-window IBI persisted by ProcessWindowJob — this is what makes
+                // ppg_raw (the Bangle) sealable, since its raw blob holds samples, not IBI. Fall
+                // back to the blob's ibi_ms for Shape-A `ibi` windows (Polar / Apple Health).
+                $persistedIbi = $ingestion->result_refs['ibi_ms'] ?? null;
+                if (is_array($persistedIbi)) {
+                    // Drop artifact windows (implausible per-window RMSSD) from the aggregate;
+                    // they're still sealed below so the night isn't reprocessed.
+                    $winRmssd = $ingestion->result_refs['rmssd'] ?? null;
+                    if (! is_numeric($winRmssd) || $winRmssd <= self::ARTIFACT_RMSSD_CEIL_MS) {
+                        foreach ($persistedIbi as $v) {
+                            if (is_numeric($v)) {
+                                $allIbi[] = (float) $v;
+                            }
+                        }
+                        $windowStart = $windowStart ?? ($ingestion->window_start ?? null);
+                        $windowEnd = $ingestion->window_end ?? $windowEnd;
+                    }
+
+                    continue;
+                }
+
                 $window = $this->loadWindow($ingestion);
                 if ($window === null) {
                     continue; // raw blob missing — skip, but still seal so we don't loop forever
