@@ -32,6 +32,19 @@ class BiosignalSimulator
         'run'   => ['label' => 'Run',        'hr' => 150, 'hr_sd' => 1.6, 'rmssd' => 9,  'motion' => 42],
     ];
 
+    /**
+     * Workout presets for the Bangle.js 2's GPS + barometer. `speed` is steady-state GPS pace
+     * (km/h), `hrr_frac` the HR-reserve fraction the effort sits at. Mirrors the Python twin
+     * (biosignal/app/sim/workout.py); the Python side owns the accel-classification-accurate
+     * replay, this PHP twin drives the FITNESS path (VO2max / HRR / TRIMP), which depends on HR +
+     * pace + grade, not the raw accel signature — so synthetic physiology is faithful here.
+     */
+    public const WORKOUTS = [
+        'walk'  => ['speed' => 5.2,  'hrr_frac' => 0.45],
+        'run'   => ['speed' => 10.5, 'hrr_frac' => 0.78],
+        'cycle' => ['speed' => 22.0, 'hrr_frac' => 0.68],
+    ];
+
     private int $seed;
 
     private float $z2 = 0.0;
@@ -255,6 +268,78 @@ class BiosignalSimulator
             'light_min' => $light,
             'awake_min' => $awake,
             'quality' => $quality,
+        ];
+    }
+
+    /**
+     * Simulate a GPS-paced workout (Bangle.js 2 GPS + barometer) → the request shapes the
+     * biosignal /process/fitness and /process/activity endpoints accept. `fitness` 0..1 (fitter
+     * → lower HR + faster pace), `hills` 0..1 scales the baro grade. HR runs a warmup ramp →
+     * cardiac-drift steady → exponential cooldown decay (so HRR is real). Deterministic per seed.
+     *
+     * @return array{activity:string,profile:array,accel_counts:array,hr_epoch_bpm:array,run:array,distance_km:float}
+     */
+    public function generateWorkout(string $activity, int $minutes = 30, float $fitness = 0.5, float $hills = 0.4, float $age = 33.0): array
+    {
+        $w = self::WORKOUTS[$activity] ?? self::WORKOUTS['run'];
+        $hrRest = 46 + (1 - $fitness) * 18;
+        $hrMax = 208 - 0.7 * $age;
+        $target = $hrRest + $w['hrr_frac'] * ($hrMax - $hrRest) * (1.05 - 0.10 * $fitness);
+        $spdTarget = $w['speed'] * (0.9 + 0.25 * $fitness);
+
+        $dur = $minutes * 60;
+        $warm = min(120.0, $dur * 0.2);
+        $tCool = $dur - min(180.0, $dur * 0.25);   // exercise stops; the tail is recovery
+        $tau = 150.0;                               // HR recovery time constant (s)
+        $peak = $hrRest + ($target - $hrRest) * 1.06;
+
+        $hr1 = [];          // 1 Hz HR
+        $speed = [];        // 1 Hz GPS speed (km/h)
+        $grade = [];        // 1 Hz baro grade (fraction)
+        $distanceKm = 0.0;
+        for ($s = 0; $s < $dur; $s++) {
+            $ramp = min($s / max($warm, 1), 1.0);
+            $g = $hills * 0.05 * sin(2 * M_PI * $s / max($dur / 2.5, 1)) + $this->gauss() * 0.004;
+            if ($s > $tCool) {
+                $hr = $hrRest + ($peak - $hrRest) * exp(-($s - $tCool) / $tau);
+                $effort = $ramp * exp(-($s - $tCool) / 90.0);
+            } else {
+                $drift = 1 + 0.06 * min(max(($s - $warm) / max($tCool - $warm, 1), 0), 1);
+                $hr = $hrRest + ($target - $hrRest) * $ramp * $drift;
+                $effort = $ramp;
+            }
+            $hr += $this->gauss() * 1.2;
+            $sp = max($spdTarget * $effort * (1 - 1.5 * max($g, 0)) + $this->gauss() * 0.3, 0);
+            $hr1[] = round($hr, 1);
+            $speed[] = round($sp, 2);
+            $grade[] = round($g, 4);
+            $distanceKm += $sp / 3600.0;            // km/h × 1 s
+        }
+
+        // Per-30s-epoch HR + accel counts (drive the counts-based session detector + TRIMP).
+        $epochs = max(1, (int) floor($dur / 30));
+        $hrEpoch = [];
+        $accelCounts = [];
+        for ($e = 0; $e < $epochs; $e++) {
+            $hrEpoch[] = $hr1[min($e * 30, $dur - 1)];
+            // active while moving; counts scale with the effort envelope at that epoch.
+            $ramp = min(($e * 30) / max($warm, 1), 1.0);
+            $env = ($e * 30 > $tCool) ? $ramp * exp(-(($e * 30) - $tCool) / 90.0) : $ramp;
+            $accelCounts[] = max(0, (int) round($w['speed'] * 2.5 * $env + $this->gauss() * 3));
+        }
+
+        // HRR: HR drop in the 60 s after exercise ends (measured from the cooldown onset, the
+        // stable reference — a noisy global max would understate the drop).
+        $onset = (int) round($tCool);
+        $hrr60 = ($onset + 60 < count($hr1)) ? round($hr1[$onset] - $hr1[$onset + 60], 1) : null;
+
+        return [
+            'activity' => $activity,
+            'profile' => ['age' => $age, 'resting_hr' => (int) round($hrRest), 'hr_max' => (int) round($hrMax)],
+            'accel_counts' => $accelCounts,
+            'hr_epoch_bpm' => $hrEpoch,
+            'run' => ['hr' => $hr1, 'speed_kmh' => $speed, 'grade' => $grade, 'hrr60' => $hrr60],
+            'distance_km' => round($distanceKm, 2),
         ];
     }
 

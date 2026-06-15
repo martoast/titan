@@ -183,9 +183,13 @@ def heart_rate_recovery(hr_bpm, fs: float = 1.0, window_s: float = 60.0) -> Opti
     n = len(hr)
     if n < int((window_s + 10) * fs):
         return None
-    peak_i = int(np.argmax(hr))
+    # Smooth before locating the peak — real PPG HR is noisy and a single spike must NOT read as
+    # the peak (it would collapse the measured drop). ~5 s moving average over the HR series.
+    k = max(1, int(5 * fs))
+    sm = np.convolve(hr, np.ones(k) / k, mode="same")
+    peak_i = int(np.argmax(sm))
     if peak_i >= n - int(window_s * fs * 0.5):
         return None  # peak too close to the end → no cooldown to measure
     j = min(n - 1, peak_i + int(window_s * fs))
-    drop = float(hr[peak_i] - np.median(hr[max(j - int(2 * fs), peak_i + 1): j + 1]))
-    return {"hrr_bpm": round(drop, 1), "peak_hr": round(float(hr[peak_i]), 0), "window_s": window_s}
+    drop = float(sm[peak_i] - np.median(sm[max(j - int(2 * fs), peak_i + 1): j + 1]))
+    return {"hrr_bpm": round(drop, 1), "peak_hr": round(float(sm[peak_i]), 0), "window_s": window_s}
