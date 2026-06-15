@@ -79,12 +79,24 @@ class PhysiqueController extends Controller
         $profile = auth()->user()->ensureProfile();
 
         $data = $request->validate([
-            'photo' => ['required', 'image', 'max:12288'],
+            'photo' => ['nullable', 'image', 'max:12288'],
+            'source_photo_id' => ['nullable', 'integer'],
             'description' => ['nullable', 'string', 'max:120'],
         ]);
 
-        // Save the original upload first so we always keep the source.
-        $sourcePath = $request->file('photo')->store('physique/source', 'public');
+        // Resolve the source image: a freshly uploaded photo, OR a progress photo the
+        // user already has (so onboarding never asks for the same photo twice).
+        if ($request->hasFile('photo')) {
+            $sourcePath = $request->file('photo')->store('physique/source', 'public');
+        } elseif (! empty($data['source_photo_id'])) {
+            $existing = $profile->progressPhotos()->find($data['source_photo_id']);
+            if (! $existing || ! $existing->photo_path) {
+                return back()->with('error', "Couldn't find that photo — upload one and try again.");
+            }
+            $sourcePath = $existing->photo_path;
+        } else {
+            return back()->with('error', 'Add a photo first, then generate your dream physique.');
+        }
 
         $description = $data['description'] ?: '+10 lbs lean muscle';
 

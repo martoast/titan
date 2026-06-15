@@ -220,9 +220,28 @@
                 <p class="text-sm text-gray-400 mt-1">The you in the picture advances as you stay consistent.</p>
 
                 @if (! $hasLivingFoundation)
-                    <div class="mt-4 rounded-xl border border-white/5 bg-gray-950/40 p-4 text-sm text-gray-400">
-                        @if (! $goal || ! $goal->goalUrl()) Generate your dream physique below, @else Add a progress photo, @endif then we render the same you, one believable step closer each week — calibrated to your consistency.
-                    </div>
+                    @if ($photos->isNotEmpty() && (! $goal || ! $goal->goalUrl()))
+                        {{-- On-rails onboarding: they already added a photo — generate the dream
+                             physique FROM IT in one tap, no second upload. --}}
+                        <div class="mt-4 rounded-xl border border-cyan-500/25 bg-cyan-500/[0.07] p-4">
+                            <p class="text-sm font-semibold text-gray-100">You've got your starting photo. Now meet your dream physique.</p>
+                            <p class="text-xs text-gray-400 mt-1">We'll render the same you — same face, just ~10 lbs more lean muscle — from the photo you just added.</p>
+                            <form method="POST" action="{{ route('physique.goal.generate') }}" class="mt-3">
+                                @csrf
+                                <input type="hidden" name="source_photo_id" value="{{ $newest->id }}">
+                                <button type="submit" @disabled(! $imageGenConfigured)
+                                        class="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 h-12 px-5 text-sm font-semibold text-gray-950 active:brightness-110 transition disabled:opacity-50">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3l1.5 4.5L11 9l-4.5 1.5L5 15l-1.5-4.5L-1 9m0 0M19 11l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/></svg>
+                                    Generate my dream physique
+                                </button>
+                            </form>
+                            @unless ($imageGenConfigured)<p class="mt-2 text-xs text-amber-400/80">Image generation is offline — add a GEMINI_API_KEY.</p>@endunless
+                        </div>
+                    @else
+                        <div class="mt-4 rounded-xl border border-white/5 bg-gray-950/40 p-4 text-sm text-gray-400">
+                            Add a progress photo above, then generate your dream physique — and we'll render the same you, one believable step closer each week.
+                        </div>
+                    @endif
                 @else
                     <div class="mt-4 grid grid-cols-1 sm:grid-cols-[9rem_1fr] gap-4 items-start">
                         @if ($livingImageUrl)
@@ -280,13 +299,20 @@
         </section>
 
         {{-- ============ DREAM PHYSIQUE GENERATION (secondary, collapsible) ============ --}}
-        <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ genOpen: {{ $goal ? 'false' : 'true' }} }">
+        @php
+            // Heading/intent shifts: brand-new user = "Create"; has a photo but no goal =
+            // a secondary "use a different photo" path (the on-rails CTA above is primary);
+            // has a goal = "Regenerate".
+            $genHeading = $goal ? 'Regenerate your dream physique'
+                : ($photos->isNotEmpty() ? 'Use a different photo instead' : 'Create your dream physique');
+        @endphp
+        <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ genOpen: {{ ($goal || $photos->isNotEmpty()) ? 'false' : 'true' }} }">
             <button @click="genOpen = !genOpen" class="flex w-full items-center justify-between gap-2">
-                <h3 class="font-display font-bold text-gray-100">{{ $goal ? 'Regenerate your dream physique' : 'Create your dream physique' }}</h3>
+                <h3 class="font-display font-bold text-gray-100">{{ $genHeading }}</h3>
                 <svg class="h-4 w-4 text-gray-500 transition" :class="genOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
             </button>
             <div x-show="genOpen" x-collapse>
-                <p class="text-sm text-gray-500 mt-1 mb-4">Upload a current full-body photo. The AI renders the same you — same face, lighting and background — with ~10 lbs more lean muscle. Believable, not a fantasy filter.</p>
+                <p class="text-sm text-gray-500 mt-1 mb-4">@if ($photos->isNotEmpty() && ! $goal)Rather use a different shot than the one you added? @endif Upload a current full-body photo. The AI renders the same you — same face, lighting and background — with ~10 lbs more lean muscle. Believable, not a fantasy filter.</p>
                 <form method="POST" action="{{ route('physique.goal.generate') }}" enctype="multipart/form-data"
                       x-data="{ name: '', preview: '' }" class="space-y-3">
                     @csrf
