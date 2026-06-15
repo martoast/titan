@@ -57,6 +57,22 @@ class WorkoutWeightEntryTest extends TestCase
         $this->assertEqualsWithDelta(800.0, $sets[0]->fresh()->volume(), 0.01); // 80kg × 10
     }
 
+    public function test_index_nudges_when_a_band_session_needs_weights(): void
+    {
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $workout = $this->bandWorkout($profile);
+
+        $this->actingAs($user)->get('/workouts')->assertOk()
+            ->assertSee('needs weights')
+            ->assertSee('Needs weights');           // the per-row badge
+
+        // Once weights are filled, the nudge disappears.
+        WorkoutSet::query()->update(['weight_kg' => 60]);
+        $this->actingAs($user)->get('/workouts')->assertOk()
+            ->assertDontSee('Needs weights');
+    }
+
     public function test_cannot_edit_another_profiles_sets(): void
     {
         $owner = User::factory()->create();

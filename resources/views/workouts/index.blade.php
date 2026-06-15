@@ -14,6 +14,31 @@
     </div>
     <p class="text-gray-500 text-xs mb-5 nums">{{ $workouts->count() }} session{{ $workouts->count() === 1 ? '' : 's' }} recorded</p>
 
+    @php
+        // A band-detected session needs weights: reps came from the wrist, but every set is still 0 kg.
+        $needsWeights = function ($w) {
+            if (! str_starts_with((string) $w->updated_via, 'biosignal')) {
+                return false;
+            }
+            $sets = $w->exercises->flatMap->sets;
+            return $sets->isNotEmpty() && $sets->every(fn ($s) => (float) $s->weight_kg === 0.0);
+        };
+        $pending = $workouts->filter($needsWeights)->values();
+    @endphp
+
+    {{-- Nudge: band-detected sessions waiting on the load --}}
+    @if ($pending->isNotEmpty())
+        <a href="/workouts/{{ $pending->first()->id }}"
+           class="flex items-center gap-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 mb-5 active:bg-cyan-500/15 transition">
+            <svg class="h-5 w-5 shrink-0 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6.5 6.5l11 11M5 9l2-2m10 10l2-2M3 11l2 2m14-2l-2 2"/></svg>
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-cyan-100">{{ $pending->count() }} {{ $pending->count() === 1 ? 'session needs' : 'sessions need' }} weights</p>
+                <p class="text-xs text-cyan-200/70">Your band counted the reps — add the load you lifted to track volume.</p>
+            </div>
+            <span class="text-cyan-300 text-sm shrink-0">→</span>
+        </a>
+    @endif
+
     {{-- Weekly per-muscle-group volume summary --}}
     <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-5">
         <div class="flex items-start justify-between gap-3 mb-4">
@@ -62,6 +87,9 @@
                                 <h3 class="font-semibold text-gray-100 truncate">{{ $workout->name }}</h3>
                                 @if ($workout->duration_min)
                                     <span class="text-xs text-gray-500 shrink-0 nums">· {{ $workout->duration_min }} min</span>
+                                @endif
+                                @if ($needsWeights($workout))
+                                    <span class="shrink-0 inline-flex items-center rounded-md bg-cyan-500/15 border border-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">Needs weights</span>
                                 @endif
                             </div>
                             <p class="text-xs text-gray-500 mt-0.5 nums">{{ $workout->performed_at->format('D, M j Y · g:i A') }}</p>
