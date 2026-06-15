@@ -9,6 +9,7 @@ use App\Models\PhysiqueGoal;
 use App\Models\ProgressPhoto;
 use App\Services\Ai\AiService;
 use App\Services\Ai\NanoBananaClient;
+use App\Services\Physique\LivingGoalService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -30,6 +31,7 @@ class PhysiqueController extends Controller
     public function __construct(
         private readonly AiService $ai,
         private readonly NanoBananaClient $nano,
+        private readonly LivingGoalService $living,
     ) {}
 
     /** The hub: before/after, progress-to-goal bar, gallery, latest analysis. */
@@ -45,8 +47,12 @@ class PhysiqueController extends Controller
         $latestAnalysis = PhysiqueAnalysis::where('profile_id', $profile->id)
             ->latest()->first();
 
-        // Living goal image: the most recent "one step closer" render we generated.
-        $livingImagePath = $profile->settings['physique_living_image'] ?? null;
+        // The living goal image: the latest "one step closer" render + the full week-by-week
+        // history that powers the progression strip. Falls back to the legacy settings path.
+        $livingRenders = $profile->livingGoalRenders()->latest()->take(8)->get();
+        $latestRender = $livingRenders->first();
+        $livingImagePath = $latestRender?->image_path
+            ?? ($profile->settings['physique_living_image'] ?? null);
         $livingImageUrl = $livingImagePath ? Storage::disk('public')->url($livingImagePath) : null;
 
         return view('physique.index', [
@@ -55,6 +61,10 @@ class PhysiqueController extends Controller
             'photos' => $photos,
             'latestAnalysis' => $latestAnalysis,
             'livingImageUrl' => $livingImageUrl,
+            'latestRender' => $latestRender,
+            // Oldest → newest for a natural left-to-right progression strip.
+            'livingRenders' => $livingRenders->reverse()->values(),
+            'adherence' => $this->living->adherence($profile),
             'aiConfigured' => $this->ai->configured(),
             'imageGenConfigured' => $this->nano->configured(),
         ]);
@@ -235,64 +245,19 @@ class PhysiqueController extends Controller
     {
         $profile = auth()->user()->ensureProfile();
 
-        $goal = $profile->physiqueGoals()->where('is_active', true)->latest()->first();
-        if (! $goal || ! $goal->goal_image_path) {
-            return back()->with('error', 'Generate a dream-physique goal first.');
-        }
-
-        $photo = $profile->progressPhotos()->orderByDesc('taken_at')->orderByDesc('id')->first();
-        if (! $photo || ! $photo->photo_path) {
-            return back()->with('error', 'Add a progress photo first so we can measure the gap.');
-        }
-
-        $prompt = <<<PROMPT
-        Two images of the same person: IMAGE 1 is their CURRENT progress photo, IMAGE 2 is
-        their target "dream physique" goal image. Estimate how far they are along the journey
-        from current to goal. Reply with STRICT JSON only:
-        {
-          "pct_to_goal": <integer 0-100>,
-          "improved": "<short phrase: what's closest to goal / strongest>",
-          "lagging": "<short phrase: the area with the biggest remaining gap>",
-          "summary": "<2-3 encouraging sentences narrating the progress and the next focus>"
-        }
-        Be supportive and realistic. Make NO medical claims. Return ONLY the JSON object.
-        PROMPT;
-
         try {
-            $raw = $this->ai->vision(
-                $prompt,
-                [$this->dataUrl($photo->photo_path), $this->dataUrl($goal->goal_image_path)],
-                ['json' => true, 'max_tokens' => 600],
-            );
+            $result = $this->living->compareToGoal($profile);
         } catch (AiException $e) {
             return back()->with('error', 'The goal comparison is unavailable right now: '.$e->getMessage());
         }
 
-        $parsed = json_decode($raw, true);
-        if (! is_array($parsed)) {
-            return back()->with('error', 'The comparison came back in an unexpected format. Please try again.');
-        }
-
-        $pct = is_numeric($parsed['pct_to_goal'] ?? null)
-            ? max(0, min(100, (int) round((float) $parsed['pct_to_goal'])))
-            : null;
-
-        $bits = array_filter([
-            is_string($parsed['summary'] ?? null) ? trim($parsed['summary']) : null,
-            ! empty($parsed['improved']) ? 'Improved: '.$parsed['improved'].'.' : null,
-            ! empty($parsed['lagging']) ? 'Focus next: '.$parsed['lagging'].'.' : null,
-        ]);
-
-        PhysiqueAnalysis::create([
-            'profile_id' => $profile->id,
-            'progress_photo_id' => $photo->id,
-            'pct_to_goal' => $pct,
-            'summary' => $bits ? implode(' ', $bits) : null,
-        ]);
-
-        return back()->with('status', $pct !== null
-            ? "You're about {$pct}% of the way to your dream physique."
-            : 'Goal comparison complete.');
+        return match ($result['status']) {
+            'no_goal' => back()->with('error', 'Generate a dream-physique goal first.'),
+            'no_photo' => back()->with('error', 'Add a progress photo first so we can measure the gap.'),
+            default => back()->with('status', $result['pct_to_goal'] !== null
+                ? "You're about {$result['pct_to_goal']}% of the way to your dream physique."
+                : 'Goal comparison complete.'),
+        };
     }
 
     /**
@@ -303,42 +268,17 @@ class PhysiqueController extends Controller
     {
         $profile = auth()->user()->ensureProfile();
 
-        $goal = $profile->physiqueGoals()->where('is_active', true)->latest()->first();
-        if (! $goal || ! $goal->goal_image_path) {
-            return back()->with('error', 'Generate a dream-physique goal first.');
-        }
-
-        $photo = $profile->progressPhotos()->orderByDesc('taken_at')->orderByDesc('id')->first();
-        if (! $photo || ! $photo->photo_path) {
-            return back()->with('error', 'Add a progress photo first.');
-        }
-
-        $prompt = <<<PROMPT
-        IMAGE 1 is this person's CURRENT progress photo. IMAGE 2 is their target dream
-        physique. Render a NEW photo of IMAGE 1's person taking ONE believable step toward
-        IMAGE 2 — a little more lean muscle and definition than today, clearly closer to the
-        goal but only one realistic increment of progress, not the full transformation.
-        Keep their exact face, identity, pose, lighting, and background from IMAGE 1.
-        Photorealistic, natural, the same person — just a step further along.
-        PROMPT;
-
         try {
-            $current = $this->nano->imageFromDisk($photo->photo_path);
-            $target = $this->nano->imageFromDisk($goal->goal_image_path);
-            $generated = $this->nano->generateToDisk($prompt, 'physique/living', [$current, $target]);
+            $result = $this->living->renderProgressStep($profile);
         } catch (AiException $e) {
             return back()->with('error', 'The living image render is unavailable right now: '.$e->getMessage());
         }
 
-        // Clean up the previous living image, then store the new one on the profile.
-        $settings = $profile->settings ?? [];
-        if (! empty($settings['physique_living_image'])) {
-            Storage::disk('public')->delete($settings['physique_living_image']);
-        }
-        $settings['physique_living_image'] = $generated['path'];
-        $profile->update(['settings' => $settings]);
-
-        return back()->with('status', 'One step closer. Your living goal image has advanced.');
+        return match ($result['status']) {
+            'no_goal' => back()->with('error', 'Generate a dream-physique goal first.'),
+            'no_photo' => back()->with('error', 'Add a progress photo first.'),
+            default => back()->with('status', "One step closer. Your living goal image advanced to {$result['step_pct']}% toward your dream physique."),
+        };
     }
 
     /** Encode a public-disk image as a data: URL for OpenAI vision input. */

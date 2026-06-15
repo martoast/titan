@@ -86,6 +86,11 @@ class Profile extends Model
         return $this->hasMany(PhysiqueGoal::class);
     }
 
+    public function livingGoalRenders(): HasMany
+    {
+        return $this->hasMany(LivingGoalRender::class);
+    }
+
     // --- Coach ---
     public function conversations(): HasMany
     {

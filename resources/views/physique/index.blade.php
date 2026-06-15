@@ -3,9 +3,14 @@
         /** @var \App\Models\PhysiqueGoal|null $goal */
         /** @var \Illuminate\Support\Collection $photos */
         /** @var \App\Models\PhysiqueAnalysis|null $latestAnalysis */
+        /** @var \App\Models\LivingGoalRender|null $latestRender */
+        /** @var \Illuminate\Support\Collection $livingRenders */
+        /** @var float $adherence */
         $latestPctAnalysis = \App\Models\PhysiqueAnalysis::where('profile_id', $profile->id)
             ->whereNotNull('pct_to_goal')->latest()->first();
         $pct = $latestPctAnalysis->pct_to_goal ?? null;
+        $adherencePct = (int) round(($adherence ?? 0) * 100);
+        $hasLivingFoundation = $goal && $goal->goalUrl() && $photos->isNotEmpty();
     @endphp
 
     @if (session('error'))
@@ -45,52 +50,133 @@
                         </figure>
                     </div>
 
-                    <form method="POST" action="{{ route('physique.living') }}" class="mt-4">
-                        @csrf
-                        <button type="submit"
-                                class="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 h-12 px-5 text-sm font-semibold text-gray-950 active:brightness-110 transition disabled:opacity-50"
-                                @disabled(! $imageGenConfigured || $photos->isEmpty())>
-                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                            One step closer
-                        </button>
-                    </form>
-
-                    {{-- Living goal image, if we've rendered one --}}
-                    @if ($livingImageUrl)
-                        <div class="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-                            <div class="text-[11px] uppercase tracking-wide text-cyan-300/80 font-semibold mb-1">Living goal image</div>
-                            <p class="text-xs text-gray-500 mb-3">A step toward the goal, calibrated to your latest photo.</p>
-                            <figure class="rounded-xl overflow-hidden border border-white/5 max-w-[16rem]">
-                                <img src="{{ $livingImageUrl }}" alt="One step closer" class="w-full aspect-[3/4] object-cover">
-                            </figure>
-                        </div>
-                    @endif
                 </div>
             </section>
         @endif
 
-        {{-- ============ PROGRESS TO GOAL ============ --}}
-        @if ($goal)
-            <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
-                <div class="text-[11px] uppercase tracking-wide text-gray-500">Progress to your dream physique</div>
+        {{-- ============ YOUR LIVING DREAM PHYSIQUE (the founding wedge) ============ --}}
+        <section class="relative overflow-hidden rounded-2xl border border-cyan-500/15 bg-gradient-to-br from-cyan-950/30 via-gray-900/50 to-indigo-950/30 p-4 md:p-5">
+            <div class="absolute inset-0 bg-[radial-gradient(70%_60%_at_100%_0%,rgba(34,211,238,0.10),transparent)] pointer-events-none"></div>
+            <div class="relative">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="text-[11px] uppercase tracking-wide text-cyan-300/80 font-semibold">Your living dream physique</p>
+                        <h2 class="font-display text-xl md:text-2xl font-bold mt-0.5 leading-tight">The you in the picture advances as you do.</h2>
+                    </div>
+                    <svg class="h-5 w-5 shrink-0 text-cyan-300/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
 
-                @if ($pct !== null)
-                    <div class="mt-2 flex items-end gap-2">
-                        <span class="font-display text-5xl font-black nums bg-gradient-to-r from-indigo-400 to-cyan-300 bg-clip-text text-transparent leading-none">{{ $pct }}%</span>
-                        <span class="text-sm text-gray-500 mb-1">of the way there</span>
+                @if (! $hasLivingFoundation)
+                    {{-- Friendly empty state: needs a goal image + a progress photo to morph. --}}
+                    <div class="mt-4 rounded-xl border border-white/5 bg-gray-950/40 p-5 text-center">
+                        <svg class="h-9 w-9 mx-auto mb-3 text-cyan-400/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        <p class="text-sm text-gray-300 font-medium">
+                            @if (! $goal || ! $goal->goalUrl())
+                                Generate your dream physique first.
+                            @else
+                                Add a progress photo to start the loop.
+                            @endif
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+                            Upload a progress photo and generate your dream physique — then each week we render the same you, one believable step closer, calibrated to how consistent you've been.
+                        </p>
                     </div>
-                    <div class="mt-3 h-3 w-full rounded-full bg-gray-800 overflow-hidden">
-                        <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all" style="width: {{ $pct }}%"></div>
-                    </div>
-                    @if ($latestPctAnalysis?->summary)
-                        <p class="mt-4 text-sm text-gray-400 leading-relaxed">{{ $latestPctAnalysis->summary }}</p>
-                    @endif
                 @else
-                    <p class="mt-2 text-sm text-gray-500">
-                        Add a progress photo, then hit <span class="text-gray-300">Recalculate</span> to see how far you've come toward your dream physique.
-                    </p>
+                    {{-- % to goal + adherence-driven progress bar --}}
+                    <div class="mt-4 grid grid-cols-2 gap-3">
+                        <div class="rounded-xl border border-white/5 bg-gray-950/40 p-3">
+                            <div class="text-[11px] uppercase tracking-wide text-gray-500">% to goal</div>
+                            <div class="font-display text-3xl font-black nums bg-gradient-to-r from-indigo-400 to-cyan-300 bg-clip-text text-transparent leading-none mt-0.5">
+                                {{ $pct !== null ? $pct.'%' : '—' }}
+                            </div>
+                        </div>
+                        <div class="rounded-xl border border-white/5 bg-gray-950/40 p-3">
+                            <div class="text-[11px] uppercase tracking-wide text-gray-500">2-week consistency</div>
+                            <div class="font-display text-3xl font-black nums text-gray-100 leading-none mt-0.5">{{ $adherencePct }}%</div>
+                        </div>
+                    </div>
+
+                    @if ($pct !== null)
+                        <div class="mt-3 h-3 w-full rounded-full bg-gray-800 overflow-hidden">
+                            <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all" style="width: {{ $pct }}%"></div>
+                        </div>
+                    @endif
+
+                    {{-- Current living render + improved/lagging narrative --}}
+                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-4 items-start">
+                        @if ($livingImageUrl)
+                            <figure class="rounded-xl overflow-hidden border border-cyan-500/20 bg-gray-950">
+                                <img src="{{ $livingImageUrl }}" alt="This week's step" class="w-full aspect-[3/4] object-cover">
+                                <figcaption class="px-2.5 py-1.5 text-[10px] text-cyan-300/80 bg-cyan-500/5 truncate">
+                                    This week's you{{ $latestRender ? ' · '.$latestRender->step_pct.'% there' : '' }}
+                                </figcaption>
+                            </figure>
+                        @else
+                            <div class="rounded-xl border border-dashed border-white/10 bg-gray-950/40 p-4 text-center grid place-items-center aspect-[3/4]">
+                                <p class="text-xs text-gray-500">No step rendered yet. Hit the button to render this week's you.</p>
+                            </div>
+                        @endif
+
+                        <div class="min-w-0">
+                            @if ($latestPctAnalysis?->summary)
+                                <p class="text-sm text-gray-300 leading-relaxed">{{ $latestPctAnalysis->summary }}</p>
+                            @else
+                                <p class="text-sm text-gray-500 leading-relaxed">Recalculate your % to goal to see what's improving and what to focus on next.</p>
+                            @endif
+
+                            @if ($latestRender)
+                                <p class="mt-2 text-[11px] text-gray-500">
+                                    Last step calibrated to {{ $latestRender->adherencePct() }}% consistency · {{ $latestRender->created_at?->diffForHumans() }}.
+                                </p>
+                            @endif
+                        </div>
+                    </div>
+
+                    {{-- Week-by-week progression strip: the history of rendered steps --}}
+                    @if ($livingRenders->isNotEmpty())
+                        <div class="mt-5">
+                            <div class="text-[11px] uppercase tracking-wide text-gray-500 mb-2">Week-by-week progression</div>
+                            <div class="flex items-stretch gap-2.5 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1">
+                                @foreach ($livingRenders as $r)
+                                    @if ($r->imageUrl())
+                                        <figure class="relative shrink-0 w-[5rem]">
+                                            <img src="{{ $r->imageUrl() }}"
+                                                 class="h-[6.6rem] w-full object-cover rounded-lg border {{ $loop->last ? 'border-cyan-400/50 ring-1 ring-cyan-500/30' : 'border-white/5' }}">
+                                            <figcaption class="mt-1 text-center text-[10px] nums text-gray-500">
+                                                {{ $r->created_at?->format('M j') }}<br>
+                                                <span class="text-cyan-300/80">{{ $r->step_pct }}%</span>
+                                            </figcaption>
+                                        </figure>
+                                    @endif
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
                 @endif
 
+                {{-- Render this week's step --}}
+                <form method="POST" action="{{ route('physique.living') }}" class="mt-4">
+                    @csrf
+                    <button type="submit"
+                            class="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 h-12 px-5 text-sm font-semibold text-gray-950 active:brightness-110 transition disabled:opacity-50"
+                            @disabled(! $imageGenConfigured || ! $hasLivingFoundation)>
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Render this week's step
+                    </button>
+                </form>
+                @if (! $imageGenConfigured)
+                    <p class="mt-2 text-xs text-amber-400/80">Image generation is offline — add a GEMINI_API_KEY to render steps.</p>
+                @endif
+            </div>
+        </section>
+
+        {{-- ============ "ARE YOU ON TRACK?" — refresh the % to goal read ============ --}}
+        @if ($goal)
+            <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+                <div class="text-[11px] uppercase tracking-wide text-gray-500">Are you on track?</div>
+                <p class="mt-1 text-sm text-gray-400 leading-relaxed">
+                    Re-compare your latest photo to your dream physique — updates the % to goal and the improving / focus-next read above.
+                </p>
                 <form method="POST" action="{{ route('physique.compare') }}" class="mt-4">
                     @csrf
                     <button type="submit"
