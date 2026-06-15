@@ -99,15 +99,11 @@
 
                 {{-- Photo upload --}}
                 <form x-show="tab==='photo'" method="POST" action="/meals/analyze" enctype="multipart/form-data"
-                      x-data="{ name: '', loading: false }" @submit="loading = true">
+                      x-data="{ loading: false }" @submit="loading = true">
                     @csrf
                     <input type="hidden" name="eaten_at" :value="new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16)">
-                    <label class="group flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/10 hover:border-indigo-500/40 bg-gray-950/40 py-8 cursor-pointer transition">
-                        <svg class="h-8 w-8 text-gray-600 group-hover:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        <span class="text-sm text-gray-400" x-text="name || 'Tap to upload a meal photo'"></span>
-                        <span class="text-xs text-gray-600">AI estimates ingredients & macros — you confirm before saving</span>
-                        <input type="file" name="photo" accept="image/*" capture="environment" class="hidden" @change="name = $event.target.files[0]?.name">
-                    </label>
+                    <x-upload-zone kind="image" name="photo" required accept="image/*"
+                                   label="Tap to add a meal photo" hint="AI estimates ingredients & macros — you confirm before saving" />
                     <button type="submit" :disabled="loading"
                             class="mt-3 w-full rounded-lg bg-indigo-500/90 hover:bg-indigo-500 disabled:opacity-50 px-4 py-2.5 text-sm font-medium text-white">
                         <span x-show="!loading">Analyze photo</span>

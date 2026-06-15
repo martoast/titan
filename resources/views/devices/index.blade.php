@@ -126,17 +126,9 @@
                 <form method="POST" action="/devices/apple-health/import" enctype="multipart/form-data" class="space-y-3"
                       x-data="{ busy: false }" @submit="busy = true">
                     @csrf
-                    <label class="block">
-                        <span class="text-[11px] uppercase tracking-wide text-gray-500">Health export (.zip)</span>
-                        <div class="mt-1 flex items-center gap-2">
-                            <label class="flex-1 min-w-0 h-11 px-3 rounded-xl bg-gray-950 border border-white/10 flex items-center text-sm text-gray-400 cursor-pointer active:bg-white/[0.04]">
-                                <span class="truncate" x-text="fileName || 'Choose export.zip'"></span>
-                                <input type="file" name="export" accept=".zip,application/zip" required class="hidden"
-                                       @change="fileName = $event.target.files[0]?.name ?? ''">
-                            </label>
-                        </div>
-                    </label>
-                    <button type="submit" x-bind:disabled="busy || !fileName"
+                    <x-upload-zone kind="file" name="export" required accept=".zip,application/zip"
+                                   label="Tap to add your Apple Health export" hint="The export.zip from the Health app" />
+                    <button type="submit" x-bind:disabled="busy"
                             class="w-full h-12 px-6 rounded-xl font-semibold text-gray-900 bg-gradient-to-r from-gray-200 to-white active:opacity-90 disabled:opacity-40">
                         <span x-show="!busy">Import health data</span>
                         <span x-show="busy" x-cloak>Importing…</span>

@@ -46,15 +46,10 @@
                     <p class="text-sm text-gray-400 mt-0.5">Drop a bloodwork PDF — AI extracts every marker, flags what's off, and files a summary in your brain.</p>
                 </div>
             </div>
-            <form method="POST" action="{{ route('biomarkers.upload') }}" enctype="multipart/form-data" class="mt-4 space-y-3"
-                  x-data="{ name: '' }">
+            <form method="POST" action="{{ route('biomarkers.upload') }}" enctype="multipart/form-data" class="mt-4 space-y-3">
                 @csrf
-                <label class="group flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/10 hover:border-indigo-500/40 bg-gray-950/40 py-6 cursor-pointer transition">
-                    <svg class="h-7 w-7 text-gray-600 group-hover:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.9A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                    <span class="text-sm text-gray-400 px-4 text-center break-all" x-text="name || 'Tap to choose a lab report'"></span>
-                    <input type="file" name="report" accept=".pdf,.png,.jpg,.jpeg,.txt" required
-                           x-on:change="name = $event.target.files[0]?.name || ''" class="hidden">
-                </label>
+                <x-upload-zone kind="file" name="report" required accept=".pdf,.png,.jpg,.jpeg,.txt"
+                               label="Tap to add your lab report" hint="PDF, image, or text · max 20 MB" />
                 <button type="submit"
                         class="w-full h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-400 px-4 text-base font-semibold text-white active:opacity-90 transition">
                     Extract markers

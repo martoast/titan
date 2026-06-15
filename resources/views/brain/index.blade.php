@@ -102,8 +102,8 @@
             <p class="text-sm text-gray-500 mt-1 mb-3">Bloodwork PDF, lab report, doctor's notes (PDF / DOCX / TXT). Text is extracted and filed into the brain.</p>
             <form method="POST" action="/brain/upload" enctype="multipart/form-data">
                 @csrf
-                <input type="file" name="document" accept=".pdf,.docx,.pptx,.txt,.md,.csv,.json,.rtf"
-                       class="block w-full text-sm text-gray-400 file:mr-3 file:rounded-xl file:border-0 file:bg-white/5 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-gray-200 hover:file:bg-white/10" />
+                <x-upload-zone kind="file" name="document" accept=".pdf,.docx,.pptx,.txt,.md,.csv,.json,.rtf"
+                               label="Tap to add a document" hint="PDF, Word, or text — extracted into your brain" />
                 @error('document')<p class="text-xs text-amber-300 mt-2">{{ $message }}</p>@enderror
                 <button type="submit" @unless($aiConfigured) disabled @endunless
                         class="mt-3 w-full md:w-auto h-12 rounded-xl bg-indigo-500/15 border border-indigo-500/30 px-5 text-sm font-semibold text-indigo-300 transition hover:bg-indigo-500/25 active:bg-indigo-500/30 disabled:opacity-40 disabled:cursor-not-allowed">
