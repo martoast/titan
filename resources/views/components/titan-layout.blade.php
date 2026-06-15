@@ -29,6 +29,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#07080a">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="vapid-public-key" content="{{ config('services.webpush.public_key') }}">
     <title>{{ $title }} · Titan</title>
 
     {{-- PWA --}}
@@ -102,6 +103,67 @@
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                         <span class="hidden sm:block text-sm text-gray-400">{{ auth()->user()?->name }}</span>
+
+                        {{-- ===== Notification bell + dropdown ===== --}}
+                        <div class="relative" x-data="titanNotifications()" x-init="init()" @keydown.escape.window="open = false">
+                            <button type="button" @click="toggle()" aria-label="Notifications"
+                                    class="relative grid h-9 w-9 place-items-center rounded-full text-gray-400 hover:text-gray-100 hover:bg-white/5 transition">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                                </svg>
+                                <span x-show="unread > 0" x-cloak
+                                      class="absolute -top-0.5 -right-0.5 min-w-[1.05rem] h-[1.05rem] px-1 rounded-full bg-indigo-500 text-[10px] font-bold leading-[1.05rem] text-center text-white ring-2 ring-[#07080a]"
+                                      x-text="unread > 9 ? '9+' : unread"></span>
+                            </button>
+
+                            {{-- Backdrop (mobile tap-away) --}}
+                            <div x-show="open" x-cloak @click="open = false" class="fixed inset-0 z-40"></div>
+
+                            {{-- Dropdown --}}
+                            <div x-show="open" x-cloak
+                                 x-transition:enter="transition ease-out duration-150"
+                                 x-transition:enter-start="opacity-0 -translate-y-1" x-transition:enter-end="opacity-100 translate-y-0"
+                                 class="absolute right-0 z-50 mt-2 w-[20rem] max-w-[calc(100vw-1.5rem)] origin-top-right rounded-2xl border border-white/10 bg-[#0b0d10] shadow-2xl shadow-black/50 overflow-hidden">
+                                <div class="flex items-center justify-between px-4 py-3 border-b border-white/5">
+                                    <span class="font-display text-sm font-bold">Notifications</span>
+                                    <button type="button" @click="markAllRead()" x-show="unread > 0"
+                                            class="text-[11px] font-semibold text-indigo-300 hover:text-indigo-200">Mark all read</button>
+                                </div>
+
+                                <button type="button" @click="enablePush()" x-show="canPrompt" x-cloak
+                                        class="w-full flex items-center gap-2 px-4 py-2.5 text-left text-[12px] text-indigo-200 bg-indigo-500/10 hover:bg-indigo-500/15 border-b border-white/5 transition">
+                                    <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5"/></svg>
+                                    Turn on push notifications
+                                </button>
+
+                                <div class="max-h-[60vh] overflow-y-auto divide-y divide-white/5">
+                                    <template x-if="items.length === 0">
+                                        <div class="px-4 py-10 text-center text-sm text-gray-500">No notifications yet</div>
+                                    </template>
+                                    <template x-for="n in items" :key="n.id">
+                                        <a :href="n.url || '#'" @click="onItemClick(n, $event)"
+                                           class="block px-4 py-3 transition hover:bg-white/[0.03]"
+                                           :class="n.read ? '' : 'bg-indigo-500/[0.06]'">
+                                            <div class="flex items-start gap-2.5">
+                                                <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="n.read ? 'bg-transparent' : 'bg-indigo-400'"></span>
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex items-baseline justify-between gap-2">
+                                                        <p class="text-sm font-semibold text-gray-100 truncate" x-text="n.title"></p>
+                                                        <span class="shrink-0 text-[10px] text-gray-500" x-text="n.ago"></span>
+                                                    </div>
+                                                    <p class="text-[12px] text-gray-400 mt-0.5 line-clamp-2" x-text="n.body"></p>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </template>
+                                </div>
+
+                                <a href="/notifications" class="block px-4 py-2.5 text-center text-[12px] font-semibold text-gray-400 hover:text-gray-200 border-t border-white/5">
+                                    View all
+                                </a>
+                            </div>
+                        </div>
+
                         <div class="h-9 w-9 rounded-full p-px bg-gradient-to-br from-indigo-500 to-cyan-400">
                             <div class="h-full w-full rounded-full bg-[#07080a] flex items-center justify-center text-xs font-bold font-display text-gray-100">
                                 {{ strtoupper(substr(auth()->user()?->name ?? 'T', 0, 1)) }}
@@ -181,5 +243,145 @@
             </form>
         </div>
     </div>
+
+    {{-- ===== Notifications + Web Push client ===== --}}
+    <script>
+    (function () {
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const vapidPublicKey = document.querySelector('meta[name="vapid-public-key"]')?.content || '';
+
+        // --- helpers ---
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const raw = atob(base64);
+            const out = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+            return out;
+        }
+        async function postJson(url, body, method) {
+            return fetch(url, {
+                method: method || 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                body: body ? JSON.stringify(body) : undefined,
+                credentials: 'same-origin',
+            });
+        }
+
+        // Shared push-subscribe routine (used by the bell + the notifications page button).
+        async function subscribeToPush() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                alert('Push notifications are not supported on this device/browser.');
+                return false;
+            }
+            if (!vapidPublicKey) {
+                console.warn('[push] no VAPID public key configured');
+                return false;
+            }
+            // Politely ask — only ever on an explicit user action (button click).
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') return false;
+
+            const reg = await navigator.serviceWorker.ready;
+            let sub = await reg.pushManager.getSubscription();
+            if (!sub) {
+                sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+                });
+            }
+            const res = await postJson('/notifications/subscribe', sub.toJSON());
+            return res.ok;
+        }
+        window.titanSubscribeToPush = subscribeToPush;
+
+        // Should we still offer the "enable push" prompt?
+        function pushPromptable() {
+            return ('serviceWorker' in navigator) && ('PushManager' in window)
+                && !!vapidPublicKey && 'Notification' in window
+                && Notification.permission === 'default';
+        }
+
+        // --- Alpine: header bell ---
+        window.titanNotifications = function () {
+            return {
+                open: false,
+                unread: 0,
+                items: [],
+                canPrompt: false,
+                init() {
+                    this.canPrompt = pushPromptable();
+                    this.refresh();
+                    // Light polling so the badge stays roughly live.
+                    setInterval(() => this.refresh(), 60000);
+                },
+                async refresh() {
+                    try {
+                        const res = await fetch('/notifications/feed', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        this.unread = data.unread || 0;
+                        this.items = data.notifications || [];
+                    } catch (e) { /* offline — leave last state */ }
+                },
+                toggle() {
+                    this.open = !this.open;
+                    if (this.open) this.refresh();
+                },
+                async markRead(id) {
+                    const n = this.items.find((x) => x.id === id);
+                    if (n && !n.read) { n.read = true; this.unread = Math.max(0, this.unread - 1); }
+                    await postJson('/notifications/' + id + '/read');
+                },
+                onItemClick(n, ev) {
+                    this.markRead(n.id);
+                    if (!n.url) { ev.preventDefault(); }
+                },
+                async markAllRead() {
+                    this.items.forEach((n) => (n.read = true));
+                    this.unread = 0;
+                    await postJson('/notifications/read-all');
+                },
+                async enablePush() {
+                    const ok = await subscribeToPush();
+                    if (ok) this.canPrompt = false;
+                },
+            };
+        };
+
+        // --- Alpine: full notifications page ---
+        window.notificationCenter = function () {
+            return {
+                unread: {{ isset($unreadCount) ? (int) $unreadCount : 0 }},
+                canPrompt: false,
+                init() { this.canPrompt = pushPromptable(); },
+                async markRead(id, el) {
+                    if (el) {
+                        const dot = el.querySelector('[data-dot]');
+                        if (dot) dot.classList.remove('bg-indigo-400');
+                        el.classList.remove('border-indigo-500/20', 'bg-indigo-500/[0.06]');
+                        el.classList.add('border-white/5', 'bg-white/[0.02]');
+                    }
+                    this.unread = Math.max(0, this.unread - 1);
+                    await postJson('/notifications/' + id + '/read');
+                },
+                async markAllRead() {
+                    document.querySelectorAll('[data-notif]').forEach((el) => {
+                        const dot = el.querySelector('[data-dot]');
+                        if (dot) dot.classList.remove('bg-indigo-400');
+                        el.classList.remove('border-indigo-500/20', 'bg-indigo-500/[0.06]');
+                        el.classList.add('border-white/5', 'bg-white/[0.02]');
+                    });
+                    this.unread = 0;
+                    await postJson('/notifications/read-all');
+                },
+                async enablePush() {
+                    const ok = await window.titanSubscribeToPush();
+                    if (ok) this.canPrompt = false;
+                },
+            };
+        };
+    })();
+    </script>
 </body>
 </html>

@@ -35,6 +35,22 @@ return [
         ],
     ],
 
+    // Web Push (PWA notifications) — VAPID keypair for signed push to the browser.
+    'webpush' => [
+        'public_key' => env('VAPID_PUBLIC_KEY'),
+        'private_key' => env('VAPID_PRIVATE_KEY'),
+        'subject' => env('VAPID_SUBJECT', 'mailto:hello@titan.app'),
+    ],
+
+    // Polar AccessLink — free official wearable API (OAuth2 + webhooks). A real
+    // second data source. Get dev credentials at https://admin.polaraccesslink.com.
+    'polar' => [
+        'client_id' => env('POLAR_CLIENT_ID'),
+        'client_secret' => env('POLAR_CLIENT_SECRET'),
+        'redirect' => env('POLAR_REDIRECT_URI', env('APP_URL').'/devices/polar/callback'),
+        'base_url' => env('POLAR_BASE_URL', 'https://www.polaraccesslink.com'),
+    ],
+
     // Terra — unified wearable API (https://tryterra.co). One integration covers
     // Whoop, Oura, Garmin, Apple Health, etc. Connect flow = the Terra widget;
     // data arrives via signed webhooks. Get these from the Terra dashboard.

@@ -6,6 +6,7 @@ use App\Models\DeviceIngestion;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Models\SleepLog;
+use App\Services\Notifications\NotificationService;
 use App\Services\Wearables\BiosignalClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -203,6 +204,10 @@ class SealNightJob implements ShouldQueue
                             'result_refs' => array_merge((array) $i->result_refs, ['recovery_log_id' => $log->id, 'sealed' => true]),
                         ]);
                     });
+
+                    // Recovery is in — let the profile know (in-app + Web Push). Best-effort;
+                    // notify() never throws.
+                    $this->notifyRecovery($profile, $log);
                 } else {
                     // Invalid whole-night signal — still seal so we don't reprocess endlessly.
                     $ibiWindows->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
@@ -329,6 +334,41 @@ class SealNightJob implements ShouldQueue
         }
 
         return null;
+    }
+
+    /**
+     * Tell the profile their recovery for the night is ready. Resolved from the
+     * container (this is a queued job, no constructor injection). Best-effort — the
+     * service swallows push failures, and we guard the in-app create too so a
+     * notification problem never wedges the seal.
+     */
+    private function notifyRecovery(Profile $profile, RecoveryLog $log): void
+    {
+        try {
+            $bits = [];
+            if ($log->hrv_ms !== null) {
+                $bits[] = "HRV {$log->hrv_ms} ms";
+            }
+            if ($log->resting_hr !== null) {
+                $bits[] = "resting HR {$log->resting_hr} bpm";
+            }
+            $body = $bits === []
+                ? 'Last night has been sealed. Open Recovery to see your readiness.'
+                : 'Last night: '.implode(', ', $bits).'. Tap to see your readiness.';
+
+            app(NotificationService::class)->notify(
+                $profile,
+                'Recovery ready',
+                $body,
+                '/recovery',
+                'recovery',
+            );
+        } catch (\Throwable $e) {
+            Log::warning('[Biosignal] recovery notification failed', [
+                'profile_id' => $profile->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function timezoneFor(Profile $profile): string

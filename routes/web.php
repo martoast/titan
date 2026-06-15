@@ -21,7 +21,7 @@ Route::middleware(['auth'])->group(function () {
     // Each domain owns its own route file under routes/titan/. They run inside this
     // auth group, so every route they define is already authenticated. Builds edit
     // ONLY their own file here; never this one.
-    foreach (['brain', 'biomarkers', 'body', 'meals', 'workouts', 'sleep', 'recovery', 'physique', 'coach', 'duo', 'wearables', 'simulator'] as $domain) {
+    foreach (['brain', 'biomarkers', 'body', 'meals', 'workouts', 'sleep', 'recovery', 'physique', 'coach', 'duo', 'wearables', 'simulator', 'notifications'] as $domain) {
         require __DIR__."/titan/{$domain}.php";
     }
 });

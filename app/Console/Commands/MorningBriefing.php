@@ -6,6 +6,7 @@ use App\Exceptions\AiException;
 use App\Mail\CoachBriefing;
 use App\Models\Profile;
 use App\Services\Coach\CoachBriefingService;
+use App\Services\Notifications\NotificationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -34,7 +35,7 @@ class MorningBriefing extends Command
 
     protected $description = 'Generate, store and email each profile a proactive morning coaching briefing.';
 
-    public function handle(CoachBriefingService $briefings): int
+    public function handle(CoachBriefingService $briefings, NotificationService $notifications): int
     {
         $profiles = $this->resolveProfiles();
         if ($profiles->isEmpty()) {
@@ -66,6 +67,15 @@ class MorningBriefing extends Command
             }
 
             $this->line("  <info>✓</info> profile #{$profile->id} — ".\Illuminate\Support\Str::limit($message, 70));
+
+            // Surface the briefing as an in-app notification + Web Push (best-effort).
+            $notifications->notify(
+                $profile,
+                'Your morning briefing',
+                \Illuminate\Support\Str::limit($message, 140),
+                '/coach',
+                'briefing',
+            );
 
             if ($this->option('no-mail')) {
                 continue;

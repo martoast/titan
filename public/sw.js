@@ -109,3 +109,50 @@ self.addEventListener('fetch', (event) => {
   }
   // Everything else: default network handling.
 });
+
+// ---- Web Push: show the notification the server sent ----
+// Payload is the JSON WebPushService sends: { title, body, url }.
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (e) {
+    payload = { title: 'Titan', body: event.data ? event.data.text() : '' };
+  }
+
+  const title = payload.title || 'Titan';
+  const url = payload.url || '/notifications';
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body || '',
+      icon: '/icons/icon-192.svg',
+      badge: '/icons/icon-192.svg',
+      tag: payload.tag || undefined,
+      data: { url },
+    })
+  );
+});
+
+// ---- Notification click: focus an existing tab or open the deep link ----
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/notifications';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // Focus an open Titan tab and navigate it to the target if we can.
+      for (const client of clients) {
+        if ('focus' in client) {
+          client.focus();
+          if ('navigate' in client && target) {
+            try { client.navigate(target); } catch (e) { /* cross-origin etc. */ }
+          }
+          return;
+        }
+      }
+      // No open tab — open a fresh one.
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
+  );
+});

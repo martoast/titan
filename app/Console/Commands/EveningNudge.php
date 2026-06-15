@@ -6,6 +6,7 @@ use App\Exceptions\AiException;
 use App\Mail\CoachBriefing;
 use App\Models\Profile;
 use App\Services\Coach\CoachBriefingService;
+use App\Services\Notifications\NotificationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -31,7 +32,7 @@ class EveningNudge extends Command
 
     protected $description = 'Generate, store and email each profile a proactive evening coaching nudge.';
 
-    public function handle(CoachBriefingService $briefings): int
+    public function handle(CoachBriefingService $briefings, NotificationService $notifications): int
     {
         $profiles = $this->resolveProfiles();
         if ($profiles->isEmpty()) {
@@ -63,6 +64,16 @@ class EveningNudge extends Command
             }
 
             $this->line("  <info>✓</info> profile #{$profile->id} — ".Str::limit($message, 70));
+
+            // Surface the nudge as an in-app notification + Web Push (best-effort). The
+            // research report's evening "behavior-triggered push" lands here.
+            $notifications->notify(
+                $profile,
+                'Evening check-in',
+                Str::limit($message, 140),
+                '/coach',
+                'nudge',
+            );
 
             if ($this->option('no-mail')) {
                 continue;
