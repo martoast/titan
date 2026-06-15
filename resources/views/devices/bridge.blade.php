@@ -143,6 +143,12 @@
                         this.connected = true;
                         this.statusLabel = 'Streaming · ' + (this._device.name || 'Bangle');
                         this._log('ok', 'Connected to ' + (this._device.name || 'Bangle.js'));
+                        // Finalize a workout once its GPS frames stop (the watch stood GPS down).
+                        clearInterval(this._waTimer);
+                        this._waTimer = setInterval(() => {
+                            const win = this._wa && this._wa.tick(Date.now());
+                            if (win) this._ship(win);
+                        }, 5000);
                     } catch (err) {
                         this.statusLabel = 'Disconnected';
                         this._log('err', 'Connect failed: ' + (err.message || err));
@@ -154,7 +160,10 @@
                 },
                 _onDrop() {
                     this.connected = false; this.statusLabel = 'Disconnected';
-                    this._flushWindow(); // ship whatever's accumulated
+                    clearInterval(this._waTimer);
+                    this._flushWindow(); // ship whatever PPG samples are accumulated
+                    const win = this._wa && this._wa.flush(); // ship any in-progress workout
+                    if (win) this._ship(win);
                     this._log('info', 'Disconnected');
                 },
 
@@ -170,7 +179,29 @@
                         this._rx = this._rx.slice(nl + 1);
                         if (line.startsWith('T1:')) this._decodeFrame(line.slice(3));
                         else if (line.startsWith('T2:')) this._decodeT2(line.slice(3));
+                        else if (line.startsWith('T4:')) this._onGps(line.slice(3));   // workout GPS fix
+                        else if (line.startsWith('T5:')) this._onWorkoutHr(line.slice(3)); // workout HR
                     }
+                },
+
+                // --- Workout frames (T4 GPS + T5 HR) → assemble a kind=workout window ---
+                // GPS only powers on once the watch detects a workout, so a T4 frame means a
+                // workout is under way; the assembler bundles the 3-axis accel (from T1) + HR +
+                // GPS and emits the window SealActivityJob ingests. See resources/js/bridge-decode.js.
+                _wa: null,
+                _ensureWa() {
+                    if (!this._wa && window.TitanBridge) this._wa = new window.TitanBridge.WorkoutAssembler();
+                    return this._wa;
+                },
+                _onGps(b64) {
+                    const wa = this._ensureWa(); if (!wa) return;
+                    const win = wa.addGps(window.TitanBridge.decodeT4(b64));
+                    if (win) this._ship(win); // periodic flush on long workouts
+                },
+                _onWorkoutHr(b64) {
+                    const wa = this._ensureWa(); if (!wa) return;
+                    const hr = window.TitanBridge.decodeT5(b64);
+                    if (hr) { wa.addHr(hr); this.bpm = hr.bpm; }
                 },
 
                 // T1 live frame. hdr[ver u8, ppgField u8, count u16, epochLo u32, epochHi u32, rsvd u32];
@@ -181,14 +212,19 @@
                     const count = dv.getUint16(2, true);
                     const epoch = dv.getUint32(8, true) * 4294967296 + dv.getUint32(4, true);
                     const live = [];
+                    const accel = []; // raw 3-axis (milli-g) for the workout assembler
                     for (let i = 0; i < count; i++) {
                         const off = 16 + i * 12;
                         if (off + 12 > bytes.length) break;
                         const ppg = dv.getInt16(off + 4, true);
                         const ax = dv.getInt16(off + 6, true), ay = dv.getInt16(off + 8, true), az = dv.getInt16(off + 10, true);
-                        this._samples.push({ t: epoch + dv.getUint32(off, true), ppg, mag: Math.round(Math.sqrt(ax * ax + ay * ay + az * az) / 10) });
+                        const t = epoch + dv.getUint32(off, true);
+                        this._samples.push({ t, ppg, mag: Math.round(Math.sqrt(ax * ax + ay * ay + az * az) / 10) });
+                        accel.push({ t, ax, ay, az });
                         live.push(ppg);
                     }
+                    // Feed the workout assembler — it ignores accel until a GPS fix opens a workout.
+                    const wa = this._ensureWa(); if (wa) wa.addAccel(accel);
                     this.samples += live.length;
                     this._pushWave(live);
                     this._drainWindows();
@@ -292,7 +328,10 @@
                         const j = await res.json().catch(() => ({}));
                         if (res.ok) {
                             this.windowsSent++;
-                            this._log('ok', `window accepted (${win.ppg.length} samples @ ${win.sample_rate_hz}Hz) → queued ${j.windows_queued ?? 0}`);
+                            const desc = win.kind === 'workout'
+                                ? `workout (${win.accel_xyz.x.length} accel, ${win.hr_bpm.length}s HR/GPS)`
+                                : `${(win.ppg || []).length} samples @ ${win.sample_rate_hz}Hz`;
+                            this._log('ok', `${win.kind} window accepted (${desc}) → queued ${j.windows_queued ?? 0}`);
                         } else {
                             this._log('err', `ingest ${res.status}: ${j.error || res.statusText}`);
                         }

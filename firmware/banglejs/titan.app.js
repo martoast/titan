@@ -87,7 +87,12 @@ var CFG = {
   GPS_ON_MOTION: 0.18,               // mean |Δaccel| (g) per sample that counts as locomotion
   GPS_ARM_SEC: 25,                   // sustained motion before GPS powers on (covers ~30s cold fix)
   GPS_OFF_SEC: 90,                   // quiet time before GPS powers back off
-  GPS_PROTO_VERSION: 4               // T4 frame: per-fix speed + altitude (+ grade source)
+  GPS_PROTO_VERSION: 4,              // T4 frame: per-fix speed + altitude (+ grade source)
+
+  // During a WORKOUT we also stream the on-chip HR (bpm) — in-motion PPG→IBI is unreliable, so
+  // workout HR uses the watch's hardware bpm register, not server-side peak detection. T5 frames
+  // only flow while a workout is active (GPS armed), so sleep/rest never stream bpm.
+  HR_PROTO_VERSION: 5                // T5 frame: per-reading bpm + confidence
 };
 
 // ----- State ----------------------------------------------------------------
@@ -305,10 +310,34 @@ function onHRMRaw(e) {
 }
 
 function onHRM(e) {
-  // UI only — never streamed (averaged BPM has discarded the ms IBI we need).
+  // For SLEEP/REST this is UI only — never streamed (averaged BPM has discarded the ms IBI we
+  // need for HRV). But during a WORKOUT (GPS armed) the on-chip bpm IS the signal we want, since
+  // in-motion PPG→IBI is unreliable — so we stream it as a T5 frame.
   state.bpm = e.bpm | 0;
   state.conf = e.confidence | 0;
+  if (state.streaming && state.gps) emitHrFrame(state.bpm, state.conf);
   if (uiVisible) drawUI();
+}
+
+// T5 frame: one HR reading → bpm + confidence + timestamp. 12 bytes. Live when connected, else
+// appended to the overnight log so a phone-free outdoor run still recovers its HR on morning sync.
+function emitHrFrame(bpm, conf) {
+  var buf = new ArrayBuffer(12);
+  var dv = new DataView(buf);
+  var nowMs = Math.round(getTime() * 1000);
+  var hi = Math.floor(nowMs / 4294967296);
+  dv.setUint8(0, CFG.HR_PROTO_VERSION);
+  dv.setUint8(1, bpm > 255 ? 255 : (bpm < 0 ? 0 : bpm));
+  dv.setUint8(2, conf > 100 ? 100 : (conf < 0 ? 0 : conf));
+  dv.setUint8(3, 0);
+  dv.setUint32(4, (nowMs - hi * 4294967296) >>> 0, true);
+  dv.setUint32(8, hi >>> 0, true);
+  var line = "T5:" + b64(buf);
+  if (state.connected) {
+    try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
+  } else if (!state.logFull) {
+    try { require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n"); state.logged += line.length + 1; } catch (e) {}
+  }
 }
 
 function onAccel(a) {
