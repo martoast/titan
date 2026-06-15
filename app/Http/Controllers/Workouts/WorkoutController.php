@@ -120,6 +120,44 @@ class WorkoutController extends Controller
     }
 
     /**
+     * Log the load (and correct the auto-counted reps / RPE) against a workout's sets. Built for
+     * band-detected strength sessions, where reps come from the wrist but weight is unknown — the
+     * user fills it in here. Bulk-updates every set in one form submit; only touches sets that
+     * actually belong to this workout (and so to this profile).
+     */
+    public function updateSets(Request $request, Workout $workout)
+    {
+        $profile = auth()->user()->ensureProfile();
+        abort_unless($workout->profile_id === $profile->id, 404);
+
+        $data = $request->validate([
+            'sets' => ['required', 'array'],
+            'sets.*.weight_kg' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'sets.*.reps' => ['nullable', 'integer', 'min:0', 'max:1000'],
+            'sets.*.rpe' => ['nullable', 'numeric', 'min:1', 'max:10'],
+        ]);
+
+        // The set ids that legitimately belong to this workout (guards against tampered ids).
+        $ownSetIds = WorkoutSet::whereHas('workoutExercise', fn ($q) => $q->where('workout_id', $workout->id))
+            ->pluck('id')->flip();
+
+        DB::transaction(function () use ($data, $ownSetIds) {
+            foreach ($data['sets'] as $id => $fields) {
+                if (! $ownSetIds->has((int) $id)) {
+                    continue;
+                }
+                WorkoutSet::where('id', (int) $id)->update(array_filter([
+                    'weight_kg' => isset($fields['weight_kg']) ? (float) $fields['weight_kg'] : null,
+                    'reps' => isset($fields['reps']) ? (int) $fields['reps'] : null,
+                    'rpe' => isset($fields['rpe']) ? (float) $fields['rpe'] : null,
+                ], fn ($v) => $v !== null));
+            }
+        });
+
+        return redirect()->route('workouts.show', $workout)->with('status', 'Weights saved.');
+    }
+
+    /**
      * Simple adaptive progressive-overload heuristic for one exercise.
      * Looks at the user's most recent working top set; suggests a small bump:
      *  - if last RPE was easy (<= 7) or reps already high (>= 12) → +2.5 kg, reset reps;

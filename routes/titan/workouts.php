@@ -21,3 +21,4 @@ Route::post('/workouts/live/set', [LiveWorkoutController::class, 'addSet'])->nam
 Route::post('/workouts/live/finish', [LiveWorkoutController::class, 'finish'])->name('workouts.live.finish');
 
 Route::get('/workouts/{workout}', [WorkoutController::class, 'show'])->name('workouts.show');
+Route::put('/workouts/{workout}/sets', [WorkoutController::class, 'updateSets'])->name('workouts.sets.update');
