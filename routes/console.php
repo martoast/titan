@@ -12,6 +12,9 @@ Artisan::command('inspire', function () {
 // Seal completed nights into the authoritative whole-night HRV/recovery row.
 Schedule::command('biosignal:seal-nights')->hourly()->withoutOverlapping();
 
+// Seal completed workouts into activity_sessions (classification + TRIMP + VO2max + HRR).
+Schedule::command('biosignal:seal-activities')->everyFifteenMinutes()->withoutOverlapping();
+
 // Proactive AI coach: morning briefing + evening nudge (behaviour-triggered windows).
 Schedule::command('coach:morning-briefing')->dailyAt('07:00')->timezone(config('app.timezone'));
 Schedule::command('coach:evening-nudge')->dailyAt('18:30')->timezone(config('app.timezone'));

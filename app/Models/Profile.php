@@ -75,6 +75,11 @@ class Profile extends Model
         return $this->hasMany(RecoveryLog::class);
     }
 
+    public function activitySessions(): HasMany
+    {
+        return $this->hasMany(ActivitySession::class);
+    }
+
     // --- Physique: progress photos + the living goal image ---
     public function progressPhotos(): HasMany
     {

@@ -2,10 +2,15 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\SealActivityJob;
+use App\Models\Profile;
+use App\Models\WearableConnection;
 use App\Services\Simulator\BiosignalSimulator;
 use App\Services\Wearables\BiosignalClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /**
  * Simulate a GPS-paced workout with the Titan virtual band and run it through the REAL biosignal
@@ -32,7 +37,9 @@ class SimulateWorkout extends Command
         {--weight=78 : Weight kg}
         {--height=180 : Height cm}
         {--sex=M : M or F}
-        {--seed= : Deterministic RNG seed}';
+        {--seed= : Deterministic RNG seed}
+        {--ingest : Stream the workout into the REAL ingestion pipeline (→ seal → Fitness page)}
+        {--profile= : Profile id for --ingest (defaults to the first profile)}';
 
     protected $description = 'Simulate a GPS-paced workout and run it through the real biosignal activity + fitness pipeline.';
 
@@ -60,6 +67,11 @@ class SimulateWorkout extends Command
             ['Resting / max HR', $p['resting_hr'].' / '.$p['hr_max'].' bpm'],
             ['HRR-60s', ($w['run']['hrr60'] ?? '—').' bpm'],
         ]);
+
+        // --- Stream into the REAL pipeline so it surfaces on the Fitness page ---
+        if ($this->option('ingest')) {
+            return $this->ingest($w, $activity, $minutes, $start);
+        }
 
         // --- Drive the real biosignal service: classification + TRIMP, then VO2max + HRR ---
         try {
@@ -104,5 +116,84 @@ class SimulateWorkout extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Stream the workout as a signed `kind=workout` window into /api/devices/ingest, then seal it
+     * inline → an activity_sessions row that shows on the Fitness page. Mirrors SimulateNight's
+     * signing. The PHP twin omits 3-axis accel (the Python twin owns classification-accurate
+     * replay), so this populates TRIMP / VO2max / HRR / distance; activity type stays unset.
+     */
+    private function ingest(array $w, string $activity, int $minutes, string $start): int
+    {
+        $profile = $this->option('profile') ? Profile::find($this->option('profile')) : Profile::query()->orderBy('id')->first();
+        if (! $profile) {
+            $this->error('No profile to attribute the workout to. Pass --profile=<id> or create a profile.');
+
+            return self::FAILURE;
+        }
+        [$device, $secret] = $this->resolveDevice($profile);
+        $end = Carbon::parse($start)->addMinutes($minutes);
+
+        $payload = [
+            'batch_uid' => (string) Str::ulid(),
+            'device_id' => $device->device_id,
+            'timezone' => $device->effectiveTimezone(),
+            'windows' => [[
+                'kind' => 'workout',
+                'start' => $start,
+                'end' => $end->toIso8601ZuluString(),
+                'hr_bpm' => $w['run']['hr'],
+                'accel_counts' => $w['accel_counts'],
+                'gps' => ['speed_kmh' => $w['run']['speed_kmh'], 'grade' => $w['run']['grade']],
+            ]],
+        ];
+
+        if (! $this->postSigned($device->device_id, $secret, $payload)) {
+            $this->warn('Ingestion API unreachable — workout not stored. (Is the app serving at '.config('app.url').'?)');
+
+            return self::SUCCESS;
+        }
+
+        // Seal inline so it appears immediately (the scheduler would otherwise pick it up).
+        dispatch_sync(new SealActivityJob($profile->id));
+        $this->newLine();
+        $this->info("Workout ingested + sealed for profile #{$profile->id}. Open /fitness to see it.");
+
+        return self::SUCCESS;
+    }
+
+    /** @return array{0: WearableConnection, 1: string} */
+    private function resolveDevice(Profile $profile): array
+    {
+        $device = WearableConnection::where('profile_id', $profile->id)
+            ->where('source', 'titan_band')->where('device_id', 'like', 'tb_sim_%')->first();
+        $secret = bin2hex(random_bytes(16));
+        if (! $device) {
+            $device = WearableConnection::create([
+                'profile_id' => $profile->id, 'provider' => 'titan_band', 'source' => 'titan_band',
+                'device_id' => 'tb_sim_'.Str::lower(Str::random(10)), 'device_token_hash' => hash('sha256', $secret),
+                'timezone' => config('app.timezone', 'UTC'), 'status' => 'connected',
+                'scopes' => ['ibi', 'accel', 'workout', 'sleep', 'recovery'],
+            ]);
+        } else {
+            $device->update(['device_token_hash' => hash('sha256', $secret), 'status' => 'connected']);
+        }
+
+        return [$device, $secret];
+    }
+
+    private function postSigned(string $deviceId, string $secret, array $payload): bool
+    {
+        $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $ts = (string) time();
+        $sig = 't='.$ts.',v1='.hash_hmac('sha256', $ts.'.'.$body, hash('sha256', $secret));
+        $url = rtrim(config('app.url', 'http://localhost'), '/').'/api/devices/ingest';
+        try {
+            return Http::withHeaders(['X-Device-Id' => $deviceId, 'X-Titan-Signature' => $sig, 'Content-Type' => 'application/json'])
+                ->timeout(20)->withBody($body, 'application/json')->post($url)->successful();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }
