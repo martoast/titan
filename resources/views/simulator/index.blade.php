@@ -320,6 +320,9 @@
                 camera.updateProjectionMatrix();
             }
             window.addEventListener('resize', resize);
+            // Also correct the size whenever the canvas itself is laid out/changes —
+            // guards against clientHeight being 0 at the exact moment of init.
+            if (window.ResizeObserver) { new ResizeObserver(resize).observe(canvas); }
             resize();
 
             // ---- Pulse state driven from outside (heartbeat-synced) ----
@@ -394,14 +397,26 @@
                 },
 
                 init() {
-                    // boot 3D
                     this.$nextTick(() => {
-                        try {
-                            this._band = window.__titanBand(this.$refs.canvas, () => this.state, () => this.states);
-                        } catch (e) { console.warn('3D init failed', e); }
                         this._waveCtx = this.$refs.wave.getContext('2d');
                         this.scheduleBeat();
                         this.drawWave();
+                        // Boot the 3D band once its deferred module has defined the global.
+                        // Alpine's init can fire before the <script type="module"> evaluates,
+                        // so retry for a few seconds instead of failing once.
+                        let tries = 0;
+                        const boot = () => {
+                            if (window.__titanBand) {
+                                try {
+                                    this._band = window.__titanBand(this.$refs.canvas, () => this.state, () => this.states);
+                                } catch (e) { console.warn('3D init failed', e); }
+                            } else if (tries++ < 300) {
+                                requestAnimationFrame(boot);
+                            } else {
+                                console.warn('3D band module never loaded (Three.js CDN blocked?)');
+                            }
+                        };
+                        boot();
                     });
                 },
 
