@@ -86,7 +86,8 @@
                     <svg class="h-10 w-10 mx-auto mb-4 text-indigo-300/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.4"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                     <h2 class="font-display text-2xl font-bold text-gray-100">Start your transformation</h2>
                     <p class="mt-2 text-sm text-gray-400">Log your first progress photo and generate your dream physique. Then watch yourself close the gap — week by week.</p>
-                    <button @click="addOpen = true" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 h-11 px-5 text-sm font-semibold text-gray-950 active:brightness-110">
+                    <button @click="addOpen = true; setTimeout(() => $refs.addForm?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 260)"
+                            class="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 h-11 px-5 text-sm font-semibold text-gray-950 active:brightness-110">
                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                         Add your first photo
                     </button>
@@ -126,7 +127,7 @@
             </div>
 
             {{-- collapsible upload form --}}
-            <div x-show="addOpen" x-collapse x-cloak class="mb-5">
+            <div x-show="addOpen" x-collapse x-cloak x-ref="addForm" class="mb-5 scroll-mt-20">
                 <form method="POST" action="{{ route('physique.photo.store') }}" enctype="multipart/form-data" class="rounded-xl border border-white/10 bg-gray-950/50 p-4 space-y-3">
                     @csrf
                     <input type="file" name="photo" accept="image/*" required
