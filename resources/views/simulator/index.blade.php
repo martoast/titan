@@ -173,12 +173,12 @@
         import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
         // Expose a factory the Alpine component calls; it owns the 3D scene + sim loop.
-        window.__titanBand = function (canvas, getState, getStates) {
+        window.__titanBand = function (canvas, getState, getStates, getMetrics) {
             const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.15;
+            renderer.toneMappingExposure = 0.95;
 
             const scene = new THREE.Scene();
             const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
@@ -321,19 +321,46 @@
                 band.add(pd);
             }
 
-            // ---- Status indicator on the body edge ----
-            const statusMat = new THREE.MeshStandardMaterial({ color: 0x22d3ee, emissive: 0x22d3ee, emissiveIntensity: 0.8 });
-            const status = new THREE.Mesh(new THREE.CircleGeometry(0.05, 16), statusMat);
-            status.position.set(0.78, -0.42, 0.33);
-            band.add(status);
-
-            // subtle Titan logo etch (a thin gradient ring) on the glass
-            const ring = new THREE.Mesh(
-                new THREE.RingGeometry(0.16, 0.2, 32),
-                new THREE.MeshBasicMaterial({ color: 0x6366f1, transparent: true, opacity: 0.5 })
+            // ---- Always-on watch face (live time + heart rate) on the screen ----
+            const faceCanvas = document.createElement('canvas'); faceCanvas.width = 384; faceCanvas.height = 472;
+            const fctx = faceCanvas.getContext('2d');
+            const faceTex = new THREE.CanvasTexture(faceCanvas);
+            faceTex.colorSpace = THREE.SRGBColorSpace; faceTex.anisotropy = 4;
+            const face = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.47, 1.82),
+                new THREE.MeshBasicMaterial({ map: faceTex, transparent: true, depthWrite: false, toneMapped: false })
             );
-            ring.position.set(0, 0, 0.37);
-            band.add(ring);
+            face.position.z = 0.345;
+            band.add(face);
+            function drawFace() {
+                const W = faceCanvas.width, H = faceCanvas.height, cx = W / 2;
+                fctx.clearRect(0, 0, W, H);
+                const m = getMetrics ? getMetrics() : {};
+                const st = getState(); const calm = st === 'deep' || st === 'rest';
+                const accent = calm ? '#27e587' : '#ffb020';
+                fctx.textAlign = 'center';
+                const d = new Date();
+                fctx.fillStyle = 'rgba(214,224,255,0.82)';
+                fctx.font = '600 40px Archivo, system-ui, sans-serif';
+                fctx.fillText(String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'), cx, 72);
+                fctx.fillStyle = accent;
+                fctx.font = '800 152px Archivo, system-ui, sans-serif';
+                fctx.fillText(String(Math.round(m.bpm || 0)), cx, 272);
+                fctx.fillStyle = 'rgba(170,184,214,0.8)';
+                fctx.font = '600 30px Manrope, system-ui, sans-serif';
+                fctx.fillText('BPM', cx, 316);
+                fctx.fillStyle = 'rgba(150,165,200,0.7)';
+                fctx.font = '500 27px Manrope, system-ui, sans-serif';
+                fctx.fillText('HRV ' + Math.round(m.rmssd || 0) + ' ms', cx, 378);
+                fctx.fillStyle = 'rgba(126,140,178,0.55)';
+                fctx.font = '700 24px Archivo, system-ui, sans-serif';
+                fctx.fillText('TITAN', cx, 432);
+                fctx.strokeStyle = accent; fctx.globalAlpha = 0.42; fctx.lineWidth = 6; fctx.lineCap = 'round';
+                fctx.beginPath(); fctx.arc(cx, 252, 166, -Math.PI * 0.78, -Math.PI * 0.22); fctx.stroke();
+                fctx.globalAlpha = 1;
+                faceTex.needsUpdate = true;
+            }
+            drawFace();
 
             band.rotation.x = -0.1;
             band.rotation.y = 0.42;
@@ -383,7 +410,7 @@
             try {
                 composer = new EffectComposer(renderer);
                 composer.addPass(new RenderPass(scene, camera));
-                composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.42, 0.6, 0.86));
+                composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.24, 0.55, 0.9));
                 composer.addPass(new OutputPass());
             } catch (e) { composer = null; }
 
@@ -403,6 +430,7 @@
 
             // ---- Pulse state driven from outside (heartbeat-synced) ----
             let pulse = 0;          // 0..1, set on each beat, decays
+            let faceT = 0;          // watch-face redraw throttle
             const api = {
                 beat() { pulse = 1; },
                 dispose() { renderer.dispose(); if (composer) composer.dispose && composer.dispose(); },
@@ -422,10 +450,9 @@
                 ledMat.emissive.copy(baseColor);
                 ledMat.emissiveIntensity = 0.3 + pulse * 0.7;
                 ledMat.color.copy(baseColor.clone().multiplyScalar(0.35));
-                ppgGlow.intensity = 0;                       // kill the green light bleed
-                // gentle brand accent on the screen (a soft breath, not a flash)
-                ring.material.color.copy(calm ? new THREE.Color(0x6366f1) : new THREE.Color(0xf59e0b));
-                ring.material.opacity = 0.16 + pulse * 0.1;
+                // keep the live watch face fresh (a few times a second)
+                faceT += dt;
+                if (faceT > 0.25) { faceT = 0; drawFace(); }
 
                 controls.update();
                 if (composer) composer.render(); else renderer.render(scene, camera);
@@ -485,7 +512,7 @@
                         const boot = () => {
                             if (window.__titanBand) {
                                 try {
-                                    this._band = window.__titanBand(this.$refs.canvas, () => this.state, () => this.states);
+                                    this._band = window.__titanBand(this.$refs.canvas, () => this.state, () => this.states, () => ({ bpm: this.bpm, rmssd: this.rmssd }));
                                 } catch (e) { console.warn('3D init failed', e); }
                             } else if (tries++ < 300) {
                                 requestAnimationFrame(boot);
