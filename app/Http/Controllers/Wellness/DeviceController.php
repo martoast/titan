@@ -34,12 +34,22 @@ class DeviceController extends Controller
 
         $lastIngestion = $profile->deviceIngestions()->orderByDesc('created_at')->first();
 
+        // The Apple Health connection (if any), for the import card's "last import" line.
+        $appleHealth = $connections->firstWhere('source', 'apple_health');
+
         return view('devices.index', [
             'connections' => $connections,
             'pairable' => self::PAIRABLE,
             'lastIngestion' => $lastIngestion,
             // One-time secret surfaced right after pairing (flashed, never persisted).
             'justPaired' => session('just_paired'),
+            // Apple Health import: last-import summary (flashed) + existing connection.
+            'appleHealth' => $appleHealth,
+            'appleHealthSummary' => session('apple_health_summary'),
+            'appleHealthError' => session('apple_health_error'),
+            // Polar connect: only offer the button when dev creds are present.
+            'polarConfigured' => (bool) config('services.polar.client_id'),
+            'polarConnection' => $connections->firstWhere('source', 'polar'),
         ]);
     }
 

@@ -79,6 +79,106 @@
             </form>
         </div>
 
+        {{-- Apple Health import --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5"
+             x-data="{ open: false, fileName: '' }">
+            <button type="button" @click="open = !open" class="w-full flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="h-10 w-10 shrink-0 grid place-items-center rounded-xl bg-gradient-to-br from-gray-400 to-gray-200 text-gray-900">
+                        <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    </span>
+                    <div class="text-left min-w-0">
+                        <div class="font-display font-bold text-gray-100">Apple Health</div>
+                        <div class="text-xs text-gray-500 truncate">Import your iPhone Health export</div>
+                    </div>
+                </div>
+                <svg class="h-5 w-5 shrink-0 text-gray-500 transition" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+
+            {{-- Last import summary --}}
+            @if ($appleHealthSummary)
+                <div class="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] p-3">
+                    <div class="text-[11px] uppercase tracking-wide text-emerald-300/80">Last import</div>
+                    <p class="mt-1 text-sm text-emerald-100/90">
+                        {{ $appleHealthSummary['recovery'] }} recovery · {{ $appleHealthSummary['sleep'] }} sleep · {{ $appleHealthSummary['body'] }} body · {{ $appleHealthSummary['workouts'] }} workouts
+                    </p>
+                    @if ($appleHealthSummary['date_from'])
+                        <p class="mt-0.5 text-xs text-emerald-200/60 nums">{{ $appleHealthSummary['date_from'] }} → {{ $appleHealthSummary['date_to'] }} · {{ number_format($appleHealthSummary['samples']) }} samples read</p>
+                    @endif
+                </div>
+            @elseif ($appleHealth?->last_sync_at)
+                <div class="mt-3 text-xs text-gray-500">Last imported {{ $appleHealth->last_sync_at->diffForHumans() }}.</div>
+            @endif
+
+            @if ($appleHealthError)
+                <div class="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.06] p-3">
+                    <p class="text-sm text-rose-200/90">{{ $appleHealthError }}</p>
+                </div>
+            @endif
+
+            <div x-show="open" x-cloak class="mt-4 space-y-3">
+                <ol class="space-y-1.5 text-xs text-gray-400 list-decimal list-inside">
+                    <li>On your iPhone, open <span class="text-gray-200">Health</span> → tap your <span class="text-gray-200">profile picture</span>.</li>
+                    <li>Scroll down and tap <span class="text-gray-200">Export All Health Data</span>.</li>
+                    <li>Save / AirDrop the <code class="text-gray-200">export.zip</code> to this device, then upload it below.</li>
+                </ol>
+
+                <form method="POST" action="/devices/apple-health/import" enctype="multipart/form-data" class="space-y-3"
+                      x-data="{ busy: false }" @submit="busy = true">
+                    @csrf
+                    <label class="block">
+                        <span class="text-[11px] uppercase tracking-wide text-gray-500">Health export (.zip)</span>
+                        <div class="mt-1 flex items-center gap-2">
+                            <label class="flex-1 min-w-0 h-11 px-3 rounded-xl bg-gray-950 border border-white/10 flex items-center text-sm text-gray-400 cursor-pointer active:bg-white/[0.04]">
+                                <span class="truncate" x-text="fileName || 'Choose export.zip'"></span>
+                                <input type="file" name="export" accept=".zip,application/zip" required class="hidden"
+                                       @change="fileName = $event.target.files[0]?.name ?? ''">
+                            </label>
+                        </div>
+                    </label>
+                    <button type="submit" x-bind:disabled="busy || !fileName"
+                            class="w-full h-12 px-6 rounded-xl font-semibold text-gray-900 bg-gradient-to-r from-gray-200 to-white active:opacity-90 disabled:opacity-40">
+                        <span x-show="!busy">Import health data</span>
+                        <span x-show="busy" x-cloak>Importing…</span>
+                    </button>
+                    <p class="text-[11px] text-gray-600 leading-relaxed">
+                        Large exports can take a moment and may need a higher server upload limit. Re-importing is safe — it updates days in place and never overwrites your own ratings.
+                    </p>
+                </form>
+            </div>
+        </div>
+
+        {{-- Polar AccessLink connect --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <div class="flex items-start gap-3">
+                <span class="h-10 w-10 shrink-0 grid place-items-center rounded-xl bg-gradient-to-br from-rose-500 to-orange-400 text-white">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12h-4l-3 8L9 4l-3 8H3"/></svg>
+                </span>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <div class="font-display font-bold text-gray-100">Polar</div>
+                        @if ($polarConnection?->isConnected())
+                            <span class="shrink-0 inline-flex items-center gap-1 text-[11px] text-emerald-300">
+                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Connected
+                            </span>
+                        @endif
+                    </div>
+                    <p class="mt-0.5 text-xs text-gray-500">Pull exercises, sleep &amp; Nightly Recharge from your Polar watch.</p>
+
+                    @if ($polarConfigured)
+                        <a href="/devices/polar/connect"
+                           class="mt-3 inline-flex items-center justify-center h-11 px-5 rounded-xl font-semibold text-white bg-gradient-to-r from-rose-500 to-orange-500 active:opacity-90">
+                            {{ $polarConnection?->isConnected() ? 'Reconnect Polar' : 'Connect Polar' }}
+                        </a>
+                    @else
+                        <div class="mt-3 rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-3">
+                            <p class="text-xs text-gray-500">Needs a free Polar dev account — set <code class="text-gray-400">POLAR_CLIENT_ID</code> / <code class="text-gray-400">POLAR_CLIENT_SECRET</code> from <span class="text-gray-400">admin.polaraccesslink.com</span> to enable.</p>
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+
         {{-- Last sync summary --}}
         @if ($lastIngestion)
             <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
