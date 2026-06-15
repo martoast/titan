@@ -37,9 +37,9 @@ def test_sleep_staging_summary():
     assert set(m["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
 
 
-def test_sleep_model_is_opt_in():
-    """The trained model is gated OFF by default (robust heuristic stays the default);
-    enabling the flag loads + uses it. Both must return a valid hypnogram contract."""
+def test_sleep_model_default_and_disable():
+    """The real-PSG-trained model is the DEFAULT (loads + used); SLEEP_MODEL_ENABLED=0
+    disables it and falls back. Both must return a valid hypnogram contract."""
     import importlib
     import os
 
@@ -49,19 +49,19 @@ def test_sleep_model_is_opt_in():
     accel = __import__("numpy").abs(rng.normal(3, 2, 480)).tolist()
     hr = (50 + rng.normal(0, 3, 480)).tolist()
 
-    # Default: model not loaded.
+    # Default: real model loads + is used.
     os.environ.pop("SLEEP_MODEL_ENABLED", None)
     importlib.reload(staging)
-    assert staging._load_model() is None
+    assert staging._load_model() is not None
     r_def = staging.stage_night(accel, hr, start="2026-06-09T00:00:00Z", end="2026-06-09T04:00:00Z")
     assert set(r_def["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
 
-    # Enabled: model loads (artifact ships in app/models/) and predicts.
-    os.environ["SLEEP_MODEL_ENABLED"] = "1"
+    # Disabled: model not loaded → physiology fallback, still a valid hypnogram.
+    os.environ["SLEEP_MODEL_ENABLED"] = "0"
     importlib.reload(staging)
-    assert staging._load_model() is not None
-    r_on = staging.stage_night(accel, hr, start="2026-06-09T00:00:00Z", end="2026-06-09T04:00:00Z")
-    assert set(r_on["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
+    assert staging._load_model() is None
+    r_off = staging.stage_night(accel, hr, start="2026-06-09T00:00:00Z", end="2026-06-09T04:00:00Z")
+    assert set(r_off["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
 
     os.environ.pop("SLEEP_MODEL_ENABLED", None)
     importlib.reload(staging)

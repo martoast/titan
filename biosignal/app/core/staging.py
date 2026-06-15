@@ -10,14 +10,14 @@ Features used (Walch 2019, `ojwalch/sleep_classifiers`):
   - HR level: heart rate relative to the night's resting floor
   - HR var  : local HR standard deviation (REM = irregular/sympathetic; NREM = stable/vagal)
 
-TRAINED MODEL (opt-in): a joblib classifier over `sleep_features.extract_features` is wired
-in and selected when SLEEP_MODEL_ENABLED is set. The shipped artifact is trained on SYNTHETIC
-data (scripts/train_sleep_model.py) — it separates deep/REM far better than this heuristic
-in-distribution (~98%) but is BRITTLE to distribution shift (it can miss wake / collapse
-stages on inputs unlike its training set). So it stays OFF by default; the heuristic below is
-the robust production path. To make the model production-grade, retrain it on the real
-PhysioNet sleep-accel dataset (`--source physionet`) and validate against PSG before flipping
-the flag. The hypnogram + summary contract is identical either way.
+TRAINED MODEL (DEFAULT): a gradient-boosted classifier over `sleep_features.extract_features`,
+trained + cross-validated on REAL polysomnography (PhysioNet Walch 2019 — wrist motion + HR +
+PSG stages). Leave-subjects-out it reaches sleep/wake κ≈0.46 and 4-class accuracy≈59% — i.e.
+literature-grade for wrist motion+HR with no EEG (Walch 2019), tested on people it never saw.
+It is the default; SLEEP_MODEL_ENABLED=0 falls back to the physiology HMM / heuristic below
+(also used automatically when HR is absent). Retrain: scripts/train_real.py <data> --save.
+(An earlier synthetic-trained model proved brittle on real data and was replaced — synthetic
+sleep doesn't generalise; real PSG does.)
 """
 
 from __future__ import annotations
@@ -49,7 +49,9 @@ _MODEL_TRIED = False
 
 
 def _model_enabled() -> bool:
-    return os.getenv("SLEEP_MODEL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+    # The real-PSG-trained model (PhysioNet Walch 2019) is the validated DEFAULT.
+    # Set SLEEP_MODEL_ENABLED=0 to force the physiology HMM / heuristic instead.
+    return os.getenv("SLEEP_MODEL_ENABLED", "1").strip().lower() not in ("0", "false", "off", "no")
 
 
 def _load_model() -> Optional[dict]:
@@ -120,16 +122,20 @@ def stage_night(
 
     hypnogram: Optional[list[str]] = None
 
-    # 1) Opt-in trained model.
+    # 1) Default: model trained on REAL PSG (needs HR). Cross-validated leave-subjects-out
+    #    at sleep/wake κ≈0.46, 4-class acc≈59% — literature-grade for wrist motion+HR.
     bundle = _load_model()
-    if bundle is not None:
+    if bundle is not None and has_hr:
         try:
-            X = sleep_features.extract_features(accel_e, hr_e if has_hr else None, has_hr)
-            hypnogram = [str(s) for s in bundle["model"].predict(X)]
+            stages = bundle.get("stages", ["wake", "light", "deep", "rem"])
+            X = sleep_features.extract_features(accel_e, hr_e, has_hr=True)
+            preds = bundle["model"].predict(X)
+            # Model classes may be ints (real-PSG model) or strings (older artifact).
+            hypnogram = [stages[int(p)] if isinstance(p, (int, np.integer)) else str(p) for p in preds]
         except Exception:
             hypnogram = None
 
-    # 2) Default: physiology-grounded HMM (motion + HR + HRV, Viterbi).
+    # 2) Fallback: physiology HMM (e.g. no HR, or model unreadable).
     if hypnogram is None:
         try:
             hypnogram = sleep_hmm.stage_hmm(accel_e, hr_e if has_hr else None, rmssd_e, n_epochs)

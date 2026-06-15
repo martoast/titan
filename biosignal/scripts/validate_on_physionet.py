@@ -106,6 +106,9 @@ def main():
         print(f"  {name:<18} {v[0]*100:>10.1f}% {v[1]:>10.2f} {v[2]*100:>14.1f}% {v[3]:>7.2f}")
 
     # ---- 2) Model trained on REAL data, leave-subjects-out ----
+    if len(subs) < 4:
+        print("\n(need ≥4 subjects to train + hold out — download more)")
+        return
     X = [sleep_features.extract_features(a, h, True) for _, (a, h, l) in subs]
     Y = [l for _, (a, h, l) in subs]
     n_test = max(1, len(subs) // 3)
