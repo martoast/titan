@@ -1,8 +1,9 @@
 @php
     // Hydrate any in-progress session so a reload continues it.
-    $initial = ['workoutId' => null, 'exercises' => []];
+    $initial = ['workoutId' => null, 'startedAt' => null, 'exercises' => []];
     if ($active) {
         $initial['workoutId'] = $active->id;
+        $initial['startedAt'] = $active->performed_at->toIso8601String();
         foreach ($active->exercises as $we) {
             $initial['exercises'][] = [
                 'id' => $we->id,
@@ -39,16 +40,36 @@
 
             <p x-show="heard" x-cloak class="mt-3 text-sm text-gray-400 italic">“<span x-text="heard"></span>”</p>
 
-            <template x-if="lastAdded">
-                <div class="mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm text-emerald-200">
-                    Added <span class="font-semibold" x-text="lastAdded.name"></span> —
-                    <span class="nums" x-text="lastAdded.weight"></span> kg ×
-                    <span class="nums" x-text="lastAdded.reps"></span><span x-show="lastAdded.rpe"> @ RPE <span class="nums" x-text="lastAdded.rpe"></span></span>
-                </div>
-            </template>
+            <p x-show="spoken" x-cloak class="mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm text-emerald-200" x-text="spoken"></p>
+
+            <p class="mt-3 text-[11px] text-gray-600 leading-relaxed">
+                Say a set — “bench press 80 kilos 8 reps”. Fix it by talking: “change the last set to 10 reps”, “make it 85 kilos”, “delete that set”, “undo”.
+            </p>
         </div>
         <div x-show="!voiceSupported" x-cloak class="mb-5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-gray-400">
             Voice logging needs Chrome or Android. You can still snap a photo or type each set below.
+        </div>
+
+        {{-- ===== Live session stats ===== --}}
+        <div x-show="workoutId" x-cloak class="mb-5 rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-[11px] uppercase tracking-wider text-gray-500">This session</h3>
+                <span class="text-[11px] text-gray-500 nums" x-show="elapsedMin >= 0" x-text="durationLabel"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-3 text-center">
+                <div>
+                    <div class="font-display text-2xl font-bold text-cyan-300 nums leading-none" x-text="Math.round(totalVolume).toLocaleString()"></div>
+                    <div class="text-[10px] uppercase tracking-wide text-gray-500 mt-1">kg volume</div>
+                </div>
+                <div>
+                    <div class="font-display text-2xl font-bold text-gray-100 nums leading-none" x-text="totalSets"></div>
+                    <div class="text-[10px] uppercase tracking-wide text-gray-500 mt-1">sets · <span x-text="exerciseCount"></span> ex</div>
+                </div>
+                <div>
+                    <div class="font-display text-2xl font-bold text-gray-100 nums leading-none" x-text="totalReps"></div>
+                    <div class="text-[10px] uppercase tracking-wide text-gray-500 mt-1">total reps</div>
+                </div>
+            </div>
         </div>
 
         {{-- ===== Snap / add an exercise ===== --}}
@@ -187,14 +208,34 @@
                 voiceSupported: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
                 listening: false,
                 heard: '',
-                lastAdded: null,
+                spoken: '',
                 _rec: null,
                 _final: '',
+                // Live stats.
+                startedAt: initial.startedAt ? new Date(initial.startedAt) : null,
+                elapsedMin: -1,
 
                 init() {
                     // ensure a draft input object exists per exercise
                     this.exercises.forEach(e => this.ensureDraft(e.id));
+                    // Tick the session duration once a minute (and immediately).
+                    this.tickDuration();
+                    setInterval(() => this.tickDuration(), 15000);
                 },
+
+                tickDuration() {
+                    if (!this.startedAt) { this.elapsedMin = -1; return; }
+                    this.elapsedMin = Math.max(0, Math.floor((Date.now() - this.startedAt.getTime()) / 60000));
+                },
+                get durationLabel() {
+                    if (this.elapsedMin < 0) return '';
+                    const h = Math.floor(this.elapsedMin / 60), m = this.elapsedMin % 60;
+                    return h ? `${h}h ${m}m` : `${m} min`;
+                },
+                get totalSets() { return this.exercises.reduce((a, e) => a + e.sets.length, 0); },
+                get totalReps() { return this.exercises.reduce((a, e) => a + e.sets.reduce((b, s) => b + (s.reps || 0), 0), 0); },
+                get totalVolume() { return this.exercises.reduce((a, e) => a + e.sets.reduce((b, s) => b + (s.reps || 0) * (s.weight || 0), 0), 0); },
+                get exerciseCount() { return this.exercises.length; },
 
                 toggleVoice() {
                     if (!this.voiceSupported) { this.error = 'Voice not supported on this browser — type the set instead.'; return; }
@@ -224,16 +265,16 @@
                     this.busy = true; this.error = '';
                     try {
                         const res = await this.post('{{ route('workouts.live.voice') }}', { transcript, workout_id: this.workoutId });
-                        if (!res.ok) { this.error = res.message || "Didn't catch that."; return; }
-                        this.workoutId = res.workout_id;
-                        let ex = this.exercises.find(x => x.id === res.workout_exercise_id);
-                        if (!ex) {
-                            ex = { id: res.workout_exercise_id, name: res.exercise_name, muscle_group: res.muscle_group, sets: [] };
-                            this.ensureDraft(ex.id);
-                            this.exercises.push(ex);
+                        if (!res.ok) { this.error = res.message || "Didn't catch that."; this.spoken = ''; return; }
+                        // The server returns the full session — re-render from the truth (handles
+                        // add / update / delete uniformly, so stats + cards stay correct).
+                        if (res.session) {
+                            this.workoutId = res.session.workout_id;
+                            if (!this.startedAt) { this.startedAt = new Date(); this.tickDuration(); }
+                            this.exercises = res.session.exercises.map(e => ({ ...e, sets: e.sets || [] }));
+                            this.exercises.forEach(e => this.ensureDraft(e.id));
                         }
-                        ex.sets.push({ reps: res.reps, weight: res.weight_kg, rpe: res.rpe });
-                        this.lastAdded = { name: res.exercise_name, reps: res.reps, weight: res.weight_kg, rpe: res.rpe };
+                        this.spoken = res.spoken || '';
                     } catch (e) { this.error = e.message; }
                     finally { this.busy = false; }
                 },
@@ -272,6 +313,7 @@
                             workout_id: this.workoutId,
                         });
                         this.workoutId = res.workout_id;
+                        if (!this.startedAt) { this.startedAt = new Date(); this.tickDuration(); }
                         const ex = { id: res.workout_exercise_id, name: res.exercise_name, muscle_group: res.muscle_group, sets: [] };
                         this.ensureDraft(ex.id);
                         this.exercises.push(ex);

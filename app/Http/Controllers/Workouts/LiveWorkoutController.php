@@ -137,10 +137,11 @@ class LiveWorkoutController extends Controller
     }
 
     /**
-     * Voice-log a set: the phone records "bench press, 80 kilos, 8 reps", we parse it and persist
-     * the set in real time — resolving (or creating) the exercise and reusing its card if it's
-     * already in this session. The speech→text happens on-device in the browser; we receive the
-     * transcript and turn it into a structured set.
+     * Voice command on the live session. The phone transcribes on-device; we classify INTENT and
+     * act in real time. Beyond adding a set ("bench press 80 kilos 8 reps") the user can correct
+     * the log by talking to it: "change the last set to 10 reps", "make it 85 kilos", "delete that
+     * set", "remove the squats", "undo". Always returns the full session snapshot so the live UI
+     * (and its running stats) re-render from the truth.
      */
     public function voiceLog(Request $request)
     {
@@ -150,62 +151,142 @@ class LiveWorkoutController extends Controller
             'workout_id' => ['nullable', 'integer'],
         ]);
 
-        $parsed = $this->parseSpokenSet($data['transcript']);
-        if (! $parsed['exercise'] || $parsed['reps'] === null) {
-            return response()->json([
-                'ok' => false,
-                'heard' => $data['transcript'],
-                'message' => "Didn't catch a set — try \"bench press, 80 kilos, 8 reps\".",
-            ], 200);
+        $cmd = $this->parseVoiceCommand($data['transcript']);
+        $workout = ! empty($data['workout_id']) ? $profile->workouts()->find($data['workout_id']) : null;
+
+        // Edits need something already logged.
+        $isEdit = in_array($cmd['intent'], ['update_set', 'delete_set', 'undo', 'delete_exercise'], true);
+        if ($isEdit && (! $workout || $workout->exercises()->count() === 0)) {
+            return $this->voiceFail($data['transcript'], 'Nothing logged yet to change.');
         }
 
-        // Resolve / lazily start the live workout (always profile-owned).
-        $workout = ! empty($data['workout_id']) ? $profile->workouts()->find($data['workout_id']) : null;
-        $workout ??= $profile->workouts()->create([
-            'name' => 'Live session · '.now()->format('M j'),
-            'performed_at' => now(),
-        ]);
+        switch ($cmd['intent']) {
+            case 'undo':
+            case 'delete_set':
+                $set = $this->targetSet($workout, $cmd['exercise']);
+                if (! $set) {
+                    return $this->voiceFail($data['transcript'], "Couldn't find that set to remove.");
+                }
+                $we = $set->workoutExercise;
+                $name = $we->exercise?->name ?? 'set';
+                $set->delete();
+                if ($we->sets()->count() === 0) {
+                    $we->delete();
+                }
+                $spoken = "Removed the last {$name} set.";
+                break;
 
-        [$exercise] = $this->identifier->matchOrCreate(['name' => $parsed['exercise'], 'muscle_group' => 'full body', 'category' => 'compound']);
+            case 'update_set':
+                $set = $this->targetSet($workout, $cmd['exercise']);
+                if (! $set) {
+                    return $this->voiceFail($data['transcript'], "Couldn't find a set to change.");
+                }
+                $set->update(array_filter([
+                    'reps' => $cmd['reps'],
+                    'weight_kg' => $cmd['weight_kg'],
+                    'rpe' => $cmd['rpe'],
+                ], fn ($v) => $v !== null));
+                $w = rtrim(rtrim(number_format((float) $set->weight_kg, 1), '0'), '.');
+                $spoken = "Updated to {$set->reps} reps × {$w} kg.";
+                break;
 
-        // Reuse the exercise's existing card in this session, or add one — so repeated sets stack.
-        $we = $workout->exercises()->where('exercise_id', $exercise->id)->latest('id')->first();
-        $isNewExercise = $we === null;
-        $we ??= WorkoutExercise::create([
-            'workout_id' => $workout->id, 'exercise_id' => $exercise->id, 'order' => $workout->exercises()->count() + 1,
-        ]);
+            case 'delete_exercise':
+                $we = $this->targetExercise($workout, $cmd['exercise']);
+                if (! $we) {
+                    return $this->voiceFail($data['transcript'], "Couldn't find that exercise.");
+                }
+                $name = $we->exercise?->name ?? 'exercise';
+                $we->delete();
+                $spoken = "Removed {$name}.";
+                break;
 
-        $set = WorkoutSet::create([
-            'workout_exercise_id' => $we->id,
-            'set_number' => $we->sets()->count() + 1,
-            'reps' => $parsed['reps'],
-            'weight_kg' => $parsed['weight_kg'] ?? 0,
-            'rpe' => $parsed['rpe'],
-        ]);
+            default: // add_set
+                if (! $cmd['exercise'] || $cmd['reps'] === null) {
+                    return $this->voiceFail($data['transcript'], "Didn't catch a set — try \"bench press, 80 kilos, 8 reps\".");
+                }
+                $workout ??= $profile->workouts()->create([
+                    'name' => 'Live session · '.now()->format('M j'), 'performed_at' => now(),
+                ]);
+                [$exercise] = $this->identifier->matchOrCreate(['name' => $cmd['exercise'], 'muscle_group' => 'full body', 'category' => 'compound']);
+                $we = $workout->exercises()->where('exercise_id', $exercise->id)->latest('id')->first()
+                    ?? WorkoutExercise::create([
+                        'workout_id' => $workout->id, 'exercise_id' => $exercise->id, 'order' => $workout->exercises()->count() + 1,
+                    ]);
+                $set = WorkoutSet::create([
+                    'workout_exercise_id' => $we->id,
+                    'set_number' => $we->sets()->count() + 1,
+                    'reps' => $cmd['reps'],
+                    'weight_kg' => $cmd['weight_kg'] ?? 0,
+                    'rpe' => $cmd['rpe'],
+                ]);
+                $w = rtrim(rtrim(number_format((float) $set->weight_kg, 1), '0'), '.');
+                $spoken = "Added {$exercise->name} — {$w} kg × {$set->reps}.";
+                break;
+        }
 
         return response()->json([
             'ok' => true,
             'heard' => $data['transcript'],
-            'workout_id' => $workout->id,
-            'workout_exercise_id' => $we->id,
-            'is_new_exercise' => $isNewExercise,
-            'exercise_name' => $exercise->name,
-            'muscle_group' => $exercise->muscle_group,
-            'reps' => $set->reps,
-            'weight_kg' => (float) $set->weight_kg,
-            'rpe' => $set->rpe,
-            'set_number' => $set->set_number,
+            'action' => $cmd['intent'],
+            'spoken' => $spoken,
+            'session' => $this->sessionSnapshot($workout->fresh()),
         ]);
     }
 
+    private function voiceFail(string $heard, string $message)
+    {
+        return response()->json(['ok' => false, 'heard' => $heard, 'message' => $message], 200);
+    }
+
+    /** The most recent set in the workout — or in a named exercise if the user said one. */
+    private function targetSet(Workout $workout, ?string $exerciseName): ?WorkoutSet
+    {
+        $we = $this->targetExercise($workout, $exerciseName);
+
+        return $we ? $we->sets()->latest('id')->first() : null;
+    }
+
+    /** The named exercise's card (plural-tolerant fuzzy match) — or the most recent one. */
+    private function targetExercise(Workout $workout, ?string $exerciseName): ?WorkoutExercise
+    {
+        $exercises = $workout->exercises()->with('exercise')->latest('id')->get();
+        if (! $exerciseName) {
+            return $exercises->first();
+        }
+        $needle = rtrim(mb_strtolower($exerciseName), 's');
+
+        return $exercises->first(function (WorkoutExercise $we) use ($needle) {
+            $name = rtrim(mb_strtolower($we->exercise?->name ?? ''), 's');
+
+            return $name !== '' && ($name === $needle || str_contains($name, $needle) || str_contains($needle, $name));
+        });
+    }
+
+    /** The session as the live UI consumes it (mirrors the page's initial hydration). */
+    private function sessionSnapshot(Workout $workout): array
+    {
+        $workout->load('exercises.exercise', 'exercises.sets');
+
+        return [
+            'workout_id' => $workout->id,
+            'exercises' => $workout->exercises->map(fn ($we) => [
+                'id' => $we->id,
+                'name' => $we->exercise?->name ?? 'Exercise',
+                'muscle_group' => $we->exercise?->muscle_group,
+                'sets' => $we->sets->map(fn ($s) => [
+                    'reps' => $s->reps, 'weight' => (float) $s->weight_kg, 'rpe' => $s->rpe,
+                ])->values(),
+            ])->values(),
+        ];
+    }
+
     /**
-     * Parse a spoken set into {exercise, weight_kg, reps, rpe}. Deterministic + forgiving of how
-     * people actually talk: "bench press 80 kilos for 8", "squat 100 by 5 rpe 8", "pull ups 12
-     * reps", "deadlift 140 5". Numbers may be words or digits; pounds convert to kg.
+     * Classify a spoken command → {intent, exercise, weight_kg, reps, rpe}. Intents: add_set
+     * (default), update_set (correct the last set), delete_set / undo, delete_exercise.
      *
-     * @return array{exercise:?string,weight_kg:?float,reps:?int,rpe:?float}
+     * @return array{intent:string,exercise:?string,weight_kg:?float,reps:?int,rpe:?float}
      */
-    private function parseSpokenSet(string $raw): array
+    private function parseVoiceCommand(string $raw): array
     {
         $t = ' '.strtolower(trim($raw)).' ';
         $words = ['zero' => 0, 'one' => 1, 'two' => 2, 'three' => 3, 'four' => 4, 'five' => 5, 'six' => 6,
@@ -217,6 +298,44 @@ class LiveWorkoutController extends Controller
             $t = preg_replace('/\b'.$w.'\b/', (string) $n, $t);
         }
 
+        $undo = (bool) preg_match('/\b(undo|scratch that|never ?mind|cancel that|forget that)\b/', $t);
+        $delete = (bool) preg_match('/\b(delete|remove|drop|scrap|get rid of)\b/', $t);
+        $correct = (bool) preg_match('/\b(change|correct|fix|update|adjust|edit)\b/', $t)
+            || (bool) preg_match('/\bmake (it|that|the last)\b/', $t)
+            || (bool) preg_match('/\bthat (was|should|is) /', $t)
+            || (bool) preg_match('/\bset it to\b/', $t)
+            || (bool) preg_match('/\bactually\b/', $t);
+        $refLast = (bool) preg_match('/\b(last|that|it|previous|this)\b/', $t);
+
+        $metrics = $this->extractMetrics($t);
+
+        if ($undo) {
+            return ['intent' => 'undo', 'exercise' => null, 'weight_kg' => null, 'reps' => null, 'rpe' => null];
+        }
+        if ($delete) {
+            $intent = (preg_match('/\bset\b/', $t) || $refLast || ! $metrics['exercise']) ? 'delete_set' : 'delete_exercise';
+
+            return ['intent' => $intent] + $metrics;
+        }
+        // Correction → update the last set, unless they named a NEW exercise (then it's an add).
+        if ($correct && ($refLast || ! $metrics['exercise'])) {
+            $upd = $this->extractMetrics($t, true);
+
+            return ['intent' => 'update_set'] + $upd;
+        }
+
+        return ['intent' => 'add_set'] + $metrics;
+    }
+
+    /**
+     * Pull weight/reps/rpe + the leftover exercise phrase out of a normalised utterance. In
+     * `$update` mode (a correction) a lone unit-less number is read as weight if it looks like a
+     * load (>25) else reps, instead of the add-mode bigger=weight/smaller=reps pairing.
+     *
+     * @return array{exercise:?string,weight_kg:?float,reps:?int,rpe:?float}
+     */
+    private function extractMetrics(string $t, bool $update = false): array
+    {
         $weight = $reps = $rpe = null;
         if (preg_match('/\brpe\s*(\d+(?:\.\d+)?)/', $t, $m)) {
             $rpe = (float) $m[1];
@@ -226,7 +345,7 @@ class LiveWorkoutController extends Controller
             $weight = (float) $m[1];
             $t = str_replace($m[0], ' ', $t);
         } elseif (preg_match('/(\d+(?:\.\d+)?)\s*(pounds?|lbs?|lb)\b/', $t, $m)) {
-            $weight = round((float) $m[1] * 0.453592 * 2) / 2; // → kg, nearest 0.5
+            $weight = round((float) $m[1] * 0.453592 * 2) / 2;
             $t = str_replace($m[0], ' ', $t);
         }
         if (preg_match('/(\d+)\s*(reps?|times)\b/', $t, $m)) {
@@ -237,20 +356,34 @@ class LiveWorkoutController extends Controller
             $t = str_replace($m[0], ' ', $t);
         }
 
-        // Leftover bare numbers fill the gaps: bigger = weight, smaller = reps.
         preg_match_all('/\b(\d+(?:\.\d+)?)\b/', $t, $nums);
         $bare = array_map('floatval', $nums[1]);
-        if ($weight === null && $reps === null && count($bare) >= 2) {
-            $weight = max($bare[0], $bare[1]);
-            $reps = (int) min($bare[0], $bare[1]);
-        } elseif ($weight !== null && $reps === null && count($bare) >= 1) {
-            $reps = (int) $bare[0];
-        } elseif ($reps !== null && $weight === null && count($bare) >= 1) {
-            $weight = (float) $bare[0];
+        if ($update) {
+            // A correction usually changes one number; read a lone bare value by magnitude.
+            if ($weight === null && $reps === null && count($bare) === 1) {
+                if ($bare[0] > 25) {
+                    $weight = $bare[0];
+                } else {
+                    $reps = (int) $bare[0];
+                }
+            } elseif ($weight !== null && $reps === null && $bare) {
+                $reps = (int) $bare[0];
+            } elseif ($reps !== null && $weight === null && $bare) {
+                $weight = (float) $bare[0];
+            }
+        } else {
+            if ($weight === null && $reps === null && count($bare) >= 2) {
+                $weight = max($bare[0], $bare[1]);
+                $reps = (int) min($bare[0], $bare[1]);
+            } elseif ($weight !== null && $reps === null && $bare) {
+                $reps = (int) $bare[0];
+            } elseif ($reps !== null && $weight === null && $bare) {
+                $weight = (float) $bare[0];
+            }
         }
 
         $ex = preg_replace('/\b\d+(?:\.\d+)?\b/', ' ', $t);
-        $ex = preg_replace('/\b(kilograms?|kilos?|kgs?|kg|pounds?|lbs?|lb|reps?|rpe|for|x|by|at|and|times|of|the|a)\b/', ' ', $ex);
+        $ex = preg_replace('/\b(kilograms?|kilos?|kgs?|kg|pounds?|lbs?|lb|reps?|rpe|for|x|by|at|and|times|of|the|a|to|set|sets|change|make|correct|fix|update|adjust|edit|it|that|last|this|previous|actually|delete|remove|drop|scrap|scratch|undo|never|nevermind|mind|cancel|forget|get|rid|off|my)\b/', ' ', $ex);
         $ex = trim(preg_replace('/\s+/', ' ', $ex));
 
         return ['exercise' => $ex ? ucwords($ex) : null, 'weight_kg' => $weight, 'reps' => $reps, 'rpe' => $rpe];
