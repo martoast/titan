@@ -4,10 +4,17 @@
 skin**, that the band tracks HRV / resting HR / sleep well enough to trust. Two people (Alex
 + Tester C) — do it together, one reads steps, one drives.*
 
-> **What you're proving.** The pipeline is already verified end-to-end on synthetic data.
-> What you *can't* know until now is the **error band on a real wrist** — yours. The Polar
-> H10 (chest ECG) is the reference: it gives true beat-to-beat timing. We compare the Bangle
-> against it.
+> **What you're proving.** Every algorithm is already validated on **real public data**, leave-
+> subjects-out: HRV (NeuroKit2), sleep staging (Walch/PhysioNet), workout classification (PAMAP2,
+> ~88%), and VO2max (981 real maximal treadmill tests, MAE 5.6). The whole device→pipeline path is
+> also exercised by the **workout digital-twin** (`biosignal/scripts/simulate_workout.py`) and the
+> **night simulator** (`php artisan simulator:night`). What you *can't* know until now is the
+> **error band on a real wrist** — yours. The Polar H10 (chest ECG) is the reference for HR/HRV.
+
+> **Three things this day captures** (each unlocks more than a check-mark):
+> 1. **Resting HRV/HR** vs Polar H10 — your personal RMSSD offset.
+> 2. **A night** — sleep/wake + the RMSSD-distribution data that improves the stager.
+> 3. **A paced run** — confirms on-watch HRmax (Pillar 1) and grounds your VO2max on your own data.
 
 ---
 
@@ -97,7 +104,45 @@ This is the rigorous one. Both devices stream live; Titan compares them beat-for
 
 ---
 
-## 4. Troubleshooting
+## 4. Part C — Workout + fitness validation (one run/ride, ≈20–30 min)
+This grounds **Pillar 2** (workout classification) and **Pillar 3** (VO2max) on your own data, and
+captures the **on-watch HRmax** that Pillar 1 needs. Do it outdoors so the **GPS** has sky.
+
+> **Battery note:** GPS is the watch's biggest drain, so it's **off until the watch detects
+> sustained locomotion** (~25 s of running/walking motion) — then it powers on automatically. You'll
+> see the on-watch `gps:` line go `off → search → fix`. Don't start GPS manually; the workout gate
+> handles it. It powers back off ~90 s after you stop.
+
+1. **Wear the Bangle** (+ the **Polar H10** if you want an HR reference for the run). Charge first.
+2. Press **BTN** to start capture (`REC`). Walk for ~1 min — watch the `gps:` line flip to `search`
+   then `fix` with a speed. (No fix after ~2 min → you need clearer sky.)
+3. **Do a real effort:** an easy→hard run or ride, ~20–30 min, including a few minutes near hard so
+   HR climbs toward max. Then **stop and stand still ~90 s** (don't sit) — this is the **HRR**
+   (heart-rate recovery) capture; keep `REC` on through it.
+4. Press **BTN** to stop. **Sync** on the Mac (Devices → Live stream → Connect) — the run uploads.
+5. Read the results:
+   - **Activity** — the session should be classified **run / cycle / walk** (Pillar 2).
+   - **Fitness** (`/fitness` or Coach) — **VO2max** estimate + band, and **HRR** (bpm drop in 60 s).
+   - **Resting/maxHR** — note the **peak HR** from the hard part as your measured **HRmax** (beats
+     the 208−0.7·age default; feed it into your profile so TRIMP + VO2max use the real number).
+
+### What to check (workout)
+| Metric | How to judge | Confidence |
+|---|---|---|
+| Activity type | matches what you actually did | 🟢 ~88% on real data (PAMAP2) |
+| GPS distance / pace | vs a known route or a phone GPS app | 🟢 good (chip-grade GNSS) |
+| **Measured HRmax** | highest HR in the hard segment, vs the H10 | 🟢 high (on-watch bpm, in-motion) |
+| VO2max | sanity vs your expectation / a Cooper test | 🟡 ±~5.6 ml/kg/min (it tracks *trend*) |
+| HRR-60s | bigger drop = fitter; track vs your own baseline | 🟡 personal trend, not absolute |
+
+> **Honest limits.** In-motion **HRV** is unreliable (motion corrupts PPG) — workout HR uses the
+> watch's on-chip bpm, never beat-to-beat HRV. VO2max is a **wellness estimate** (±~5.6 ml/kg/min):
+> its value is the **trend** — as you get fitter, your HR at the same GPS pace drops and the number
+> rises. One reading isn't a lab test; the slope over weeks is the signal.
+
+---
+
+## 5. Troubleshooting
 | Symptom | Fix |
 |---|---|
 | Bluetooth chooser shows nothing | Use desktop/Android **Chrome/Edge** (not Safari/iOS). Watch must be running Titan + not connected elsewhere. |
@@ -109,7 +154,7 @@ This is the rigorous one. Both devices stream live; Titan compares them beat-for
 
 ---
 
-## 5. Record the results (fill this in)
+## 6. Record the results (fill this in)
 ```
 Date: ____   Subject: Alex / Tester C
 RESTING (Part A):
@@ -120,6 +165,10 @@ OVERNIGHT (Part B):
   Sleep: total ___ m   bed ___   wake ___   deep ___  rem ___  light ___  awake ___
   Felt like: fell asleep ~___, woke ~___, slept ~___ h  → sleep/wake match? Y / N
 Personal RMSSD offset (Bangle − Polar): ___ ms   ← apply mentally to single readings
+WORKOUT (Part C):
+  Did: run / ride / walk, ___ min   GPS distance ___ km   → classified as: ___  (match? Y / N)
+  Measured HRmax ___ bpm  → set in profile? Y / N      VO2max ___ ml/kg/min  (band: ___)
+  HRR-60s ___ bpm
 ```
 
 **Bottom line for the day:** if Part A lands **Validated** (or a small consistent bias) and
