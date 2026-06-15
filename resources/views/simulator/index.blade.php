@@ -415,15 +415,17 @@
                 pulse = Math.max(0, pulse - dt * 3.2); // decay after each beat
                 const st = getState();
                 const calm = st === 'deep' || st === 'rest';
-                // calm green vs elevated amber
+                // The optical LEDs live on the BACK of the case (against the wrist), so they
+                // must NOT light up the front. Keep them a dim, subtle indicator — no
+                // scene-flooding strobe — only noticeable if you rotate to the underside.
                 const baseColor = calm ? new THREE.Color(0x18ff7a) : new THREE.Color(0xffb020);
-                const lit = baseColor.clone().multiplyScalar(0.7 + pulse * 1.5);
                 ledMat.emissive.copy(baseColor);
-                ledMat.emissiveIntensity = 1.0 + pulse * 3.4;
-                ledMat.color.copy(lit);
-                ppgGlow.color.copy(baseColor);
-                ppgGlow.intensity = 1.2 + pulse * 6.5;
+                ledMat.emissiveIntensity = 0.3 + pulse * 0.7;
+                ledMat.color.copy(baseColor.clone().multiplyScalar(0.35));
+                ppgGlow.intensity = 0;                       // kill the green light bleed
+                // gentle brand accent on the screen (a soft breath, not a flash)
                 ring.material.color.copy(calm ? new THREE.Color(0x6366f1) : new THREE.Color(0xf59e0b));
+                ring.material.opacity = 0.16 + pulse * 0.1;
 
                 controls.update();
                 if (composer) composer.render(); else renderer.render(scene, camera);
