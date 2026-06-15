@@ -1,0 +1,79 @@
+{
+  "_comment": "Canonical request/response examples for the Laravel BiosignalClient. ibi_ms arrays here are truncated for readability; real overnight windows contain thousands of beats. Use tests/fixtures.py to generate full series.",
+  "hrv_request": {
+    "ibi_ms": [812, 798, 805, 1190, 801, 990, 1005, 988, 1012, 995],
+    "accel_counts": [3, 1, 0, 0, 2, 1, 0, 0, 1, 0],
+    "start": "2026-06-14T05:00:00Z",
+    "end": "2026-06-14T13:00:00Z"
+  },
+  "hrv_request_raw_ppg": {
+    "ppg": [512, 540, 600, 720, 690, 540, 500, 510],
+    "sample_rate_hz": 64,
+    "start": "2026-06-14T05:00:00Z",
+    "end": "2026-06-14T05:01:00Z"
+  },
+  "hrv_response_example": {
+    "algo_version": "hrv-1.0.0+sleep-0.1.0+activity-0.1.0",
+    "metrics": {
+      "hrv_ms": 42.5,
+      "resting_hr": 53.0,
+      "rmssd": 42.5,
+      "sdnn": 58.1,
+      "pnn50": 18.3,
+      "lf_hf": 1.42,
+      "artifact_pct": 0.61,
+      "valid": true,
+      "n_beats_raw": 28800,
+      "n_beats_clean": 28600
+    }
+  },
+  "sleep_request": {
+    "accel_counts": [0, 1, 0, 0, 12, 0, 0, 1],
+    "hr_bpm": [54, 53, 52, 52, 60, 55, 53, 52],
+    "start": "2026-06-14T05:00:00Z",
+    "end": "2026-06-14T13:00:00Z"
+  },
+  "sleep_response_example": {
+    "algo_version": "hrv-1.0.0+sleep-0.1.0+activity-0.1.0",
+    "metrics": {
+      "duration_min": 433.0,
+      "deep_min": 61.0,
+      "rem_min": 95.0,
+      "light_min": 277.0,
+      "awake_min": 22.0,
+      "bedtime": "2026-06-14T05:02:00+00:00",
+      "wake_time": "2026-06-14T12:55:00+00:00",
+      "quality": 78,
+      "hypnogram_30s": ["wake", "light", "deep", "deep", "wake", "light", "rem"]
+    }
+  },
+  "activity_request": {
+    "accel_counts": [1, 2, 45, 48, 50, 44, 2, 1],
+    "hr_bpm": [60, 62, 140, 150, 155, 148, 80, 65],
+    "start": "2026-06-14T17:00:00Z",
+    "hr_max": 190,
+    "hr_rest": 52,
+    "weight_kg": 78
+  },
+  "activity_response_example": {
+    "algo_version": "hrv-1.0.0+sleep-0.1.0+activity-0.1.0",
+    "metrics": {
+      "sessions": [
+        {
+          "start": "2026-06-14T17:01:00+00:00",
+          "end": "2026-06-14T17:36:00+00:00",
+          "duration_min": 35.0,
+          "mean_accel_counts": 44.2,
+          "mean_hr": 149.3,
+          "intensity": 0.71,
+          "trimp": 96.4,
+          "calories_kcal": 410.0
+        }
+      ],
+      "session_count": 1,
+      "total_active_min": 35.0,
+      "total_trimp": 96.4,
+      "total_calories_kcal": 410.0
+    }
+  }
+}
