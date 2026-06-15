@@ -21,6 +21,7 @@ person's own baseline, not as an absolute fitness number.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -38,6 +39,62 @@ _MODEL_MAE = 5.6  # honest leave-subjects-out mean abs error of the demographic 
 # adult midpoints; we shift the cut by age/sex so "good" tracks the person's peer norm.
 _BANDS = [(0, "low"), (1, "fair"), (2, "good"), (3, "high"), (4, "excellent")]
 
+# --- Run-calibrated VO2max (needs GPS pace + baro grade) --------------------------------------
+# A learned model on profile + HR-at-known-pace features from a logged run. On real treadmill
+# data this lands MAE 5.4 ml/kg/min (r 0.59) leave-subjects-out — about the same cross-sectional
+# accuracy as demographic+resting-HR, but unlike demographics it RESPONDS to training: as you get
+# fitter your HR at a given GPS pace drops, so this is the estimate that tracks your own trend.
+# NB: a naive ACSM "extrapolate demand to HRmax" estimate was tried and REJECTED — it overestimates
+# by ~13 ml/kg/min on real data because metabolic demand outruns actual VO2 past the aerobic ceiling.
+_RUN_MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "vo2max_run.joblib"
+_RUN_MODEL: Optional[dict] = None
+_RUN_TRIED = False
+RUN_FEATURES = ["age", "sex_female", "bmi", "hrmax", "hr_at_8", "hr_at_10", "hr_at_12",
+                "hr_speed_slope", "hrr60"]
+_STD_SPEEDS = (8.0, 10.0, 12.0)
+
+
+def grade_adjusted_speed(speed_kmh, grade):
+    """Convert outdoor (speed, grade) → equivalent FLAT running speed, so HR-at-pace is
+    comparable on hills. From ACSM running (0.2·v_eq = 0.2·v + 0.9·v·grade): v_eq = v·(1+4.5·grade).
+    `grade` is rise/run as a fraction (baro Δaltitude / GPS Δdistance), clipped to ±15%."""
+    v = np.asarray(speed_kmh, float)
+    g = np.clip(np.asarray(grade, float), -0.15, 0.15)
+    return v * (1.0 + 4.5 * g)
+
+
+def run_feature_vector(age, sex_female, bmi, hrmax, hrr60, hr, speed_kmh, grade=None) -> np.ndarray:
+    """Profile + HR-at-grade-adjusted-pace features for the run-calibrated model. Shared by
+    training (scripts/validate_vo2max.py) and inference so they can't drift. Missing features
+    are NaN (the gradient-boosting model handles NaN natively → partial runs still estimate)."""
+    hr = np.asarray(hr, float)
+    v = grade_adjusted_speed(speed_kmh, grade if grade is not None else np.zeros_like(speed_kmh))
+    feats = {"age": float(age), "sex_female": 1.0 if sex_female else 0.0, "bmi": float(bmi),
+             "hrmax": float(hrmax) if hrmax else np.nan, "hrr60": float(hrr60) if hrr60 is not None else np.nan}
+    run = (v > 6.0) & np.isfinite(hr) & (hr > 50)
+    for s in _STD_SPEEDS:
+        near = run & (np.abs(v - s) <= 1.0)
+        feats[f"hr_at_{int(s)}"] = float(np.median(hr[near])) if near.sum() >= 3 else np.nan
+    sub = run & (hr < 0.9 * (hrmax if hrmax else 200))
+    if sub.sum() >= 15 and np.std(v[sub]) > 0.5:
+        feats["hr_speed_slope"] = float(np.polyfit(v[sub], hr[sub], 1)[0])
+    else:
+        feats["hr_speed_slope"] = np.nan
+    return np.array([feats[k] for k in RUN_FEATURES], dtype=float)
+
+
+def _load_run_model():
+    global _RUN_MODEL, _RUN_TRIED
+    if not _RUN_TRIED:
+        _RUN_TRIED = True
+        try:
+            if _RUN_MODEL_PATH.exists():
+                import joblib
+                _RUN_MODEL = joblib.load(_RUN_MODEL_PATH)
+        except Exception:
+            _RUN_MODEL = None
+    return _RUN_MODEL
+
 
 def _is_female(sex) -> bool:
     return str(sex).strip().lower() in {"1", "f", "female", "w", "woman"}
@@ -50,8 +107,14 @@ def estimate_vo2max(
     height_cm: float,
     resting_hr: Optional[float] = None,
     hr_max: Optional[float] = None,
+    run: Optional[dict] = None,
 ) -> dict:
-    """Estimate VO2max (ml/kg/min) from a profile, refined by resting HR when available.
+    """Estimate VO2max (ml/kg/min) from a profile, refined by resting HR and/or a logged run.
+
+    `run`, when present, is a paced workout the wrist can capture with its GPS + barometer:
+        {"hr": [...], "speed_kmh": [...], "grade": [...] (optional), "hrr60": float (optional)}
+    A fitter person has lower HR at the same GPS pace, so this is the estimate that tracks
+    training — see the run-calibrated model. Falls back to demographic(+resting-HR) without it.
 
     Returns {vo2max, methods, plusminus, fitness_level, fitness_percentile_band}. `plusminus`
     is the honest ± band (the validated MAE), so the UI can show a range, not false precision.
@@ -60,12 +123,18 @@ def estimate_vo2max(
     female = _is_female(sex)
     demographic = _INTERCEPT + _C_AGE * age + (_C_SEX_FEMALE if female else 0.0) + _C_BMI * bmi
 
-    estimates = [demographic]
-    methods = ["demographic"]
+    # Pick the PRIMARY estimate. The run-calibrated model already includes age/sex/BMI, so when a
+    # run is present it SUBSUMES the demographic equation (don't average them → double-counting).
+    run_est = _run_calibrated_vo2max(age, female, bmi, hr_max, run) if run else None
+    if run_est is not None:
+        estimates, methods = [run_est], ["run_calibrated"]
+    else:
+        estimates, methods = [demographic], ["demographic"]
+
+    # Resting HR (Uth-Sørensen) is an INDEPENDENT signal (resting, not exercise) → blend it in.
     if resting_hr and resting_hr > 30:
         hrm = hr_max if (hr_max and hr_max > 120) else (208 - 0.7 * age)  # Tanaka HRmax
-        uth = 15.3 * hrm / resting_hr
-        estimates.append(uth)
+        estimates.append(15.3 * hrm / resting_hr)
         methods.append("uth_resting_hr")
 
     vo2 = float(np.clip(np.mean(estimates), 15.0, 90.0))
@@ -77,6 +146,22 @@ def estimate_vo2max(
         "fitness_level": level,
         "fitness_percentile_band": band,
     }
+
+
+def _run_calibrated_vo2max(age, female, bmi, hr_max, run: dict) -> Optional[float]:
+    """Run a logged paced workout through the learned HR-at-pace model. None if no model /
+    the run lacks usable pace+HR (e.g. GPS off)."""
+    model = _load_run_model()
+    hr = run.get("hr")
+    speed = run.get("speed_kmh")
+    if model is None or hr is None or speed is None or len(hr) < 30:
+        return None
+    hrmax = hr_max if (hr_max and hr_max > 120) else float(np.nanmax(np.asarray(hr, float)))
+    x = run_feature_vector(age, female, bmi, hrmax, run.get("hrr60"), hr, speed, run.get("grade"))
+    # Need at least one HR-at-pace anchor or the run carries no calibration signal.
+    if not np.any(np.isfinite(x[4:7])):
+        return None
+    return float(np.clip(model["model"].predict(x.reshape(1, -1))[0], 15.0, 90.0))
 
 
 def fitness_level(vo2max: float, age: float, female: bool) -> tuple:

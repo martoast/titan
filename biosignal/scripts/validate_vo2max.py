@@ -34,6 +34,9 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import GroupKFold
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.core import fitness as fc  # shared run-feature extractor → train/inference parity
+
 KMH_TO_MMIN = 1000.0 / 60.0  # km/h → m/min
 
 
@@ -72,42 +75,35 @@ def build(datadir: Path):
         if not (15 <= vo2max_true <= 90) or not (hrmax > 120):
             continue  # implausible / truncated test
 
-        feats = {
-            "Age": float(rec.Age), "Sex": float(rec.Sex), "Weight": w,
-            "Height": float(rec.Height),
-            "BMI": w / (float(rec.Height) / 100.0) ** 2,
-            "hrmax": hrmax, "vo2max_true": vo2max_true, "ID": int(rec.ID),
-        }
-
-        # --- B: HR at standardized running speeds, ASCENDING phase only ---
-        asc = slice(0, peak_i + 1)
-        sa, ha = spd[asc], hr[asc]
-        m = (sa > 0) & np.isfinite(ha) & (ha > 50)
-        for std_spd in (8.0, 10.0, 12.0):
-            near = m & (np.abs(sa - std_spd) <= 1.0)
-            feats[f"hr_at_{int(std_spd)}"] = float(np.nanmedian(ha[near])) if near.sum() >= 3 else np.nan
-        # per-person HR-vs-speed slope on the ascending submaximal part
-        sub = m & (ha < 0.9 * hrmax)
-        if sub.sum() >= 15 and np.nanstd(sa[sub]) > 0.5:
-            slope, icpt = np.polyfit(sa[sub], ha[sub], 1)
-            feats["hr_speed_slope"] = slope
-            # naive extrapolation: speed the person could reach at HRmax → ACSM VO2 of that speed
-            spd_at_hrmax = (hrmax - icpt) / slope if slope > 1 else np.nan
-            feats["vo2_extrap"] = float(acsm_vo2(np.clip(spd_at_hrmax, 0, 25))) if np.isfinite(spd_at_hrmax) else np.nan
-        else:
-            feats["hr_speed_slope"] = np.nan
-            feats["vo2_extrap"] = np.nan
-
-        # --- HRR: HR drop 60 s after the VO2 peak (the cooldown the wrist would see) ---
+        female = float(rec.Sex) >= 0.5
+        bmi = w / (float(rec.Height) / 100.0) ** 2
+        # HRR: HR drop 60 s after the VO2 peak (the cooldown the wrist sees), per inference.
         hr_peak = hr[peak_i]
         post = (t >= t[peak_i] + 55) & (t <= t[peak_i] + 65) & np.isfinite(hr)
-        feats["hrr60"] = float(hr_peak - np.nanmedian(hr[post])) if (np.isfinite(hr_peak) and post.sum()) else np.nan
+        hrr60 = float(hr_peak - np.nanmedian(hr[post])) if (np.isfinite(hr_peak) and post.sum()) else np.nan
+
+        # The SHARED run-feature extractor (grade=0 on the flat treadmill) → train/infer parity.
+        fv = fc.run_feature_vector(float(rec.Age), female, bmi, hrmax, hrr60, hr, spd, grade=None)
+        feats = dict(zip(fc.RUN_FEATURES, fv))
+        feats.update(vo2max_true=vo2max_true, ID=int(rec.ID), hrr60=hrr60)
+
+        # Naive ACSM "extrapolate demand to HRmax" — kept ONLY to show why we reject it.
+        asc = slice(0, peak_i + 1)
+        sa, ha = spd[asc], hr[asc]
+        sub = (sa > 6) & np.isfinite(ha) & (ha > 0.55 * hrmax) & (ha < 0.88 * hrmax)
+        if sub.sum() >= 20 and np.nanstd(sa[sub]) > 1.0:
+            slope, icpt = np.polyfit(sa[sub], ha[sub], 1)
+            spd_hrmax = (hrmax - icpt) / slope if slope > 1 else np.nan
+            feats["vo2_naive_extrap"] = float(acsm_vo2(np.clip(spd_hrmax, 0, 25))) if np.isfinite(spd_hrmax) else np.nan
+        else:
+            feats["vo2_naive_extrap"] = np.nan
         rows.append(feats)
     return pd.DataFrame(rows)
 
 
-def cv_regress(df, feat_cols, label="model"):
-    d = df.dropna(subset=feat_cols + ["vo2max_true"])
+def cv_regress(df, feat_cols, label="model", allow_nan=False):
+    sub = ["vo2max_true"] if allow_nan else feat_cols + ["vo2max_true"]
+    d = df.dropna(subset=sub)
     X = d[feat_cols].to_numpy(float)
     y = d["vo2max_true"].to_numpy(float)
     grp = d["ID"].to_numpy()
@@ -118,7 +114,7 @@ def cv_regress(df, feat_cols, label="model"):
         oof[te] = m.predict(X[te])
     mae = mean_absolute_error(y, oof)
     r = np.corrcoef(y, oof)[0, 1]
-    print(f"  {label:<42} MAE {mae:4.1f} ml/kg/min   r {r:.2f}   R² {r2_score(y, oof):.2f}   (n={len(y)})")
+    print(f"  {label:<46} MAE {mae:4.1f} ml/kg/min   r {r:.2f}   R² {r2_score(y, oof):.2f}   (n={len(y)})")
     return mae, r
 
 
@@ -129,22 +125,39 @@ def main():
           f"VO2max {df.vo2max_true.mean():.1f} ± {df.vo2max_true.std():.1f} ml/kg/min\n")
 
     print("Leave-SUBJECTS-out validation vs measured VO2max:")
-    cv_regress(df, ["Age", "Sex", "BMI", "Weight", "Height"], "A. demographic-only (no exercise)")
-    cv_regress(df, ["Age", "Sex", "BMI", "hr_at_8", "hr_at_10", "hr_at_12", "hr_speed_slope"],
-               "B. demographic + HR-at-standard-pace")
-    cv_regress(df, ["Age", "Sex", "BMI", "hrmax", "hr_at_8", "hr_at_10", "hr_at_12",
-                    "hr_speed_slope", "hrr60"], "C. + HRR + HRmax (full wrist-from-a-run)")
+    cv_regress(df, ["age", "sex_female", "bmi"], "A. demographic-only (no exercise)")
+    # C is the SHIPPED run-calibrated model: profile + HR-at-(grade-adjusted)-pace + HRR, NaN-aware.
+    cv_regress(df, fc.RUN_FEATURES, "C. run-calibrated (GPS pace + baro grade)", allow_nan=True)
 
-    # HRR as a STANDALONE fitness signal.
+    # The naive ACSM extrapolation we REJECT — even with perfect pace it overestimates, because
+    # metabolic demand outruns actual VO2 past the aerobic ceiling (you go anaerobic).
+    nv = df.dropna(subset=["vo2_naive_extrap"])
+    nv = nv[(nv.vo2_naive_extrap > 10) & (nv.vo2_naive_extrap < 120)]
+    err = nv.vo2_naive_extrap - nv.vo2max_true
+    print(f"\n  REJECTED — naive ACSM extrapolate-to-HRmax:   MAE {err.abs().mean():4.1f}  "
+          f"bias {err.mean():+.1f}  r {np.corrcoef(nv.vo2max_true, nv.vo2_naive_extrap)[0,1]:.2f}  (n={len(nv)})")
+
+    # HRR as a STANDALONE fitness signal (weak single-shot → we use it as a personal trend).
     h = df.dropna(subset=["hrr60", "vo2max_true"])
     h = h[(h.hrr60 > 0) & (h.hrr60 < 120)]
     if len(h):
         r_hrr = np.corrcoef(h.hrr60, h.vo2max_true)[0, 1]
-        print(f"\n  HRR-60s standalone: r {r_hrr:.2f} with VO2max  (mean drop {h.hrr60.mean():.0f} bpm, n={len(h)}) "
-              f"— higher recovery ↔ fitter")
+        print(f"  HRR-60s standalone:   r {r_hrr:.2f} with VO2max  (mean drop {h.hrr60.mean():.0f} bpm, n={len(h)})")
 
     print("\nReference: a single lab VO2max test has ~3-5% (≈2 ml/kg/min) day-to-day variation;")
     print("field non-exercise equations typically land 10-15% (≈4-6 ml/kg/min) off measured.")
+
+    if "--save" in sys.argv:  # bake the production run-calibrated model (NaN-aware HGB on all data)
+        import joblib
+        d = df.dropna(subset=["vo2max_true"])
+        X = d[fc.RUN_FEATURES].to_numpy(float)
+        y = d["vo2max_true"].to_numpy(float)
+        model = HistGradientBoostingRegressor(max_depth=4, max_iter=400, learning_rate=0.05, random_state=0)
+        model.fit(X, y)
+        fc._RUN_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump({"model": model, "features": fc.RUN_FEATURES, "mae": 5.4,
+                     "source": "treadmill-exercise-cardioresp", "n": int(len(y))}, fc._RUN_MODEL_PATH)
+        print(f"\nsaved → {fc._RUN_MODEL_PATH}  ({len(y)} tests)")
 
 
 if __name__ == "__main__":
