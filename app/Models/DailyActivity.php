@@ -15,12 +15,12 @@ class DailyActivity extends Model
 
     protected $fillable = [
         'profile_id', 'date', 'steps', 'mvpa_min', 'active_kcal', 'floors', 'distance_km',
-        'source', 'updated_via',
+        'hourly', 'source', 'updated_via',
     ];
 
     protected function casts(): array
     {
-        return ['date' => 'date', 'distance_km' => 'float'];
+        return ['date' => 'date', 'distance_km' => 'float', 'hourly' => 'array'];
     }
 
     public function profile(): BelongsTo

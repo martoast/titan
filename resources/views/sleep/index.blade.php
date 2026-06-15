@@ -147,6 +147,62 @@
             @endif
         </div>
 
+        {{-- Circadian rest-activity rhythm — day/night contrast; blunted rhythm predicts mortality --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h3 class="font-display font-bold text-gray-100">Circadian rhythm</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">How clearly your active days separate from your restful nights.</p>
+                </div>
+                @if ($circadian)
+                    @php
+                        $raTone = match ($circadian['band']) {
+                            'excellent' => 'text-emerald-300', 'good' => 'text-cyan-300',
+                            'fair' => 'text-amber-300', default => 'text-orange-300',
+                        };
+                    @endphp
+                    <div class="text-right shrink-0">
+                        <div class="font-display text-4xl font-black nums {{ $raTone }} leading-none">{{ $circadian['ra'] }}</div>
+                        <div class="text-[10px] uppercase tracking-wider text-gray-500 mt-1">rhythm / 100</div>
+                    </div>
+                @endif
+            </div>
+
+            @if ($circadian)
+                <div class="mt-4">
+                    <div class="relative h-2 rounded-full bg-gradient-to-r from-orange-500/40 via-amber-400/40 to-emerald-400/60">
+                        <div class="absolute -top-1 h-4 w-1 rounded-full bg-white shadow" style="left: {{ max(0, min(100, $circadian['ra'])) }}%"></div>
+                    </div>
+                    <div class="mt-3 flex items-center justify-between">
+                        <span class="text-sm font-semibold {{ $raTone }}">{{ $circadian['label'] }}</span>
+                        <span class="text-xs text-gray-600 nums">{{ $circadian['days'] }} days</span>
+                    </div>
+                    @php
+                        $fmtHour = fn ($h) => \Illuminate\Support\Carbon::today()->setTime($h, 0)->format('g A');
+                    @endphp
+                    <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+                        <div class="rounded-xl border border-white/5 bg-white/[0.02] px-2 py-2">
+                            <div class="text-[10px] uppercase tracking-wide text-gray-500">Stability</div>
+                            <div class="font-display text-lg font-bold nums text-gray-200 leading-none mt-0.5">{{ number_format($circadian['is'], 2) }}</div>
+                        </div>
+                        <div class="rounded-xl border border-white/5 bg-white/[0.02] px-2 py-2">
+                            <div class="text-[10px] uppercase tracking-wide text-gray-500">Most active</div>
+                            <div class="font-display text-lg font-bold nums text-gray-200 leading-none mt-0.5">{{ $fmtHour($circadian['m10_onset']) }}</div>
+                        </div>
+                        <div class="rounded-xl border border-white/5 bg-white/[0.02] px-2 py-2">
+                            <div class="text-[10px] uppercase tracking-wide text-gray-500">Deep rest</div>
+                            <div class="font-display text-lg font-bold nums text-gray-200 leading-none mt-0.5">{{ $fmtHour($circadian['l5_onset']) }}</div>
+                        </div>
+                    </div>
+                    @if ($circadian['ra'] < 75)
+                        <p class="mt-3 text-xs text-gray-400">Brighter, more active days and darker, stiller nights sharpen this rhythm — a strong day/night contrast is linked to longer, healthier life.</p>
+                    @endif
+                </div>
+            @else
+                <p class="mt-3 text-sm text-gray-500">Wear your band across {{ \App\Support\CircadianRhythm::MIN_DAYS }}+ full days to see your rest-activity rhythm.</p>
+            @endif
+        </div>
+
         {{-- 14-day trend --}}
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100 mb-4">14-day trend</h3>

@@ -168,6 +168,8 @@ class DeviceIngestionService
                     'active_kcal' => isset($summary['active_kcal']) ? (int) round($summary['active_kcal']) : null,
                     'floors' => isset($summary['floors']) ? (int) round($summary['floors']) : null,
                     'distance_km' => $summary['distance_km'] ?? null,
+                    'hourly' => (isset($summary['hourly']) && is_array($summary['hourly']) && count($summary['hourly']) === 24)
+                        ? array_map('intval', $summary['hourly']) : null,
                     'source' => $connection->source,
                     'updated_via' => 'device:summary',
                 ], fn ($v) => $v !== null),

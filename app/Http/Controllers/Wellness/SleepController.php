@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Wellness;
 
 use App\Http\Controllers\Controller;
 use App\Models\SleepLog;
+use App\Support\CircadianRhythm;
 use App\Support\SleepRegularity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -42,11 +43,16 @@ class SleepController extends Controller
         $month = $profile->sleepLogs()->where('slept_at', '>=', Carbon::today()->subDays(27))->get();
         $regularity = SleepRegularity::compute($month);
 
+        // Circadian rest-activity rhythm over the last ~2 weeks of hourly-profiled days (Feng 2023).
+        $activityDays = $profile->dailyActivity()->where('date', '>=', Carbon::today()->subDays(13))->get();
+        $circadian = CircadianRhythm::compute($activityDays);
+
         return view('sleep.index', [
             'profile' => $profile,
             'latest' => $latest,
             'trend' => $trend,
             'regularity' => $regularity,
+            'circadian' => $circadian,
             'avgDuration' => $avgDuration,
             'avgDurationLabel' => $avgDuration !== null
                 ? intdiv($avgDuration, 60).'h '.str_pad((string) ($avgDuration % 60), 2, '0', STR_PAD_LEFT).'m'

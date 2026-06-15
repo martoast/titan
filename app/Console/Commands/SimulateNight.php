@@ -146,9 +146,11 @@ class SimulateNight extends Command
                     'quality' => $summary['quality'],
                 ],
                 ['kind' => 'recovery', 'date' => $date, 'hrv_ms' => (int) round($rmssd), 'resting_hr' => $rhr],
-                // A plausible day of ambient movement so the steps goal populates in the demo.
+                // A plausible day of ambient movement (steps + a realistic hourly profile) so the
+                // steps goal AND circadian rhythm populate in the demo.
                 ['kind' => 'activity', 'date' => $date, 'steps' => random_int(5200, 11500),
-                    'mvpa_min' => random_int(18, 55), 'floors' => random_int(3, 16)],
+                    'mvpa_min' => random_int(18, 55), 'floors' => random_int(3, 16),
+                    'hourly' => $this->hourlyActivityProfile()],
             ],
         ];
 
@@ -164,6 +166,23 @@ class SimulateNight extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * A realistic 24 h activity profile (counts per hour, midnight→midnight): near-zero overnight,
+     * a morning and an evening peak, moderate daytime — gives a strong day/night contrast (high RA).
+     *
+     * @return array<int,int>
+     */
+    private function hourlyActivityProfile(): array
+    {
+        $shape = [2, 1, 1, 1, 1, 3, 25, 80, 95, 60, 55, 70, 75, 50, 45, 55, 70, 90, 85, 60, 40, 20, 8, 3];
+        $out = [];
+        foreach ($shape as $base) {
+            $out[] = max(0, (int) round($base * (0.85 + mt_rand(0, 30) / 100)));
+        }
+
+        return $out;
     }
 
     private function resolveProfile(): ?Profile
