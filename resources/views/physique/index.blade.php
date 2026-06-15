@@ -128,18 +128,47 @@
 
             {{-- collapsible upload form --}}
             <div x-show="addOpen" x-collapse x-cloak x-ref="addForm" class="mb-5 scroll-mt-20">
-                <form method="POST" action="{{ route('physique.photo.store') }}" enctype="multipart/form-data" class="rounded-xl border border-white/10 bg-gray-950/50 p-4 space-y-3">
+                <form method="POST" action="{{ route('physique.photo.store') }}" enctype="multipart/form-data"
+                      x-data="{ name: '', preview: '' }" class="rounded-2xl border border-white/10 bg-gray-950/50 p-4 space-y-4">
                     @csrf
-                    <input type="file" name="photo" accept="image/*" required
-                           class="block w-full text-base text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-500/20 file:px-3 file:py-2.5 file:text-indigo-300 file:text-sm active:file:bg-indigo-500/30">
-                    <div class="grid grid-cols-3 gap-2.5">
-                        <input type="date" name="taken_at" value="{{ now()->toDateString() }}" class="h-11 rounded-xl border border-white/10 bg-gray-950 px-2.5 text-sm text-gray-100 focus:border-indigo-500/50 focus:outline-none">
-                        <select name="pose" class="h-11 rounded-xl border border-white/10 bg-gray-950 px-2.5 text-sm text-gray-100 focus:border-indigo-500/50 focus:outline-none">
-                            <option value="">Pose</option><option value="front">Front</option><option value="side">Side</option><option value="back">Back</option>
-                        </select>
-                        <input type="number" step="0.1" name="weight_kg" placeholder="kg" class="h-11 rounded-xl border border-white/10 bg-gray-950 px-2.5 text-sm text-gray-100 placeholder:text-gray-600 focus:border-indigo-500/50 focus:outline-none">
+                    {{-- Big, obvious tap-to-upload zone with live preview --}}
+                    <label class="block cursor-pointer">
+                        <input type="file" name="photo" accept="image/*" required class="sr-only"
+                               @change="const f = $event.target.files[0]; if (f) { if (preview) URL.revokeObjectURL(preview); name = f.name; preview = URL.createObjectURL(f); }">
+                        <div class="rounded-2xl border-2 border-dashed border-indigo-500/40 bg-indigo-500/[0.06] active:bg-indigo-500/10 transition text-center"
+                             :class="preview ? 'p-3' : 'p-8'">
+                            <template x-if="!preview">
+                                <div>
+                                    <div class="mx-auto h-14 w-14 rounded-2xl bg-indigo-500/15 grid place-items-center mb-3">
+                                        <svg class="h-7 w-7 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                                    </div>
+                                    <p class="font-display font-bold text-gray-100">Tap to add your photo</p>
+                                    <p class="text-xs text-gray-500 mt-1">A full-body shot from your library or camera</p>
+                                </div>
+                            </template>
+                            <template x-if="preview">
+                                <div class="flex items-center gap-3 text-left">
+                                    <img :src="preview" class="h-24 w-[4.5rem] object-cover rounded-lg border border-white/10 shrink-0">
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-medium text-gray-100 truncate" x-text="name"></p>
+                                        <p class="text-xs text-indigo-300 mt-0.5">Looks good — tap to change</p>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </label>
+                    {{-- Optional details (clearly secondary) --}}
+                    <div>
+                        <p class="text-[10px] uppercase tracking-wide text-gray-600 mb-1.5">Optional</p>
+                        <div class="grid grid-cols-3 gap-2.5">
+                            <input type="date" name="taken_at" value="{{ now()->toDateString() }}" class="h-11 rounded-xl border border-white/10 bg-gray-950 px-2.5 text-sm text-gray-100 focus:border-indigo-500/50 focus:outline-none">
+                            <select name="pose" class="h-11 rounded-xl border border-white/10 bg-gray-950 px-2.5 text-sm text-gray-100 focus:border-indigo-500/50 focus:outline-none">
+                                <option value="">Pose</option><option value="front">Front</option><option value="side">Side</option><option value="back">Back</option>
+                            </select>
+                            <input type="number" step="0.1" name="weight_kg" placeholder="kg" class="h-11 rounded-xl border border-white/10 bg-gray-950 px-2.5 text-sm text-gray-100 placeholder:text-gray-600 focus:border-indigo-500/50 focus:outline-none">
+                        </div>
                     </div>
-                    <button type="submit" class="w-full h-11 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-sm font-semibold text-gray-950 active:brightness-110">Save photo</button>
+                    <button type="submit" class="w-full h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-sm font-semibold text-gray-950 active:brightness-110">Save photo</button>
                 </form>
             </div>
 
@@ -258,11 +287,36 @@
             </button>
             <div x-show="genOpen" x-collapse>
                 <p class="text-sm text-gray-500 mt-1 mb-4">Upload a current full-body photo. The AI renders the same you — same face, lighting and background — with ~10 lbs more lean muscle. Believable, not a fantasy filter.</p>
-                <form method="POST" action="{{ route('physique.goal.generate') }}" enctype="multipart/form-data" class="space-y-3">
+                <form method="POST" action="{{ route('physique.goal.generate') }}" enctype="multipart/form-data"
+                      x-data="{ name: '', preview: '' }" class="space-y-3">
                     @csrf
-                    <input type="file" name="photo" accept="image/*" required class="block w-full text-base text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-500/20 file:px-3 file:py-2.5 file:text-indigo-300 file:text-sm active:file:bg-indigo-500/30">
-                    <input type="text" name="description" placeholder="+10 lbs lean muscle" maxlength="120" class="block w-full h-11 rounded-xl border border-white/10 bg-gray-950 px-3 text-base text-gray-100 placeholder:text-gray-600 focus:border-indigo-500/50 focus:outline-none">
-                    <button type="submit" @disabled(! $imageGenConfigured) class="w-full md:w-auto h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 px-5 text-sm font-semibold text-gray-950 active:brightness-110 transition disabled:opacity-50">Generate dream physique</button>
+                    <label class="block cursor-pointer">
+                        <input type="file" name="photo" accept="image/*" required class="sr-only"
+                               @change="const f = $event.target.files[0]; if (f) { if (preview) URL.revokeObjectURL(preview); name = f.name; preview = URL.createObjectURL(f); }">
+                        <div class="rounded-2xl border-2 border-dashed border-indigo-500/40 bg-indigo-500/[0.06] active:bg-indigo-500/10 transition text-center"
+                             :class="preview ? 'p-3' : 'p-8'">
+                            <template x-if="!preview">
+                                <div>
+                                    <div class="mx-auto h-14 w-14 rounded-2xl bg-indigo-500/15 grid place-items-center mb-3">
+                                        <svg class="h-7 w-7 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                                    </div>
+                                    <p class="font-display font-bold text-gray-100">Tap to add a full-body photo</p>
+                                    <p class="text-xs text-gray-500 mt-1">We'll render the same you, with more muscle</p>
+                                </div>
+                            </template>
+                            <template x-if="preview">
+                                <div class="flex items-center gap-3 text-left">
+                                    <img :src="preview" class="h-24 w-[4.5rem] object-cover rounded-lg border border-white/10 shrink-0">
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-medium text-gray-100 truncate" x-text="name"></p>
+                                        <p class="text-xs text-indigo-300 mt-0.5">Ready — tap to change</p>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </label>
+                    <input type="text" name="description" placeholder="+10 lbs lean muscle (optional)" maxlength="120" class="block w-full h-11 rounded-xl border border-white/10 bg-gray-950 px-3 text-base text-gray-100 placeholder:text-gray-600 focus:border-indigo-500/50 focus:outline-none">
+                    <button type="submit" @disabled(! $imageGenConfigured) class="w-full h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 px-5 text-sm font-semibold text-gray-950 active:brightness-110 transition disabled:opacity-50">Generate dream physique</button>
                 </form>
                 @if (! $imageGenConfigured)<p class="mt-3 text-xs text-amber-400/80">Image generation is offline — add a GEMINI_API_KEY.</p>@endif
 
