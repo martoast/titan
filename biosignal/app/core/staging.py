@@ -10,24 +10,60 @@ Features used (Walch 2019, `ojwalch/sleep_classifiers`):
   - HR level: heart rate relative to the night's resting floor
   - HR var  : local HR standard deviation (REM = irregular/sympathetic; NREM = stable/vagal)
 
->>> TO PLUG IN THE REAL MODEL <<<
-Replace `_classify_epoch` / `stage_night` internals with a call to a joblib-loaded
-`ojwalch/sleep_classifiers` logistic/MLP model trained on the PhysioNet sleep-accel
-dataset (features: motion, local HR SD, circadian clock proxy). Keep this function's
-signature and the returned hypnogram contract so the router/Laravel side is unchanged.
+TRAINED MODEL (opt-in): a joblib classifier over `sleep_features.extract_features` is wired
+in and selected when SLEEP_MODEL_ENABLED is set. The shipped artifact is trained on SYNTHETIC
+data (scripts/train_sleep_model.py) — it separates deep/REM far better than this heuristic
+in-distribution (~98%) but is BRITTLE to distribution shift (it can miss wake / collapse
+stages on inputs unlike its training set). So it stays OFF by default; the heuristic below is
+the robust production path. To make the model production-grade, retrain it on the real
+PhysioNet sleep-accel dataset (`--source physionet`) and validate against PSG before flipping
+the flag. The hypnogram + summary contract is identical either way.
 """
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
+import joblib
 import numpy as np
+
+from . import sleep_features
 
 EPOCH_SEC = 30
 
 # Stage codes for the 30-s hypnogram.
 WAKE, LIGHT, DEEP, REM = "wake", "light", "deep", "rem"
+
+# Trained classifier (HistGradientBoosting on motion + HR features). OPT-IN via
+# SLEEP_MODEL_ENABLED — the shipped baseline is trained on SYNTHETIC data and, while it
+# scores ~98% in-distribution, it's brittle to distribution shift (collapses stages on
+# out-of-distribution input). So the robust relative-threshold heuristic stays the DEFAULT
+# until the model is retrained on real PSG data (PhysioNet — see scripts/train_sleep_model.py).
+# Flip the flag on once that model is validated.
+_MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "sleep_stager.joblib"
+_MODEL: Optional[dict] = None
+_MODEL_TRIED = False
+
+
+def _model_enabled() -> bool:
+    return os.getenv("SLEEP_MODEL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _load_model() -> Optional[dict]:
+    global _MODEL, _MODEL_TRIED
+    if not _MODEL_TRIED:
+        _MODEL_TRIED = True
+        if not _model_enabled():
+            return None
+        try:
+            if _MODEL_PATH.exists():
+                _MODEL = joblib.load(_MODEL_PATH)
+        except Exception:
+            _MODEL = None
+    return _MODEL
 
 
 def _to_epochs(values: np.ndarray, n_epochs: int) -> np.ndarray:
@@ -82,27 +118,42 @@ def stage_night(
         hr_e = np.full(n_epochs, np.nan)
 
     has_hr = np.isfinite(hr_e).any()
-    hr_floor = np.nanpercentile(hr_e, 10) if has_hr else np.nan
-    hr_var = _rolling_std(np.nan_to_num(hr_e, nan=hr_floor if has_hr else 0.0)) if has_hr else np.zeros(n_epochs)
 
-    # Motion threshold (Cole-Kripke-ish): scale to the night's activity distribution.
-    motion_thr = max(np.percentile(accel_e, 60), 1.0)
-
-    hypnogram: list[str] = []
-    for i in range(n_epochs):
-        hypnogram.append(
-            _classify_epoch(
-                motion=accel_e[i],
-                motion_thr=motion_thr,
-                hr=hr_e[i] if has_hr else np.nan,
-                hr_floor=hr_floor,
-                hr_var=hr_var[i],
-                hr_var_thr=np.percentile(hr_var, 70) if has_hr else 0.0,
-            )
-        )
+    # Trained model if available, else the transparent heuristic. Both emit a per-epoch
+    # stage list over the SAME features/epoch grid; we then smooth + summarise identically.
+    bundle = _load_model()
+    hypnogram: Optional[list[str]] = None
+    if bundle is not None:
+        try:
+            X = sleep_features.extract_features(accel_e, hr_e if has_hr else None, has_hr)
+            hypnogram = [str(s) for s in bundle["model"].predict(X)]
+        except Exception:
+            hypnogram = None
+    if hypnogram is None:
+        hypnogram = _heuristic_stage(accel_e, hr_e, has_hr, n_epochs)
 
     hypnogram = _smooth_hypnogram(hypnogram)
     return _summarize(hypnogram, t0)
+
+
+def _heuristic_stage(accel_e: np.ndarray, hr_e: np.ndarray, has_hr: bool, n_epochs: int) -> list[str]:
+    """Transparent Walch-style fallback (used when no trained model is present)."""
+    hr_floor = np.nanpercentile(hr_e, 10) if has_hr else np.nan
+    hr_var = _rolling_std(np.nan_to_num(hr_e, nan=hr_floor if has_hr else 0.0)) if has_hr else np.zeros(n_epochs)
+    motion_thr = max(np.percentile(accel_e, 60), 1.0)
+    hr_var_thr = np.percentile(hr_var, 70) if has_hr else 0.0
+
+    return [
+        _classify_epoch(
+            motion=accel_e[i],
+            motion_thr=motion_thr,
+            hr=hr_e[i] if has_hr else np.nan,
+            hr_floor=hr_floor,
+            hr_var=hr_var[i],
+            hr_var_thr=hr_var_thr,
+        )
+        for i in range(n_epochs)
+    ]
 
 
 def _classify_epoch(motion, motion_thr, hr, hr_floor, hr_var, hr_var_thr) -> str:

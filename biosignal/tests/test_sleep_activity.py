@@ -37,6 +37,36 @@ def test_sleep_staging_summary():
     assert set(m["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
 
 
+def test_sleep_model_is_opt_in():
+    """The trained model is gated OFF by default (robust heuristic stays the default);
+    enabling the flag loads + uses it. Both must return a valid hypnogram contract."""
+    import importlib
+    import os
+
+    from app.core import staging
+
+    rng = __import__("numpy").random.default_rng(5)
+    accel = __import__("numpy").abs(rng.normal(3, 2, 480)).tolist()
+    hr = (50 + rng.normal(0, 3, 480)).tolist()
+
+    # Default: model not loaded.
+    os.environ.pop("SLEEP_MODEL_ENABLED", None)
+    importlib.reload(staging)
+    assert staging._load_model() is None
+    r_def = staging.stage_night(accel, hr, "2026-06-09T00:00:00Z", "2026-06-09T04:00:00Z")
+    assert set(r_def["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
+
+    # Enabled: model loads (artifact ships in app/models/) and predicts.
+    os.environ["SLEEP_MODEL_ENABLED"] = "1"
+    importlib.reload(staging)
+    assert staging._load_model() is not None
+    r_on = staging.stage_night(accel, hr, "2026-06-09T00:00:00Z", "2026-06-09T04:00:00Z")
+    assert set(r_on["hypnogram_30s"]) <= {"wake", "light", "deep", "rem"}
+
+    os.environ.pop("SLEEP_MODEL_ENABLED", None)
+    importlib.reload(staging)
+
+
 def test_activity_detects_run():
     accel = synthetic_workout_accel()
     resp = client.post(
