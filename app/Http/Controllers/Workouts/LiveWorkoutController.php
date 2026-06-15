@@ -161,6 +161,20 @@ class LiveWorkoutController extends Controller
         }
 
         switch ($cmd['intent']) {
+            case 'finish':
+                if (! $workout || $workout->exercises()->count() === 0) {
+                    return $this->voiceFail($data['transcript'], 'No active session to finish.');
+                }
+                $workout->update(['duration_min' => max(1, $workout->performed_at->diffInMinutes(now()))]);
+
+                return response()->json([
+                    'ok' => true,
+                    'heard' => $data['transcript'],
+                    'action' => 'finish',
+                    'spoken' => 'Session complete — nice work.',
+                    'redirect' => route('workouts.show', $workout),
+                ]);
+
             case 'undo':
             case 'delete_set':
                 $set = $this->targetSet($workout, $cmd['exercise']);
@@ -296,6 +310,12 @@ class LiveWorkoutController extends Controller
             'eighty' => 80, 'ninety' => 90, 'hundred' => 100];
         foreach ($words as $w => $n) {
             $t = preg_replace('/\b'.$w.'\b/', (string) $n, $t);
+        }
+
+        $finish = (bool) preg_match('/\b(finish|end|complete|wrap ?up)\b[ a-z]*\b(workout|session|training|lifting|gym)\b/', $t)
+            || (bool) preg_match("/\b(i'?m done|im done|all done|that'?s it|that'?s all|done for (the day|today|now))\b/", $t);
+        if ($finish) {
+            return ['intent' => 'finish', 'exercise' => null, 'weight_kg' => null, 'reps' => null, 'rpe' => null];
         }
 
         $undo = (bool) preg_match('/\b(undo|scratch that|never ?mind|cancel that|forget that)\b/', $t);

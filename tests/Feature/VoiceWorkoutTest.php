@@ -116,6 +116,19 @@ class VoiceWorkoutTest extends TestCase
         $this->assertSame('undo', $r['action']);
     }
 
+    public function test_finish_workout_voice_command_seals_and_redirects(): void
+    {
+        $user = User::factory()->create();
+        $user->ensureProfile();
+        $wid = $this->speak($user, 'bench press 80 kilos 8 reps')->json()['session']['workout_id'];
+
+        $r = $this->speak($user, "finish workout", $wid)->assertOk()->json();
+        $this->assertTrue($r['ok']);
+        $this->assertSame('finish', $r['action']);
+        $this->assertStringContainsString("/workouts/{$wid}", $r['redirect']);
+        $this->assertNotNull(\App\Models\Workout::find($wid)->duration_min);   // duration sealed
+    }
+
     public function test_voice_can_remove_a_whole_exercise(): void
     {
         $user = User::factory()->create();

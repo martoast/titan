@@ -43,7 +43,7 @@
             <p x-show="spoken" x-cloak class="mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm text-emerald-200" x-text="spoken"></p>
 
             <p class="mt-3 text-[11px] text-gray-600 leading-relaxed">
-                Say a set — “bench press 80 kilos 8 reps”. Fix it by talking: “change the last set to 10 reps”, “make it 85 kilos”, “delete that set”, “undo”.
+                Say a set — “bench press 80 kilos 8 reps”. Fix it by talking: “change the last set to 10 reps”, “make it 85 kilos”, “delete that set”, “undo”. When you’re done: “finish workout”.
             </p>
         </div>
         <div x-show="!voiceSupported" x-cloak class="mb-5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-gray-400">
@@ -266,6 +266,8 @@
                     try {
                         const res = await this.post('{{ route('workouts.live.voice') }}', { transcript, workout_id: this.workoutId });
                         if (!res.ok) { this.error = res.message || "Didn't catch that."; this.spoken = ''; return; }
+                        // "Finish workout" → seal duration and go to the summary, hands-free.
+                        if (res.action === 'finish' && res.redirect) { this.spoken = res.spoken || ''; window.location.href = res.redirect; return; }
                         // The server returns the full session — re-render from the truth (handles
                         // add / update / delete uniformly, so stats + cards stay correct).
                         if (res.session) {
