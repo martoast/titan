@@ -73,7 +73,21 @@ var CFG = {
   // accel at 25 Hz to match the model; OVERNIGHT (offline, T2) we stay at 12.5 Hz,
   // which is ample for actigraphy sleep/wake and saves battery.
   ACCEL_MS_LIVE: 40,                 // 25 Hz — matches the workout classifier's training rate
-  ACCEL_MS_OVERNIGHT: 80             // 12.5 Hz — actigraphy + power
+  ACCEL_MS_OVERNIGHT: 80,            // 12.5 Hz — actigraphy + power
+
+  // --- GPS gating (BATTERY-CRITICAL) -----------------------------------------
+  // GPS is by far the biggest drain on the watch (the AT6558 receiver dwarfs the
+  // accel + PPG draw). So GPS is OFF by default and we power it ONLY when the watch
+  // itself detects sustained locomotion — the same accel signature the server
+  // classifies as walk/run/cycle. A cheap on-watch motion gate ARMS the GPS; the
+  // server's classifier later confirms the type and consumes the pace for VO2max.
+  // If you're sitting, sleeping, or lifting, GPS never turns on.
+  //   - arm after GPS_ARM_SEC of motion above GPS_ON_MOTION (sustained, not a one-off)
+  //   - stand down after GPS_OFF_SEC below it (workout ended / went indoors-still)
+  GPS_ON_MOTION: 0.18,               // mean |Δaccel| (g) per sample that counts as locomotion
+  GPS_ARM_SEC: 25,                   // sustained motion before GPS powers on (covers ~30s cold fix)
+  GPS_OFF_SEC: 90,                   // quiet time before GPS powers back off
+  GPS_PROTO_VERSION: 4               // T4 frame: per-fix speed + altitude (+ grade source)
 };
 
 // ----- State ----------------------------------------------------------------
@@ -87,8 +101,18 @@ var state = {
   logged: 0,           // approx bytes in the overnight log file
   logFull: false,      // hit LOG_MAX_BYTES → stop appending (preserve the night)
   lastAccel: { x: 0, y: 0, z: 0 }, // most recent accel reading (g)
-  battery: 0
+  battery: 0,
+  gps: false,          // is the GPS receiver powered right now?
+  gpsFix: false,       // do we have a satellite fix yet?
+  speed: 0             // last GPS speed (m/s), UI only
 };
+
+// On-watch locomotion gate for GPS (battery). A slow EMA of per-sample |Δaccel| (g);
+// when it stays above CFG.GPS_ON_MOTION we arm GPS, when it stays below we stand down.
+var motionEMA = 0;
+var motionAboveSince = 0;   // getTime() when motion first crossed the on-threshold (0 = below)
+var motionBelowSince = 0;   // getTime() when motion first dropped below it (0 = above)
+var lastAltitude = null;    // last barometric altitude (m), for grade
 
 // A frame is built up sample-by-sample then flushed. We use an ArrayBuffer
 // sized for the worst case so we never reallocate in the hot path.
@@ -293,12 +317,82 @@ function onAccel(a) {
   // 1 g of gravity) into the current overnight frame — a real actigraphy count
   // for sleep/wake staging.
   if (lastAccelV !== null) {
-    logMotion += Math.abs(a.x - lastAccelV.x) + Math.abs(a.y - lastAccelV.y) + Math.abs(a.z - lastAccelV.z);
+    var d = Math.abs(a.x - lastAccelV.x) + Math.abs(a.y - lastAccelV.y) + Math.abs(a.z - lastAccelV.z);
+    logMotion += d;
+    // Slow EMA of per-sample motion drives the GPS gate (battery).
+    motionEMA = motionEMA * 0.92 + d * 0.08;
+    if (state.streaming) updateGpsGate();
   }
   lastAccelV = { x: a.x, y: a.y, z: a.z };
   state.lastAccel.x = a.x;
   state.lastAccel.y = a.y;
   state.lastAccel.z = a.z;
+}
+
+// ----- GPS gating: power the receiver only during real locomotion -----------
+// This is the battery story. We never leave GPS on; the accel motion gate decides.
+function updateGpsGate() {
+  var now = getTime();
+  if (motionEMA >= CFG.GPS_ON_MOTION) {
+    motionBelowSince = 0;
+    if (!motionAboveSince) motionAboveSince = now;
+    // Sustained locomotion → arm GPS (and the barometer, for grade).
+    if (!state.gps && (now - motionAboveSince) >= CFG.GPS_ARM_SEC) setGps(true);
+  } else {
+    motionAboveSince = 0;
+    if (!motionBelowSince) motionBelowSince = now;
+    // Quiet long enough → workout over, stand GPS back down.
+    if (state.gps && (now - motionBelowSince) >= CFG.GPS_OFF_SEC) setGps(false);
+  }
+}
+
+function setGps(on) {
+  if (on === state.gps) return;
+  state.gps = on;
+  try {
+    Bangle.setGPSPower(on ? 1 : 0, "titan");
+    // The barometer (BMP280) is cheap; run it alongside GPS for altitude→grade + temperature.
+    if (Bangle.setBarometerPower) Bangle.setBarometerPower(on ? 1 : 0, "titan");
+  } catch (e) {}
+  if (!on) { state.gpsFix = false; state.speed = 0; lastAltitude = null; }
+  if (uiVisible) drawUI();
+}
+
+function onGPS(g) {
+  if (!state.gps) return;
+  state.gpsFix = isFinite(g.fix) ? !!g.fix : (g.satellites > 3);
+  if (!state.gpsFix || g.speed === undefined || isNaN(g.speed)) return;
+  state.speed = g.speed; // Bangle GPS speed is km/h on most builds; server treats it as such
+  // Prefer barometric altitude (smoother for grade); fall back to GPS altitude.
+  var alt = (lastAltitude !== null) ? lastAltitude : (isNaN(g.alt) ? null : g.alt);
+  emitGpsFrame(state.speed, alt, g.satellites | 0);
+}
+
+function onPressure(p) {
+  // BMP280 barometric altitude — the grade source (Δaltitude / Δdistance, server-side).
+  if (p && isFinite(p.altitude)) lastAltitude = p.altitude;
+}
+
+// T4 frame: one GPS fix → speed (km/h ×100) + altitude (m ×10) + sats. Streamed live when
+// connected; when offline it's appended to the same overnight log for morning sync.
+function emitGpsFrame(speedKmh, altM, sats) {
+  var buf = new ArrayBuffer(20);
+  var dv = new DataView(buf);
+  var nowMs = Math.round(getTime() * 1000);
+  var hi = Math.floor(nowMs / 4294967296);
+  dv.setUint8(0, CFG.GPS_PROTO_VERSION);
+  dv.setUint8(1, sats > 255 ? 255 : sats);
+  dv.setInt16(2, clampI16(Math.round(speedKmh * 100)), true);
+  dv.setUint32(4, (nowMs - hi * 4294967296) >>> 0, true);
+  dv.setUint32(8, hi >>> 0, true);
+  dv.setInt32(12, (altM === null ? -2147483648 : Math.round(altM * 10)) | 0, true);
+  dv.setUint32(16, 0, true);
+  var line = "T4:" + b64(buf);
+  if (state.connected) {
+    try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
+  } else if (!state.logFull) {
+    try { require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n"); state.logged += line.length + 1; } catch (e) {}
+  }
 }
 
 // ----- BLE connection tracking ----------------------------------------------
@@ -350,6 +444,9 @@ function stopStreaming() {
   state.streaming = false;
   flushFrame(); // emit whatever partial frame we have
   Bangle.setHRMPower(0, "titan");
+  setGps(false); // never leave GPS on once capture stops
+  motionEMA = 0;
+  motionAboveSince = motionBelowSince = 0;
   drawUI();
 }
 
@@ -392,6 +489,8 @@ function drawUI() {
   g.drawString("samples: " + state.ppgCount, 6, y); y += 12;
   g.drawString("frames:  " + state.framesSent, 6, y); y += 12;
   g.drawString("logged:  " + (state.logged / 1024).toFixed(1) + "KB", 6, y); y += 12;
+  // GPS only powers on during a detected workout — show why the battery is (or isn't) spending.
+  g.drawString("gps:     " + (state.gps ? (state.gpsFix ? "fix " + state.speed.toFixed(1) : "search") : "off"), 6, y); y += 12;
   g.drawString("batt:    " + state.battery + "%", 6, y);
 
   // Footer hint
@@ -410,6 +509,8 @@ function refreshBattery() {
 Bangle.on("HRM-raw", onHRMRaw);
 Bangle.on("HRM", onHRM);
 Bangle.on("accel", onAccel);
+Bangle.on("GPS", onGPS);
+Bangle.on("pressure", onPressure);
 NRF.on("connect", onConnect);
 NRF.on("disconnect", onDisconnect);
 
@@ -430,6 +531,7 @@ var uiTimer = setInterval(function () {
 E.on("kill", function () {
   if (uiTimer) clearInterval(uiTimer);
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
+  try { Bangle.setGPSPower(0, "titan"); if (Bangle.setBarometerPower) Bangle.setBarometerPower(0, "titan"); } catch (e) {}
 });
 
 // Initial paint.
