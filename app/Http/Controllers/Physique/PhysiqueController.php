@@ -98,7 +98,7 @@ class PhysiqueController extends Controller
             return back()->with('error', 'Add a photo first, then generate your dream physique.');
         }
 
-        $description = $data['description'] ?: '+10 lbs lean muscle';
+        $description = ($data['description'] ?? null) ?: '+10 lbs lean muscle';
 
         $prompt = <<<PROMPT
         Take this person's photo and render them as their realistic future self after a
