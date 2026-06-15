@@ -5,6 +5,11 @@
         // Today strip: latest objective recovery row + last night's sleep, pulled live.
         $todayRecovery = $p?->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
         $todaySleep = $p?->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
+
+        // Today's steps vs the evidence-based personalized goal.
+        $todaySteps = (int) ($p?->dailyActivity()->whereDate('date', \Illuminate\Support\Carbon::today())->value('steps') ?? 0);
+        $stepTarget = \App\Support\StepGoal::targetFor($p);
+        $stepGoal = \App\Support\StepGoal::assess($todaySteps, $stepTarget);
         $todayReadiness = $p ? \App\Support\Readiness::compute($p, $todayRecovery?->logged_at) : ['score' => null, 'label' => '', 'note' => '', 'components' => [], 'provisional' => false];
         $hasToday = ($todayReadiness['score'] ?? null) !== null || $todaySleep || ($todayRecovery?->resting_hr);
 
@@ -63,6 +68,32 @@
                 </div>
             @endif
         </div>
+
+        {{-- Steps toward the personalized daily goal --}}
+        <a href="/fitness" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 active:bg-white/[0.05] transition">
+            @php
+                $stepTone = match ($stepGoal['band']) {
+                    'excellent' => 'text-emerald-300', 'good' => 'text-cyan-300', 'fair' => 'text-amber-300', default => 'text-orange-300',
+                };
+                $stepBar = match ($stepGoal['band']) {
+                    'excellent' => 'from-emerald-500 to-emerald-400', 'good' => 'from-cyan-500 to-cyan-400',
+                    'fair' => 'from-amber-500 to-amber-400', default => 'from-orange-500 to-orange-400',
+                };
+            @endphp
+            <div class="flex items-end justify-between gap-3 mb-2">
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Steps today</div>
+                    <div class="font-display text-2xl md:text-3xl font-bold nums {{ $stepTone }} mt-0.5 leading-none">{{ number_format($todaySteps) }}<span class="text-gray-500 text-sm font-normal"> / {{ number_format($stepGoal['target']) }}</span></div>
+                </div>
+                <div class="text-right shrink-0">
+                    <div class="text-sm font-semibold {{ $stepTone }}">{{ $stepGoal['label'] }}</div>
+                    <div class="text-[11px] text-gray-600 nums">{{ $stepGoal['to_go'] > 0 ? number_format($stepGoal['to_go']).' to go' : 'goal reached' }}</div>
+                </div>
+            </div>
+            <div class="h-2 rounded-full bg-white/5 overflow-hidden">
+                <div class="h-full rounded-full bg-gradient-to-r {{ $stepBar }}" style="width: {{ $stepGoal['pct'] }}%"></div>
+            </div>
+        </a>
 
         {{-- Section cards. Each links to a domain the feature builds fill in. --}}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">

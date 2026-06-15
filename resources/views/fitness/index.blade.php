@@ -18,6 +18,65 @@
         };
     @endphp
 
+    @if (session('status'))
+        <div class="mb-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-sm text-emerald-300">{{ session('status') }}</div>
+    @endif
+
+    {{-- Daily movement: today's steps vs the evidence-based personalized target --}}
+    @php
+        $stepTone = match ($stepGoal['band']) {
+            'excellent' => 'text-emerald-300', 'good' => 'text-cyan-300',
+            'fair' => 'text-amber-300', default => 'text-orange-300',
+        };
+        $stepStroke = match ($stepGoal['band']) {
+            'excellent' => '#6ee7b7', 'good' => '#67e8f9', 'fair' => '#fcd34d', default => '#fb923c',
+        };
+        $r = 52; $circ = 2 * pi() * $r; $dash = $circ * $stepGoal['pct'] / 100;
+    @endphp
+    <div class="rounded-3xl border border-white/5 bg-gradient-to-b from-white/[0.05] to-white/[0.02] p-5 md:p-6 mb-4"
+         x-data="{ edit: {{ $steps === 0 ? 'true' : 'false' }} }">
+        <div class="flex items-center gap-5">
+            {{-- Progress ring --}}
+            <div class="relative shrink-0" style="width:128px;height:128px">
+                <svg viewBox="0 0 128 128" class="w-32 h-32 -rotate-90">
+                    <circle cx="64" cy="64" r="{{ $r }}" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="10"/>
+                    <circle cx="64" cy="64" r="{{ $r }}" fill="none" stroke="{{ $stepStroke }}" stroke-width="10" stroke-linecap="round"
+                            stroke-dasharray="{{ round($dash, 1) }} {{ round($circ, 1) }}"/>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <span class="font-display text-2xl font-black nums {{ $stepTone }} leading-none">{{ number_format($steps) }}</span>
+                    <span class="text-[10px] uppercase tracking-wider text-gray-500 mt-0.5">steps</span>
+                </div>
+            </div>
+
+            <div class="min-w-0 flex-1">
+                <p class="text-[11px] uppercase tracking-wider text-gray-500">Today's movement</p>
+                <h2 class="font-display text-2xl font-bold {{ $stepTone }} mt-0.5">{{ $stepGoal['label'] }}</h2>
+                <p class="text-sm text-gray-400 mt-1 nums">
+                    @if ($stepGoal['to_go'] > 0)
+                        {{ number_format($stepGoal['to_go']) }} to your {{ number_format($stepGoal['target']) }} goal
+                    @else
+                        You passed your {{ number_format($stepGoal['target']) }} goal 🎉
+                    @endif
+                </p>
+                <button type="button" @click="edit = !edit" x-show="!edit"
+                        class="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-200 active:bg-white/10">Update steps</button>
+                <form method="POST" action="{{ route('fitness.steps') }}" x-show="edit" x-cloak class="mt-3 flex items-center gap-2">
+                    @csrf
+                    <input type="number" name="steps" min="0" max="200000" value="{{ $steps ?: '' }}" inputmode="numeric" placeholder="steps today"
+                           class="w-28 h-10 rounded-lg bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 nums focus:border-cyan-500/50 focus:outline-none">
+                    <button type="submit" class="h-10 rounded-lg bg-cyan-500/90 px-3 text-sm font-semibold text-gray-950 active:bg-cyan-400">Save</button>
+                </form>
+            </div>
+        </div>
+
+        {{-- Honest, evidence-based framing --}}
+        <p class="mt-4 text-[11px] text-gray-500 leading-relaxed">
+            Your goal is age-personalized to where the science shows the mortality benefit plateaus — <span class="text-gray-400">~{{ number_format($stepGoal['target']) }} steps</span>, not the "10,000" myth. Each extra ~1,000 steps/day is linked to roughly <span class="text-gray-400">15% lower all-cause mortality</span>.
+            @if ($weekAvgSteps !== null)<span class="text-gray-600"> · 7-day avg {{ number_format($weekAvgSteps) }}.</span>@endif
+        </p>
+    </div>
+
     {{-- VO2max hero --}}
     <div class="rounded-3xl border border-white/5 bg-gradient-to-b from-white/[0.05] to-white/[0.02] p-6 text-center">
         <p class="text-[11px] uppercase tracking-wider text-gray-500">Estimated VO₂max</p>

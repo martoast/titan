@@ -4,6 +4,7 @@ namespace App\Services\Wearables;
 
 use App\Jobs\ProcessWindowJob;
 use App\Models\BodyMetric;
+use App\Models\DailyActivity;
 use App\Models\DeviceIngestion;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
@@ -159,6 +160,18 @@ class DeviceIngestionService
                 'weight_kg' => $summary['weight_kg'] ?? null,
                 'body_fat_pct' => $summary['body_fat_pct'] ?? null,
             ], fn ($v) => $v !== null)),
+            'activity' => (bool) DailyActivity::updateOrCreate(
+                ['profile_id' => $pid, 'date' => $this->dateOf($summary['date'] ?? null, $tz)],
+                array_filter([
+                    'steps' => isset($summary['steps']) ? (int) round($summary['steps']) : null,
+                    'mvpa_min' => isset($summary['mvpa_min']) ? (int) round($summary['mvpa_min']) : null,
+                    'active_kcal' => isset($summary['active_kcal']) ? (int) round($summary['active_kcal']) : null,
+                    'floors' => isset($summary['floors']) ? (int) round($summary['floors']) : null,
+                    'distance_km' => $summary['distance_km'] ?? null,
+                    'source' => $connection->source,
+                    'updated_via' => 'device:summary',
+                ], fn ($v) => $v !== null),
+            ),
             default => false,
         };
     }

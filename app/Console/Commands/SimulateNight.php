@@ -146,6 +146,9 @@ class SimulateNight extends Command
                     'quality' => $summary['quality'],
                 ],
                 ['kind' => 'recovery', 'date' => $date, 'hrv_ms' => (int) round($rmssd), 'resting_hr' => $rhr],
+                // A plausible day of ambient movement so the steps goal populates in the demo.
+                ['kind' => 'activity', 'date' => $date, 'steps' => random_int(5200, 11500),
+                    'mvpa_min' => random_int(18, 55), 'floors' => random_int(3, 16)],
             ],
         ];
 
