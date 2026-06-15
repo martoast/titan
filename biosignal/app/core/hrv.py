@@ -115,9 +115,10 @@ def correct_peaks_kubios(peaks: np.ndarray, sampling_rate: int = 1000) -> tuple[
 # timing is recovered sub-sample. With this, 25 Hz PPG yields RMSSD statistically
 # equivalent to ECG; without it, 25 Hz is below the ~50 Hz no-interpolation floor.
 PPG_PROC_HZ = 250  # interpolate low-rate PPG up to this before peak detection
+SLEEP_EPOCH_SEC = 30  # per-epoch grid for sleep-staging features
 
 
-def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float]:
+def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float, Optional[dict]]:
     """Raw PPG → IBI (ms) using nk.ppg_process (band-pass 0.5-8 Hz, Elgendi peaks).
 
     Low-rate PPG (e.g. a Bangle.js at 25 Hz) is cubic-spline upsampled to PPG_PROC_HZ
@@ -143,10 +144,35 @@ def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float]
     signals, info = nk.ppg_process(ppg, sampling_rate=proc_rate)
     peaks_idx = np.asarray(info.get("PPG_Peaks", []), dtype=int)
     if peaks_idx.size < 2:
-        return np.array([]), 0.0
+        return np.array([]), 0.0, None
     ibi_ms = np.diff(peaks_idx) / proc_rate * 1000.0
-    quality_mean = float(np.nanmean(signals.get("PPG_Quality", [0.0])))
-    return ibi_ms, quality_mean
+    quality = np.asarray(signals.get("PPG_Quality", []), dtype=float)
+    quality_mean = float(np.nanmean(quality)) if quality.size else 0.0
+
+    # Per-30s-epoch sleep features: HR + a motion proxy. Movement corrupts the optical
+    # signal, so (1 - PPG quality) tracks motion; the Walch stager uses it RELATIVELY, so
+    # absolute scale doesn't matter. Lets us stage sleep from the same raw PPG, no accel.
+    epochs = None
+    dur_sec = ppg.size / proc_rate if proc_rate else 0.0
+    if dur_sec >= 1.0:
+        n_ep = max(1, int(round(dur_sec / SLEEP_EPOCH_SEC)))
+        peak_t = peaks_idx / proc_rate  # beat times (s)
+        ep_hr, ep_motion = [], []
+        for e in range(n_ep):
+            lo, hi = e * SLEEP_EPOCH_SEC, (e + 1) * SLEEP_EPOCH_SEC
+            beats = peak_t[(peak_t >= lo) & (peak_t < hi)]
+            if beats.size >= 2:
+                ep_hr.append(float(60000.0 / np.mean(np.diff(beats) * 1000.0)))
+            else:
+                ep_hr.append(float(beats.size * (60.0 / SLEEP_EPOCH_SEC)))
+            if quality.size:
+                q = quality[int(lo * proc_rate):int(hi * proc_rate)]
+                ep_motion.append(float((1.0 - np.nanmean(q)) * 100.0) if q.size else 0.0)
+            else:
+                ep_motion.append(0.0)
+        epochs = {"hr": ep_hr, "motion": ep_motion}
+
+    return ibi_ms, quality_mean, epochs
 
 
 def compute_hrv_metrics(clean_ibi_ms: np.ndarray) -> dict:
@@ -217,8 +243,9 @@ def process_hrv(
     quality_mean = 1.0  # IBI path has no waveform SQI; assume edge already gated.
 
     from_ppg = ppg is not None and sample_rate_hz is not None
+    epochs = None
     if from_ppg:
-        ibi_arr, quality_mean = ppg_to_ibi(ppg, sample_rate_hz)
+        ibi_arr, quality_mean, epochs = ppg_to_ibi(ppg, sample_rate_hz)
     elif ibi_ms is not None:
         ibi_arr = _to_array(ibi_ms)
     else:
@@ -270,4 +297,8 @@ def process_hrv(
         # time (raw blobs store ppg, not ibi). Omitted for the IBI path to avoid echoing a
         # whole-night series straight back.
         "ibi_ms": [round(float(x), 1) for x in clean] if from_ppg else None,
+        # Per-30s-epoch sleep features (PPG path only) — persisted per window and
+        # concatenated whole-night at seal time to stage sleep without an accelerometer.
+        "epoch_hr": [round(x, 1) for x in epochs["hr"]] if epochs else None,
+        "epoch_motion": [round(x, 2) for x in epochs["motion"]] if epochs else None,
     }

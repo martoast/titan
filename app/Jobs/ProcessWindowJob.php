@@ -110,10 +110,18 @@ class ProcessWindowJob implements ShouldQueue
         $algoVersion = $result['algo_version'] ?? config('services.biosignal.algo_version', 'v1');
 
         if (! ($metrics['valid'] ?? true)) {
+            // Invalid for HRV (no IBI persisted → excluded from the RMSSD aggregate), but its
+            // epoch features still matter for SLEEP: a motion-rejected window is usually a
+            // wake/arousal period, so its high motion must reach the staging pass.
             $ingestion->update([
                 'status' => DeviceIngestion::STATUS_PROCESSED,
                 'algo_version' => $algoVersion,
-                'result_refs' => ['skipped' => 'invalid_signal', 'artifact_pct' => $metrics['artifact_pct'] ?? null],
+                'result_refs' => array_filter([
+                    'skipped' => 'invalid_signal',
+                    'artifact_pct' => $metrics['artifact_pct'] ?? null,
+                    'epoch_hr' => $result['epoch_hr'] ?? null,
+                    'epoch_motion' => $result['epoch_motion'] ?? null,
+                ], fn ($v) => $v !== null),
             ]);
 
             return;
@@ -145,6 +153,9 @@ class ProcessWindowJob implements ShouldQueue
                 // Persist the clean per-window IBI so SealNightJob can compute a true
                 // whole-night RMSSD (ppg_raw blobs hold samples, not IBI).
                 'ibi_ms' => $result['ibi_ms'] ?? null,
+                // Per-30s-epoch sleep features → concatenated whole-night to stage sleep.
+                'epoch_hr' => $result['epoch_hr'] ?? null,
+                'epoch_motion' => $result['epoch_motion'] ?? null,
             ], fn ($v) => $v !== null),
         ]);
     }

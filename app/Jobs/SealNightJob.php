@@ -258,6 +258,10 @@ class SealNightJob implements ShouldQueue
         // --- Whole-night sleep staging → sleep_logs ---
         if ($sleepWindows->isNotEmpty()) {
             $this->sealSleep($profile, $biosignal, $date, $sleepWindows);
+        } elseif ($ibiWindows->isNotEmpty()) {
+            // The wearable sends raw PPG, not sleep windows — stage sleep from the per-window
+            // epoch features (HR + motion proxy) the HRV pass persisted.
+            $this->sealSleepFromPpg($profile, $biosignal, $date, $ibiWindows);
         }
 
         Log::info('[Biosignal] night sealed', [
@@ -267,6 +271,77 @@ class SealNightJob implements ShouldQueue
             'sleep_windows' => $sleepWindows->count(),
             'sealed_ids' => $sealedIds,
         ]);
+    }
+
+    /**
+     * Stage sleep from a raw-PPG (wearable) night: concatenate the per-window 30-s epoch
+     * features (HR + motion proxy) persisted by ProcessWindowJob — across both valid and
+     * motion-rejected windows, in time order — and run the whole night through the stager
+     * once → one sleep_logs row. This is what gives the Bangle deep/REM/light without an
+     * accelerometer (motion is inferred from PPG signal quality).
+     *
+     * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $ibiWindows
+     */
+    private function sealSleepFromPpg(Profile $profile, BiosignalClient $biosignal, string $date, \Illuminate\Support\Collection $ibiWindows): void
+    {
+        if (! $biosignal->configured()) {
+            return;
+        }
+
+        $motion = [];
+        $hr = [];
+        $start = null;
+        $end = null;
+
+        // Windows arrive ordered by window_end → epochs are already chronological.
+        foreach ($ibiWindows->sortBy('window_end') as $ingestion) {
+            $em = $ingestion->result_refs['epoch_motion'] ?? null;
+            if (! is_array($em) || $em === []) {
+                continue;
+            }
+            $eh = (array) ($ingestion->result_refs['epoch_hr'] ?? []);
+            foreach ($em as $k => $v) {
+                $motion[] = is_numeric($v) ? (float) $v : 0.0;
+                $hr[] = (isset($eh[$k]) && is_numeric($eh[$k])) ? (float) $eh[$k] : 0.0;
+            }
+            $start = $start ?? ($ingestion->window_start ?? null);
+            $end = $ingestion->window_end ?? $end;
+        }
+
+        if (count($motion) < 10) {
+            return; // not enough of a night to stage
+        }
+
+        try {
+            $result = $biosignal->processSleep([
+                'kind' => 'sleep',
+                'start' => $start ? CarbonImmutable::parse($start)->toIso8601ZuluString() : null,
+                'end' => $end ? CarbonImmutable::parse($end)->toIso8601ZuluString() : null,
+                'accel_counts' => $motion,
+                'hr_bpm' => $hr,
+                'whole_night' => true,
+            ]);
+            $metrics = $result['metrics'] ?? [];
+
+            SleepLog::updateOrCreate(
+                ['profile_id' => $profile->id, 'slept_at' => $date],
+                array_filter([
+                    'duration_min' => isset($metrics['duration_min']) ? (int) round($metrics['duration_min']) : null,
+                    'deep_min' => isset($metrics['deep_min']) ? (int) round($metrics['deep_min']) : null,
+                    'rem_min' => isset($metrics['rem_min']) ? (int) round($metrics['rem_min']) : null,
+                    'light_min' => isset($metrics['light_min']) ? (int) round($metrics['light_min']) : null,
+                    'awake_min' => isset($metrics['awake_min']) ? (int) round($metrics['awake_min']) : null,
+                    'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null),
+                    'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null),
+                    'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
+                    'updated_via' => 'biosignal:sealed-ppg',
+                ], fn ($v) => $v !== null),
+            );
+        } catch (\Throwable $e) {
+            Log::warning('[Biosignal] ppg sleep staging failed', [
+                'profile_id' => $profile->id, 'night' => $date, 'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -323,8 +398,8 @@ class SealNightJob implements ShouldQueue
                     'rem_min' => isset($metrics['rem_min']) ? (int) round($metrics['rem_min']) : null,
                     'light_min' => isset($metrics['light_min']) ? (int) round($metrics['light_min']) : null,
                     'awake_min' => isset($metrics['awake_min']) ? (int) round($metrics['awake_min']) : null,
-                    'bedtime' => $metrics['bedtime'] ?? null,
-                    'wake_time' => $metrics['wake_time'] ?? null,
+                    'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null),
+                    'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null),
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     'updated_via' => 'biosignal:sealed',
                 ], fn ($v) => $v !== null),
@@ -403,6 +478,19 @@ class SealNightJob implements ShouldQueue
                 'profile_id' => $profile->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /** The stager returns bedtime/wake_time as ISO-8601 datetimes, but the columns are TIME. */
+    private function timeOnly(?string $iso): ?string
+    {
+        if (! $iso) {
+            return null;
+        }
+        try {
+            return CarbonImmutable::parse($iso)->format('H:i:s');
+        } catch (\Throwable) {
+            return null;
         }
     }
 

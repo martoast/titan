@@ -51,6 +51,9 @@ class HrvResponse(BaseModel):
     metrics: HrvMetrics
     # Per-window clean IBI (PPG path only) — persisted by the platform for whole-night sealing.
     ibi_ms: Optional[List[float]] = None
+    # Per-30s-epoch sleep features (PPG path only) — concatenated whole-night to stage sleep.
+    epoch_hr: Optional[List[float]] = None
+    epoch_motion: Optional[List[float]] = None
 
 
 @router.post("/hrv", response_model=HrvResponse)
@@ -67,4 +70,12 @@ async def process_hrv(window: HrvWindow) -> HrvResponse:
         raise HTTPException(status_code=500, detail=f"HRV processing failed: {exc}")
 
     ibi = metrics.pop("ibi_ms", None)  # not part of HrvMetrics; returned at top level
-    return HrvResponse(algo_version=ALGO_VERSION, metrics=HrvMetrics(**metrics), ibi_ms=ibi)
+    epoch_hr = metrics.pop("epoch_hr", None)
+    epoch_motion = metrics.pop("epoch_motion", None)
+    return HrvResponse(
+        algo_version=ALGO_VERSION,
+        metrics=HrvMetrics(**metrics),
+        ibi_ms=ibi,
+        epoch_hr=epoch_hr,
+        epoch_motion=epoch_motion,
+    )

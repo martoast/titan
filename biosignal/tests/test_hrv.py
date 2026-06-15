@@ -64,7 +64,7 @@ def test_ppg_25hz_rmssd_matches_truth():
     idx = np.round(np.arange(0, T, 1 / 25) * fs0).astype(int)
     ppg25 = ppg[idx[idx < ppg.size]]
 
-    ibi_ms, _ = hrv_core.ppg_to_ibi(ppg25, sample_rate_hz=25)
+    ibi_ms, _, _ = hrv_core.ppg_to_ibi(ppg25, sample_rate_hz=25)
     got = float(np.sqrt(np.mean(np.diff(ibi_ms) ** 2)))
     # Upsampled path should land within ~10 ms of truth; the old native-25 Hz path
     # was off by hundreds of ms.
