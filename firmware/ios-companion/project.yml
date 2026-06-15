@@ -1,0 +1,27 @@
+# XcodeGen spec — run `xcodegen generate` here to produce TitanCompanion.xcodeproj.
+# (Keeps the project in git without a messy .pbxproj. Manual-Xcode path is in README.)
+name: TitanCompanion
+options:
+  bundleIdPrefix: com.titan
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+targets:
+  TitanCompanion:
+    type: application
+    platform: iOS
+    sources:
+      - TitanCompanion
+    info:
+      path: TitanCompanion/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.titan.companion
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"          # iPhone
+        INFOPLIST_FILE: TitanCompanion/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_VERSION: "5.0"
+        # Set CODE_SIGN_... in Xcode (Signing & Capabilities → your free Apple ID team).
