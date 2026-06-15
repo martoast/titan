@@ -24,6 +24,7 @@ ingestion means a Bangle.js, a Polar, Apple Health, or our own custom band all p
 | [`04-platform-pipeline.md`](04-platform-pipeline.md) | Titan integration: device-agnostic ingestion API, raw-signal storage (MinIO), the FastAPI/NeuroKit2 worker, self-host docker-compose. |
 | [`05-opensource-legal.md`](05-opensource-legal.md) | Licensing (CERN-OHL-S + Apache + AGPL), OpenAPS/Nightscout playbook, wellness-vs-medical legal line, safety, community + funding. |
 | [`06-validation-day.md`](06-validation-day.md) | **The day the hardware arrives.** One-page runbook: install firmware, pair, resting HRV validation vs Polar H10 (Bland–Altman, pass criteria), overnight sleep+recovery validation, troubleshooting, results template. |
+| [`07-three-signal-capture.md`](07-three-signal-capture.md) | **The deeper protocol.** Capture motion + HR + **RMSSD** + a gold-standard reference per night → validate the wearable AND build the Bangle-distribution RMSSD dataset that unlocks the combined sleep model (RMSSD nearly doubles staging accuracy). The model-improvement flywheel + log sheet. |
 
 ## The two rails that never change
 1. **Claim discipline** — wellness vocabulary only (recovery/sleep/fitness). Never diagnose/monitor/treat;
