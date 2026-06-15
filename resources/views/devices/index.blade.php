@@ -42,6 +42,20 @@
             </div>
         @endif
 
+        {{-- Live Bluetooth bridge — stream a Bangle.js straight in --}}
+        <a href="{{ route('devices.bridge') }}" class="block rounded-2xl border border-indigo-500/25 bg-gradient-to-r from-indigo-500/[0.08] to-cyan-500/[0.05] p-4 md:p-5 transition hover:border-indigo-500/45 active:bg-white/[0.04]">
+            <div class="flex items-center gap-3">
+                <span class="shrink-0 grid place-items-center h-10 w-10 rounded-xl bg-indigo-500/20 text-indigo-300">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/></svg>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <div class="font-display font-bold text-gray-100">Live stream a Bangle.js</div>
+                    <p class="text-sm text-gray-400 mt-0.5">Connect over Bluetooth and pump raw PPG straight into Titan — HRV computed server-side. Works on desktop/Android Chrome.</p>
+                </div>
+                <svg class="h-5 w-5 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </div>
+        </a>
+
         {{-- Pair a new device --}}
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ open: {{ $connections->isEmpty() ? 'true' : 'false' }} }">
             <button type="button" @click="open = !open" class="w-full flex items-center justify-between gap-3">

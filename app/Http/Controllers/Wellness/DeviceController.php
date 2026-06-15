@@ -54,6 +54,33 @@ class DeviceController extends Controller
     }
 
     /**
+     * The live Bluetooth bridge: a Web Bluetooth page that connects directly to a
+     * Bangle.js running titan-stream.js, reassembles its raw-PPG windows, signs each
+     * batch with the device's HMAC secret, and POSTs to /api/devices/ingest — the
+     * desktop/Android "prove the loop" path (iOS needs a native companion later).
+     *
+     * The device_id + one-time secret are held client-side (localStorage), seeded from
+     * the just-paired flash. They never round-trip back to the server in the clear.
+     */
+    public function bridge(Request $request)
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $bangles = $profile->wearableConnections()
+            ->where('source', 'bangle')
+            ->where('status', 'connected')
+            ->orderByDesc('created_at')
+            ->get(['id', 'device_id', 'last_payload_type', 'last_sync_at']);
+
+        return view('devices.bridge', [
+            'bangles' => $bangles,
+            'ingestUrl' => url('/api/devices/ingest'),
+            // One-time secret if the user just paired and clicked through to the bridge.
+            'justPaired' => session('just_paired'),
+        ]);
+    }
+
+    /**
      * Pair a device. Mirrors the API pair endpoint but redirects back to the page with
      * the one-time secret flashed so it can be shown once. After this, only the sha256
      * hash remains server-side.

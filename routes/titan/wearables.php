@@ -14,6 +14,7 @@ use App\Http\Controllers\Wellness\PolarController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
+Route::get('/devices/bridge', [DeviceController::class, 'bridge'])->name('devices.bridge');
 Route::post('/devices/pair', [DeviceController::class, 'pair'])->name('devices.pair');
 Route::delete('/devices/{connection}', [DeviceController::class, 'destroy'])->name('devices.destroy');
 
