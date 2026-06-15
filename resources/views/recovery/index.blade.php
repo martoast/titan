@@ -50,7 +50,7 @@
                     @if ($fromWearable)
                         <div class="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300">
                             <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.55a11 11 0 0114 0M8.5 16.05a6 6 0 017 0M2 9.05a16 16 0 0120 0M12 20h.01"/></svg>
-                            {{ $sealed ? 'From wearable · whole-night HRV' : 'From wearable' }}
+                            {{ $sealed ? 'From wearable · whole-night HRV' : 'From wearable · provisional (sealing tonight)' }}
                         </div>
                     @endif
                 </div>
