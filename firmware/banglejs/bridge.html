@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Titan Bridge — Bangle.js → Titan</title>
+<!--
+  Titan Bridge (Firmware P0 desktop debug path)
+  ============================================================================
+  A standalone Web Bluetooth page. It connects to a Bangle.js 2 running
+  titan.app.js over the Nordic UART Service (NUS), parses the binary-packed
+  "T1:" frames, batches the samples, and POSTs them to the Titan ingestion
+  endpoint POST /api/devices/ingest with the per-device HMAC signature header.
+
+  This is the laptop test path described in 02-firmware.md §6: Web Bluetooth is
+  desktop-debug-only (no iOS, no background), but it lets you do end-to-end
+  testing the moment a watch arrives — no Android, no Gadgetbridge needed.
+
+  Open this file in Chrome/Edge over https:// or file:// on a machine with
+  Bluetooth. Web Bluetooth requires a secure context; file:// works in Chrome.
+
+  Data flow:
+     Bangle.js  --NUS notify-->  this page  --HTTPS signed batch-->  Titan API
+
+  Two ingest shapes are supported (see 04-platform-pipeline.md §2.2):
+    - Shape B (raw ppg): we send raw PPG int16 + accel triplets directly. This
+      is the honest P0 default — the server peak-detects and computes HRV.
+    - Shape A (ibi+accel): a tiny on-page peak detector turns PPG into ibi_ms.
+      Cheaper bandwidth, but lossier; off by default. The server accepts both.
+  ============================================================================
+-->
+<style>
+  :root { --bg:#0b0f14; --panel:#131a22; --fg:#e6edf3; --muted:#7d8a99;
+          --accent:#3fb950; --warn:#d29922; --err:#f85149; --line:#222c38; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--fg); }
+  header { padding:16px 20px; border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  .pill { font-size:12px; padding:2px 8px; border-radius:999px; background:#222c38;
+          color:var(--muted); }
+  .pill.on { background:rgba(63,185,80,.15); color:var(--accent); }
+  .pill.err { background:rgba(248,81,73,.15); color:var(--err); }
+  main { max-width:880px; margin:0 auto; padding:20px; }
+  fieldset { border:1px solid var(--line); border-radius:10px; padding:16px;
+             margin:0 0 16px; background:var(--panel); }
+  legend { padding:0 8px; color:var(--muted); font-size:12px; text-transform:uppercase;
+           letter-spacing:.05em; }
+  label { display:block; margin:10px 0 4px; color:var(--muted); font-size:12px; }
+  input[type=text], input[type=password], input[type=url], select {
+    width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px;
+    background:#0d141b; color:var(--fg); font:inherit; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .row > div { flex:1 1 200px; }
+  button { font:inherit; font-weight:600; padding:9px 16px; border-radius:8px;
+           border:1px solid var(--line); background:#1c2630; color:var(--fg);
+           cursor:pointer; }
+  button.primary { background:var(--accent); color:#04210c; border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .stat { background:#0d141b; border:1px solid var(--line); border-radius:8px;
+          padding:10px 12px; }
+  .stat b { display:block; font-size:20px; }
+  .stat span { color:var(--muted); font-size:11px; text-transform:uppercase; }
+  #log { font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; height:220px;
+         overflow:auto; background:#0d141b; border:1px solid var(--line);
+         border-radius:8px; padding:10px; white-space:pre-wrap; }
+  .muted { color:var(--muted); }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  code { background:#0d141b; padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Titan Bridge</h1>
+  <span id="bleState" class="pill">disconnected</span>
+  <span id="ingestState" class="pill">idle</span>
+</header>
+
+<main>
+  <fieldset>
+    <legend>Titan server</legend>
+    <div class="row">
+      <div>
+        <label for="apiUrl">Ingest URL</label>
+        <input id="apiUrl" type="url" placeholder="https://titan.example.com/api/devices/ingest"
+               value="http://localhost/api/devices/ingest" />
+      </div>
+      <div>
+        <label for="deviceId">Device ID (X-Device-Id)</label>
+        <input id="deviceId" type="text" placeholder="tb_xxxxxxxx" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="secret">Device secret (32-byte hex, shown once at pair)</label>
+        <input id="secret" type="password" placeholder="hex secret used for HMAC" />
+      </div>
+      <div>
+        <label for="tz">Timezone (IANA)</label>
+        <input id="tz" type="text" value="America/Mexico_City" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="shape">Ingest shape</label>
+        <select id="shape">
+          <option value="B" selected>B — raw PPG (server detects beats; honest P0 default)</option>
+          <option value="A">A — ibi_ms + accel (on-page peak detect; cheaper, lossier)</option>
+        </select>
+      </div>
+      <div>
+        <label for="batchMs">Batch window (ms before POST)</label>
+        <input id="batchMs" type="text" value="10000" />
+      </div>
+    </div>
+    <p class="muted" style="margin:12px 0 0">
+      HMAC: <code>X-Titan-Signature: t=&lt;unix&gt;,v1=&lt;hmacSHA256("&lt;t&gt;.&lt;body&gt;", secret)&gt;</code>
+      — identical to <code>TerraClient::verifySignature()</code>. Server rejects if |now−t| &gt; 300s.
+    </p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Connection</legend>
+    <div class="actions">
+      <button id="btnConnect" class="primary">Connect watch</button>
+      <button id="btnDisconnect" disabled>Disconnect</button>
+      <button id="btnFlush" disabled>Flush batch now</button>
+      <span id="devName" class="muted"></span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Live</legend>
+    <div class="stats">
+      <div class="stat"><b id="sSamples">0</b><span>PPG samples</span></div>
+      <div class="stat"><b id="sFrames">0</b><span>BLE frames</span></div>
+      <div class="stat"><b id="sBatches">0</b><span>batches POSTed</span></div>
+      <div class="stat"><b id="sRate">0</b><span>samples/s</span></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Log</legend>
+    <div id="log"></div>
+  </fieldset>
+</main>
+
+<script>
+"use strict";
+
+// --- Nordic UART Service UUIDs (Espruino's default BLE console / NUS) --------
+const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const NUS_RX      = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write (host->watch)
+const NUS_TX      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify (watch->host)
+
+// Wire layout MUST match titan.app.js:
+const HEADER_BYTES = 16;
+const SAMPLE_BYTES = 12;
+
+// --- DOM helpers -------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+function log(msg, cls) {
+  const el = $("log");
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = new Date().toLocaleTimeString() + "  " + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function setBle(text, cls) { const p=$("bleState"); p.textContent=text; p.className="pill "+(cls||""); }
+function setIngest(text, cls) { const p=$("ingestState"); p.textContent=text; p.className="pill "+(cls||""); }
+
+// --- State -------------------------------------------------------------------
+let device = null, server = null, txChar = null, rxChar = null;
+let lineBuf = "";                 // accumulates NUS text until newline
+let batch = [];                   // accumulated samples {t,ppg,ax,ay,az}
+let batchEpochMs = null;          // unix-ms of first sample in current batch
+let counters = { samples:0, frames:0, batches:0 };
+let rateWindow = [];              // timestamps for samples/s display
+let batchTimer = null;
+let ppgFieldCode = 0;             // reported by the watch in each frame header
+
+const PPG_FIELD_NAMES = ["vcPPG","raw","filt","adc"]; // mirrors CFG.PPG_FIELDS
+
+// --- Frame parsing -----------------------------------------------------------
+// Each NUS line is "T1:" + base64(binaryFrame). Decode and unpack.
+function handleLine(line) {
+  if (!line.startsWith("T1:")) return; // ignore Espruino console noise
+  let bytes;
+  try {
+    bytes = base64ToBytes(line.slice(3));
+  } catch (e) { return; }
+  if (bytes.length < HEADER_BYTES) return;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+  const ver = dv.getUint8(0);
+  ppgFieldCode = dv.getUint8(1);
+  const count = dv.getUint16(2, true);
+  const lo = dv.getUint32(4, true);
+  const hi = dv.getUint32(8, true);
+  const frameEpochMs = hi * 4294967296 + lo;
+
+  if (ver !== 1) { log("unknown frame version " + ver, "muted"); return; }
+  counters.frames++;
+
+  for (let i = 0; i < count; i++) {
+    const off = HEADER_BYTES + i * SAMPLE_BYTES;
+    if (off + SAMPLE_BYTES > bytes.length) break;
+    const relT = dv.getUint32(off, true);
+    const ppg  = dv.getInt16(off + 4, true);
+    const ax   = dv.getInt16(off + 6, true);
+    const ay   = dv.getInt16(off + 8, true);
+    const az   = dv.getInt16(off + 10, true);
+    const tMs  = frameEpochMs + relT;
+    if (batchEpochMs === null) batchEpochMs = tMs;
+    batch.push({ t: tMs, ppg, ax, ay, az });
+    counters.samples++;
+    rateWindow.push(tMs);
+  }
+  refreshStats();
+}
+
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// --- BLE notify handler ------------------------------------------------------
+function onTxValue(ev) {
+  const dv = ev.target.value;
+  let s = "";
+  for (let i = 0; i < dv.byteLength; i++) s += String.fromCharCode(dv.getUint8(i));
+  lineBuf += s;
+  let nl;
+  while ((nl = lineBuf.indexOf("\n")) >= 0) {
+    const line = lineBuf.slice(0, nl).replace(/\r$/, "");
+    lineBuf = lineBuf.slice(nl + 1);
+    if (line) handleLine(line);
+  }
+}
+
+// --- Connect / disconnect ----------------------------------------------------
+async function connect() {
+  if (!navigator.bluetooth) { log("Web Bluetooth not available in this browser.", "muted"); return; }
+  try {
+    setBle("requesting…");
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [NUS_SERVICE] }, { namePrefix: "Bangle" }],
+      optionalServices: [NUS_SERVICE]
+    });
+    device.addEventListener("gattserverdisconnected", onDisconnected);
+    $("devName").textContent = device.name || "(unnamed)";
+    setBle("connecting…");
+    server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(NUS_SERVICE);
+    txChar = await svc.getCharacteristic(NUS_TX);
+    rxChar = await svc.getCharacteristic(NUS_RX);
+    await txChar.startNotifications();
+    txChar.addEventListener("characteristicvaluechanged", onTxValue);
+    setBle("connected", "on");
+    $("btnConnect").disabled = true;
+    $("btnDisconnect").disabled = false;
+    $("btnFlush").disabled = false;
+    log("Connected to " + (device.name || "watch") + ". Press the watch button to start streaming.");
+    startBatchTimer();
+  } catch (e) {
+    setBle("error", "err");
+    log("Connect failed: " + e.message, "muted");
+  }
+}
+
+function onDisconnected() {
+  setBle("disconnected");
+  $("btnConnect").disabled = false;
+  $("btnDisconnect").disabled = true;
+  $("btnFlush").disabled = true;
+  stopBatchTimer();
+  log("Watch disconnected. Buffered samples on the watch will flush on reconnect.");
+}
+
+async function disconnect() {
+  try { await flushBatch(); } catch (e) {}
+  if (device && device.gatt.connected) device.gatt.disconnect();
+}
+
+// --- Batching + POST ---------------------------------------------------------
+function startBatchTimer() {
+  stopBatchTimer();
+  const ms = Math.max(1000, parseInt($("batchMs").value, 10) || 10000);
+  batchTimer = setInterval(() => { flushBatch().catch(e => log("flush error: " + e.message, "muted")); }, ms);
+}
+function stopBatchTimer() { if (batchTimer) { clearInterval(batchTimer); batchTimer = null; } }
+
+function isoFromMs(ms) { return new Date(ms).toISOString(); }
+
+// Build the ingest body for the configured shape from the current batch.
+function buildBody(samples) {
+  const deviceId = $("deviceId").value.trim();
+  const tz = $("tz").value.trim();
+  const shape = $("shape").value;
+  const start = isoFromMs(samples[0].t);
+  const end   = isoFromMs(samples[samples.length - 1].t);
+  const batch_uid = ulid();
+
+  if (shape === "A") {
+    // Shape A — derive ibi_ms with a crude peak detector + accel activity
+    // counts. The server (NeuroKit2) re-cleans IBI, so this only needs to be
+    // roughly right; raw (Shape B) is preferred for fidelity.
+    const ibi = detectIbiMs(samples);
+    const accel_counts = accelCounts(samples);
+    return {
+      batch_uid, device_id: deviceId, timezone: tz,
+      windows: [{ kind: "ibi", start, end,
+        ibi_ms: ibi, accel_counts, confidence: 0.9,
+        source: "bangle", ppg_field: PPG_FIELD_NAMES[ppgFieldCode] || "unknown" }]
+    };
+  }
+  // Shape B — raw PPG waveform + accel triplets (milli-g). sample_rate_hz is
+  // the measured effective rate so the server can rebuild the timebase.
+  const durSec = (samples[samples.length - 1].t - samples[0].t) / 1000 || 1;
+  const sample_rate_hz = Math.round(samples.length / durSec);
+  return {
+    batch_uid, device_id: deviceId, timezone: tz,
+    windows: [{
+      kind: "ppg_raw", start, end,
+      sample_rate_hz,
+      ppg: samples.map(s => s.ppg),
+      accel_xyz: samples.map(s => [s.ax, s.ay, s.az]),  // milli-g int16
+      t_ms: samples.map(s => s.t),                      // absolute ms per sample
+      source: "bangle",
+      ppg_field: PPG_FIELD_NAMES[ppgFieldCode] || "unknown"
+    }]
+  };
+}
+
+async function flushBatch() {
+  if (!batch.length) return;
+  const samples = batch;
+  batch = [];
+  batchEpochMs = null;
+
+  const url = $("apiUrl").value.trim();
+  const deviceId = $("deviceId").value.trim();
+  const secret = $("secret").value.trim();
+  if (!url || !deviceId || !secret) {
+    log("Set URL + Device ID + secret before POSTing. " + samples.length + " samples dropped.", "muted");
+    return;
+  }
+
+  const body = JSON.stringify(buildBody(samples));
+  const t = Math.floor(Date.now() / 1000);
+  const sig = await hmacSha256Hex(secret, t + "." + body);
+
+  setIngest("posting…");
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Device-Id": deviceId,
+        "X-Titan-Signature": "t=" + t + ",v1=" + sig
+      },
+      body
+    });
+    const txt = await res.text();
+    if (res.ok) {
+      counters.batches++;
+      setIngest("202 accepted", "on");
+      log("POST " + res.status + " — " + samples.length + " samples — " + txt.slice(0, 160));
+    } else {
+      setIngest(res.status + " error", "err");
+      log("POST failed " + res.status + ": " + txt.slice(0, 200), "muted");
+    }
+  } catch (e) {
+    setIngest("network error", "err");
+    log("POST network error: " + e.message + " (" + samples.length + " samples lost)", "muted");
+  }
+  refreshStats();
+}
+
+// --- HMAC (Web Crypto). The server's signing key is device_token_hash =
+//     sha256(secret) (hex). Paste the plaintext secret shown at pairing; we
+//     derive sha256(secret) and HMAC with that — byte-identical to the server. -
+async function sha256Hex(str) {
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function hmacSha256Hex(secret, message) {
+  const keyHex = await sha256Hex(secret);           // = server's device_token_hash
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(keyHex), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// --- ULID (batch_uid). Monotonic-enough for client use. ----------------------
+function ulid() {
+  const ENC = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  let ts = Date.now(), tsPart = "";
+  for (let i = 0; i < 10; i++) { tsPart = ENC[ts % 32] + tsPart; ts = Math.floor(ts / 32); }
+  let rnd = "";
+  const r = crypto.getRandomValues(new Uint8Array(16));
+  for (let i = 0; i < 16; i++) rnd += ENC[r[i] % 32];
+  return tsPart + rnd;
+}
+
+// --- Optional Shape-A helpers (rough; server is authoritative) ---------------
+// Naive PPG peak detector: derivative zero-crossings above an adaptive mean.
+function detectIbiMs(samples) {
+  const ibi = [];
+  if (samples.length < 3) return ibi;
+  const vals = samples.map(s => s.ppg);
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  let lastPeakT = null;
+  for (let i = 1; i < samples.length - 1; i++) {
+    const v = vals[i];
+    if (v > mean && v >= vals[i - 1] && v > vals[i + 1]) {
+      if (lastPeakT !== null) {
+        const d = samples[i].t - lastPeakT;
+        if (d >= 300 && d <= 2000) ibi.push(Math.round(d)); // physiologic gate
+      }
+      lastPeakT = samples[i].t;
+    }
+  }
+  return ibi;
+}
+// Accel "counts": magnitude variance binned per second (proxy for actigraphy).
+function accelCounts(samples) {
+  const perSec = {};
+  for (const s of samples) {
+    const sec = Math.floor(s.t / 1000);
+    const mag = Math.sqrt(s.ax * s.ax + s.ay * s.ay + s.az * s.az) / 1000; // g
+    (perSec[sec] = perSec[sec] || []).push(mag);
+  }
+  return Object.keys(perSec).sort().map(sec => {
+    const arr = perSec[sec];
+    const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+    const varr = arr.reduce((a, b) => a + (b - m) * (b - m), 0) / arr.length;
+    return Math.round(varr * 1000);
+  });
+}
+
+// --- Stats UI ----------------------------------------------------------------
+function refreshStats() {
+  $("sSamples").textContent = counters.samples;
+  $("sFrames").textContent  = counters.frames;
+  $("sBatches").textContent = counters.batches;
+  const now = Date.now();
+  rateWindow = rateWindow.filter(t => now - t < 1000);
+  $("sRate").textContent = rateWindow.length;
+}
+setInterval(refreshStats, 1000);
+
+// --- Wire up buttons ---------------------------------------------------------
+$("btnConnect").addEventListener("click", connect);
+$("btnDisconnect").addEventListener("click", disconnect);
+$("btnFlush").addEventListener("click", () => flushBatch().catch(e => log("flush error: " + e.message, "muted")));
+$("batchMs").addEventListener("change", () => { if (batchTimer) startBatchTimer(); });
+
+log("Ready. Fill in the Titan server fields, then Connect watch.");
+log("Reminder: Web Bluetooth is desktop-debug only (no iOS, no background). Use Gadgetbridge or a native app for real wear.", "muted");
+</script>
+</body>
+</html>

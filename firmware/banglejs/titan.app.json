@@ -1,0 +1,20 @@
+[
+  {
+    "id": "titan",
+    "name": "Titan Streamer",
+    "shortName": "Titan",
+    "version": "0.1.0",
+    "description": "Firmware P0 for the Titan wearable: streams raw PPG (HRM-raw) + accelerometer over Bluetooth (Nordic UART) as binary-packed, base64 frames. A phone (Gadgetbridge) or laptop (bridge.html) forwards the stream to the Titan ingestion API where all HRV/sleep DSP runs. Buffers to flash when disconnected and flushes on reconnect.",
+    "icon": "titan.img",
+    "tags": "health,bluetooth,tool,hrv",
+    "supports": ["BANGLEJS2"],
+    "readme": "README.md",
+    "storage": [
+      { "name": "titan.app.js", "url": "titan.app.js" },
+      { "name": "titan.img", "url": "titan.icon.js", "evaluate": true }
+    ],
+    "data": [
+      { "name": "titan.buf" }
+    ]
+  }
+]

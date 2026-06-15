@@ -1,0 +1,11 @@
+{
+  "id": "titan",
+  "name": "Titan Streamer",
+  "src": "titan.app.js",
+  "icon": "titan.img",
+  "version": "0.1.0",
+  "type": "app",
+  "tags": "health,bluetooth,hrv",
+  "files": "titan.info,titan.app.js,titan.img",
+  "data": "titan.buf"
+}
