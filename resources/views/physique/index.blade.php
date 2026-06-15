@@ -226,7 +226,7 @@
                         <div class="mt-4 rounded-xl border border-cyan-500/25 bg-cyan-500/[0.07] p-4">
                             <p class="text-sm font-semibold text-gray-100">You've got your starting photo. Now meet your dream physique.</p>
                             <p class="text-xs text-gray-400 mt-1">We'll render the same you — same face, just ~10 lbs more lean muscle — from the photo you just added.</p>
-                            <form method="POST" action="{{ route('physique.goal.generate') }}" class="mt-3">
+                            <form method="POST" action="{{ route('physique.goal.generate') }}" class="mt-3" @submit="startGenerating()">
                                 @csrf
                                 <input type="hidden" name="source_photo_id" value="{{ $newest->id }}">
                                 <button type="submit" @disabled(! $imageGenConfigured)
@@ -314,7 +314,7 @@
             <div x-show="genOpen" x-collapse>
                 <p class="text-sm text-gray-500 mt-1 mb-4">@if ($photos->isNotEmpty() && ! $goal)Rather use a different shot than the one you added? @endif Upload a current full-body photo. The AI renders the same you — same face, lighting and background — with ~10 lbs more lean muscle. Believable, not a fantasy filter.</p>
                 <form method="POST" action="{{ route('physique.goal.generate') }}" enctype="multipart/form-data"
-                      x-data="{ name: '', preview: '' }" class="space-y-3">
+                      x-data="{ name: '', preview: '' }" @submit="startGenerating()" class="space-y-3">
                     @csrf
                     <label class="block cursor-pointer">
                         <input type="file" name="photo" accept="image/*" required class="sr-only"
@@ -390,13 +390,62 @@
                 @if ($latestAnalysis->bodyFatRange())<p class="mt-3 text-[11px] text-gray-600">Body-fat estimate is a range, not a precise figure — honest about the uncertainty. Not a medical measurement.</p>@endif
             </section>
         @endif
+
+        {{-- ============ GENERATING OVERLAY ============ --}}
+        {{-- Blocking POST takes 10–20s while Nano Banana renders — show a premium,
+             unmistakable "we're working" state so the screen never just freezes. --}}
+        <div x-show="generating" x-cloak x-transition.opacity.duration.300ms
+             class="fixed inset-0 z-[120] flex items-center justify-center bg-gray-950/92 backdrop-blur-xl">
+            <div class="relative flex flex-col items-center text-center px-6 max-w-sm">
+                {{-- pulsing aura + expanding rings around a floating figure --}}
+                <div class="relative h-44 w-44 mb-9">
+                    <div class="absolute inset-0 rounded-full bg-gradient-to-tr from-indigo-500/40 to-cyan-400/30 blur-3xl animate-pulse"></div>
+                    <div class="absolute inset-0 rounded-full border-2 border-indigo-500/40" style="animation: titanRing 2.4s ease-out infinite;"></div>
+                    <div class="absolute inset-0 rounded-full border-2 border-cyan-400/30" style="animation: titanRing 2.4s ease-out infinite; animation-delay: .8s;"></div>
+                    <div class="absolute inset-0 rounded-full border border-white/10" style="animation: titanRing 2.4s ease-out infinite; animation-delay: 1.6s;"></div>
+                    <svg class="absolute inset-0 m-auto h-20 w-20 text-indigo-100 drop-shadow-[0_0_18px_rgba(129,140,248,0.6)]"
+                         style="animation: titanFloat 3s ease-in-out infinite;" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2a2.2 2.2 0 100 4.4A2.2 2.2 0 0012 2zM4.5 8.2c.7-.3 1.5 0 1.9.6l1.3 2c.7 1 1.9 1.6 3.1 1.6h2.4c1.2 0 2.4-.6 3.1-1.6l1.3-2c.4-.6 1.2-.9 1.9-.6.8.3 1.1 1.2.7 1.9l-1.4 2.2c-.7 1-1.7 1.8-2.9 2.2l.5 5.3a1.4 1.4 0 01-2.8.3l-.6-3.9h-1.5l-.6 3.9a1.4 1.4 0 01-2.8-.3l.5-5.3a5.3 5.3 0 01-2.9-2.2L3.8 10c-.4-.7-.1-1.6.7-1.9z"/>
+                    </svg>
+                </div>
+                <h3 class="font-display text-xl font-bold text-gray-100">Rendering your dream physique</h3>
+                <p class="mt-2 text-sm text-indigo-300/90 min-h-[1.25rem]" x-text="genMsg"></p>
+                {{-- indeterminate shimmer bar --}}
+                <div class="mt-6 h-1.5 w-64 max-w-[70vw] overflow-hidden rounded-full bg-white/10">
+                    <div class="h-full w-1/3 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style="animation: titanSlide 1.5s ease-in-out infinite;"></div>
+                </div>
+                <p class="mt-5 text-xs text-gray-500">This usually takes 10–20 seconds. Hang tight — don't refresh.</p>
+            </div>
+        </div>
     </div>
+
+    <style>
+        @keyframes titanRing { 0% { transform: scale(.55); opacity: .85 } 100% { transform: scale(1.35); opacity: 0 } }
+        @keyframes titanFloat { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }
+        @keyframes titanSlide { 0% { transform: translateX(-120%) } 100% { transform: translateX(430%) } }
+    </style>
 
     <script>
         function physiquePage(cfg) {
             return {
                 addOpen: false,
                 photos: cfg.photos || [],
+                // generating overlay — rotates status copy while the blocking POST renders
+                generating: false,
+                genMsg: '',
+                genMsgs: [
+                    'Reading your current physique…',
+                    'Keeping your face & identity…',
+                    'Sculpting ~10 lbs of lean muscle…',
+                    'Matching your lighting and pose…',
+                    'Rendering the new you…',
+                ],
+                startGenerating() {
+                    this.generating = true;
+                    let i = 0;
+                    this.genMsg = this.genMsgs[0];
+                    setInterval(() => { i = (i + 1) % this.genMsgs.length; this.genMsg = this.genMsgs[i]; }, 2600);
+                },
                 // reveal slider
                 pos: 50, dragging: false,
                 beforeId: null, afterId: null,
