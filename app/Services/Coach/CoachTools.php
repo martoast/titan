@@ -6,7 +6,8 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * The coach's READ-only toolbox over a single profile's data, plus knowledge save.
+ * The coach's toolbox over a single profile's data: read tools for every vertical,
+ * knowledge save, and live workout logging (start_workout / log_set / finish_workout).
  *
  * Every cross-domain model is guarded with class_exists so the coach keeps working
  * before those verticals are integrated — a missing domain returns a friendly
@@ -71,6 +72,26 @@ class CoachTools
             $tools[] = $this->fn('physique_status', "Get the active physique goal and the latest physique analysis (body-fat range, % of the way to the goal image).", [], []);
         }
 
+        // --- Live workout logging (write) — log sets as the user calls them out during a session ---
+        if (class_exists(\App\Models\Workout::class)) {
+            $tools[] = $this->fn('start_workout', 'Begin a new workout session when the user says they are starting/about to train. Optional — log_set will start one automatically if none is open. Returns the session id.', [
+                'name' => ['type' => 'string', 'description' => 'Optional session name, e.g. "Push day", "Legs".'],
+            ], []);
+
+            $tools[] = $this->fn('log_set', "Log ONE set the user just did, into the open workout session (auto-started if none). Use this whenever they call out a set, e.g. \"bench, 8 reps at 135\". IMPORTANT: 'weight' is the TOTAL load lifted INCLUDING the bar. A standard barbell is 45 lb (20 kg). If they describe plates per side, total = bar + 2 × (weight per side) — e.g. one 45 lb plate each side on a barbell = 45 + 90 = 135 lb. Dumbbell/machine weight is taken as given. Pass the unit the user spoke in.", [
+                'exercise' => ['type' => 'string', 'description' => 'Exercise name, e.g. "bench press", "back squat".'],
+                'reps' => ['type' => 'integer', 'description' => 'Reps completed in this set.'],
+                'weight' => ['type' => 'number', 'description' => 'TOTAL weight lifted including the bar, in the given unit. Omit/0 for bodyweight.'],
+                'unit' => ['type' => 'string', 'enum' => ['lb', 'kg'], 'description' => 'Unit of weight (default lb).'],
+                'rpe' => ['type' => 'number', 'description' => 'Optional rate of perceived exertion, 1–10.'],
+                'is_warmup' => ['type' => 'boolean', 'description' => 'True if this was a warm-up set.'],
+            ], ['exercise', 'reps']);
+
+            $tools[] = $this->fn('finish_workout', 'Close out the open workout session when the user says they are done. Optionally attach a note.', [
+                'notes' => ['type' => 'string', 'description' => 'Optional summary note for the session.'],
+            ], []);
+        }
+
         return $tools;
     }
 
@@ -86,6 +107,9 @@ class CoachTools
             'recent_workouts' => 'Looking at your training',
             'sleep_recovery_summary' => 'Checking sleep & recovery',
             'physique_status' => 'Checking your physique progress',
+            'start_workout' => 'Starting your workout',
+            'log_set' => 'Logging your set',
+            'finish_workout' => 'Wrapping up your workout',
             default => 'Looking that up',
         };
     }
@@ -122,6 +146,9 @@ class CoachTools
             'recent_workouts' => $this->recentWorkouts((int) ($args['days'] ?? 14)),
             'sleep_recovery_summary' => $this->sleepRecoverySummary(),
             'physique_status' => $this->physiqueStatus(),
+            'start_workout' => $this->startWorkout($args),
+            'log_set' => $this->logSet($args),
+            'finish_workout' => $this->finishWorkout($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
     }
@@ -321,6 +348,116 @@ class CoachTools
 
                 return $row;
             })->values()->all(),
+        ];
+    }
+
+    // ---- Live workout logging -------------------------------------------------
+
+    /** The session to log into: the most recent one started within the last 6h, else null. */
+    private function openWorkout(): ?\App\Models\Workout
+    {
+        return $this->profile->workouts()
+            ->where('performed_at', '>=', Carbon::now()->subHours(6))
+            ->latest('performed_at')->first();
+    }
+
+    private function startWorkout(array $args): mixed
+    {
+        $workout = $this->profile->workouts()->create([
+            'name' => trim((string) ($args['name'] ?? '')) ?: 'Workout',
+            'performed_at' => Carbon::now(),
+            'updated_via' => 'coach',
+        ]);
+
+        return ['ok' => true, 'workout_id' => $workout->id, 'name' => $workout->name, 'message' => "Started \"{$workout->name}\" — call out your sets and I'll log them."];
+    }
+
+    private function logSet(array $args): mixed
+    {
+        $name = trim((string) ($args['exercise'] ?? ''));
+        if ($name === '') {
+            return ['error' => 'exercise is required'];
+        }
+        $reps = (int) ($args['reps'] ?? 0);
+        if ($reps < 1) {
+            return ['error' => 'reps must be at least 1'];
+        }
+
+        $unit = strtolower((string) ($args['unit'] ?? 'lb'));
+        $weight = (float) ($args['weight'] ?? 0);
+        $weightKg = $unit === 'kg' ? $weight : $weight * 0.45359237;   // store canonical kg
+
+        // Open session, or start one on the fly.
+        $workout = $this->openWorkout() ?? $this->profile->workouts()->create([
+            'name' => 'Workout',
+            'performed_at' => Carbon::now(),
+            'updated_via' => 'coach',
+        ]);
+
+        $exercise = \App\Models\Exercise::firstOrCreate(
+            ['slug' => \Illuminate\Support\Str::slug($name)],
+            ['name' => \Illuminate\Support\Str::title($name), 'muscle_group' => 'full body', 'category' => 'compound'],
+        );
+
+        // Reuse this exercise's slot in the session if it's already there, else append.
+        $we = \App\Models\WorkoutExercise::firstOrCreate(
+            ['workout_id' => $workout->id, 'exercise_id' => $exercise->id],
+            ['order' => (int) \App\Models\WorkoutExercise::where('workout_id', $workout->id)->max('order') + 1],
+        );
+
+        $setNumber = (int) \App\Models\WorkoutSet::where('workout_exercise_id', $we->id)->max('set_number') + 1;
+
+        \App\Models\WorkoutSet::create([
+            'workout_exercise_id' => $we->id,
+            'set_number' => $setNumber,
+            'reps' => $reps,
+            'weight_kg' => round($weightKg, 2),
+            'rpe' => isset($args['rpe']) ? (float) $args['rpe'] : null,
+            'is_warmup' => (bool) ($args['is_warmup'] ?? false),
+        ]);
+
+        // Echo back in the unit they spoke, so the confirmation reads naturally.
+        $shown = $weight > 0
+            ? rtrim(rtrim(number_format($unit === 'kg' ? $weightKg : $weight, 1), '0'), '.').' '.$unit
+            : 'bodyweight';
+
+        return [
+            'ok' => true,
+            'workout_id' => $workout->id,
+            'exercise' => $exercise->name,
+            'set_number' => $setNumber,
+            'reps' => $reps,
+            'weight' => $shown,
+            'weight_kg' => round($weightKg, 2),
+            'message' => "Logged {$exercise->name} — set {$setNumber}: {$reps} × {$shown}.",
+        ];
+    }
+
+    private function finishWorkout(array $args): mixed
+    {
+        $workout = $this->openWorkout();
+        if (! $workout) {
+            return ['error' => 'No open workout to finish.'];
+        }
+
+        $minutes = (int) round(Carbon::now()->diffInMinutes($workout->performed_at, true));
+        $workout->update([
+            'duration_min' => $minutes ?: null,
+            'notes' => trim((string) ($args['notes'] ?? '')) ?: $workout->notes,
+        ]);
+
+        $totalSets = \App\Models\WorkoutSet::whereIn(
+            'workout_exercise_id',
+            \App\Models\WorkoutExercise::where('workout_id', $workout->id)->pluck('id'),
+        )->count();
+
+        return [
+            'ok' => true,
+            'workout_id' => $workout->id,
+            'duration_min' => $minutes,
+            'exercises' => $workout->exercises()->count(),
+            'sets' => $totalSets,
+            'message' => "Nice work — {$totalSets} sets logged over {$minutes} min. Saved to your training log.",
         ];
     }
 
