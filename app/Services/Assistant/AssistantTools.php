@@ -388,7 +388,13 @@ class AssistantTools
             'ok' => true,
             'device_id' => $device->device_id,
             'secret' => $secret,   // shown ONCE — the user enters this on the watch / bridge
-            'note' => 'Give the device_id + secret to the watch bridge to start syncing. The secret is shown only once.',
+            'note' => 'Secret shown once. Walk the user through setup_steps; the device_id + secret go into the live bridge.',
+            'setup_steps' => [
+                '1. Install the watch app (once, from a computer): open the Espruino Web IDE (espruino.com/ide) in desktop Chrome, connect the Bangle.js 2 over Bluetooth, paste the Titan firmware (Devices → Set up → Titan firmware, or /devices/firmware), and Send to Espruino. Phone browsers cannot flash BLE devices.',
+                '2. Pairing is done (this call) — give the user the device_id + secret above.',
+                '3. Open the live bridge at /devices/bridge and tap Connect. On iPhone, open that URL in the Bluefy app (free Web-Bluetooth browser) since Safari has no Bluetooth; on a computer/Android use Chrome. Paste the credentials if not auto-filled.',
+                '4. Wear it overnight — it logs to its own memory. In the morning, open the bridge and Connect; the whole night syncs in seconds → readiness, sleep, recovery.',
+            ],
         ];
     }
 

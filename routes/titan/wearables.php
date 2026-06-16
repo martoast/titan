@@ -20,6 +20,7 @@ Route::post('/connect/tokens', [ApiTokenController::class, 'store'])->name('conn
 Route::delete('/connect/tokens/{token}', [ApiTokenController::class, 'destroy'])->name('connect.tokens.destroy');
 
 Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
+Route::get('/devices/firmware', [DeviceController::class, 'firmware'])->name('devices.firmware');
 Route::get('/devices/bridge', [DeviceController::class, 'bridge'])->name('devices.bridge');
 Route::get('/devices/validate', [DeviceController::class, 'validate'])->name('devices.validate');
 Route::post('/devices/hrv-preview', [DeviceController::class, 'hrvPreview'])->name('devices.hrv-preview');

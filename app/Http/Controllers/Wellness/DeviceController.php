@@ -62,6 +62,21 @@ class DeviceController extends Controller
      * The device_id + one-time secret are held client-side (localStorage), seeded from
      * the just-paired flash. They never round-trip back to the server in the clear.
      */
+    /**
+     * Serve the Bangle.js watch firmware (titan.app.js) for install via the Espruino Web IDE.
+     * One-time, from a computer — iOS browsers can't flash a BLE device.
+     */
+    public function firmware()
+    {
+        $path = base_path('firmware/banglejs/titan.app.js');
+        abort_unless(is_file($path), 404, 'Firmware not found.');
+
+        return response()->file($path, [
+            'Content-Type' => 'text/javascript; charset=utf-8',
+            'Content-Disposition' => 'inline; filename="titan.app.js"',
+        ]);
+    }
+
     public function bridge(Request $request)
     {
         $profile = $request->user()->ensureProfile();
@@ -155,7 +170,7 @@ class DeviceController extends Controller
             'device_token_hash' => hash('sha256', $secret),
             'timezone' => $profile->settings['timezone'] ?? config('app.timezone', 'UTC'),
             'status' => 'connected',
-            'last_payload_type' => $data['label'] ?: null,
+            'last_payload_type' => ($data['label'] ?? null) ?: null,
         ]);
 
         return redirect('/devices')->with('just_paired', [

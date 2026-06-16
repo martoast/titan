@@ -42,6 +42,94 @@
             </div>
         @endif
 
+        {{-- ===== First-time setup wizard — 4 steps to streaming ===== --}}
+        @php $hasBangle = $connections->contains(fn ($c) => $c->source === 'bangle'); @endphp
+        <div class="rounded-2xl border border-indigo-500/25 bg-gradient-to-b from-indigo-500/[0.08] to-transparent overflow-hidden"
+             x-data="{ open: {{ $hasBangle ? 'false' : 'true' }} }">
+            <button type="button" @click="open = !open" class="w-full flex items-center justify-between gap-3 p-4 md:p-5">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="shrink-0 grid place-items-center h-10 w-10 rounded-xl bg-indigo-500/20 text-indigo-300">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM5 9h14M7 9V6a1 1 0 011-1h8a1 1 0 011 1v3"/></svg>
+                    </span>
+                    <div class="min-w-0 text-left">
+                        <div class="font-display font-bold text-gray-100">Set up your Bangle.js</div>
+                        <p class="text-xs text-gray-400 mt-0.5">{{ $hasBangle ? 'Paired ✓ — tap for the full guide' : '4 steps to live biosignals — ~10 minutes' }}</p>
+                    </div>
+                </div>
+                <svg class="h-5 w-5 text-gray-500 shrink-0 transition" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </button>
+
+            <div x-show="open" x-collapse class="px-4 md:px-5 pb-5 space-y-4">
+                @php
+                    $step = fn ($n, $title, $body) => null; // (visual only; rendered inline below)
+                @endphp
+
+                {{-- Step 1 — firmware (one-time, from a computer) --}}
+                <div class="flex gap-3">
+                    <span class="shrink-0 grid place-items-center h-6 w-6 rounded-full bg-indigo-500 text-[12px] font-bold text-white">1</span>
+                    <div class="min-w-0">
+                        <div class="font-semibold text-gray-100 text-sm">Install the Titan app on your watch <span class="text-[11px] text-gray-500">· once, from a computer 💻</span></div>
+                        <p class="text-[13px] text-gray-400 mt-0.5 leading-relaxed">Open the <a href="https://www.espruino.com/ide/" target="_blank" rel="noopener" class="text-indigo-300 underline decoration-indigo-500/40">Espruino Web IDE</a> in desktop Chrome, connect your Bangle.js 2 over Bluetooth (🔌 icon), paste the Titan firmware into the right-hand editor, and click <span class="text-gray-300">Send to Espruino</span>.</p>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <a href="{{ route('devices.firmware') }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-200 active:bg-white/10">
+                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+                                Titan firmware
+                            </a>
+                            <a href="https://www.espruino.com/ide/" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-200 active:bg-white/10">Espruino IDE ↗</a>
+                        </div>
+                        <p class="text-[11px] text-gray-600 mt-1.5">Phone browsers can't flash a Bluetooth device — this single step needs a Mac/PC. You only do it once.</p>
+                    </div>
+                </div>
+
+                {{-- Step 2 — pair (one tap) --}}
+                <div class="flex gap-3">
+                    <span class="shrink-0 grid place-items-center h-6 w-6 rounded-full bg-indigo-500 text-[12px] font-bold text-white">2</span>
+                    <div class="min-w-0">
+                        <div class="font-semibold text-gray-100 text-sm">Pair it with Titan</div>
+                        <p class="text-[13px] text-gray-400 mt-0.5 leading-relaxed">One tap creates a device ID + a one-time secret. They're auto-filled into the live bridge so you don't copy anything.</p>
+                        @unless ($hasBangle)
+                            <form method="POST" action="/devices/pair" class="mt-2">
+                                @csrf
+                                <input type="hidden" name="source" value="bangle">
+                                <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/90 px-4 py-2 text-xs font-semibold text-white active:bg-indigo-400">Pair Bangle.js</button>
+                            </form>
+                        @else
+                            <p class="text-[12px] text-emerald-400/80 mt-1">Paired ✓</p>
+                        @endunless
+                    </div>
+                </div>
+
+                {{-- Step 3 — connect & stream (the iOS path that actually works) --}}
+                <div class="flex gap-3">
+                    <span class="shrink-0 grid place-items-center h-6 w-6 rounded-full bg-indigo-500 text-[12px] font-bold text-white">3</span>
+                    <div class="min-w-0">
+                        <div class="font-semibold text-gray-100 text-sm">Connect &amp; stream</div>
+                        <p class="text-[13px] text-gray-400 mt-0.5 leading-relaxed">Open the live bridge and tap Connect — your PPG waveform and HRV appear in seconds.</p>
+                        <div class="mt-2 grid gap-1.5 text-[12px]">
+                            <div class="flex items-start gap-2 rounded-lg bg-white/[0.03] border border-white/5 px-3 py-2">
+                                <span class="shrink-0 text-base"></span>
+                                <div><span class="text-gray-200 font-medium">On iPhone:</span> <span class="text-gray-400">Safari can't do Bluetooth, so open the bridge in <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener" class="text-indigo-300 underline decoration-indigo-500/40">Bluefy</a> — a free Web-Bluetooth browser. Paste your Titan URL in there and it works like a normal browser.</span></div>
+                            </div>
+                            <div class="flex items-start gap-2 rounded-lg bg-white/[0.03] border border-white/5 px-3 py-2">
+                                <span class="shrink-0 text-base">💻</span>
+                                <div><span class="text-gray-200 font-medium">On a computer / Android:</span> <span class="text-gray-400">just open the bridge in Chrome or Edge.</span></div>
+                            </div>
+                        </div>
+                        <a href="{{ route('devices.bridge') }}" class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-500 to-cyan-500 px-4 py-2 text-xs font-semibold text-gray-950 active:opacity-90">Open the live bridge →</a>
+                    </div>
+                </div>
+
+                {{-- Step 4 — wear it tonight --}}
+                <div class="flex gap-3">
+                    <span class="shrink-0 grid place-items-center h-6 w-6 rounded-full bg-indigo-500 text-[12px] font-bold text-white">4</span>
+                    <div class="min-w-0">
+                        <div class="font-semibold text-gray-100 text-sm">Wear it tonight 🌙</div>
+                        <p class="text-[13px] text-gray-400 mt-0.5 leading-relaxed">It records overnight on its own memory — no phone needed while you sleep. In the morning, open the bridge and tap Connect; the whole night uploads in seconds and your <span class="text-gray-300">readiness, sleep and recovery</span> appear.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         {{-- Live Bluetooth bridge — stream a Bangle.js straight in --}}
         <a href="{{ route('devices.bridge') }}" class="block rounded-2xl border border-indigo-500/25 bg-gradient-to-r from-indigo-500/[0.08] to-cyan-500/[0.05] p-4 md:p-5 transition hover:border-indigo-500/45 active:bg-white/[0.04]">
             <div class="flex items-center gap-3">
@@ -50,7 +138,7 @@
                 </span>
                 <div class="min-w-0 flex-1">
                     <div class="font-display font-bold text-gray-100">Live stream a Bangle.js</div>
-                    <p class="text-sm text-gray-400 mt-0.5">Connect over Bluetooth and pump raw PPG straight into Titan — HRV computed server-side. Works on desktop/Android Chrome.</p>
+                    <p class="text-sm text-gray-400 mt-0.5">Connect over Bluetooth and pump raw PPG straight into Titan — HRV computed server-side. iPhone via Bluefy; desktop/Android via Chrome.</p>
                 </div>
                 <svg class="h-5 w-5 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
             </div>

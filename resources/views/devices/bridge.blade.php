@@ -64,7 +64,9 @@
                         Send test window (no hardware)
                     </button>
                 </div>
-                <p x-show="!btSupported" x-cloak class="mt-3 text-xs text-amber-400/90">This browser has no Web Bluetooth. Use desktop Chrome/Edge or Android Chrome (iOS isn't supported — that needs the native companion app).</p>
+                <p x-show="!btSupported" x-cloak class="mt-3 text-xs text-amber-400/90">
+                    This browser has no Web Bluetooth. <span class="text-amber-200">On iPhone, open this page in <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener" class="underline">Bluefy</a></span> (a free Web-Bluetooth browser) — or use desktop Chrome/Edge or Android Chrome.
+                </p>
             </div>
         </section>
 
