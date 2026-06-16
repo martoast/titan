@@ -18,6 +18,12 @@
         ['label' => 'Coach',     'path' => 'coach',      'icon' => 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 21l1.8-4A7.97 7.97 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'],
         ['label' => 'Duo',       'path' => 'duo',        'icon' => 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-2a4 4 0 10-4-4 4 4 0 004 4zm6 0a3.5 3.5 0 00-1-.2'],
     ];
+    // Cycle is shown only when relevant (female profile, or tracking enabled, or has data).
+    if (auth()->check() && \App\Support\Cycle::available(auth()->user()->ensureProfile())) {
+        $cycleItem = ['label' => 'Cycle', 'path' => 'cycle', 'icon' => 'M21 12a9 9 0 11-2.64-6.36M21 4v4h-4'];
+        $ri = collect($nav)->search(fn ($i) => $i['path'] === 'recovery');
+        array_splice($nav, $ri === false ? count($nav) : $ri + 1, 0, [$cycleItem]);
+    }
     // Primary destinations for the mobile bottom bar (most-used daily).
     $tabPaths = ['dashboard', 'meals', 'workouts', 'coach'];
     $tabs = collect($nav)->whereIn('path', $tabPaths)->sortBy(fn ($i) => array_search($i['path'], $tabPaths))->values();

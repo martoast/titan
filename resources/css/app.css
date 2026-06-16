@@ -152,6 +152,11 @@ body {
 .tcard-spark-svg polyline { stroke-width: 2; vector-effect: non-scaling-stroke; }
 .tcard-spark-svg.is-up polyline { stroke: #34d399; }
 .tcard-spark-svg.is-down polyline { stroke: #f87171; }
+/* Cycle card */
+.tcard-cycle { display: flex; align-items: center; gap: 0.8rem; }
+.tcard-cycle-day { display: grid; place-items: center; flex-shrink: 0; width: 2.75rem; height: 2.75rem; border-radius: 999px; font-family: var(--font-display); font-weight: 800; color: #0b0d10; }
+.tcard-cycle-phase { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; }
+.tcard-cycle-sub { font-size: 0.8rem; color: #9ca3af; margin-top: 0.1rem; }
 
 /* Horizontal scrollers (chips, day strips) without an ugly bar, with iOS momentum. */
 .no-scrollbar::-webkit-scrollbar { display: none; }

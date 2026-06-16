@@ -75,12 +75,22 @@ class DashboardController extends Controller
                 'weight' => $ph->weight_kg ? rtrim(rtrim(number_format((float) $ph->weight_kg, 1), '0'), '.').' kg' : null,
             ])->filter(fn ($x) => $x['url'])->values();
 
+        // --- Cycle (only for women / those who track it) — phase-aware context tile ---
+        $cycle = null;
+        if (\App\Support\Cycle::available($p)) {
+            $cs = \App\Support\Cycle::status($p);
+            if ($cs['has_data'] ?? false) {
+                $cycle = $cs;
+            }
+        }
+
         return view('dashboard', [
             'profile' => $p,
             'name' => $request->user()->name,
             'futureSelf' => $futureSelf,
             'today' => $today,
             'focus' => $focus,
+            'cycle' => $cycle,
             'strain' => $strain,
             'sleepCoach' => $sleepCoach,
             'meal' => MealCoach::assess($p),

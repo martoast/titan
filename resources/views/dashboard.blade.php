@@ -113,6 +113,32 @@
             </a>
         </div>
 
+        {{-- ============ CYCLE — phase-aware context (women) ============ --}}
+        @if (! empty($cycle))
+            @php
+                $cycPhase = $cycle['phase'];
+                $cycColors = ['menstrual'=>'#fb7185','follicular'=>'#34d399','fertile'=>'#22d3ee','ovulation'=>'#a78bfa','luteal'=>'#fbbf24','unknown'=>'#9ca3af'];
+                $cycC = $cycColors[$cycPhase] ?? '#9ca3af';
+                $cycNext = $cycle['next_period']['in_days'] ?? null;
+            @endphp
+            <a href="/cycle" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 active:bg-white/[0.05] transition">
+                <div class="flex items-center gap-3">
+                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full font-display font-bold text-gray-900" style="background:{{ $cycC }}">{{ $cycle['cycle_day'] }}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-display font-bold text-gray-100">{{ $cycle['phase_label'] }} phase</span>
+                            <span class="text-[11px] text-gray-500 shrink-0">
+                                @if ($cycle['late']) <span class="text-rose-300">{{ $cycle['next_period']['late_days'] }}d late</span>
+                                @elseif ($cycNext === 0) period today
+                                @else period in {{ $cycNext }}d @endif
+                            </span>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-0.5 truncate">{{ $cycle['note'] }}</p>
+                    </div>
+                </div>
+            </a>
+        @endif
+
         {{-- ============ NEXT MEAL — fuel before you're hungry ============ --}}
         @php
             $mTone = match ($meal['status']) {

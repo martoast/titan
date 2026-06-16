@@ -127,6 +127,28 @@ function buildSparkline(d) {
     }
     return el;
 }
+const CYCLE_COLORS = { menstrual: '#fb7185', follicular: '#34d399', fertile: '#22d3ee', ovulation: '#a78bfa', luteal: '#fbbf24' };
+function buildCycle(d) {
+    const key = (d.phase_key || d.phase || '').toString().toLowerCase();
+    const color = CYCLE_COLORS[key] || '#9ca3af';
+    const el = document.createElement('div');
+    el.className = 'tcard tcard-cycle';
+    const dot = document.createElement('div');
+    dot.className = 'tcard-cycle-day';
+    dot.style.background = color;
+    dot.textContent = (d.day != null ? d.day : '–');
+    const body = document.createElement('div');
+    body.className = 'tcard-cycle-body';
+    const ph = document.createElement('div'); ph.className = 'tcard-cycle-phase'; ph.textContent = (d.phase || 'Cycle') + ' phase';
+    const sub = document.createElement('div'); sub.className = 'tcard-cycle-sub';
+    const bits = [];
+    if (d.next_period_days != null) bits.push(d.next_period_days <= 0 ? 'period due' : `period in ${d.next_period_days}d`);
+    if (d.fertile) bits.push(`${d.fertile} fertility`);
+    sub.textContent = bits.join(' · ');
+    body.append(ph, sub);
+    el.append(dot, body);
+    return el;
+}
 function renderCards(root) {
     root.querySelectorAll('pre > code.language-titan-card').forEach((code) => {
         const pre = code.parentElement;
@@ -138,6 +160,7 @@ function renderCards(root) {
         else if (d.type === 'stats' || d.type === 'vitals') card = buildStats(d.title, d.items);
         else if (d.type === 'stat' || d.type === 'metric') card = buildStat(d);
         else if (d.type === 'sparkline' || d.type === 'trend') card = buildSparkline(d);
+        else if (d.type === 'cycle') card = buildCycle(d);
         if (card) { pre.dataset.card = '1'; pre.replaceWith(card); }
     });
 }

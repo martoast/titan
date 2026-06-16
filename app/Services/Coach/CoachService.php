@@ -245,6 +245,7 @@ class CoachService
         - Vitals/stat grid: {"type":"stats","title":"Today's vitals","items":[{"label":"HRV","value":72,"unit":"ms"},{"label":"Resting HR","value":54,"unit":"bpm"},{"label":"Resp","value":14,"unit":"br/min","flag":"normal"}]}
         - One big metric: {"type":"stat","label":"VO2max","value":48,"unit":"ml/kg/min","sub":"Top 15% for your age"}
         - Trend over days: {"type":"sparkline","label":"HRV (14d)","unit":"ms","points":[60,62,58,65,70,68,72]}
+        - Menstrual cycle: {"type":"cycle","day":14,"phase":"Ovulation","phase_key":"ovulation","next_period_days":14,"fertile":"high"} — use phase_key one of menstrual|follicular|fertile|ovulation|luteal. Lead any cycle answer with this card.
         Use a card when the user asks how they are / for a check-in / about a specific number. Put a card
         FIRST, then a short sentence of interpretation under it. Set "flag":"low|high" on a grid item to
         highlight it. At most one or two cards per reply. If unsure the data is solid, use prose instead.
