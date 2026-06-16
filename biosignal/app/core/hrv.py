@@ -10,6 +10,11 @@ RMSSD is the primary vagal/recovery correlate; we report it whole-night (5-min w
 are noisier, r²≈0.77 vs 0.98 whole-night — Kinnunen 2020). Resting HR = min of windowed
 medians over the night (§4).
 
+Quality gate is validated on real data: PPG-DaLiA wrist-PPG decimated to 25 Hz vs chest-ECG
+gives ~195 ms RMSSD MAE raw → ~55 ms once `valid` gates the night (the template/Kubios/artifact
+stack here). 55 ms ≈ the magnitude of resting RMSSD, so treat this as trend-grade, not beat-to-beat:
+trust the whole-night number, flag pNN50 low-confidence. See scripts/validate_hrv_quality.py.
+
 These functions are deliberately stateless and DB-free.
 """
 

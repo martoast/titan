@@ -203,9 +203,22 @@ Never imply CVD/diabetes screening.
 | RMSSD/HRV | ~20 Hz *with interpolation* | 25 Hz + sub-sample peak refine |
 | Tremor (only reason to burst) | 24–30 Hz | 100 Hz burst on-demand |
 
+> **VALIDATED (2026-06-15), and the result was a surprise.** Tested on real data — PPG-DaLiA, 15
+> subjects, wrist PPG decimated to the Bangle's 25 Hz vs hand-corrected chest-ECG R-peaks, 559
+> low-motion 2-min windows (`biosignal/scripts/validate_hrv_quality.py`). Raw/ungated RMSSD MAE was
+> **~195 ms** (wrist PPG is junk without QC). Our **existing** pipeline gate (template-SQI + physiologic
+> reject + Kubios fixpeaks + artifact gate) brings the retained ~18% of windows to **~55 ms MAE** — i.e.
+> the "biggest quality win" below is, in substance, **already in our pipeline, and it works.** Adding a
+> *further* skewness+perfusion+template SQI gate on top did **not** beat that baseline on this data, so we
+> did **not** ship it (would add surface without buying accuracy). Net: this is now a *validation* win, not
+> a new feature. And note the honest ceiling — 55 ms abs error ≈ the magnitude of resting RMSSD itself, so
+> 25 Hz wrist RMSSD stays **trend-grade** (the 🟡 verdict in §1), trustworthy whole-night, not beat-to-beat.
+
 **Concrete pipeline upgrades (priority order):**
-1. **SQI gating before HRV** — biggest single quality win. `vital_sqi` (Python, **MIT**): 30 s windows, **skewness** (Elgendi's best single SQI) + perfusion + DTW template match; only compute RMSSD on accepted windows.
-2. **Parabolic (3-point) peak interpolation** around each systolic peak — Hejjel shows it beats cubic-spline upsampling for IBI timing at lower cost. Keep our 25→250 Hz upsample but add this; **flag pNN50 as low-confidence at 25 Hz** (it's the most timing-fragile).
+1. ~~**SQI gating before HRV**~~ — ✅ **done & validated** (callout above): template-SQI + Kubios in the
+   existing pipeline already deliver 55 ms MAE on real wrist-PPG-vs-ECG; an extra `vital_sqi`-style
+   skewness/perfusion/DTW gate did not improve on it, so it was evaluated and dropped, not shipped.
+2. **Parabolic (3-point) peak interpolation** around each systolic peak — Hejjel shows it beats cubic-spline upsampling for IBI timing. *Tested in isolation: naive sub-sample refinement without artifact correction was worse (108 ms) — Kubios fixpeaks is doing the real timing repair at 25 Hz, so parabolic refine is not a drop-in win.* Keep our 25→250 Hz upsample; **flag pNN50 as low-confidence at 25 Hz** (most timing-fragile).
 3. **van Hees 2014 autocalibration** (server-side) — non-movement windows → unit-sphere fit; cuts cross-device error ~17–77 mg → 3–8 mg. Essential for unit-to-unit KX022 comparability. Log KX022 die temperature for offset compensation.
 4. **Stream raw triaxial, never proprietary counts** (ActiGraph counts correlate r²=0.19 with ENMO in sleep). Compute **ENMO + MAD** (MAD is most rate-robust). On-device: only cheap van Hees **non-wear** flagging (SD<3 mg & range<50 mg over 2/3 axes) to gate BLE/flash and save battery.
 5. **For "HR during a workout"** (not HRV): an accel-referenced **NLMS** stage (`padasip`, MIT) or port JOSS (best BPM accuracy 1.28). These are spectral HR trackers — they do **not** preserve IBI timing, so never route HRV through them.
