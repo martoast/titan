@@ -150,6 +150,7 @@ class AssistantTools
             'focus' => \App\Support\DailyFocus::compute($this->profile),
             'strain' => \App\Support\Strain::assess($this->profile),
             'sleep_coach' => \App\Support\SleepCoach::assess($this->profile),
+            'next_meal' => \App\Support\MealCoach::assess($this->profile),
         ];
     }
 
@@ -486,7 +487,12 @@ class AssistantTools
         $settings = $this->profile->settings ?? [];
         $targets = (array) ($settings['nutrition_targets'] ?? ['calories' => 2800, 'protein_g' => 200, 'carbs_g' => 280, 'fat_g' => 80]);
 
-        return ['window_days' => $days, 'targets' => $targets, 'by_day' => $byDay];
+        return [
+            'window_days' => $days, 'targets' => $targets, 'by_day' => $byDay,
+            // The meal-timing coach: when the next meal is due + what it should carry. Use this to
+            // nudge the user to eat (they overwork and forget) — protein-forward, before hunger hits.
+            'meal_timing' => \App\Support\MealCoach::assess($this->profile),
+        ];
     }
 
     private function logMeal(array $a): array

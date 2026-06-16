@@ -113,6 +113,57 @@
             </a>
         </div>
 
+        {{-- ============ NEXT MEAL — fuel before you're hungry ============ --}}
+        @php
+            $mTone = match ($meal['status']) {
+                'overdue' => ['border-rose-500/30', 'from-rose-500/[0.10]', 'text-rose-300', 'bg-rose-500/90'],
+                'soon' => ['border-amber-500/25', 'from-amber-500/[0.09]', 'text-amber-300', 'bg-amber-500/90'],
+                'done' => ['border-emerald-500/20', 'from-emerald-500/[0.06]', 'text-emerald-300', 'bg-white/10'],
+                default => ['border-indigo-500/20', 'from-indigo-500/[0.07]', 'text-indigo-300', 'bg-indigo-500/90'],
+            };
+            $proteinPct = $meal['target']['protein_g'] > 0 ? min(100, round($meal['consumed']['protein_g'] / $meal['target']['protein_g'] * 100)) : 0;
+        @endphp
+        <div class="rounded-2xl border {{ $mTone[0] }} bg-gradient-to-b {{ $mTone[1] }} to-transparent p-4 md:p-5"
+             x-data="mealCountdown(@js($meal['next_at']), @js($meal['status']))">
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="text-[11px] uppercase tracking-wider {{ $mTone[2] }} font-semibold flex items-center gap-1.5">
+                        <span>🍽️</span> {{ $meal['label'] }}
+                    </div>
+                    {{-- live countdown / overdue timer --}}
+                    @if ($meal['status'] === 'done')
+                        <div class="mt-1 font-display text-2xl font-bold text-emerald-300 leading-none">{{ $meal['meals_logged'] }}/{{ $meal['meals_planned'] }} meals</div>
+                    @else
+                        <div class="mt-1 font-display text-3xl font-bold nums {{ $mTone[2] }} leading-none" x-text="display"></div>
+                    @endif
+                    <p class="mt-1.5 text-sm text-gray-300 leading-relaxed">{{ $meal['advice'] }}</p>
+                </div>
+                @if ($meal['status'] !== 'done')
+                    <div class="shrink-0 text-right">
+                        <div class="text-[11px] text-gray-500">this meal</div>
+                        <div class="font-display text-lg font-bold nums {{ $mTone[2] }}">{{ $meal['this_meal']['protein_g'] }}g</div>
+                        <div class="text-[10px] text-gray-500 nums">protein · {{ number_format($meal['this_meal']['calories']) }} kcal</div>
+                    </div>
+                @endif
+            </div>
+
+            {{-- today's protein progress --}}
+            <div class="mt-3">
+                <div class="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+                    <span>Protein today</span>
+                    <span class="nums">{{ $meal['consumed']['protein_g'] }} / {{ $meal['target']['protein_g'] }} g</span>
+                </div>
+                <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style="width: {{ $proteinPct }}%"></div>
+                </div>
+            </div>
+
+            <a href="/meals/add" class="mt-3 inline-flex items-center gap-1.5 rounded-xl {{ $mTone[3] }} px-4 py-2 text-sm font-semibold {{ $meal['status'] === 'done' ? 'text-gray-200' : 'text-gray-950' }} active:opacity-90">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Log a meal
+            </a>
+        </div>
+
         {{-- ============ TRAJECTORY — the graphs that show you're improving ============ --}}
         @if (count($trajectories) || $bioAge)
             <div>
@@ -195,4 +246,29 @@
             @endforeach
         </div>
     </div>
+
+    {{-- Live meal countdown (counts down to the next meal, then counts up while overdue) --}}
+    <script>
+        function mealCountdown(nextAt, status) {
+            return {
+                display: '',
+                _t: null,
+                init() {
+                    if (!nextAt) return;
+                    this.tick();
+                    this._t = setInterval(() => this.tick(), 1000);
+                },
+                destroy() { if (this._t) clearInterval(this._t); },
+                tick() {
+                    const diffMs = new Date(nextAt).getTime() - Date.now();
+                    const overdue = diffMs < 0;
+                    let s = Math.floor(Math.abs(diffMs) / 1000);
+                    const h = Math.floor(s / 3600); s -= h * 3600;
+                    const m = Math.floor(s / 60); s -= m * 60;
+                    let str = h > 0 ? `${h}h ${m}m` : (m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`);
+                    this.display = overdue ? `${str} overdue` : `in ${str}`;
+                },
+            };
+        }
+    </script>
 </x-titan-layout>

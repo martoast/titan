@@ -19,5 +19,8 @@ Schedule::command('biosignal:seal-activities')->everyFifteenMinutes()->withoutOv
 Schedule::command('coach:morning-briefing')->dailyAt('07:00')->timezone(config('app.timezone'));
 Schedule::command('coach:evening-nudge')->dailyAt('18:30')->timezone(config('app.timezone'));
 
+// Meal-timing coach: nudge people who forget to eat when a planned meal comes due (per-slot deduped).
+Schedule::command('meals:remind')->everyFifteenMinutes()->withoutOverlapping();
+
 // Living goal-physique: weekly render of the progress step toward the dream physique.
 Schedule::command('physique:living-render')->weeklyOn(1, '06:00');

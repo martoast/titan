@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\BiologicalAge;
 use App\Support\DailyFocus;
+use App\Support\MealCoach;
 use App\Support\Readiness;
 use App\Support\SleepCoach;
 use App\Support\Strain;
@@ -82,6 +83,7 @@ class DashboardController extends Controller
             'focus' => $focus,
             'strain' => $strain,
             'sleepCoach' => $sleepCoach,
+            'meal' => MealCoach::assess($p),
             'trajectories' => $trajectories,
             'photos' => $photos,
             'bioAge' => $bioAge,
