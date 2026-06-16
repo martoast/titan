@@ -180,6 +180,11 @@ class SealActivityJob implements ShouldQueue
 
         $profileBits = $this->profileBits($profile, $maxHr);
 
+        // GPS pace (+ baro grade) is per-second; the activity pass works on 30-s epochs aligned to
+        // $counts → downsample so it can swap the MET calorie proxy for grade-aware cost-of-transport.
+        $speedEpoch = $this->toEpochs($speed, count($counts));
+        $gradeEpoch = $grade ? $this->toEpochs($grade, count($counts)) : null;
+
         $activity = $biosignal->processActivity(array_filter([
             'accel_counts' => $counts,
             'hr_bpm' => $hrEpoch ?: null,
@@ -191,6 +196,8 @@ class SealActivityJob implements ShouldQueue
             'accel_fs' => $fs,
             'accel_unit' => $unit,
             'accel_start' => $startIso,
+            'speed_kmh' => $speedEpoch ?: null,
+            'grade' => $gradeEpoch ?: null,
         ], fn ($v) => $v !== null))['metrics'] ?? [];
 
         $sess = $activity['sessions'][0] ?? [];
@@ -209,7 +216,8 @@ class SealActivityJob implements ShouldQueue
             'hr_fs' => 1.0,
         ], fn ($v) => $v !== null));
 
-        $distance = $speed ? round(array_sum($speed) / 3600.0, 2) : null;
+        // Prefer the biosignal's GPS-integrated distance; fall back to per-second speed·time.
+        $distance = $sess['distance_km'] ?? ($speed ? round(array_sum($speed) / 3600.0, 2) : null);
 
         $log = ActivitySession::updateOrCreate(
             ['profile_id' => $profile->id, 'started_at' => $startIso ? CarbonImmutable::parse($startIso) : now()],
@@ -428,6 +436,27 @@ class SealActivityJob implements ShouldQueue
                 $into[] = (float) $v;
             }
         }
+    }
+
+    /**
+     * Average a per-second series down to $nEpochs 30-s epochs, aligned to the accel counts so the
+     * activity pass can attach grade-aware EE. Empty/short input → []. Gaps average to 0 (no move).
+     *
+     * @param  array<int,float>  $perSecond
+     * @return array<int,float>
+     */
+    private function toEpochs(array $perSecond, int $nEpochs): array
+    {
+        if (! $perSecond || $nEpochs < 1) {
+            return [];
+        }
+        $per = max(1, (int) ceil(count($perSecond) / $nEpochs));
+        $out = [];
+        for ($e = 0; $e < $nEpochs; $e++) {
+            $chunk = array_filter(array_slice($perSecond, $e * $per, $per), 'is_numeric');
+            $out[] = $chunk ? array_sum($chunk) / count($chunk) : 0.0;
+        }
+        return $out;
     }
 
     /**

@@ -22,7 +22,8 @@ a `biosignal/app/models/*.joblib`. Re-run any of them to reproduce the number.
 | **Activity / workout type** | rest/walk/run/cycle/stairs | PAMAP2 — hand accel, 9 subj | leave-subj, 25 Hz, accel-only | grouped **87.3% κ 0.83**; 12-class 76.9% κ 0.74 | ✅ strong |
 | **Gym — exercise ID** | 10 lifts/bodyweight | MM-Fit — smartwatch wrist accel | leave-**workout**, 25 Hz | **95.4% κ 0.95**; lift-vs-cardio 97.7% κ 0.94 | ✅ strong |
 | **Gym — rep counting** | reps per set | MM-Fit (per-set rep labels) | leave-workout, 25 Hz | **MAE 0.14 reps**, 99% within ±1 | ✅ strong |
-| **VO₂max / fitness** | cardiorespiratory fitness | PhysioNet treadmill — measured **VO₂**, 981 tests / 846 ppl | leave-subj | demo **6.0** → run-calibrated **5.3 ml/kg/min**, r 0.65 | 🟡 cross-sectional |
+| **VO₂max / fitness** | cardiorespiratory fitness | PhysioNet treadmill — measured **VO₂**, 981 tests / 846 ppl | leave-subj | demo **6.0** → run-calibrated **5.2 ml/kg/min**, r 0.65 | 🟡 cross-sectional |
+| **Energy expenditure** | calories (grade-aware) | PhysioNet treadmill — measured **VO₂**, 922 tests / 107k samples | flat submaximal | cost of transport **3.67** vs Minetti 3.60; EE **10% MAPE** | ✅ engine validated |
 | **In-motion HR** | bpm during exercise | PhysioNet wrist-PPG — vs chest **ECG**, 8 subj | walk/run/bike, 8 s windows | naive peaks **18 bpm MAE** → ❌ not good enough | ❌ deferred to on-device |
 
 Grade key: ✅ ship with confidence · 🟡 ship as a **trend**, not an absolute, with honest caveats · ❌ not
@@ -108,6 +109,19 @@ validation proxies HRrest from the test while production uses overnight RHR.
 - We still **ship the transparent demographic equation + Uth blend** as the always-available floor (no run);
   the run-calibrated model takes over when a GPS-paced run exists, and it's the estimate that *responds to
   training* (lower HR at the same GPS pace = fitter). Honest ± band surfaced, never false precision.
+
+### 6b. Energy expenditure (grade-aware) — `validate_energy.py` (engine: `energy.py`)
+The wrist's old calorie number was a crude `MET ≈ 3 + intensity` proxy. With GPS pace + baro grade we
+use the measured **cost of transport** instead — Minetti 2002, the canonical incline-energetics study:
+the metabolic cost per kg per metre is a 5th-order polynomial in gradient, separately for walking and
+running, capturing that uphill is dramatically dearer and gentle downhill (~−12 %) is *cheaper* than
+flat. Validated on real measured VO₂ (treadmill, 922 tests / 107k submaximal flat running samples): the
+**implied flat cost of transport is 3.67 J/(kg·m)** (IQR 3.36–4.00) vs **Minetti's 3.60** — a 2 % match
+— and predicted EE-rate is **10 % MAPE** (bias −0.24 W/kg), i.e. research-grade. The **grade term is the
+Minetti curve itself** (extensively validated in the literature); we cite it rather than re-fit it,
+since the flat treadmill can't test grade. Wired into the activity seal: runs/walks with GPS pace get
+`pace_cost`/`grade_cost` calories + GPS distance; cycling/other keep the MET proxy (the foot curve
+doesn't apply). Honest scope: a wellness **estimate**, not a calorimeter.
 
 ### 7. In-motion HR — `validate_inmotion_hr.py` (**the honest "no" that shaped the architecture**)
 PhysioNet "Wrist PPG During Exercise" (8 subjects, wrist PPG + accel vs chest **ECG**). Naive PPG peak

@@ -56,7 +56,7 @@ Ranked by **(evidence strength) × (feasibility on our hardware) × (mission fit
 | # | Feature | Why | Feasibility |
 |---|---|---|---|
 | 10 | ~~**Sharpen VO₂max**~~ — ✅ **DONE** (Firstbeat %HR-reserve feats) | CRF is the *strongest* mortality hazard — low vs elite HR **5.04** (Mandsager 2018). Sharpened MAE **5.6→5.2**, r **0.59→0.65** via speed-at-fixed-%HRR + monotonic constraints, leave-subjects-out. The hoped-for ~3.5 needs true submax VO₂ (ceiling 4.5); ACSM speed→VO₂ fails on ramp data, so we ship the honest 5.2. See doc 09. | ✅ done |
-| 11 | **Grade-adjusted pace + grade-aware energy expenditure** | Baro *is* the altitude correction that lifts GPS-EE RMSE 1.00→0.79 MET (de Müllenheim 2016); Minetti cost curve is closed-form. | ✅ |
+| 11 | ~~**Grade-adjusted pace + grade-aware energy expenditure**~~ — ✅ **DONE** | Minetti 2002 cost-of-transport engine (grade-aware, walk+run). Validated on real measured VO₂: flat CoT **3.67 vs 3.60** Minetti (2%), EE **10% MAPE**. Replaces the MET proxy for GPS-paced runs/walks; cycling keeps the proxy. See doc 09 §6b. | ✅ done |
 | 12 | **Training load: TRIMP + ACWR (injury guardrail)** | Banister TRIMP is validated; ACWR rises 2–3 wk pre-injury (Dijkhuis 2020). "Do no harm" for users we're pushing to exercise. | ✅ (HR histories we log) |
 | 13 | **Floors / elevation climbed** | ≥35 floors/wk → all-cause HR 0.84 (Harvard Alumni); runs continuously on baro (~2.7 µA), no GPS. | ✅ |
 | 14 | **"Fitness Age" composite** (see §7 proposal) | Transparent, cited, trend-first — our antidote to the unvalidated black-box scores (Whoop/Oura disclose no formula; Doherty 2025). | 🟡 (label as estimate, never mortality %) |

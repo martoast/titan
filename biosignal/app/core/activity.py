@@ -17,8 +17,13 @@ from typing import Optional
 import numpy as np
 
 from . import activity_classify
+from . import energy
 
 EPOCH_SEC = 30
+
+# Above this median moving speed a "foot" cost-of-transport curve no longer applies (cycling etc.),
+# so we keep the accel/MET calorie proxy rather than mis-apply Minetti.
+_FOOT_SPEED_CEIL_KMH = 18.0
 
 # A session is a run of epochs above the activity threshold lasting >= MIN_SESSION_MIN.
 MIN_SESSION_MIN = 10
@@ -45,6 +50,8 @@ def detect_sessions(
     accel_fs: int = 25,
     accel_unit: str = "ms2",
     accel_start: Optional[str] = None,
+    speed_kmh: Optional[list] = None,
+    grade: Optional[list] = None,
 ) -> dict:
     """Detect active sessions and compute per-session + total TRIMP/calories.
 
@@ -95,6 +102,9 @@ def detect_sessions(
         if end - i >= min_epochs:
             sess = _summarize_session(accel, hr, i, end, t0, hr_max, hr_rest, weight_kg)
             _classify_session(sess, raw, t0, i, end, accel_unit)
+            # Grade-aware EE: if GPS pace (+ baro grade) covers this session and it's foot
+            # locomotion, replace the accel/MET calorie proxy with the cost-of-transport estimate.
+            _refine_energy(sess, speed_kmh, grade, i, end, weight_kg)
             sessions.append(sess)
         i = j
 
@@ -146,10 +156,42 @@ def _summarize_session(accel, hr, i, end, t0, hr_max, hr_rest, weight_kg) -> dic
         "intensity": round(intensity, 3),
         "trimp": round(trimp, 1),
         "calories_kcal": round(calories, 0),
+        "distance_km": None,          # filled by _refine_energy when GPS pace is present
+        "energy_method": "met_proxy",  # "pace_cost" / "grade_cost" once GPS (+baro) refines it
         "activity_type": None,        # filled by _classify_session when a 3-axis stream exists
         "activity_confidence": None,
         "activity_mix": None,
     }
+
+
+def _refine_energy(sess: dict, speed_kmh, grade, i: int, end: int, weight_kg: float) -> None:
+    """Replace the accel/MET calorie proxy with the grade-aware cost-of-transport estimate when GPS
+    pace covers this foot-locomotion session. No-op without pace, or for cycling/other (where the
+    Minetti foot-cost curve doesn't apply) → those keep the MET proxy. Also fills distance_km."""
+    if speed_kmh is None:
+        return
+    sp = np.asarray(speed_kmh, dtype=float).ravel()
+    if sp.size < end:
+        return
+    seg = sp[i:end]
+    moving = seg[np.isfinite(seg) & (seg > 1.0)]
+    if moving.size < 2:                                # no real GPS movement in this window
+        return
+    act = sess.get("activity_type")
+    if act not in ("walk", "run") and not (act is None and float(np.median(moving)) < _FOOT_SPEED_CEIL_KMH):
+        return                                          # cycling / non-foot → keep the MET proxy
+
+    gr = None
+    if grade is not None:
+        ga = np.asarray(grade, dtype=float).ravel()
+        if ga.size >= end:
+            gr = ga[i:end]
+    gait = act if act in ("walk", "run") else None       # else inferred per-sample by speed
+    ee = energy.locomotion_kcal(seg, gr, weight_kg=weight_kg, dt_s=EPOCH_SEC, gait=gait)
+    sess["calories_kcal"] = round(ee["kcal"], 0)
+    sess["distance_km"] = ee["distance_km"]
+    sess["energy_method"] = ("grade_cost" if (gr is not None and np.any(np.abs(np.nan_to_num(gr)) > 0.01))
+                             else "pace_cost")
 
 
 def _classify_session(sess: dict, raw, t0, i: int, end: int, unit: str) -> None:

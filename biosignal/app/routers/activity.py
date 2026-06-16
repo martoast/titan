@@ -31,6 +31,9 @@ class ActivityWindow(BaseModel):
     accel_fs: int = Field(default=25, description="Sample rate of accel_xyz (Hz). Bangle live ≈ 25.")
     accel_unit: str = Field(default="ms2", description="Unit of accel_xyz: 'ms2', 'g', or 'mg'. Bangle sends 'mg' (milli-g).")
     accel_start: Optional[str] = Field(default=None, description="accel_xyz start time (ISO-8601 UTC); defaults to `start`.")
+    # Optional per-epoch GPS pace (+ baro grade) → grade-aware cost-of-transport calories for runs/walks.
+    speed_kmh: Optional[List[float]] = Field(default=None, description="Per-epoch GPS speed (km/h), aligned to accel_counts. Enables grade-aware EE.")
+    grade: Optional[List[float]] = Field(default=None, description="Per-epoch baro grade (rise/run fraction), aligned to accel_counts.")
 
 
 class ActivitySession(BaseModel):
@@ -42,6 +45,8 @@ class ActivitySession(BaseModel):
     intensity: float
     trimp: float
     calories_kcal: float
+    distance_km: Optional[float] = Field(default=None, description="GPS distance (km), when pace is supplied.")
+    energy_method: str = Field(default="met_proxy", description="How calories were computed: met_proxy / pace_cost / grade_cost.")
     activity_type: Optional[str] = Field(default=None, description="Classified workout type (when a 3-axis accel stream is supplied).")
     activity_confidence: Optional[float] = None
     activity_mix: Optional[dict] = Field(default=None, description="Share of windows per activity within the session.")
@@ -74,6 +79,8 @@ async def process_activity(window: ActivityWindow) -> ActivityResponse:
             accel_fs=window.accel_fs,
             accel_unit=window.accel_unit,
             accel_start=window.accel_start,
+            speed_kmh=window.speed_kmh,
+            grade=window.grade,
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Activity processing failed: {exc}")
