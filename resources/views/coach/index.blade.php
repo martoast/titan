@@ -5,7 +5,8 @@
             'role' => $m->role,
             'content' => (string) $m->content,
         ])->values();
-        $sendUrl = '/coach/' . ($conversation?->id ?? '') . '/send';
+        $sendUrl = $conversation ? "/coach/{$conversation->id}/send" : '/coach/send';
+        $streamUrl = $conversation ? "/coach/{$conversation->id}/stream" : '/coach/stream';
     @endphp
 
     {{-- Today's briefing: the proactive coach speaking first. Latest stored morning/evening
@@ -81,6 +82,7 @@
         <section
             x-data="coachChat({
                 sendUrl: '{{ $sendUrl }}',
+                streamUrl: '{{ $streamUrl }}',
                 csrf: '{{ csrf_token() }}',
                 initial: {{ Illuminate\Support\Js::from($initialMessages) }},
                 aiOffline: {{ $aiOffline ? 'true' : 'false' }},
@@ -158,10 +160,16 @@
                     </div>
                 </template>
 
-                {{-- Typing indicator --}}
-                <div x-show="loading" x-cloak class="flex justify-start">
+                {{-- Typing / tool-activity indicator (hidden once tokens start streaming in) --}}
+                <div x-show="loading && !streaming" x-cloak class="flex justify-start">
                     <div class="rounded-2xl rounded-bl-sm bg-gray-800/60 border border-white/5 px-4 py-3">
-                        <div class="flex gap-1">
+                        {{-- Live status while the coach pulls your data --}}
+                        <div x-show="toolStatus" x-cloak class="flex items-center gap-2 text-xs text-indigo-300/90">
+                            <svg class="h-3.5 w-3.5 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                            <span x-text="toolStatus + '…'"></span>
+                        </div>
+                        {{-- Bouncing dots before any status arrives --}}
+                        <div x-show="!toolStatus" class="flex gap-1">
                             <span class="h-2 w-2 rounded-full bg-gray-500 animate-bounce" style="animation-delay:0ms"></span>
                             <span class="h-2 w-2 rounded-full bg-gray-500 animate-bounce" style="animation-delay:150ms"></span>
                             <span class="h-2 w-2 rounded-full bg-gray-500 animate-bounce" style="animation-delay:300ms"></span>
@@ -177,6 +185,17 @@
                         class="absolute -top-12 right-4 z-10 grid h-10 w-10 place-items-center rounded-full bg-gray-800/90 border border-white/10 text-gray-200 shadow-lg shadow-black/40 backdrop-blur active:bg-gray-700">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7-7-7M12 3v18"/></svg>
                 </button>
+            </div>
+
+            {{-- Suggested follow-ups — tappable chips, no typing needed --}}
+            <div x-show="suggestions.length" x-cloak class="px-3 pt-2 -mb-1">
+                <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                    <template x-for="(s, i) in suggestions" :key="i">
+                        <button type="button" @click="send(s)"
+                                class="shrink-0 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-1.5 text-xs text-indigo-200 active:bg-indigo-500/20 transition"
+                                x-text="s"></button>
+                    </template>
+                </div>
             </div>
 
             {{-- Composer — sits at the end of the flex column, above the bottom tab bar --}}
@@ -209,7 +228,11 @@
                 messages: cfg.initial || [],
                 draft: '',
                 loading: false,
+                streaming: false,      // true once tokens start arriving
+                toolStatus: '',        // "Reading your day", etc. while a tool runs
+                suggestions: [],       // tappable follow-up chips
                 sendUrl: cfg.sendUrl,
+                streamUrl: cfg.streamUrl,
                 csrf: cfg.csrf,
                 aiOffline: cfg.aiOffline,
 
@@ -242,15 +265,125 @@
                     return window.renderMarkdown ? window.renderMarkdown(text) : (text || '');
                 },
 
+                // Point both endpoints (and the browser URL) at a freshly-created conversation,
+                // so a refresh keeps the thread.
+                bindConversation(id) {
+                    if (!id || /\/coach\/\d+\/stream/.test(this.streamUrl)) return;
+                    this.sendUrl = '/coach/' + id + '/send';
+                    this.streamUrl = '/coach/' + id + '/stream';
+                    history.replaceState(null, '', '/coach?c=' + id);
+                },
+
+                // Parse one SSE frame ("event: x\ndata: {...}") into { event, data }.
+                parseSse(raw) {
+                    let event = 'message', dataStr = '';
+                    for (const line of raw.split('\n')) {
+                        if (line.startsWith('event:')) event = line.slice(6).trim();
+                        else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+                    }
+                    let data = {};
+                    if (dataStr) { try { data = JSON.parse(dataStr); } catch (_) { data = { text: dataStr }; } }
+                    return { event, data };
+                },
+
+                finishSend() { this.loading = false; this.streaming = false; this.toolStatus = ''; },
+
                 async send(preset) {
                     const text = (preset !== undefined ? preset : this.draft).trim();
                     if (!text || this.loading) return;
 
                     this.messages.push({ role: 'user', content: text });
                     this.draft = '';
+                    this.suggestions = [];
                     this.loading = true;
+                    this.streaming = false;
+                    this.toolStatus = '';
                     this.$nextTick(() => this.scrollDown());
 
+                    // The assistant bubble we stream into — created lazily on the first token.
+                    let idx = null;
+                    const target = () => { if (idx === null) idx = this.messages.push({ role: 'assistant', content: '' }) - 1; return idx; };
+
+                    let res;
+                    try {
+                        res = await fetch(this.streamUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'text/event-stream',
+                                'X-CSRF-TOKEN': this.csrf,
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            body: JSON.stringify({ message: text }),
+                        });
+                    } catch (e) {
+                        // Never reached the server — safe to retry via the plain JSON endpoint.
+                        await this.sendFallback(text);
+                        this.finishSend();
+                        return;
+                    }
+
+                    // Rejected before streaming (CSRF/validation) → message wasn't saved; safe fallback.
+                    if (!res.ok) { await this.sendFallback(text); this.finishSend(); return; }
+                    if (!res.body) {
+                        this.messages.push({ role: 'assistant', content: "Couldn't stream a reply — please try again." });
+                        this.$nextTick(() => this.scrollDown());
+                        this.finishSend();
+                        return;
+                    }
+
+                    try {
+                        const reader = res.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buf = '', raf = false;
+                        const keepPinned = () => {
+                            if (raf) return; raf = true;
+                            requestAnimationFrame(() => { raf = false; if (this.nearBottom()) this.scrollDown(); });
+                        };
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            buf += decoder.decode(value, { stream: true });
+
+                            let sep;
+                            while ((sep = buf.indexOf('\n\n')) !== -1) {
+                                const frame = buf.slice(0, sep); buf = buf.slice(sep + 2);
+                                const { event, data } = this.parseSse(frame);
+
+                                if (event === 'delta') {
+                                    this.streaming = true;
+                                    this.messages[target()].content += (data.text || '');
+                                    keepPinned();
+                                } else if (event === 'tool') {
+                                    this.toolStatus = data.label || 'Working';
+                                } else if (event === 'meta') {
+                                    this.bindConversation(data.conversation_id);
+                                } else if (event === 'done') {
+                                    if (data.content) this.messages[target()].content = data.content;
+                                } else if (event === 'suggestions') {
+                                    this.suggestions = Array.isArray(data.items) ? data.items : [];
+                                } else if (event === 'error') {
+                                    this.messages[target()].content = data.message || 'Something went wrong — please try again.';
+                                }
+                            }
+                        }
+                        this.$nextTick(() => { this.enhance(); if (this.nearBottom()) this.scrollDown(); else this.showJump = true; });
+                    } catch (e) {
+                        // Mid-stream drop: keep whatever streamed; otherwise show a generic error.
+                        if (idx === null) {
+                            this.messages.push({ role: 'assistant', content: "Couldn't reach your coach. Check your connection and try again." });
+                            this.$nextTick(() => this.scrollDown());
+                        } else {
+                            this.$nextTick(() => this.enhance());
+                        }
+                    } finally {
+                        this.finishSend();
+                    }
+                },
+
+                // Non-streaming fallback: the original JSON send, used when streaming can't start.
+                async sendFallback(text) {
                     try {
                         const res = await fetch(this.sendUrl, {
                             method: 'POST',
@@ -267,18 +400,10 @@
                         const wasNear = this.nearBottom();
                         this.messages.push({ role: 'assistant', content: reply });
                         this.$nextTick(() => { this.enhance(); if (wasNear) this.scrollDown(); else this.showJump = true; });
-
-                        // First message in a brand-new conversation: point the URL at it
-                        // so a refresh keeps the thread.
-                        if (data && data.conversation_id && !this.sendUrl.match(/\/coach\/\d+\/send/)) {
-                            this.sendUrl = '/coach/' + data.conversation_id + '/send';
-                            history.replaceState(null, '', '/coach?c=' + data.conversation_id);
-                        }
+                        if (data && data.conversation_id) this.bindConversation(data.conversation_id);
                     } catch (e) {
                         this.messages.push({ role: 'assistant', content: "Couldn't reach your coach. Check your connection and try again." });
                         this.$nextTick(() => { this.enhance(); this.scrollDown(); });
-                    } finally {
-                        this.loading = false;
                     }
                 },
             };

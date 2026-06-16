@@ -77,6 +77,82 @@ class CoachService
     }
 
     /**
+     * Streaming twin of reply(): same tool-calling coach, but the answer's tokens are
+     * pushed through $onDelta as they generate and each tool the model reaches for is
+     * announced through $onTool — so the chat can render live text and a "Reading your
+     * day…" status. Persists + returns the finished assistant message, exactly like reply().
+     *
+     * @param  callable(string):void  $onDelta  receives each streamed token
+     * @param  callable(string,string):void|null  $onTool  receives (toolName, friendlyLabel)
+     */
+    public function replyStreaming(Conversation $conversation, Profile $profile, string $userText, callable $onDelta, ?callable $onTool = null): ChatMessage
+    {
+        $userText = trim($userText);
+
+        $conversation->messages()->create(['role' => 'user', 'content' => $userText]);
+
+        if (blank($conversation->title)) {
+            $conversation->update(['title' => Str::limit($userText, 48)]);
+        }
+
+        $tools = new CoachTools($profile);
+
+        $messages = array_merge(
+            [['role' => 'system', 'content' => $this->systemPrompt($profile)]],
+            $this->history($conversation),
+        );
+
+        $answer = $this->ai->chatWithToolsStreaming(
+            $messages,
+            $tools->schemas(),
+            fn (string $name, array $args) => $tools->dispatch($name, $args),
+            $onDelta,
+            $onTool === null ? null : fn (string $name, array $args) => $onTool($name, CoachTools::label($name)),
+            ['temperature' => 0.5, 'max_steps' => 8],
+        );
+
+        if (trim($answer) === '') {
+            $answer = "I couldn't generate a response just now — try rephrasing, or ask again in a moment.";
+        }
+
+        return $conversation->messages()->create([
+            'role' => 'assistant',
+            'content' => $answer,
+        ]);
+    }
+
+    /**
+     * Best-effort: 2–3 short, tappable follow-up questions the user is likely to ask
+     * next, given the latest exchange. Returns [] on any failure — never blocks the chat.
+     *
+     * @return array<int,string>
+     */
+    public function suggestFollowUps(Conversation $conversation, Profile $profile): array
+    {
+        try {
+            $recent = $conversation->messages()
+                ->whereIn('role', ['user', 'assistant'])
+                ->orderByDesc('id')->take(4)->get()->reverse()
+                ->map(fn (ChatMessage $m) => strtoupper($m->role).': '.Str::limit((string) $m->content, 400))
+                ->implode("\n");
+
+            $out = $this->ai->json([
+                ['role' => 'system', 'content' => 'You suggest what the user might ask their AI health coach next. Given the recent exchange, return JSON {"suggestions": ["...", "...", "..."]} with 2-3 SHORT follow-up questions (max ~7 words each), phrased in the user\'s first-person voice (e.g. "Why is my HRV low?"). Make them genuinely useful next steps, not restatements. No numbering, no trailing punctuation beyond a question mark.'],
+                ['role' => 'user', 'content' => $recent],
+            ], ['temperature' => 0.6, 'max_tokens' => 200]);
+
+            $list = $out['suggestions'] ?? [];
+
+            return collect(is_array($list) ? $list : [])
+                ->filter(fn ($s) => is_string($s) && trim($s) !== '')
+                ->map(fn ($s) => Str::limit(trim($s), 60, ''))
+                ->take(3)->values()->all();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
      * Build the OpenAI message history from stored messages. Only user + assistant
      * turns are replayed (tool turns were transient to a previous reply's loop).
      *

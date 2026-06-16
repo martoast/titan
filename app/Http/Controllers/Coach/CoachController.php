@@ -141,4 +141,74 @@ class CoachController extends Controller
 
         return redirect('/coach?c='.$conversation->id);
     }
+
+    /**
+     * Stream a reply over Server-Sent Events: live tokens as the coach writes, plus a
+     * status line for each data tool it reaches for, and tappable follow-ups at the end.
+     * Degrades to an `error` event on AI failure (the message is still saved). The
+     * front-end falls back to the JSON send() endpoint if streaming can't start.
+     */
+    public function stream(Request $request, ?Conversation $conversation = null): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:4000'],
+        ]);
+
+        if (! $conversation || $conversation->profile_id !== $profile->id) {
+            $conversation = $profile->conversations()->create();
+        }
+
+        // Release the session lock so this long-lived request doesn't block the user's
+        // other tabs/requests while the stream is open.
+        $request->session()->save();
+
+        return response()->stream(function () use ($conversation, $profile, $data) {
+            $emit = function (string $event, array $payload): void {
+                echo 'event: '.$event."\n";
+                echo 'data: '.json_encode($payload)."\n\n";
+                // Push the frame out now without ending any buffer (don't disturb a wrapping
+                // output buffer, e.g. the test harness's capture).
+                if (ob_get_level() > 0) {
+                    @ob_flush();
+                }
+                @flush();
+            };
+
+            $emit('meta', ['conversation_id' => $conversation->id]);
+
+            try {
+                $reply = $this->coach->replyStreaming(
+                    $conversation,
+                    $profile,
+                    $data['message'],
+                    onDelta: fn (string $token) => $emit('delta', ['text' => $token]),
+                    onTool: fn (string $name, string $label) => $emit('tool', ['name' => $name, 'label' => $label]),
+                );
+
+                $emit('done', [
+                    'conversation_id' => $conversation->id,
+                    'content' => $reply->content,
+                ]);
+
+                // Follow-up chips are a bonus — emitted after the answer, never block it.
+                $suggestions = $this->coach->suggestFollowUps($conversation, $profile);
+                if ($suggestions !== []) {
+                    $emit('suggestions', ['items' => $suggestions]);
+                }
+            } catch (AiException $e) {
+                Log::warning('[Coach] AI stream unavailable', ['error' => $e->getMessage()]);
+                $emit('error', [
+                    'conversation_id' => $conversation->id,
+                    'message' => 'Your coach is offline right now (the AI service is unavailable). Your message was saved — try again in a moment.',
+                ]);
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache, no-transform',
+            'X-Accel-Buffering' => 'no',   // tell nginx not to buffer the stream
+            'Connection' => 'keep-alive',
+        ]);
+    }
 }

@@ -206,6 +206,182 @@ class AiService
     }
 
     /**
+     * Streaming sibling of chatWithTools(): runs the same tool-calling loop, but streams
+     * the final answer's tokens through $onDelta as they arrive, and announces each tool
+     * the model decides to call through $onToolCall (so the UI can show "Reading your day…").
+     *
+     * Returns the full assembled answer text (same as chatWithTools), so the caller can
+     * persist it. Falls back transparently to a non-streamed round if streaming isn't
+     * possible for a given step.
+     *
+     * @param  array<int,array<string,mixed>>  $messages
+     * @param  array<int,array<string,mixed>>  $tools
+     * @param  callable(string,array):mixed  $dispatch
+     * @param  callable(string):void  $onDelta        receives each content token
+     * @param  callable(string,array):void|null  $onToolCall  receives (toolName, args) before a tool runs
+     * @param  array{model?:string,temperature?:float,max_steps?:int}  $opts
+     */
+    public function chatWithToolsStreaming(
+        array $messages,
+        array $tools,
+        callable $dispatch,
+        callable $onDelta,
+        ?callable $onToolCall = null,
+        array $opts = [],
+    ): string {
+        if (! $this->configured()) {
+            throw new AiException('OpenAI is not configured (missing OPENAI_API_KEY).');
+        }
+
+        $maxSteps = (int) ($opts['max_steps'] ?? 6);
+
+        for ($step = 0; $step < $maxSteps; $step++) {
+            $payload = [
+                'model' => $opts['model'] ?? config('services.openai.chat_model'),
+                'messages' => $messages,
+                'temperature' => $opts['temperature'] ?? 0.4,
+            ];
+            if ($tools !== []) {
+                $payload['tools'] = $tools;
+                $payload['tool_choice'] = 'auto';
+            }
+
+            $message = $this->streamCompletion($payload, $onDelta);
+            $messages[] = $message;
+
+            $toolCalls = $message['tool_calls'] ?? [];
+            if ($toolCalls === []) {
+                return trim((string) ($message['content'] ?? ''));
+            }
+
+            foreach ($toolCalls as $call) {
+                $name = $call['function']['name'] ?? '';
+                $args = json_decode($call['function']['arguments'] ?? '{}', true);
+                $args = is_array($args) ? $args : [];
+                if ($onToolCall !== null && $name !== '') {
+                    try {
+                        $onToolCall($name, $args);
+                    } catch (\Throwable) {
+                        // a UI hiccup must never break the loop
+                    }
+                }
+                try {
+                    $result = $dispatch($name, $args);
+                } catch (\Throwable $e) {
+                    $result = ['error' => $e->getMessage()];
+                }
+                $messages[] = [
+                    'role' => 'tool',
+                    'tool_call_id' => $call['id'] ?? '',
+                    'content' => is_string($result) ? $result : json_encode($result),
+                ];
+            }
+        }
+
+        return trim((string) ($messages[array_key_last($messages)]['content'] ?? ''));
+    }
+
+    /**
+     * One streamed chat-completions round. Reads the OpenAI SSE stream, calls $onDelta for
+     * each content token, reassembles streamed tool-call fragments (by index), and returns
+     * the finished assistant message array — exactly the shape completion() returns.
+     *
+     * @param  array<string,mixed>  $payload
+     * @param  callable(string):void  $onDelta
+     * @return array<string,mixed>
+     */
+    protected function streamCompletion(array $payload, callable $onDelta): array
+    {
+        $payload['stream'] = true;
+        $payload['stream_options'] = ['include_usage' => true];
+
+        try {
+            $response = Http::withToken(config('services.openai.key'))
+                ->timeout((int) config('services.openai.timeout', 120))
+                ->withOptions(['stream' => true])
+                ->withHeaders(['Accept' => 'text/event-stream'])
+                ->post($this->endpoint('/chat/completions'), $payload);
+        } catch (\Throwable $e) {
+            throw new AiException('Could not reach OpenAI: '.$e->getMessage(), previous: $e);
+        }
+
+        if ($response->failed()) {
+            $detail = $response->json('error.message') ?? $response->body();
+            Log::warning('[AI] OpenAI stream request failed', ['status' => $response->status(), 'detail' => $detail]);
+            throw new AiException('OpenAI request failed: '.$detail);
+        }
+
+        $body = $response->toPsrResponse()->getBody();
+        $buffer = '';
+        $content = '';
+        $toolCalls = [];   // index => ['id','type','function'=>['name','arguments']]
+        $usage = null;
+
+        while (! $body->eof()) {
+            $chunk = $body->read(8192);
+            if ($chunk === '') {
+                continue;
+            }
+            $buffer .= $chunk;
+
+            // SSE frames are newline-delimited; process every complete line we have.
+            while (($nl = strpos($buffer, "\n")) !== false) {
+                $line = trim(substr($buffer, 0, $nl));
+                $buffer = substr($buffer, $nl + 1);
+
+                if ($line === '' || ! str_starts_with($line, 'data:')) {
+                    continue;
+                }
+                $data = trim(substr($line, 5));
+                if ($data === '[DONE]') {
+                    break 2;
+                }
+                $json = json_decode($data, true);
+                if (! is_array($json)) {
+                    continue;
+                }
+                if (isset($json['usage'])) {
+                    $usage = $json['usage'];
+                }
+                $delta = $json['choices'][0]['delta'] ?? [];
+
+                if (isset($delta['content']) && $delta['content'] !== '' && $delta['content'] !== null) {
+                    $content .= $delta['content'];
+                    $onDelta($delta['content']);
+                }
+                foreach ($delta['tool_calls'] ?? [] as $tc) {
+                    $i = $tc['index'] ?? 0;
+                    $toolCalls[$i] ??= ['id' => '', 'type' => 'function', 'function' => ['name' => '', 'arguments' => '']];
+                    if (! empty($tc['id'])) {
+                        $toolCalls[$i]['id'] = $tc['id'];
+                    }
+                    if (isset($tc['function']['name'])) {
+                        $toolCalls[$i]['function']['name'] .= $tc['function']['name'];
+                    }
+                    if (isset($tc['function']['arguments'])) {
+                        $toolCalls[$i]['function']['arguments'] .= $tc['function']['arguments'];
+                    }
+                }
+            }
+        }
+
+        if (is_array($usage)) {
+            $pt = (int) ($usage['prompt_tokens'] ?? 0);
+            $ct = (int) ($usage['completion_tokens'] ?? 0);
+            $this->usage['prompt'] += $pt;
+            $this->usage['completion'] += $ct;
+            $this->usage['calls']++;
+        }
+
+        $message = ['role' => 'assistant', 'content' => $content];
+        if ($toolCalls !== []) {
+            $message['tool_calls'] = array_values($toolCalls);
+        }
+
+        return $message;
+    }
+
+    /**
      * One chat-completions round; returns the assistant message (incl. tool_calls).
      *
      * @param  array<string,mixed>  $payload

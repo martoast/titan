@@ -74,6 +74,22 @@ class CoachTools
         return $tools;
     }
 
+    /** Friendly present-tense status shown in the chat while a tool runs. */
+    public static function label(string $name): string
+    {
+        return match ($name) {
+            'daily_summary' => 'Reading your day',
+            'search_knowledge' => 'Searching your brain',
+            'save_knowledge' => 'Saving to your brain',
+            'recent_biomarkers' => 'Checking your bloodwork',
+            'recent_meals' => 'Reviewing your nutrition',
+            'recent_workouts' => 'Looking at your training',
+            'sleep_recovery_summary' => 'Checking sleep & recovery',
+            'physique_status' => 'Checking your physique progress',
+            default => 'Looking that up',
+        };
+    }
+
     /** Build one OpenAI function-tool schema. */
     private function fn(string $name, string $description, array $properties, array $required): array
     {
