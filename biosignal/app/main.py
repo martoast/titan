@@ -11,7 +11,7 @@ import os
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
 from . import ALGO_VERSION
-from .routers import activity, fitness, gym, hrv, sleep
+from .routers import activity, elevation, fitness, gym, hrv, sleep
 
 BIOSIGNAL_TOKEN = os.environ.get("BIOSIGNAL_TOKEN", "")
 
@@ -56,3 +56,4 @@ app.include_router(sleep.router, dependencies=[Depends(require_bearer)])
 app.include_router(activity.router, dependencies=[Depends(require_bearer)])
 app.include_router(fitness.router, dependencies=[Depends(require_bearer)])
 app.include_router(gym.router, dependencies=[Depends(require_bearer)])
+app.include_router(elevation.router, dependencies=[Depends(require_bearer)])

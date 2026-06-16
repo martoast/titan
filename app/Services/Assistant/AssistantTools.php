@@ -201,6 +201,7 @@ class AssistantTools
 
         return [
             'steps_today' => $steps,
+            'floors_today' => $today?->floors,
             'goal' => StepGoal::assess($steps, StepGoal::targetFor($this->profile)),
             'movement_breaks' => MovementBreaks::assess($today?->hourly),
             'week_avg_steps' => $week->count() ? (int) round($week->avg('steps')) : null,

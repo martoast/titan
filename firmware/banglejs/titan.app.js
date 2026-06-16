@@ -100,7 +100,14 @@ var CFG = {
   // (the overnight T2 log is PPG-only and can't). During a workout we log T6 instead of T2 PPG
   // (PPG in motion is noise; accel is the signal).
   WORKOUT_LOG_PROTO_VERSION: 6,      // T6 frame: compact 3-axis accel batch (milli-g)
-  WORKOUT_LOG_SAMPLES: 125           // ~5 s @ 25 Hz per T6 frame
+  WORKOUT_LOG_SAMPLES: 125,          // ~5 s @ 25 Hz per T6 frame
+
+  // AMBIENT ALTITUDE → floors climbed (Tier-2 #13). The BMP280 runs continuously (~µA, no GPS),
+  // and the SERVER counts floors from the altitude series (drift/noise-robust) — the watch just
+  // streams the trace, staying a dumb sensor. Sampled slowly (floors only need ~1 Hz).
+  ALT_PROTO_VERSION: 7,              // T7 frame: ambient barometric altitude batch
+  ALT_SAMPLE_MS: 1000,              // 1 Hz ambient altitude sampling (oversampled BMP280)
+  ALT_FRAME_SAMPLES: 60             // one T7 per minute (60 samples; ~136 B, well under the MTU)
 };
 
 // ----- State ----------------------------------------------------------------
@@ -128,7 +135,10 @@ var motionEMA = 0;
 var motionAboveSince = 0;   // getTime() when motion first crossed the on-threshold (0 = below)
 var motionBelowSince = 0;   // getTime() when motion first dropped below it (0 = above)
 var gpsArmedT = 0;          // getTime() when GPS was last powered (for the indoor fix-timeout)
-var lastAltitude = null;    // last barometric altitude (m), for grade
+var lastAltitude = null;    // last barometric altitude (m), GPS-scoped, for grade
+var ambientAlt = null;      // last barometric altitude (m), always-on, for floors (T7)
+var altBuf = [];            // pending altitude samples (decimetres) for the current T7 frame
+var altT0Ms = 0;            // unix-ms of the first sample in the current T7 frame
 
 // Offline workout-accel log (T6): buffered 3-axis accel flushed to flash while a workout runs
 // and we're not connected, so the session classifies on morning sync.
@@ -483,8 +493,45 @@ function onGPS(g) {
 }
 
 function onPressure(p) {
-  // BMP280 barometric altitude — the grade source (Δaltitude / Δdistance, server-side).
-  if (p && isFinite(p.altitude)) lastAltitude = p.altitude;
+  // BMP280 barometric altitude → grade (during a workout) AND ambient floors (always). `lastAltitude`
+  // is GPS-scoped (nulled when GPS drops); `ambientAlt` persists for all-day floor counting.
+  if (p && isFinite(p.altitude)) { lastAltitude = p.altitude; ambientAlt = p.altitude; }
+}
+
+// ----- Ambient altitude → T7 (floors, server-side) --------------------------
+
+// Sample the barometric altitude at ~1 Hz into a batch; emit a T7 frame each minute. The server
+// runs the drift/noise-robust floor counter over the day's trace — the watch never decides "floors".
+function sampleAltitude() {
+  if (ambientAlt === null) return;            // barometer not warmed up yet
+  if (!altBuf.length) altT0Ms = Math.round(getTime() * 1000);
+  altBuf.push(Math.round(ambientAlt * 10));   // decimetres
+  if (altBuf.length >= CFG.ALT_FRAME_SAMPLES) emitAltFrame();
+}
+
+// T7 frame: [ver u8, count u8, tsLo u32, tsHi u32, intervalMs u16, base×10 i32, count× i16 Δ×10].
+// Δ-from-base keeps each sample 2 B and sidesteps int16 range limits at high absolute altitudes.
+function emitAltFrame() {
+  var n = altBuf.length;
+  if (!n) return;
+  var buf = new ArrayBuffer(16 + n * 2);
+  var dv = new DataView(buf);
+  var hi = Math.floor(altT0Ms / 4294967296);
+  var base = altBuf[0];
+  dv.setUint8(0, CFG.ALT_PROTO_VERSION);
+  dv.setUint8(1, n > 255 ? 255 : n);
+  dv.setUint32(2, (altT0Ms - hi * 4294967296) >>> 0, true);
+  dv.setUint32(6, hi >>> 0, true);
+  dv.setUint16(10, CFG.ALT_SAMPLE_MS, true);
+  dv.setInt32(12, base | 0, true);
+  for (var i = 0; i < n; i++) dv.setInt16(16 + i * 2, clampI16(altBuf[i] - base), true);
+  altBuf = [];
+  var line = "T7:" + b64(buf);
+  if (state.connected) {
+    try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
+  } else if (!state.logFull) {
+    try { require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n"); state.logged += line.length + 1; } catch (e) {}
+  }
 }
 
 // T4 frame: one GPS fix → speed (km/h ×100) + altitude (m ×10) + sats. Streamed live when
@@ -662,11 +709,21 @@ var uiTimer = setInterval(function () {
   refreshBattery();
 }, 5000);
 
+// Continuous ambient barometer for all-day floors (its own power owner, so dropping GPS doesn't
+// stop it). The 'pressure' events keep `ambientAlt` fresh; a slow timer batches them into T7.
+try { if (Bangle.setBarometerPower) Bangle.setBarometerPower(1, "titan-alt"); } catch (e) {}
+var altTimer = setInterval(sampleAltitude, CFG.ALT_SAMPLE_MS);
+
 // Clean up if the app is unloaded by the launcher.
 E.on("kill", function () {
   if (uiTimer) clearInterval(uiTimer);
+  if (altTimer) clearInterval(altTimer);
+  if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
-  try { Bangle.setGPSPower(0, "titan"); if (Bangle.setBarometerPower) Bangle.setBarometerPower(0, "titan"); } catch (e) {}
+  try {
+    Bangle.setGPSPower(0, "titan");
+    if (Bangle.setBarometerPower) { Bangle.setBarometerPower(0, "titan"); Bangle.setBarometerPower(0, "titan-alt"); }
+  } catch (e) {}
 });
 
 // Initial paint.

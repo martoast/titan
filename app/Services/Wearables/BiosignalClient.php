@@ -58,6 +58,17 @@ class BiosignalClient
     }
 
     /**
+     * Floors climbed + ascent/descent from a barometric altitude series.
+     *
+     * @param  array<string,mixed>  $window  {altitude_m: float[], sample_rate_hz: float}
+     * @return array<string,mixed>
+     */
+    public function processElevation(array $window): array
+    {
+        return $this->client()->post('/process/elevation', $window)->throw()->json();
+    }
+
+    /**
      * @param  array<string,mixed>  $request
      * @return array<string,mixed>
      */

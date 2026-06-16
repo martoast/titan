@@ -26,6 +26,7 @@ a `biosignal/app/models/*.joblib`. Re-run any of them to reproduce the number.
 | **Energy expenditure** | calories (grade-aware) | PhysioNet treadmill — measured **VO₂**, 922 tests / 107k samples | flat submaximal | cost of transport **3.67** vs Minetti 3.60; EE **10% MAPE** | ✅ engine validated |
 | **In-motion HR** | bpm during exercise | PhysioNet wrist-PPG — vs chest **ECG**, 8 subj | walk/run/bike, 8 s windows | naive peaks **18 bpm MAE** → ❌ not good enough | ❌ deferred to on-device |
 | **Training load (ACWR)** | injury guardrail | — *no real-data validation* (see note) | EWMA 7d:28d on TRIMP | deterministic ratio; literature bands | ⚪ heuristic, honest |
+| **Floors / elevation** | floors climbed | synthetic from BMP280 noise + weather drift + stair geometry | 1 Hz baro, 1–20 flights | **MAE 0.83 floors**, **0 phantom** on a flat day | 🟡 sensor-model, HW-gated |
 
 Grade key: ✅ ship with confidence · 🟡 ship as a **trend**, not an absolute, with honest caveats · ❌ not
 trustworthy yet — do not build on it.
@@ -131,6 +132,19 @@ for trustworthy workout HR / TRIMP / HR-zones / VO₂. A quick accel-aware spect
 (~37, locks onto motion harmonics). **Design implication: split the HR path** — raw PPG→IBI for *resting*
 HRV (validated), and the watch's **on-device accel-corrected bpm** (VC31 `e.bpm`, what Garmin/Apple use)
 for *workout* HR, to be validated on hardware. Workout-HR rigor is **gated on hardware**, not claimed now.
+
+### 7b. Floors / elevation — `elevation.py` (**physics-validated, hardware-gated**)
+Stairs are one of the cheapest longevity wins (≥35 floors/week → all-cause mortality HR 0.84, Harvard
+Alumni), and nearly free on our hardware: the BMP280 runs continuously (~µA, no GPS). The whole problem
+is separating real climbs from (1) ~0.3 m sensor jitter and (2) **weather drift** (pressure wanders
+metres/hour and silently accumulates phantom floors). The discriminator is **rate**: a flight gains 3 m
+in ~12 s (~0.25 m/s); weather drifts ~100× slower. A peak-valley detector with a per-climb rate gate
+(plus hysteresis + robust median climb-heights) counts the former and rejects the latter. No public
+"baro → labelled floors" dataset exists, so we validate on **physically-realistic synthetic traces** —
+BMP280 datasheet noise + real weather-drift magnitudes + true 3 m stair geometry: **MAE 0.83 floors**
+across 1–20 flights, and crucially **0 phantom floors on a flat (drift-only) day**. On-hardware accuracy
+vs a counted staircase is a **validation-day item** (like in-motion HR) — we don't claim what we can't yet
+measure. The watch streams the altitude trace (T7 frames); the server counts floors (`/process/elevation`).
 
 ### 8. Training load / ACWR — `TrainingLoad.php` (**a heuristic we ship honestly, not a validated predictor**)
 The acute:chronic workload ratio (EWMA 7-day vs 28-day TRIMP, Williams 2017) is a "don't ramp too fast"

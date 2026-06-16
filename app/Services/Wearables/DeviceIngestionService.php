@@ -166,7 +166,7 @@ class DeviceIngestionService
                     'steps' => isset($summary['steps']) ? (int) round($summary['steps']) : null,
                     'mvpa_min' => isset($summary['mvpa_min']) ? (int) round($summary['mvpa_min']) : null,
                     'active_kcal' => isset($summary['active_kcal']) ? (int) round($summary['active_kcal']) : null,
-                    'floors' => isset($summary['floors']) ? (int) round($summary['floors']) : null,
+                    'floors' => $this->floorsFor($summary),
                     'distance_km' => $summary['distance_km'] ?? null,
                     'hourly' => (isset($summary['hourly']) && is_array($summary['hourly']) && count($summary['hourly']) === 24)
                         ? array_map('intval', $summary['hourly']) : null,
@@ -179,6 +179,37 @@ class DeviceIngestionService
     }
 
     /** Resolve a wire date/timestamp to the device-owner's local calendar date. */
+    /**
+     * Floors for the day. Prefer a device-provided count (Apple Health / Gadgetbridge already
+     * compute floors); otherwise, if our DIY band streamed a raw barometric altitude series, count
+     * floors SERVER-side via the biosignal service (dumb-sensor philosophy). Best-effort: a biosignal
+     * outage just leaves floors null rather than failing the whole summary.
+     *
+     * @param  array<string,mixed>  $summary
+     */
+    private function floorsFor(array $summary): ?int
+    {
+        if (isset($summary['floors'])) {
+            return (int) round($summary['floors']);
+        }
+        $alt = $summary['altitude_m'] ?? null;
+        if (! is_array($alt) || count($alt) < 3) {
+            return null;
+        }
+        try {
+            $res = app(BiosignalClient::class)->processElevation([
+                'altitude_m' => array_values(array_map('floatval', $alt)),
+                'sample_rate_hz' => (float) ($summary['altitude_fs'] ?? 1.0),
+            ]);
+
+            return isset($res['metrics']['floors']) ? (int) $res['metrics']['floors'] : null;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[Biosignal] floors-from-altitude failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
     private function dateOf(?string $value, string $tz): string
     {
         if ($value === null || $value === '') {

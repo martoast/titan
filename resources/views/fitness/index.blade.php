@@ -76,6 +76,14 @@
             @if ($weekAvgSteps !== null)<span class="text-gray-600"> · 7-day avg {{ number_format($weekAvgSteps) }}.</span>@endif
         </p>
 
+        {{-- Floors climbed (barometer) — ≥35/wk → all-cause mortality HR 0.84 (Harvard Alumni) --}}
+        @if ($floorsToday > 0)
+            <div class="mt-4 flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+                <div class="font-display text-2xl font-black nums text-teal-300 leading-none">{{ $floorsToday }}</div>
+                <div class="text-sm text-gray-400">floors climbed today<span class="block text-[11px] text-gray-600">from the barometer — stairs are one of the cheapest longevity wins.</span></div>
+            </div>
+        @endif
+
         {{-- Movement breaks: how many waking hours had real movement (don't sit too long) --}}
         @if ($movement)
             @php $mvTone = $movement['met'] ? 'text-emerald-300' : ($movement['longest_sit'] >= 4 ? 'text-orange-300' : 'text-amber-300'); @endphp

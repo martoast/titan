@@ -74,6 +74,7 @@ class FitnessController extends Controller
             'weekTrimp' => (float) $weekTrimp,
             'trainingLoad' => $trainingLoad,
             'steps' => $steps,
+            'floorsToday' => (int) ($today->floors ?? 0),
             'stepGoal' => $stepGoal,
             'stepTrend' => $stepTrend,
             'weekAvgSteps' => $weekAvgSteps,

@@ -5,7 +5,7 @@
 import assert from 'node:assert';
 import { test } from 'node:test';
 
-import { decodeT1, decodeT4, decodeT5, decodeT6, WorkoutAssembler } from '../../resources/js/bridge-decode.js';
+import { decodeT1, decodeT4, decodeT5, decodeT6, decodeT7, WorkoutAssembler } from '../../resources/js/bridge-decode.js';
 
 // --- frame encoders mirroring the firmware byte layouts ---
 const b64 = (buf) => buf.toString('base64');
@@ -53,6 +53,19 @@ function encT5(t, bpm, conf) {
   return b64(buf);
 }
 
+function encT7(t0Ms, intervalMs, altsM) {
+  const buf = Buffer.alloc(16 + altsM.length * 2);
+  const base = Math.round(altsM[0] * 10);
+  buf.writeUInt8(7, 0);
+  buf.writeUInt8(altsM.length, 1);
+  buf.writeUInt32LE(lo(t0Ms), 2);
+  buf.writeUInt32LE(hi(t0Ms), 6);
+  buf.writeUInt16LE(intervalMs, 10);
+  buf.writeInt32LE(base, 12);
+  altsM.forEach((a, i) => buf.writeInt16LE(Math.round(a * 10) - base, 16 + i * 2));
+  return b64(buf);
+}
+
 function encT6(startMs, durMs, samples) {
   const buf = Buffer.alloc(16 + samples.length * 6);
   buf.writeUInt8(6, 0);
@@ -92,6 +105,15 @@ test('decodeT4 recovers speed, altitude, sats (and the null-altitude sentinel)',
   assert.ok(Math.abs(f.alt - 105.6) < 0.05);
   assert.equal(f.sats, 9);
   assert.equal(decodeT4(encT4(BASE, 0, null, 0)).alt, null);
+});
+
+test('decodeT7 recovers an ambient altitude series (base + deltas, timed)', () => {
+  const alts = [102.3, 103.1, 105.0, 104.4];          // metres, including a small climb
+  const out = decodeT7(encT7(BASE, 1000, alts));
+  assert.equal(out.length, 4);
+  out.forEach((s, i) => assert.ok(Math.abs(s.alt - alts[i]) < 0.05, `alt[${i}]=${s.alt}`));
+  assert.equal(out[0].t, BASE);
+  assert.equal(out[3].t, BASE + 3000);                // 1 Hz cadence
 });
 
 test('decodeT5 recovers bpm + confidence', () => {

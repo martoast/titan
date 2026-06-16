@@ -69,6 +69,29 @@ export function decodeT4(b64) {
   };
 }
 
+/**
+ * T7 → [{t, alt}] — the AMBIENT barometric altitude batch for all-day floor counting (server counts
+ * floors). 16-B header [ver u8, count u8, tsLo u32, tsHi u32, intervalMs u16, base×10 i32] +
+ * count × int16 (Δ from base, ×10 = decimetres). Altitudes are reconstructed as (base + Δ)/10 m,
+ * timestamped from `ts` at `intervalMs` cadence.
+ */
+export function decodeT7(b64) {
+  const bytes = b64ToBytes(b64);
+  if (bytes.length < 16) return [];
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = dv.getUint8(1);
+  const t0 = u64(dv, 2);
+  const intervalMs = dv.getUint16(10, true);
+  const base = dv.getInt32(12, true);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const o = 16 + i * 2;
+    if (o + 2 > bytes.length) break;
+    out.push({ t: t0 + i * intervalMs, alt: (base + dv.getInt16(o, true)) / 10 });
+  }
+  return out;
+}
+
 /** T5 → { t, bpm, conf } for one HR reading. */
 export function decodeT5(b64) {
   const bytes = b64ToBytes(b64);
