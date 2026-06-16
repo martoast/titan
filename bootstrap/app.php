@@ -13,7 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Personal-API-token auth for the assistant/MCP surface (stateless bearer tokens).
+        $middleware->alias(['auth.token' => \App\Http\Middleware\AuthenticateApiToken::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

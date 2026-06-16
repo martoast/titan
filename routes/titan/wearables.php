@@ -8,10 +8,16 @@
  * machine ingestion endpoints live in routes/api.php.
  */
 
+use App\Http\Controllers\ApiTokenController;
 use App\Http\Controllers\Health\AppleHealthController;
 use App\Http\Controllers\Wellness\DeviceController;
 use App\Http\Controllers\Wellness\PolarController;
 use Illuminate\Support\Facades\Route;
+
+// Assistant access: personal API tokens for an external agent (Claude/MCP) to run the account.
+Route::get('/connect', [ApiTokenController::class, 'index'])->name('connect.index');
+Route::post('/connect/tokens', [ApiTokenController::class, 'store'])->name('connect.tokens.store');
+Route::delete('/connect/tokens/{token}', [ApiTokenController::class, 'destroy'])->name('connect.tokens.destroy');
 
 Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
 Route::get('/devices/bridge', [DeviceController::class, 'bridge'])->name('devices.bridge');

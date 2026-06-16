@@ -10,8 +10,17 @@
  * the logged-in owner and run under `auth`.
  */
 
+use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\DeviceIngestionController;
 use Illuminate\Support\Facades\Route;
+
+// Assistant / MCP surface — personal-API-token auth (Bearer). One generic tool dispatcher gives an
+// external agent full account control; write tools additionally require the token's 'write' ability.
+Route::middleware('auth.token')->group(function () {
+    Route::get('/me', [AssistantController::class, 'me']);
+    Route::get('/tools', [AssistantController::class, 'tools']);
+    Route::post('/tool', [AssistantController::class, 'call']);
+});
 
 Route::prefix('devices')->group(function () {
     // Device → server: signed biosignal batches (HMAC auth, no session).
