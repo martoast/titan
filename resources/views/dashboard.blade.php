@@ -158,10 +158,15 @@
                 </div>
             </div>
 
-            <a href="/meals/add" class="mt-3 inline-flex items-center gap-1.5 rounded-xl {{ $mTone[3] }} px-4 py-2 text-sm font-semibold {{ $meal['status'] === 'done' ? 'text-gray-200' : 'text-gray-950' }} active:opacity-90">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                Log a meal
-            </a>
+            <div class="mt-3 flex items-center gap-2">
+                <a href="/meals/add" class="inline-flex items-center gap-1.5 rounded-xl {{ $mTone[3] }} px-4 py-2 text-sm font-semibold {{ $meal['status'] === 'done' ? 'text-gray-200' : 'text-gray-950' }} active:opacity-90">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    Log a meal
+                </a>
+                <a href="/meals" class="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-gray-200 active:bg-white/10">
+                    <span>🍽️</span> Meal ideas
+                </a>
+            </div>
         </div>
 
         {{-- ============ TRAJECTORY — the graphs that show you're improving ============ --}}

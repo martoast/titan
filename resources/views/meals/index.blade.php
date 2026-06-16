@@ -25,6 +25,57 @@
         </div>
     @endunless
 
+    @if ($isToday)
+        {{-- What should I eat? — next-meal timing + AI suggestions with generated photos --}}
+        @php
+            $mc = $mealCoach;
+            $mcTone = match ($mc['status']) {
+                'overdue' => 'text-rose-300', 'soon' => 'text-amber-300', 'done' => 'text-emerald-300', default => 'text-indigo-300',
+            };
+        @endphp
+        <div class="rounded-2xl border border-indigo-500/20 bg-gradient-to-b from-indigo-500/[0.07] to-transparent p-4 md:p-5 mb-5">
+            <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="text-[11px] uppercase tracking-wider text-indigo-300/80 font-semibold">🍽️ {{ $mc['label'] }}</div>
+                    <p class="text-sm text-gray-300 mt-0.5 leading-snug">{{ $mc['advice'] }}</p>
+                </div>
+                <form method="POST" action="{{ route('meals.suggest') }}" class="shrink-0" x-data="{ busy: false }" @submit="busy = true">
+                    @csrf
+                    <button type="submit" :disabled="busy"
+                            class="inline-flex items-center gap-1.5 rounded-xl bg-indigo-500/90 px-3.5 py-2 text-xs font-semibold text-white active:bg-indigo-400 disabled:opacity-60">
+                        <svg x-show="!busy" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+                        <svg x-show="busy" x-cloak class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path></svg>
+                        <span x-text="busy ? 'Cooking up ideas…' : 'Suggest meals'"></span>
+                    </button>
+                </form>
+            </div>
+            @error('suggest')<p class="mt-2 text-xs text-rose-300">{{ $message }}</p>@enderror
+
+            @if ($suggestions->isNotEmpty())
+                <div class="mt-4 -mx-4 px-4 md:mx-0 md:px-0 flex gap-3 overflow-x-auto no-scrollbar snap-x">
+                    @foreach ($suggestions as $s)
+                        <a href="{{ route('meals.recipe', $s) }}" class="shrink-0 w-44 snap-start active:opacity-80">
+                            <div class="rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden">
+                                <div class="relative aspect-[4/3] bg-gray-950">
+                                    @if ($s->imageUrl())
+                                        <img src="{{ $s->imageUrl() }}" alt="{{ $s->name }}" class="absolute inset-0 h-full w-full object-cover">
+                                    @else
+                                        <div class="absolute inset-0 grid place-items-center text-2xl">🍲</div>
+                                    @endif
+                                    @if ($s->protein_g)<span class="absolute top-2 left-2 rounded-full bg-black/55 backdrop-blur px-2 py-0.5 text-[10px] font-semibold text-emerald-200 nums">{{ (int) $s->protein_g }}g protein</span>@endif
+                                </div>
+                                <div class="p-2.5">
+                                    <div class="font-semibold text-gray-100 text-[13px] leading-tight line-clamp-2">{{ $s->name }}</div>
+                                    <div class="text-[11px] text-gray-500 nums mt-1">{{ $s->calories ? number_format($s->calories).' kcal' : '' }} · recipe →</div>
+                                </div>
+                            </div>
+                        </a>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    @endif
+
     {{-- Daily totals bar --}}
     <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5 mb-6"
          x-data="{ open: false }">

@@ -61,6 +61,9 @@ class MealController extends Controller
             'totals' => $totals,
             'targets' => $this->targetsFor($profile),
             'trend' => $this->calorieTrend($profile, $day),
+            // Meal-timing coach + recent AI suggestions (what + when to eat).
+            'mealCoach' => \App\Support\MealCoach::assess($profile),
+            'suggestions' => $profile->mealSuggestions()->latest()->take(6)->get(),
         ]);
     }
 

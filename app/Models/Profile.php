@@ -101,6 +101,11 @@ class Profile extends Model
         return $this->hasMany(LivingGoalRender::class);
     }
 
+    public function mealSuggestions(): HasMany
+    {
+        return $this->hasMany(MealSuggestion::class);
+    }
+
     // --- Coach ---
     public function conversations(): HasMany
     {
