@@ -123,6 +123,16 @@ class Profile extends Model
         return $this->hasMany(DeviceIngestion::class);
     }
 
+    public function menstrualCycles(): HasMany
+    {
+        return $this->hasMany(MenstrualCycle::class);
+    }
+
+    public function cycleLogs(): HasMany
+    {
+        return $this->hasMany(CycleLog::class);
+    }
+
     /** Convenience: the "other" profile in the duo (the brother). */
     public function duoPartner(): ?Profile
     {
