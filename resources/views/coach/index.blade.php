@@ -170,6 +170,15 @@
                 </div>
             </div>
 
+            {{-- Jump to latest — appears when you've scrolled up --}}
+            <div class="relative">
+                <button type="button" x-show="showJump" x-cloak @click="scrollDown()"
+                        x-transition.opacity
+                        class="absolute -top-12 right-4 z-10 grid h-10 w-10 place-items-center rounded-full bg-gray-800/90 border border-white/10 text-gray-200 shadow-lg shadow-black/40 backdrop-blur active:bg-gray-700">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7-7-7M12 3v18"/></svg>
+                </button>
+            </div>
+
             {{-- Composer — sits at the end of the flex column, above the bottom tab bar --}}
             <div class="border-t border-white/5 p-3">
                 <form @submit.prevent="send()" class="flex items-end gap-2">
@@ -204,16 +213,31 @@
                 csrf: cfg.csrf,
                 aiOffline: cfg.aiOffline,
 
+                showJump: false,
+
                 init() {
-                    this.$nextTick(() => this.scrollDown());
+                    this.$nextTick(() => { this.scrollDown(); this.enhance(); });
+                    const el = this.$refs.scroll;
+                    if (el) el.addEventListener('scroll', () => { this.showJump = !this.nearBottom(); }, { passive: true });
+                },
+
+                nearBottom() {
+                    const el = this.$refs.scroll;
+                    return el ? (el.scrollHeight - el.scrollTop - el.clientHeight < 120) : true;
                 },
 
                 scrollDown() {
                     const el = this.$refs.scroll;
                     if (el) el.scrollTop = el.scrollHeight;
+                    this.showJump = false;
                 },
 
-                // Full, sanitised GFM markdown (headings, lists, tables, code, links, images).
+                // Code-copy buttons + tap-to-zoom images, applied to freshly-rendered messages.
+                enhance() {
+                    if (window.coachEnhance) window.coachEnhance(this.$refs.scroll);
+                },
+
+                // Full, sanitised GFM markdown (headings, lists, tables, code, links, images, thinking).
                 render(text) {
                     return window.renderMarkdown ? window.renderMarkdown(text) : (text || '');
                 },
@@ -240,7 +264,9 @@
                         });
                         const data = await res.json();
                         const reply = (data && data.reply) || "Something went wrong — please try again.";
+                        const wasNear = this.nearBottom();
                         this.messages.push({ role: 'assistant', content: reply });
+                        this.$nextTick(() => { this.enhance(); if (wasNear) this.scrollDown(); else this.showJump = true; });
 
                         // First message in a brand-new conversation: point the URL at it
                         // so a refresh keeps the thread.
@@ -250,9 +276,9 @@
                         }
                     } catch (e) {
                         this.messages.push({ role: 'assistant', content: "Couldn't reach your coach. Check your connection and try again." });
+                        this.$nextTick(() => { this.enhance(); this.scrollDown(); });
                     } finally {
                         this.loading = false;
-                        this.$nextTick(() => this.scrollDown());
                     }
                 },
             };
