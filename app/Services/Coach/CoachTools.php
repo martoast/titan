@@ -28,6 +28,13 @@ class CoachTools
     {
         $tools = [];
 
+        // The "how was my day" tool — one call pulls everything for a single day: wearable vitals
+        // (HRV, resting HR, respiratory rate), readiness, last night's sleep, today's strain,
+        // activity (steps/floors/movement), nutrition and any workouts, plus the day's focus.
+        $tools[] = $this->fn('daily_summary', "Pull a full snapshot of one day from the wearable and every other source — vitals (HRV, resting HR, respiratory rate, stress, energy), readiness score, last night's sleep, strain, steps/activity, nutrition and workouts, plus the single focus for the day. Use this whenever the person asks how their day/vitals/recovery/sleep were, or for a daily check-in.", [
+            'date' => ['type' => 'string', 'description' => "Which day: 'today' (default), 'yesterday', or an ISO date like 2026-06-16."],
+        ], []);
+
         if (class_exists(\App\Models\KnowledgePage::class)) {
             $tools[] = $this->fn('search_knowledge', "Search this person's long-term-memory health wiki (the brain) for relevant notes, history, preferences, goals, doctor's notes, etc.", [
                 'query' => ['type' => 'string', 'description' => 'What to look for, in natural language.'],
@@ -91,6 +98,7 @@ class CoachTools
     public function dispatch(string $name, array $args): mixed
     {
         return match ($name) {
+            'daily_summary' => $this->dailySummary((string) ($args['date'] ?? 'today')),
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
             'recent_biomarkers' => $this->recentBiomarkers(),
@@ -298,6 +306,240 @@ class CoachTools
                 return $row;
             })->values()->all(),
         ];
+    }
+
+    /**
+     * Everything for one day, in one shot — the "how was my day / my vitals today" tool.
+     * Pulls raw wearable vitals plus the computed pillars (readiness, sleep, strain, activity,
+     * nutrition, workouts, focus). Every block is independently guarded so a missing model or a
+     * blank day degrades to a note instead of failing the whole summary.
+     */
+    private function dailySummary(string $dateArg): mixed
+    {
+        $tz = $this->profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $today = \Illuminate\Support\Carbon::today($tz);
+        $day = match (strtolower(trim($dateArg))) {
+            '', 'today' => $today->copy(),
+            'yesterday' => $today->copy()->subDay(),
+            default => rescue(fn () => \Illuminate\Support\Carbon::parse($dateArg, $tz)->startOfDay(), $today->copy(), false),
+        };
+        $isToday = $day->isSameDay($today);
+
+        $out = [
+            'date' => $day->toDateString(),
+            'is_today' => $isToday,
+            'relative' => $isToday ? 'today' : ($day->isSameDay($today->copy()->subDay()) ? 'yesterday' : $day->diffForHumans($today)),
+        ];
+
+        // --- Wearable vitals (raw RecoveryLog row for the day) ---
+        if (class_exists(\App\Models\RecoveryLog::class)) {
+            try {
+                $rec = \App\Models\RecoveryLog::query()
+                    ->where('profile_id', $this->profile->id)
+                    ->whereDate('logged_at', $day->toDateString())
+                    ->latest('id')->first();
+                if ($rec) {
+                    $out['vitals'] = collect([
+                        'hrv_ms' => $rec->getAttribute('hrv_ms'),
+                        'resting_hr' => $rec->getAttribute('resting_hr'),
+                        'resp_rate' => $rec->getAttribute('resp_rate'),
+                        'stress_1_10' => $rec->getAttribute('stress'),
+                        'soreness_1_10' => $rec->getAttribute('soreness'),
+                        'mood_1_10' => $rec->getAttribute('mood'),
+                        'energy_1_10' => $rec->getAttribute('energy'),
+                    ])->filter(fn ($v) => $v !== null)->all();
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+            if (! isset($out['vitals'])) {
+                $out['vitals'] = $isToday
+                    ? 'No wearable vitals captured yet today — sync the band or log how you feel.'
+                    : "No wearable vitals recorded for {$out['date']}.";
+            }
+        }
+
+        // --- Readiness / recovery score ---
+        if (class_exists(\App\Support\Readiness::class)) {
+            try {
+                $r = \App\Support\Readiness::compute($this->profile, $day);
+                if (($r['score'] ?? null) !== null) {
+                    $out['readiness'] = [
+                        'score' => $r['score'],
+                        'label' => $r['label'] ?? null,
+                        'note' => $r['note'] ?? null,
+                        'drivers' => $r['components'] ?? null,
+                        'provisional' => $r['provisional'] ?? null,
+                    ];
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        // --- Last night's sleep ---
+        if (class_exists(\App\Models\SleepLog::class)) {
+            try {
+                $s = \App\Models\SleepLog::query()
+                    ->where('profile_id', $this->profile->id)
+                    ->whereDate('slept_at', $day->toDateString())
+                    ->latest('id')->first();
+                $sleep = [];
+                if ($s) {
+                    $sleep = collect([
+                        'duration_h' => $s->duration_min ? round($s->duration_min / 60, 1) : null,
+                        'quality' => $s->getAttribute('quality'),
+                        'deep_min' => $s->getAttribute('deep_min'),
+                        'rem_min' => $s->getAttribute('rem_min'),
+                        'light_min' => $s->getAttribute('light_min'),
+                        'awake_min' => $s->getAttribute('awake_min'),
+                        'bedtime' => $s->getAttribute('bedtime'),
+                        'wake_time' => $s->getAttribute('wake_time'),
+                    ])->filter(fn ($v) => $v !== null)->all();
+                }
+                if (class_exists(\App\Support\SleepCoach::class)) {
+                    $coach = rescue(fn () => \App\Support\SleepCoach::assess($this->profile, $day), null, false);
+                    if ($coach) {
+                        $sleep += [
+                            'need_h' => $coach['need_h'] ?? null,
+                            'debt_h' => $coach['debt_h'] ?? null,
+                            'performance_pct' => $coach['performance_pct'] ?? null,
+                            'status' => $coach['label'] ?? null,
+                            'advice' => $coach['advice'] ?? null,
+                        ];
+                    }
+                }
+                $out['sleep'] = $sleep !== [] ? array_filter($sleep, fn ($v) => $v !== null) : 'No sleep logged for that night.';
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        // --- Strain (training/cardiovascular load so far) ---
+        if (class_exists(\App\Support\Strain::class)) {
+            try {
+                $st = \App\Support\Strain::assess($this->profile, $day);
+                $out['strain'] = [
+                    'strain' => $st['strain'] ?? null,
+                    'band' => $st['label'] ?? ($st['band'] ?? null),
+                    'target' => isset($st['target']) ? ($st['target']['label'] ?? null) : null,
+                    'status' => $st['status'] ?? null,
+                    'advice' => $st['advice'] ?? null,
+                ];
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        // --- Activity (steps, floors, movement) ---
+        if (class_exists(\App\Models\DailyActivity::class)) {
+            try {
+                $act = \App\Models\DailyActivity::query()
+                    ->where('profile_id', $this->profile->id)
+                    ->whereDate('date', $day->toDateString())
+                    ->first();
+                if ($act) {
+                    $activity = collect([
+                        'mvpa_min' => $act->getAttribute('mvpa_min'),
+                        'active_kcal' => $act->getAttribute('active_kcal'),
+                        'floors' => $act->getAttribute('floors'),
+                        'distance_km' => $act->getAttribute('distance_km'),
+                        'source' => $act->getAttribute('source'),
+                    ])->filter(fn ($v) => $v !== null)->all();
+                    $activity = ['steps' => (int) $act->steps] + $activity;
+                    if (class_exists(\App\Support\StepGoal::class)) {
+                        $target = \App\Support\StepGoal::targetFor($this->profile);
+                        $activity['steps_goal'] = \App\Support\StepGoal::assess((int) $act->steps, $target);
+                    }
+                    if (class_exists(\App\Support\MovementBreaks::class) && $act->getAttribute('hourly')) {
+                        $mb = rescue(fn () => \App\Support\MovementBreaks::assess($act->getAttribute('hourly')), null, false);
+                        if ($mb) {
+                            $activity['movement'] = $mb;
+                        }
+                    }
+                    $out['activity'] = $activity;
+                } else {
+                    $out['activity'] = $isToday ? 'No activity synced yet today.' : "No activity recorded for {$out['date']}.";
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        // --- Nutrition + when-to-eat (only meaningful for today's running totals) ---
+        if ($isToday && class_exists(\App\Support\MealCoach::class)) {
+            try {
+                $m = \App\Support\MealCoach::assess($this->profile);
+                $out['nutrition'] = [
+                    'meals_logged' => $m['meals_logged'] ?? null,
+                    'meals_planned' => $m['meals_planned'] ?? null,
+                    'consumed' => $m['consumed'] ?? null,
+                    'target' => $m['target'] ?? null,
+                    'next_meal' => [
+                        'status' => $m['status'] ?? null,
+                        'label' => $m['label'] ?? null,
+                        'next_at' => $m['next_at'] ?? null,
+                        'next_in_min' => $m['next_in_min'] ?? null,
+                        'overdue_min' => $m['overdue_min'] ?? null,
+                    ],
+                    'advice' => $m['advice'] ?? null,
+                ];
+            } catch (\Throwable) {
+                // ignore
+            }
+        } elseif (class_exists(\App\Models\Meal::class)) {
+            try {
+                $meals = $this->profile->meals()
+                    ->whereDate('eaten_at', $day->toDateString())->get();
+                if ($meals->isNotEmpty()) {
+                    $out['nutrition'] = [
+                        'meals_logged' => $meals->count(),
+                        'consumed' => [
+                            'calories' => (int) $meals->sum('calories'),
+                            'protein_g' => (int) round((float) $meals->sum('protein_g')),
+                        ],
+                    ];
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        // --- Workouts performed that day ---
+        if (class_exists(\App\Models\Workout::class)) {
+            try {
+                $workouts = \App\Models\Workout::query()
+                    ->where('profile_id', $this->profile->id)
+                    ->whereDate('performed_at', $day->toDateString())
+                    ->get();
+                if ($workouts->isNotEmpty()) {
+                    $out['workouts'] = $workouts->map(fn ($w) => array_filter([
+                        'name' => $w->name,
+                        'performed_at' => optional($w->performed_at)->toIso8601String(),
+                        'duration_min' => $w->getAttribute('duration_min'),
+                    ], fn ($v) => $v !== null))->all();
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        // --- The single focus for today ---
+        if ($isToday && class_exists(\App\Support\DailyFocus::class)) {
+            try {
+                $f = \App\Support\DailyFocus::compute($this->profile, $day);
+                $out['focus'] = [
+                    'headline' => $f['headline'] ?? null,
+                    'detail' => $f['detail'] ?? null,
+                ];
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        $out['_guidance'] = 'Give a warm, brief daily check-in. Lead with the headline vitals and readiness, call out anything notably good or off, and end with the one thing to focus on. Use a small markdown table for the vitals when there are several. Only mention sections that have data.';
+
+        return $out;
     }
 
     private function sleepRecoverySummary(): mixed
