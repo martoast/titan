@@ -31,8 +31,8 @@ a `biosignal/app/models/*.joblib`. Re-run any of them to reproduce the number.
 | **Gait cadence** | steps/min | synthetic (known rate) + PPG-DaLiA wrist walking | 25 Hz, 449 windows | recovers rate **<1 spm**; real median **116 spm** | ✅ passive |
 | **Sit-to-stand (30CST)** | lower-body function | synthetic (known reps); rep counter = MM-Fit squats | guided 30 s | counts **8/12/16/22 exact**; squat MAE 0.14 | ✅ guided test |
 
-Grade key: ✅ ship with confidence · 🟡 ship as a **trend**, not an absolute, with honest caveats · ❌ not
-trustworthy yet — do not build on it.
+Grade key: ✅ ship with confidence · 🟡 ship as a **trend**, not an absolute, with honest caveats · ⚪
+honest heuristic / composite (no outcome data to validate against) · ❌ not trustworthy yet — do not build on it.
 
 ---
 

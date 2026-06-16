@@ -17,6 +17,7 @@ ingestion means a Bangle.js, a Polar, Apple Health, or our own custom band all p
 ## The documents
 | Doc | What it covers |
 |---|---|
+| [`STATE-OF-TITAN.md`](STATE-OF-TITAN.md) | **What's built and live, in one glance.** The full feature inventory across firmware → biosignal → app → agent, each with where it lives, its real-data grade, and how it surfaces — plus the honest "no"s and the two rails. **Read this first to see what Titan does today.** |
 | [`00-master-roadmap.md`](00-master-roadmap.md) | **Start here.** The synthesized cross-layer program: vision, architecture, the unified phase plan (P0→open-source launch), what we build first, key decisions, risks, immediate next actions. |
 | [`01-hardware.md`](01-hardware.md) | The band: Bangle.js/PineTime vs DIY PCB, full BOM (nRF52840 + MAXM86161/MAX86141 PPG + BMI270 + BQ25120A), optical design, power budget, phased hardware path. |
 | [`02-firmware.md`](02-firmware.md) | Embedded: Zephyr/NCS vs Espruino, sensor sampling, BLE streaming, phone bridge, OTA, power management. |
