@@ -87,6 +87,18 @@ outcome data) · ❌/⏸️ tested-and-declined or deferred. Full numbers in doc
 | PhenoAge blood clock (9 markers) | `Support/PhenoAge.php` | ✅ golden-value tested (Levine/Liu) | Biomarkers panel |
 | Bloodwork upload → markers + clock | `Health/BiomarkerController.php` | LLM lab-PDF extraction | Biomarkers page |
 
+### Women's health — menstrual cycle
+| Feature | Lives in | Grade | Surfaced |
+|---|---|---|---|
+| Cycle engine (phase, predictions, fertile window, conception likelihood, regularity) | `Support/Cycle.php` | physiology-based (luteal-anchored ovulation; learns avg from history) | Cycle page · dashboard · coach · MCP |
+| Phase × recovery tie-in | `Support/Cycle.php` `recoveryByPhase()` | derived from logged RHR/HRV per phase | Cycle page · coach |
+| Period + daily logging (flow/symptoms/mood/BBT) | `menstrual_cycles` + `cycle_logs` | manual / coach / MCP | Cycle page · coach · MCP |
+| Cycle ring UI + dashboard tile + generative chat card | `cycle/index.blade.php` · dashboard · `app.js` | — | app |
+| Coach + MCP cycle tools | `CoachTools` (cycle_status/log_period/log_cycle) · `AssistantTools` (get_cycle/…) | gated to women/enabled | coach · MCP |
+
+**Rail:** awareness + coaching only — never contraception, never diagnosis; the `Cycle::DISCLAIMER`
+travels with every fertility/conception value, and hormonal birth control suppresses the fertile-window framing.
+
 ### Platform
 API tokens + 30-tool assistant API (`AssistantTools.php`) · MCP server (`mcp/`) · device-agnostic
 ingestion + night/activity seal jobs · the firmware frame protocol + bridge decoder + workout simulator.

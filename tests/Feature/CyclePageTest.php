@@ -54,6 +54,17 @@ class CyclePageTest extends TestCase
         $this->assertDatabaseHas('cycle_logs', ['profile_id' => $u->profile->id, 'flow' => 'medium', 'mood' => 3]);
     }
 
+    public function test_dashboard_shows_a_cycle_tile_for_a_woman_with_data(): void
+    {
+        $u = User::factory()->create();
+        $u->ensureProfile()->update(['sex' => 'F', 'settings' => ['timezone' => 'UTC']]);
+        $this->actingAs($u)->post('/cycle/period', ['event' => 'start', 'date' => Carbon::today()->subDays(3)->toDateString()]);
+
+        $resp = $this->actingAs($u)->get('/dashboard');
+        $resp->assertOk();
+        $resp->assertSee('phase');   // the cycle tile
+    }
+
     public function test_settings_save(): void
     {
         $u = User::factory()->create();
