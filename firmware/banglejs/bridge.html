@@ -69,6 +69,14 @@
   .muted { color:var(--muted); }
   .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   code { background:#0d141b; padding:1px 5px; border-radius:4px; }
+  button.prime { background:rgba(63,185,80,.12); border-color:rgba(63,185,80,.4); color:var(--accent); }
+  #testlog { font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; background:#0d141b;
+             border:1px solid var(--line); border-radius:8px; padding:10px; min-height:40px; }
+  #testlog .pass::before { content:"PASS "; color:var(--accent); font-weight:700; }
+  #testlog .fail::before { content:"FAIL "; color:var(--err); font-weight:700; }
+  #testlog .info::before { content:"··· "; color:var(--muted); }
+  #testlog .pass { color:var(--fg); } #testlog .fail { color:var(--fg); } #testlog .info { color:var(--muted); }
+  .stat b.good { color:var(--accent); } .stat b.bad { color:var(--err); }
 </style>
 </head>
 <body>
@@ -142,6 +150,54 @@
   </fieldset>
 
   <fieldset>
+    <legend>Day-1 test suite</legend>
+
+    <p class="muted" style="margin:0 0 10px">
+      Validate the hypotheses end-to-end the day the band arrives. Connect the watch and press its button to
+      start streaming first. See <code>tasks/titan-wearable/11-day-one-test-suite.md</code> for the full plan.
+    </p>
+
+    <label>Prime test — send an activity command straight to the watch (no server needed)</label>
+    <div class="actions" style="margin-bottom:6px">
+      <button class="prime" data-type="run">▶ Run</button>
+      <button class="prime" data-type="cycle">▶ Cycle</button>
+      <button class="prime" data-type="swim">▶ Swim</button>
+      <button class="prime" data-type="strength">▶ Strength</button>
+      <button id="btnStandDown">■ Stand down (C0)</button>
+    </div>
+    <p class="muted" style="margin:0 0 14px">
+      The watch should buzz, start a workout, and (for run/cycle) begin streaming <code>T5</code> HR frames —
+      watch the frame monitor below.
+    </p>
+
+    <label>Frame monitor — which frame types are flowing (validates each capture path)</label>
+    <div class="stats" style="grid-template-columns:repeat(7,1fr); margin-bottom:6px">
+      <div class="stat"><b id="fT1">0</b><span>T1 live</span></div>
+      <div class="stat"><b id="fT2">0</b><span>T2 sleep</span></div>
+      <div class="stat"><b id="fT4">0</b><span>T4 gps</span></div>
+      <div class="stat"><b id="fT5">0</b><span>T5 hr</span></div>
+      <div class="stat"><b id="fT6">0</b><span>T6 wkout</span></div>
+      <div class="stat"><b id="fT7">0</b><span>T7 alt</span></div>
+      <div class="stat"><b id="sigState" class="muted" style="font-size:13px">—</b><span>signal</span></div>
+    </div>
+    <p class="muted" style="margin:0 0 14px">
+      PPG var <b id="ppgVar">—</b> · accel var <b id="accVar">—</b>
+      (finger on the sensor lifts PPG var; a shake lifts accel var)
+    </p>
+
+    <label>Checks</label>
+    <div class="actions" style="margin-bottom:10px">
+      <button id="btnTestAll" class="primary">Run all checks</button>
+      <button id="btnTestStream">Streaming?</button>
+      <button id="btnTestSignal">PPG signal?</button>
+      <button id="btnTestPrime">Prime → HR?</button>
+      <button id="btnTestIngest">Ingest round-trip</button>
+      <button id="btnTestActivity">Activity endpoint</button>
+    </div>
+    <div id="testlog"></div>
+  </fieldset>
+
+  <fieldset>
     <legend>Log</legend>
     <div id="log"></div>
   </fieldset>
@@ -178,6 +234,8 @@ let lineBuf = "";                 // accumulates NUS text until newline
 let batch = [];                   // accumulated samples {t,ppg,ax,ay,az}
 let batchEpochMs = null;          // unix-ms of first sample in current batch
 let counters = { samples:0, frames:0, batches:0 };
+let frameTypes = { T1:0, T2:0, T4:0, T5:0, T6:0, T7:0 };  // day-1 monitor: which capture paths fire
+let recentPpg = [], recentAcc = [];   // rolling windows for signal-sanity variance
 let rateWindow = [];              // timestamps for samples/s display
 let batchTimer = null;
 let ppgFieldCode = 0;             // reported by the watch in each frame header
@@ -187,7 +245,12 @@ const PPG_FIELD_NAMES = ["vcPPG","raw","filt","adc"]; // mirrors CFG.PPG_FIELDS
 // --- Frame parsing -----------------------------------------------------------
 // Each NUS line is "T1:" + base64(binaryFrame). Decode and unpack.
 function handleLine(line) {
-  if (!line.startsWith("T1:")) return; // ignore Espruino console noise
+  // Day-1 monitor: tally every frame type the watch emits (T1 live, T2 sleep, T4 gps,
+  // T5 hr, T6 offline-workout, T7 altitude) so the tester can SEE each path light up.
+  const tm = line.match(/^T(\d):/);
+  if (tm) { const k = "T" + tm[1]; if (frameTypes[k] !== undefined) { frameTypes[k]++; updateMonitor(); } }
+
+  if (!line.startsWith("T1:")) return; // only T1 carries the PPG+accel samples we decode here
   let bytes;
   try {
     bytes = base64ToBytes(line.slice(3));
@@ -218,6 +281,9 @@ function handleLine(line) {
     batch.push({ t: tMs, ppg, ax, ay, az });
     counters.samples++;
     rateWindow.push(tMs);
+    // Rolling windows for signal-sanity (last ~5 s): is the PPG pulsatile, is accel moving?
+    recentPpg.push(ppg); if (recentPpg.length > 150) recentPpg.shift();
+    recentAcc.push(Math.sqrt(ax * ax + ay * ay + az * az)); if (recentAcc.length > 150) recentAcc.shift();
   }
   refreshStats();
 }
@@ -501,11 +567,131 @@ function refreshStats() {
 }
 setInterval(refreshStats, 1000);
 
+// --- Day-1 test suite --------------------------------------------------------
+// Sampling profiles mirror app/Support/ActivityPriming.php — keep them in sync.
+const PRIME_PROFILES = {
+  run:      { label:"Run",      hr_hz:1.0, accel_hz:12.5, gps:true  },
+  walk:     { label:"Walk",     hr_hz:0.5, accel_hz:12.5, gps:true  },
+  cycle:    { label:"Cycle",    hr_hz:1.0, accel_hz:6.25, gps:true  },
+  swim:     { label:"Swim",     hr_hz:1.0, accel_hz:12.5, gps:false },
+  strength: { label:"Strength", hr_hz:1.0, accel_hz:12.5, gps:false }
+};
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function variance(arr) {
+  if (arr.length < 2) return 0;
+  const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+  return arr.reduce((a, b) => a + (b - m) * (b - m), 0) / arr.length;
+}
+function tlog(msg, cls) {
+  const el = $("testlog");
+  const d = document.createElement("div");
+  d.className = cls || "info"; d.textContent = msg;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+function setStat(id, val, good) {
+  const el = $(id); el.textContent = val;
+  el.className = good === undefined ? "" : (good ? "good" : "bad");
+}
+
+// Refresh the frame-type counts + the live signal-sanity readout.
+function updateMonitor() {
+  $("fT1").textContent = frameTypes.T1; $("fT2").textContent = frameTypes.T2;
+  $("fT4").textContent = frameTypes.T4; $("fT5").textContent = frameTypes.T5;
+  $("fT6").textContent = frameTypes.T6; $("fT7").textContent = frameTypes.T7;
+  const pv = Math.round(variance(recentPpg)), av = +variance(recentAcc).toFixed(4);
+  $("ppgVar").textContent = recentPpg.length ? pv : "—";
+  $("accVar").textContent = recentAcc.length ? av : "—";
+  const ppgOk = recentPpg.length >= 20 && pv > 50;     // pulsatile PPG present
+  setStat("sigState", ppgOk ? "PPG ok" : "flat", ppgOk);
+}
+setInterval(updateMonitor, 1000);
+
+// Send a raw NUS command to the watch (host → watch).
+async function sendCmd(str) {
+  if (!rxChar) { tlog("Not connected — Connect the watch first.", "fail"); return false; }
+  try { await rxChar.writeValue(new TextEncoder().encode(str)); return true; }
+  catch (e) { tlog("NUS write failed: " + e.message, "fail"); return false; }
+}
+async function sendPrime(type) {
+  const p = PRIME_PROFILES[type] || PRIME_PROFILES.run;
+  const ok = await sendCmd("C1:" + JSON.stringify({ type, gps:p.gps, hr_hz:p.hr_hz, accel_hz:p.accel_hz }) + "\n");
+  if (ok) tlog("Sent prime → " + p.label + (p.gps ? " (GPS on)" : "") + ". Watch should buzz + start a workout.", "info");
+}
+async function sendStandDown() { if (await sendCmd("C0:\n")) tlog("Sent stand-down (C0).", "info"); }
+
+// --- Individual checks (each logs PASS/FAIL) ---
+async function testStream() {
+  if (!rxChar) return tlog("Streaming: not connected.", "fail");
+  const before = counters.frames;
+  tlog("Streaming: watching BLE frames for 2.5 s…", "info");
+  await sleep(2500);
+  const d = counters.frames - before;
+  if (d > 0) tlog("Streaming: " + d + " frames in 2.5 s — the live link works.", "pass");
+  else tlog("Streaming: 0 frames. Press the watch BUTTON to start capture (UI shows REC).", "fail");
+}
+function testSignal() {
+  if (recentPpg.length < 20) return tlog("PPG signal: too few samples — start streaming with a finger on the sensor.", "fail");
+  const v = Math.round(variance(recentPpg));
+  if (v > 50) tlog("PPG signal: variance " + v + " — a pulsatile PPG is present. ✔", "pass");
+  else tlog("PPG signal: variance " + v + " — looks flat. Rest a finger gently on the green sensor and retry.", "fail");
+}
+async function testPrime() {
+  if (!rxChar) return tlog("Prime→HR: not connected.", "fail");
+  const before = frameTypes.T5;
+  await sendPrime("run");
+  tlog("Prime→HR: sent run, waiting 5 s for T5 HR frames (the watch only streams HR inside a workout)…", "info");
+  await sleep(5000);
+  const d = frameTypes.T5 - before;
+  if (d > 0) tlog("Prime→HR: " + d + " T5 frames after priming — the command reached the watch and it entered the workout. ✔", "pass");
+  else tlog("Prime→HR: no T5 frames. Confirm the watch buzzed; the HR sensor needs skin contact to emit HR.", "fail");
+  await sendStandDown();
+}
+async function testIngest() {
+  const before = counters.batches;
+  tlog("Ingest: POSTing the current batch…", "info");
+  await flushBatch().catch(() => {});
+  await sleep(600);
+  if (counters.batches > before) tlog("Ingest: server accepted a batch (202). ✔", "pass");
+  else tlog("Ingest: nothing POSTed — needs streaming samples + server URL/device/secret filled in.", "fail");
+}
+async function testActivity() {
+  const base = $("apiUrl").value.trim(), deviceId = $("deviceId").value.trim(), secret = $("secret").value.trim();
+  if (!base || !deviceId || !secret) return tlog("Activity endpoint: fill server URL + device id + secret.", "fail");
+  const url = base.replace(/\/ingest$/, "/activity");
+  try {
+    const t = Math.floor(Date.now() / 1000);
+    const sig = await hmacSha256Hex(secret, t + ".");
+    const res = await fetch(url, { headers: { "X-Device-Id":deviceId, "X-Titan-Signature":"t=" + t + ",v1=" + sig, "Accept":"application/json" } });
+    if (!res.ok) return tlog("Activity endpoint: HTTP " + res.status + " (check auth / endpoint).", "fail");
+    const a = await res.json();
+    tlog("Activity endpoint: OK — " + (a.active ? ("active=" + a.type + (a.sampling && a.sampling.gps ? " (gps)" : "")) : "nothing active") + ". ✔", "pass");
+  } catch (e) { tlog("Activity endpoint: " + e.message, "fail"); }
+}
+async function runAllChecks() {
+  $("testlog").innerHTML = "";
+  tlog("Running day-1 checks — watch the FAILs and the frame monitor…", "info");
+  await testActivity();
+  await testStream();
+  testSignal();
+  await testPrime();
+  await testIngest();
+  tlog("Done. See tasks/titan-wearable/11-day-one-test-suite.md for the manual hypothesis checks (GPS outdoors, sleep log, overnight sync).", "info");
+}
+
 // --- Wire up buttons ---------------------------------------------------------
 $("btnConnect").addEventListener("click", connect);
 $("btnDisconnect").addEventListener("click", disconnect);
 $("btnFlush").addEventListener("click", () => flushBatch().catch(e => log("flush error: " + e.message, "muted")));
 $("batchMs").addEventListener("change", () => { if (batchTimer) startBatchTimer(); });
+document.querySelectorAll("button.prime").forEach(b => b.addEventListener("click", () => sendPrime(b.dataset.type)));
+$("btnStandDown").addEventListener("click", sendStandDown);
+$("btnTestAll").addEventListener("click", runAllChecks);
+$("btnTestStream").addEventListener("click", testStream);
+$("btnTestSignal").addEventListener("click", testSignal);
+$("btnTestPrime").addEventListener("click", testPrime);
+$("btnTestIngest").addEventListener("click", testIngest);
+$("btnTestActivity").addEventListener("click", testActivity);
 
 log("Ready. Fill in the Titan server fields, then Connect watch.");
 log("Reminder: Web Bluetooth is desktop-debug only (no iOS, no background). Use Gadgetbridge or a native app for real wear.", "muted");
