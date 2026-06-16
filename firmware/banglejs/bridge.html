@@ -279,6 +279,8 @@ function onDisconnected() {
   $("btnDisconnect").disabled = true;
   $("btnFlush").disabled = true;
   stopBatchTimer();
+  txChar = null; rxChar = null;     // drop stale characteristics so pollActivity() no-ops
+  primedType = null;                // re-prime on reconnect if an activity is still active
   log("Watch disconnected. Buffered samples on the watch will flush on reconnect.");
 }
 
@@ -443,6 +445,50 @@ function accelCounts(samples) {
     return Math.round(varr * 1000);
   });
 }
+
+// --- Activity priming: poll what the coach started, relay it to the watch over NUS ---
+// The watch does no HTTP — it's a dumb NUS sensor. So we poll the Titan server for the
+// activity the user started in the coach chat ("going for a run") and write a NUS command
+// down to the watch so it switches into the right sensing mode (GPS + faster HR for a run,
+// low-power for a swim/lift). Reuses the exact ingest auth (hmacSha256Hex over "{t}.{body}",
+// empty body here). De-duped on activity type; 20 s cadence.
+let primedType = null;
+
+async function pollActivity() {
+  if (!rxChar) return;                          // only while a watch is connected
+  const base = $("apiUrl").value.trim();
+  const deviceId = $("deviceId").value.trim();
+  const secret = $("secret").value.trim();
+  if (!base || !deviceId || !secret) return;
+  const url = base.replace(/\/ingest$/, "/activity");
+  try {
+    const t = Math.floor(Date.now() / 1000);
+    const sig = await hmacSha256Hex(secret, t + ".");        // empty body → sign "{t}."
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-Device-Id": deviceId,
+        "X-Titan-Signature": "t=" + t + ",v1=" + sig,
+        "Accept": "application/json"
+      }
+    });
+    if (!res.ok) return;
+    const a = await res.json();
+    if (a.active && a.type !== primedType) {                 // newly started → prime the watch
+      primedType = a.type;
+      const cmd = "C1:" + JSON.stringify({
+        type: a.type, gps: !!a.sampling.gps, hr_hz: a.sampling.hr_hz, accel_hz: a.sampling.accel_hz
+      }) + "\n";
+      await rxChar.writeValue(new TextEncoder().encode(cmd));
+      log("Primed watch for " + (a.label || a.type) + (a.sampling.gps ? " (GPS on)" : "") + ".", "on");
+    } else if (!a.active && primedType !== null) {           // finished → stand the watch down
+      primedType = null;
+      await rxChar.writeValue(new TextEncoder().encode("C0:\n"));
+      log("Activity ended — watch back to everyday sensing.", "muted");
+    }
+  } catch (e) { /* offline / link hiccup — retry next tick */ }
+}
+setInterval(pollActivity, 20000);
 
 // --- Stats UI ----------------------------------------------------------------
 function refreshStats() {

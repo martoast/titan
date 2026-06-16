@@ -463,6 +463,7 @@ function endWorkout() {
   if (!state.workout) return;
   state.workout = false;
   state.workoutManual = false;
+  primed = null;           // clear any coach priming so a later auto-workout doesn't inherit its rate
   powerGps(false);
   if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
   applyAccelRate();
@@ -588,7 +589,11 @@ function onDisconnect() {
 // time (overnight actigraphy + power).
 function applyAccelRate() {
   var fast = state.streaming && (state.connected || state.workout);
-  try { Bangle.setPollInterval(fast ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT); } catch (e) {}
+  var ms = fast ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT;
+  // A coach-primed activity carries its own accel cadence (e.g. 12.5 Hz for a run); honor it
+  // while that activity's workout runs so a reconnect doesn't snap us back to 25 Hz.
+  if (primed && state.workout && primed.accelHz) ms = Math.round(1000 / primed.accelHz);
+  try { Bangle.setPollInterval(ms); } catch (e) {}
 }
 
 function startStreaming() {
@@ -697,6 +702,51 @@ setWatch(function () {
 function toggleManualWorkout() {
   if (state.workout && state.workoutManual) endWorkout();
   else startWorkout(true);
+}
+
+// ----- Inbound command channel (coach activity priming) ---------------------
+// The watch does no HTTP — the BRIDGE (bridge.html / companion app) polls the Titan
+// server's GET /api/devices/activity and relays what the user started in the coach chat
+// ("going for a run") down to us as a NUS command. We switch into the right sensing mode
+// for that activity instead of waiting for the on-watch motion gate to guess it.
+//   C1:{"type":"run","gps":true,"hr_hz":1,"accel_hz":12.5}  → prime a typed activity
+//   C0:                                                     → stand down (activity finished)
+// Inbound NUS bytes are normally fed to the Espruino REPL, so we move the console to USB
+// first (kept for debugging) — then this channel is ours alone.
+try { E.setConsole("USB", { force: false }); } catch (e) {}
+
+var primed = null;     // active coach-primed activity, or null
+var cmdBuf = "";
+Bluetooth.on("data", function (d) {
+  cmdBuf += d;
+  var nl;
+  while ((nl = cmdBuf.indexOf("\n")) >= 0) {
+    var line = cmdBuf.substr(0, nl).trim();
+    cmdBuf = cmdBuf.substr(nl + 1);
+    if (line.substr(0, 3) === "C1:") {            // prime: start a typed activity
+      try { applyPriming(JSON.parse(line.substr(3))); } catch (err) { /* malformed — ignore */ }
+    } else if (line.substr(0, 2) === "C0") {      // stand down
+      primed = null;
+      if (state.workout && state.workoutManual) endWorkout();
+    }
+  }
+});
+
+// Switch into the activity's sensing profile. We start a MANUAL workout (so a still gap
+// mid-set / a red light won't auto-end it — the user explicitly began this), then honor
+// the per-activity sampling: GPS only when it helps (off for swim/lift), accel rate to
+// match the server's workout classifier.
+function applyPriming(p) {
+  primed = {
+    type: (p && p.type) || "other",
+    gps: !!(p && p.gps),
+    accelHz: (p && p.accel_hz) || 25
+  };
+  if (!state.streaming) startStreaming();         // ensure HR + accel are powered
+  startWorkout(true);                             // manual → only C0/finish ends it (applyAccelRate honors primed.accelHz)
+  powerGps(primed.gps);                           // override the motion-gate default (off for swim/lift)
+  try { Bangle.buzz(150); } catch (e) {}          // haptic ack so the user knows it primed
+  if (uiVisible) drawUI();
 }
 
 // Reflect the current connection state at boot (in case a central is already

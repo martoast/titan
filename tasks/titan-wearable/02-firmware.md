@@ -110,6 +110,10 @@ holds only ~2.5 h raw, so the IBI fallback is required for long offline windows.
 
 ## 10. Activity priming (coach → bridge → watch)
 
+> **Status: implemented** in `firmware/banglejs/titan.app.js` (inbound command channel + `applyPriming()`,
+> priming-aware `applyAccelRate()`) and `firmware/banglejs/bridge.html` (`pollActivity()`). The snippets below
+> document the design; the live files already contain them, ready to flash on setup day.
+
 **Goal.** Let the user *tell the app* what they're about to do — "going for a run" in the coach chat — and have
 the watch switch into the right sensing mode for it (GPS + faster HR for a run, low-power for a swim/lift),
 instead of waiting for the on-watch motion gate to guess. This is the device half of the server feature
