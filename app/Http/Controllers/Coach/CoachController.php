@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Services\Coach\CoachBriefingService;
 use App\Services\Coach\CoachService;
+use App\Services\Coach\ScanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ class CoachController extends Controller
     public function __construct(
         protected CoachService $coach,
         protected CoachBriefingService $briefings,
+        protected ScanService $scans,
     ) {}
 
     /** The chat page — opens the requested conversation, else the most recent, else a fresh one. */
@@ -209,6 +211,61 @@ class CoachController extends Controller
             'Cache-Control' => 'no-cache, no-transform',
             'X-Accel-Buffering' => 'no',   // tell nginx not to buffer the stream
             'Connection' => 'keep-alive',
+        ]);
+    }
+
+    /**
+     * Snap-to-log: accept a photo (a meal or a bloodwork sheet), have vision extract and
+     * log the data, and drop the photo + the coach's confirmation into the conversation.
+     * Returns JSON the chat appends. Never 500s on AI failure.
+     */
+    public function scan(Request $request, ?Conversation $conversation = null): JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $request->validate([
+            'photo' => ['required', 'image', 'max:12288'],   // ≤ 12 MB
+        ]);
+
+        if (! $conversation || $conversation->profile_id !== $profile->id) {
+            $conversation = $profile->conversations()->create();
+        }
+
+        try {
+            $result = $this->scans->scan($profile, $request->file('photo'));
+        } catch (AiException $e) {
+            Log::warning('[Coach] scan AI unavailable', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'ok' => false,
+                'offline' => true,
+                'conversation_id' => $conversation->id,
+                'reply' => "I couldn't read that photo just now (the vision service is unavailable). Try again in a moment.",
+            ], 200);
+        }
+
+        if (blank($conversation->title)) {
+            $conversation->update(['title' => $result['kind'] === 'bloodwork' ? 'Bloodwork scan' : 'Photo log']);
+        }
+
+        // The photo becomes a user turn; the coach's confirmation an assistant turn — so the
+        // whole exchange survives a refresh.
+        $conversation->messages()->create([
+            'role' => 'user',
+            'content' => '![photo]('.$result['image_url'].')',
+        ]);
+        $conversation->messages()->create([
+            'role' => 'assistant',
+            'content' => $result['reply'],
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'conversation_id' => $conversation->id,
+            'kind' => $result['kind'],
+            'logged' => $result['logged'],
+            'image_url' => $result['image_url'],
+            'reply' => $result['reply'],
         ]);
     }
 }

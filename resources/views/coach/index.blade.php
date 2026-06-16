@@ -7,6 +7,7 @@
         ])->values();
         $sendUrl = $conversation ? "/coach/{$conversation->id}/send" : '/coach/send';
         $streamUrl = $conversation ? "/coach/{$conversation->id}/stream" : '/coach/stream';
+        $scanUrl = $conversation ? "/coach/{$conversation->id}/scan" : '/coach/scan';
     @endphp
 
     {{-- Today's briefing: the proactive coach speaking first. Latest stored morning/evening
@@ -83,6 +84,7 @@
             x-data="coachChat({
                 sendUrl: '{{ $sendUrl }}',
                 streamUrl: '{{ $streamUrl }}',
+                scanUrl: '{{ $scanUrl }}',
                 csrf: '{{ csrf_token() }}',
                 initial: {{ Illuminate\Support\Js::from($initialMessages) }},
                 aiOffline: {{ $aiOffline ? 'true' : 'false' }},
@@ -201,6 +203,14 @@
             {{-- Composer — sits at the end of the flex column, above the bottom tab bar --}}
             <div class="border-t border-white/5 p-3">
                 <form @submit.prevent="send()" class="flex items-end gap-2">
+                    {{-- Snap-to-log: photograph a meal or a bloodwork sheet --}}
+                    <input x-ref="photo" type="file" accept="image/*" capture="environment" class="hidden"
+                           @change="if ($event.target.files[0]) { scanPhoto($event.target.files[0]); $event.target.value = ''; }">
+                    <button type="button" @click="$refs.photo.click()" :disabled="loading"
+                            title="Snap a meal or bloodwork to log it"
+                            class="shrink-0 h-12 w-12 grid place-items-center rounded-xl bg-white/5 border border-white/10 text-gray-300 active:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.66-.9l.82-1.2A2 2 0 0110.07 4h3.86a2 2 0 011.66.9l.82 1.2a2 2 0 001.66.9H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </button>
                     <textarea
                         x-ref="input"
                         x-model="draft"
@@ -233,6 +243,7 @@
                 suggestions: [],       // tappable follow-up chips
                 sendUrl: cfg.sendUrl,
                 streamUrl: cfg.streamUrl,
+                scanUrl: cfg.scanUrl,
                 csrf: cfg.csrf,
                 aiOffline: cfg.aiOffline,
 
@@ -271,7 +282,38 @@
                     if (!id || /\/coach\/\d+\/stream/.test(this.streamUrl)) return;
                     this.sendUrl = '/coach/' + id + '/send';
                     this.streamUrl = '/coach/' + id + '/stream';
+                    this.scanUrl = '/coach/' + id + '/scan';
                     history.replaceState(null, '', '/coach?c=' + id);
+                },
+
+                // Snap-to-log: upload a photo of a meal or bloodwork; the coach extracts + logs it.
+                async scanPhoto(file) {
+                    if (!file || this.loading) return;
+                    this.suggestions = [];
+                    this.messages.push({ role: 'user', content: '![photo](' + URL.createObjectURL(file) + ')' });
+                    this.loading = true;
+                    this.streaming = false;
+                    this.toolStatus = 'Reading your photo';
+                    this.$nextTick(() => { this.enhance(); this.scrollDown(); });
+
+                    const fd = new FormData();
+                    fd.append('photo', file);
+                    try {
+                        const res = await fetch(this.scanUrl, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': this.csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                            body: fd,
+                        });
+                        const data = await res.json();
+                        this.messages.push({ role: 'assistant', content: (data && data.reply) || "Couldn't read that photo — try again." });
+                        this.$nextTick(() => { this.enhance(); this.scrollDown(); });
+                        if (data && data.conversation_id) this.bindConversation(data.conversation_id);
+                    } catch (e) {
+                        this.messages.push({ role: 'assistant', content: "Couldn't upload that photo. Check your connection and try again." });
+                        this.$nextTick(() => { this.enhance(); this.scrollDown(); });
+                    } finally {
+                        this.finishSend();
+                    }
                 },
 
                 // Parse one SSE frame ("event: x\ndata: {...}") into { event, data }.

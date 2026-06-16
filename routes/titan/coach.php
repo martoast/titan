@@ -17,3 +17,5 @@ Route::post('/coach/send', [CoachController::class, 'send']);
 Route::post('/coach/{conversation}/send', [CoachController::class, 'send'])->name('coach.send');
 Route::post('/coach/stream', [CoachController::class, 'stream']);
 Route::post('/coach/{conversation}/stream', [CoachController::class, 'stream'])->name('coach.stream');
+Route::post('/coach/scan', [CoachController::class, 'scan']);
+Route::post('/coach/{conversation}/scan', [CoachController::class, 'scan'])->name('coach.scan');
