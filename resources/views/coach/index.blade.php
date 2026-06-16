@@ -153,7 +153,7 @@
                         <div :class="m.role === 'user'
                                 ? 'max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-500/20 border border-indigo-500/30 px-4 py-2.5 text-sm text-gray-100'
                                 : 'max-w-[85%] rounded-2xl rounded-bl-sm bg-gray-800/60 border border-white/5 px-4 py-2.5 text-sm text-gray-200'">
-                            <div class="coach-prose whitespace-pre-wrap leading-relaxed break-words" x-html="render(m.content)"></div>
+                            <div class="coach-prose leading-relaxed break-words" x-html="render(m.content)"></div>
                         </div>
                     </div>
                 </template>
@@ -213,13 +213,9 @@
                     if (el) el.scrollTop = el.scrollHeight;
                 },
 
-                // Minimal, safe markdown-ish rendering: escape, then **bold** and `code`.
+                // Full, sanitised GFM markdown (headings, lists, tables, code, links, images).
                 render(text) {
-                    const esc = (text || '')
-                        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    return esc
-                        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-                        .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 rounded bg-black/30 text-cyan-300">$1</code>');
+                    return window.renderMarkdown ? window.renderMarkdown(text) : (text || '');
                 },
 
                 async send(preset) {

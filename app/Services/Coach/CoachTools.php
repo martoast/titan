@@ -385,6 +385,28 @@ class CoachTools
             }
         }
 
+        // Image URLs the coach can embed (markdown ![](url)) to SHOW the physique, not just describe it.
+        try {
+            $goalImg = $this->profile->physiqueGoals()->where('is_active', true)->latest('id')->first()
+                ?? $this->profile->physiqueGoals()->latest('id')->first();
+            if ($goalImg && method_exists($goalImg, 'goalUrl') && $goalImg->goalUrl()) {
+                $out['goal_image_url'] = $goalImg->goalUrl();
+            }
+            $render = $this->profile->livingGoalRenders()->latest('id')->first();
+            if ($render && $render->imageUrl()) {
+                $out['future_self_image_url'] = $render->imageUrl();
+            }
+            $photo = $this->profile->progressPhotos()->latest('taken_at')->latest('id')->first();
+            if ($photo && $photo->photoUrl()) {
+                $out['latest_progress_photo_url'] = $photo->photoUrl();
+            }
+            if (isset($out['goal_image_url']) || isset($out['future_self_image_url']) || isset($out['latest_progress_photo_url'])) {
+                $out['_show'] = 'Embed these image URLs as markdown ![](url) so the user sees them inline.';
+            }
+        } catch (\Throwable) {
+            // image URLs are a bonus — never fail the tool on them
+        }
+
         return $out === [] ? 'No physique goal or analysis yet.' : $out;
     }
 

@@ -34,6 +34,59 @@ body {
 
 [x-cloak] { display: none !important; }
 
+/* ---- Coach chat: rich, readable markdown on the dark theme ------------------ */
+.coach-prose { font-size: 0.9375rem; line-height: 1.65; color: #e5e7eb; word-break: break-word; }
+.coach-prose > :first-child { margin-top: 0; }
+.coach-prose > :last-child { margin-bottom: 0; }
+.coach-prose p { margin: 0.6em 0; }
+.coach-prose strong { color: #f8fafc; font-weight: 700; }
+.coach-prose em { font-style: italic; }
+.coach-prose a { color: #a5b4fc; text-decoration: underline; text-underline-offset: 2px; }
+.coach-prose a:active { color: #c7d2fe; }
+.coach-prose h1, .coach-prose h2, .coach-prose h3, .coach-prose h4 {
+    font-family: var(--font-display); font-weight: 700; color: #f1f5f9;
+    line-height: 1.25; margin: 1.1em 0 0.5em; letter-spacing: -0.01em;
+}
+.coach-prose h1 { font-size: 1.3em; }
+.coach-prose h2 { font-size: 1.18em; }
+.coach-prose h3 { font-size: 1.06em; }
+.coach-prose h4 { font-size: 1em; }
+.coach-prose ul, .coach-prose ol { margin: 0.6em 0; padding-left: 1.35em; }
+.coach-prose ul { list-style: disc; }
+.coach-prose ol { list-style: decimal; }
+.coach-prose li { margin: 0.3em 0; padding-left: 0.15em; }
+.coach-prose li::marker { color: #818cf8; }
+.coach-prose ul ul, .coach-prose ol ol, .coach-prose ul ol, .coach-prose ol ul { margin: 0.2em 0; }
+.coach-prose code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em;
+    background: rgba(0,0,0,0.35); color: #67e8f9; padding: 0.12em 0.4em; border-radius: 0.35rem;
+}
+.coach-prose pre {
+    background: #0a0c10; border: 1px solid rgba(255,255,255,0.08); border-radius: 0.75rem;
+    padding: 0.85rem 1rem; margin: 0.7em 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.coach-prose pre code { background: none; color: #d1d5db; padding: 0; font-size: 0.82em; line-height: 1.5; }
+.coach-prose blockquote {
+    border-left: 3px solid rgba(129,140,248,0.5); padding-left: 0.9rem; margin: 0.7em 0;
+    color: #9ca3af; font-style: italic;
+}
+.coach-prose hr { border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 1em 0; }
+.coach-prose img {
+    max-width: 100%; height: auto; border-radius: 0.85rem; margin: 0.6em 0;
+    border: 1px solid rgba(255,255,255,0.08); display: block;
+}
+/* Tables scroll horizontally on small screens rather than squashing. */
+.coach-prose table {
+    width: 100%; border-collapse: collapse; margin: 0.7em 0; font-size: 0.88em;
+    display: block; overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.coach-prose thead { background: rgba(255,255,255,0.04); }
+.coach-prose th, .coach-prose td {
+    border: 1px solid rgba(255,255,255,0.08); padding: 0.45rem 0.7rem; text-align: left; white-space: nowrap;
+}
+.coach-prose th { font-weight: 600; color: #f1f5f9; }
+.coach-prose td { font-variant-numeric: tabular-nums; }
+
 /* Horizontal scrollers (chips, day strips) without an ugly bar, with iOS momentum. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
