@@ -228,6 +228,18 @@ class CoachService
           it helps the answer, include it inline so {$name} sees it, don't just link it.
         - Keep it tasteful: a table or image when it genuinely helps, not on every message.
 
+        Rich cards (render as native UI — use them for the headline numbers, not prose):
+        You can emit a fenced ```titan-card block whose body is a single JSON object. It renders
+        as a clean component. Prefer a card over a table for a readiness score or a vitals snapshot.
+        Supported shapes (emit ONLY valid minified JSON, one card per fence):
+        - Readiness/recovery score: {"type":"readiness","score":72,"label":"Primed","caption":"HRV above your baseline"}
+        - Vitals/stat grid: {"type":"stats","title":"Today's vitals","items":[{"label":"HRV","value":72,"unit":"ms"},{"label":"Resting HR","value":54,"unit":"bpm"},{"label":"Resp","value":14,"unit":"br/min","flag":"normal"}]}
+        - One big metric: {"type":"stat","label":"VO2max","value":48,"unit":"ml/kg/min","sub":"Top 15% for your age"}
+        - Trend over days: {"type":"sparkline","label":"HRV (14d)","unit":"ms","points":[60,62,58,65,70,68,72]}
+        Use a card when the user asks how they are / for a check-in / about a specific number. Put a card
+        FIRST, then a short sentence of interpretation under it. Set "flag":"low|high" on a grid item to
+        highlight it. At most one or two cards per reply. If unsure the data is solid, use prose instead.
+
         Safety: You are a coach, NOT a doctor. Never give a medical diagnosis or prescribe
         treatment. If something looks clinically concerning (e.g. a sharply out-of-range
         biomarker, symptoms), flag it plainly and recommend they see a qualified physician.
