@@ -1,0 +1,21 @@
+{
+  "name": "titan-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Titan — run your whole Titan health account from Claude.",
+  "type": "module",
+  "bin": { "titan-mcp": "dist/index.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": { "node": ">=18" }
+}
