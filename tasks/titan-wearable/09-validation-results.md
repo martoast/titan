@@ -28,6 +28,8 @@ a `biosignal/app/models/*.joblib`. Re-run any of them to reproduce the number.
 | **Training load (ACWR)** | injury guardrail | — *no real-data validation* (see note) | EWMA 7d:28d on TRIMP | deterministic ratio; literature bands | ⚪ heuristic, honest |
 | **Floors / elevation** | floors climbed | synthetic from BMP280 noise + weather drift + stair geometry | 1 Hz baro, 1–20 flights | **MAE 0.83 floors**, **0 phantom** on a flat day | 🟡 sensor-model, HW-gated |
 | **Biological age** | blood/fitness/wearable | PhenoAge: NHANES (Levine/Liu); Fitness Age: 940 treadmill subjects | golden-value + anchor calibration | PhenoAge **golden-value tested**; fitness anchor **calibrated** (gap +0.3) | 🟡 PhenoAge validated; blend composed |
+| **Gait cadence** | steps/min | synthetic (known rate) + PPG-DaLiA wrist walking | 25 Hz, 449 windows | recovers rate **<1 spm**; real median **116 spm** | ✅ passive |
+| **Sit-to-stand (30CST)** | lower-body function | synthetic (known reps); rep counter = MM-Fit squats | guided 30 s | counts **8/12/16/22 exact**; squat MAE 0.14 | ✅ guided test |
 
 Grade key: ✅ ship with confidence · 🟡 ship as a **trend**, not an absolute, with honest caveats · ❌ not
 trustworthy yet — do not build on it.

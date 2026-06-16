@@ -10,3 +10,4 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/fitness', [FitnessController::class, 'index'])->name('fitness.index');
 Route::post('/fitness/steps', [FitnessController::class, 'logSteps'])->name('fitness.steps');
+Route::post('/fitness/chair-stand', [FitnessController::class, 'chairStand'])->name('fitness.chair-stand');

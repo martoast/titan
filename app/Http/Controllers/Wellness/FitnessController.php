@@ -95,4 +95,19 @@ class FitnessController extends Controller
 
         return redirect()->route('fitness.index')->with('status', 'Steps updated.');
     }
+
+    /** Score a guided 30-second chair-stand test (reps entered or wearable-counted) against age norms. */
+    public function chairStand(Request $request)
+    {
+        $profile = $request->user()->ensureProfile();
+        $data = $request->validate(['reps' => ['required', 'integer', 'min:0', 'max:60']]);
+
+        $score = \App\Support\ChairStand::scoreFor($profile, $data['reps']);
+        if ($score === null) {
+            return redirect()->route('fitness.index')
+                ->withErrors(['reps' => 'Add your birthdate in your profile to score against age norms.']);
+        }
+
+        return redirect()->route('fitness.index')->with('chairStand', $score);
+    }
 }

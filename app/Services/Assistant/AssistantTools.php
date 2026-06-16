@@ -68,6 +68,7 @@ class AssistantTools
             ['name' => 'get_activity', 'description' => "Today's steps vs the personalized goal, movement breaks, and the 7-day step trend.", 'args' => []],
             ['name' => 'get_workouts', 'description' => 'Recent strength workouts with exercises, sets, reps and volume.', 'args' => ['days' => 'int — default 14']],
             ['name' => 'get_biomarkers', 'description' => 'Most recent bloodwork / biomarker results with flags.', 'args' => []],
+            ['name' => 'assess_chair_stand', 'description' => 'Score a guided 30-second chair-stand test (lower-body function / frailty screen) against the user\'s age/sex norms. Guide them: arms crossed, stand fully and sit as many times as they can in 30s, then pass the count.', 'args' => ['reps' => 'int — full stands in 30 seconds']],
             ['name' => 'get_meals', 'description' => 'Recent nutrition: per-day calories/macros and recent meals.', 'args' => ['days' => 'int — default 7']],
             ['name' => 'get_profile', 'description' => 'Profile basics: name, age, sex, height, latest weight, primary goal.', 'args' => []],
             ['name' => 'get_devices', 'description' => 'Paired wearables and their last sync time.', 'args' => []],
@@ -102,6 +103,7 @@ class AssistantTools
             'get_recovery' => $this->getRecovery(),
             'get_sleep' => $this->getSleep((int) ($args['days'] ?? 14)),
             'get_fitness' => $this->getFitness(),
+            'assess_chair_stand' => $this->assessChairStand($args),
             'get_activity' => $this->getActivity(),
             'get_workouts' => $this->coach->dispatch('recent_workouts', $args),
             'get_biomarkers' => $this->coach->dispatch('recent_biomarkers', $args),
@@ -170,6 +172,20 @@ class AssistantTools
             'sleep_regularity' => SleepRegularity::compute($month),
             'circadian_rhythm' => CircadianRhythm::compute($activity),
         ];
+    }
+
+    private function assessChairStand(array $a): array
+    {
+        $reps = isset($a['reps']) ? (int) $a['reps'] : null;
+        if ($reps === null || $reps < 0 || $reps > 60) {
+            return ['error' => 'provide reps = full stands completed in 30 seconds (0-60)'];
+        }
+        $score = \App\Support\ChairStand::scoreFor($this->profile, $reps);
+        if ($score === null) {
+            return ['error' => 'set the profile birthdate first so the result can be scored against age norms'];
+        }
+
+        return $score + ['protocol' => '30-second chair-stand: arms crossed, stand fully and sit, max reps in 30s. Lower-body function / frailty screen — a wellness estimate, not a diagnosis.'];
     }
 
     private function getFitness(): array

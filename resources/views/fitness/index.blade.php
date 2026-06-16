@@ -76,6 +76,39 @@
             @if ($weekAvgSteps !== null)<span class="text-gray-600"> · 7-day avg {{ number_format($weekAvgSteps) }}.</span>@endif
         </p>
 
+        {{-- Guided sit-to-stand test — lower-body function / frailty screen (Rikli & Jones 30CST) --}}
+        @php $cs = session('chairStand'); @endphp
+        <div class="mt-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4" x-data="{ open: {{ $cs ? 'true' : 'false' }} }">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Functional fitness</div>
+                    <h3 class="font-display font-bold text-gray-100 mt-0.5">30-second chair-stand test</h3>
+                </div>
+                <button type="button" @click="open = !open" class="shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-200 active:bg-white/10" x-text="open ? 'Hide' : 'Take the test'"></button>
+            </div>
+            @if ($cs)
+                @php $csTone = match ($cs['band']) { 'good' => 'text-emerald-300', 'average' => 'text-cyan-300', default => 'text-amber-300' }; @endphp
+                <div class="mt-3 rounded-xl bg-gray-950/50 border border-white/5 p-3.5">
+                    <div class="flex items-baseline gap-2">
+                        <span class="font-display text-3xl font-black nums {{ $csTone }} leading-none">{{ $cs['reps'] }}</span>
+                        <span class="text-sm text-gray-500">stands in 30 s</span>
+                    </div>
+                    <p class="mt-1 text-sm {{ $csTone }}">{{ $cs['label'] }}</p>
+                    <p class="mt-1 text-[11px] text-gray-600">Below-average for your age is under {{ $cs['age_below_cut'] }}; strong is {{ $cs['good_at'] }}+.</p>
+                </div>
+            @endif
+            <div x-show="open" x-cloak class="mt-3">
+                <p class="text-sm text-gray-400 leading-relaxed">Sit in a sturdy chair, arms crossed over your chest. Stand up fully and sit back down as many times as you can in <span class="text-gray-200">30 seconds</span>. Count each full stand, then enter it.</p>
+                <form method="POST" action="{{ route('fitness.chair-stand') }}" class="mt-3 flex items-center gap-2">
+                    @csrf
+                    <input type="number" name="reps" min="0" max="60" inputmode="numeric" placeholder="stands in 30s" required
+                           class="w-36 h-10 rounded-lg bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 nums focus:border-cyan-500/50 focus:outline-none">
+                    <button type="submit" class="h-10 rounded-lg bg-cyan-500/90 px-4 text-sm font-semibold text-gray-950 active:bg-cyan-400">Score it</button>
+                </form>
+                <p class="mt-2 text-[10px] text-gray-600">Gait speed is the "sixth vital sign" (Studenski 2011). A wellness screen, not a diagnosis.</p>
+            </div>
+        </div>
+
         {{-- Floors climbed (barometer) — ≥35/wk → all-cause mortality HR 0.84 (Harvard Alumni) --}}
         @if ($floorsToday > 0)
             <div class="mt-4 flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
