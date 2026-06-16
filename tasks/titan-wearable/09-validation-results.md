@@ -22,7 +22,7 @@ a `biosignal/app/models/*.joblib`. Re-run any of them to reproduce the number.
 | **Activity / workout type** | rest/walk/run/cycle/stairs | PAMAP2 — hand accel, 9 subj | leave-subj, 25 Hz, accel-only | grouped **87.3% κ 0.83**; 12-class 76.9% κ 0.74 | ✅ strong |
 | **Gym — exercise ID** | 10 lifts/bodyweight | MM-Fit — smartwatch wrist accel | leave-**workout**, 25 Hz | **95.4% κ 0.95**; lift-vs-cardio 97.7% κ 0.94 | ✅ strong |
 | **Gym — rep counting** | reps per set | MM-Fit (per-set rep labels) | leave-workout, 25 Hz | **MAE 0.14 reps**, 99% within ±1 | ✅ strong |
-| **VO₂max / fitness** | cardiorespiratory fitness | PhysioNet treadmill — measured **VO₂**, 981 tests / 846 ppl | leave-subj | **MAE 5.4–6.0 ml/kg/min**, r 0.52–0.59 | 🟡 cross-sectional |
+| **VO₂max / fitness** | cardiorespiratory fitness | PhysioNet treadmill — measured **VO₂**, 981 tests / 846 ppl | leave-subj | demo **6.0** → run-calibrated **5.3 ml/kg/min**, r 0.65 | 🟡 cross-sectional |
 | **In-motion HR** | bpm during exercise | PhysioNet wrist-PPG — vs chest **ECG**, 8 subj | walk/run/bike, 8 s windows | naive peaks **18 bpm MAE** → ❌ not good enough | ❌ deferred to on-device |
 
 Grade key: ✅ ship with confidence · 🟡 ship as a **trend**, not an absolute, with honest caveats · ❌ not
@@ -91,15 +91,23 @@ PhysioNet treadmill maximal tests (981 tests / 846 people, breath-by-breath **me
 
 | Method | MAE (ml/kg/min) | r |
 |---|---|---|
-| Demographic-only (age/sex/BMI) — the no-exercise floor | 6.0 | 0.52 |
-| + HR-at-standard-pace (ascending phase only) | 5.7 | 0.54 |
-| + HRR + HRmax (full wrist-from-a-run) | **5.4** | 0.59 |
-| Run-calibrated learned (profile + grade-adjusted-pace HR + HRR) | 5.6 | 0.59 |
+| Demographic-only (age/sex/BMI) — the no-exercise floor | 6.0 | 0.51 |
+| Run-calibrated, absolute HR-at-pace (the *old* model) | 5.6 | 0.59 |
+| **Run-calibrated, Firstbeat %HR-reserve feats (shipped)** | **5.3** | **0.65** |
+| *(ceiling)* %HRR=%VO₂R with **true** submaximal VO₂ | 4.5 | 0.86 |
 
-We **ship a transparent demographic equation** (Ridge matches the GBM, MAE 5.6) **blended with
-Uth-Sørensen** (15.3·HRmax/HRrest) when resting HR exists — because the run-calibrated model, unlike
-demographics, *responds to training* (lower HR at the same GPS pace = fitter), so it tracks your trend even
-though cross-sectional accuracy is the same. Returns an honest ± band, never false precision.
+**Sharpened (Tier-2 #10).** The win came from **Firstbeat-style %HR-reserve features**: instead of
+absolute HR-at-pace, use **speed at a fixed %HR-reserve** (a fitter person runs faster at the same cardiac
+cost) + the resting-HR anchor (Uth) + %HRR-held-at-a-standard-pace. That moved MAE **5.6 → 5.3** and r
+**0.59 → 0.65** (R² 0.34 → 0.42), leave-subjects-out. **Robust to the resting-HR source:** shifting HRrest
+±12 bpm at inference moved MAE < 0.1, so overnight RHR vs an in-run proxy both work — important, since
+validation proxies HRrest from the test while production uses overnight RHR.
+- **Honest ceiling:** the %HRR=%VO₂R method hits MAE 4.5 (r 0.86) *with true submaximal VO₂*, but ACSM
+  speed→VO₂ demand fails on ramp data (HR/VO₂ both lag), so the wrist can't reach that here — the research
+  doc's hoped-for ~3.5 isn't attainable on this dataset, and we ship the honest 5.3, not an aspiration.
+- We still **ship the transparent demographic equation + Uth blend** as the always-available floor (no run);
+  the run-calibrated model takes over when a GPS-paced run exists, and it's the estimate that *responds to
+  training* (lower HR at the same GPS pace = fitter). Honest ± band surfaced, never false precision.
 
 ### 7. In-motion HR — `validate_inmotion_hr.py` (**the honest "no" that shaped the architecture**)
 PhysioNet "Wrist PPG During Exercise" (8 subjects, wrist PPG + accel vs chest **ECG**). Naive PPG peak

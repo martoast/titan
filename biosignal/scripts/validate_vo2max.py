@@ -8,14 +8,18 @@ breath-by-breath MEASURED VO2 (ml/min), HR, treadmill speed, + demographics (age
 weight, height). Gold-standard VO2max = peak smoothed VO2 / body weight (ml/kg/min).
 
 We test the estimators a WRIST can actually compute, hardest-honest question first: how close
-can we get to lab VO2max from HR (+ optional pace) + a profile? Three methods, each scored
-leave-subjects-out so the number reflects a NEW person:
+can we get to lab VO2max from HR (+ optional pace) + a profile? Scored leave-subjects-out so the
+number reflects a NEW person:
 
-  A. Demographic-only (age, sex, BMI, weight, height)  — the no-exercise floor (Jackson NEQ-style).
-  B. Submaximal HR-at-standard-pace (Firstbeat/ACSM idea): a fitter person's HR is lower at the
-     same running speed. Anchor HR at fixed speeds on the ASCENDING phase only (the cooldown
-     pollutes a naive whole-test fit). Needs speed (treadmill / phone GPS).
-  C. Demographic + submax-HR + HRR (gradient boosting) — what the wrist computes from a logged run.
+  A. Demographic-only (age, sex, BMI)  — the no-exercise floor (Jackson NEQ-style). MAE ~6.0.
+  C. Run-calibrated, Firstbeat-style %HR-reserve features (the SHIPPED model): demographics + the
+     resting-HR anchor (uth) + SPEED-AT-FIXED-%HRR (a fitter person runs faster at the same cardiac
+     cost) + %HRR-held-at-a-standard-pace. MAE 5.2, r 0.67 — sharpened from MAE 5.6 (absolute
+     hr-at-pace). The %HRR features need HRrest + HRmax; robust to the HRrest source (±12 bpm → <0.1
+     MAE), so overnight RHR or an in-run proxy both work.
+
+Honest ceiling check: the %HRR=%VO2R method reaches MAE 4.5 (r 0.86) WITH true submaximal VO2, but
+ACSM speed→VO2 demand fails on this ramp data (HR/VO2 lag), so the wrist can't reach that here.
 
 Also reports heart-rate recovery (HRR = HR drop 60 s after peak), a robust standalone fitness/
 autonomic marker the wrist can read straight off a workout's tail.
@@ -38,6 +42,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.core import fitness as fc  # shared run-feature extractor → train/inference parity
 
 KMH_TO_MMIN = 1000.0 / 60.0  # km/h → m/min
+
+# Monotonic priors for the run model (per fc.RUN_FEATURES order): fitness must move the right way.
+# A tree ensemble is otherwise non-monotonic in sparse regions → a fitter runner (faster at a given
+# cardiac cost) could wrongly read lower. Constraints guarantee direction AND tend to generalize.
+#   age -1 · sex_female 0 · bmi -1 · uth +1 · speed_at_{60,70,80}hrr +1 · pcthrr_at_{10,12} -1
+MONO_CST = {"age": -1, "sex_female": 0, "bmi": -1, "uth": 1, "speed_at_60hrr": 1,
+            "speed_at_70hrr": 1, "speed_at_80hrr": 1, "pcthrr_at_10": -1, "pcthrr_at_12": -1}
 
 
 def acsm_vo2(speed_kmh):
@@ -82,8 +93,15 @@ def build(datadir: Path):
         post = (t >= t[peak_i] + 55) & (t <= t[peak_i] + 65) & np.isfinite(hr)
         hrr60 = float(hr_peak - np.nanmedian(hr[post])) if (np.isfinite(hr_peak) and post.sum()) else np.nan
 
+        # Resting-HR proxy: low percentile of the early (warm-up) HR. In production this is the
+        # overnight RHR; the model is validated robust to the source (±12 bpm → <0.1 MAE shift).
+        early = hr[: max(10, peak_i // 4)]
+        hrrest = float(np.nanpercentile(early, 5)) if early.size else float(np.nanmin(hr))
+        if not np.isfinite(hrrest) or hrrest < 35:
+            hrrest = float(np.nanmin(hr))
+
         # The SHARED run-feature extractor (grade=0 on the flat treadmill) → train/infer parity.
-        fv = fc.run_feature_vector(float(rec.Age), female, bmi, hrmax, hrr60, hr, spd, grade=None)
+        fv = fc.run_feature_vector(float(rec.Age), female, bmi, hrmax, hrrest, hr, spd, grade=None)
         feats = dict(zip(fc.RUN_FEATURES, fv))
         feats.update(vo2max_true=vo2max_true, ID=int(rec.ID), hrr60=hrr60)
 
@@ -101,6 +119,14 @@ def build(datadir: Path):
     return pd.DataFrame(rows)
 
 
+def _make_model(feat_cols):
+    """HGB with monotonic constraints where we have a physiological prior for the feature."""
+    cst = [MONO_CST.get(c, 0) for c in feat_cols]
+    kw = {"monotonic_cst": cst} if any(cst) else {}
+    return HistGradientBoostingRegressor(max_depth=4, max_iter=400, learning_rate=0.05,
+                                         random_state=0, **kw)
+
+
 def cv_regress(df, feat_cols, label="model", allow_nan=False):
     sub = ["vo2max_true"] if allow_nan else feat_cols + ["vo2max_true"]
     d = df.dropna(subset=sub)
@@ -109,7 +135,7 @@ def cv_regress(df, feat_cols, label="model", allow_nan=False):
     grp = d["ID"].to_numpy()
     oof = np.full(len(y), np.nan)
     for tr, te in GroupKFold(5).split(X, y, grp):
-        m = HistGradientBoostingRegressor(max_depth=4, max_iter=400, learning_rate=0.05, random_state=0)
+        m = _make_model(feat_cols)
         m.fit(X[tr], y[tr])
         oof[te] = m.predict(X[te])
     mae = mean_absolute_error(y, oof)
@@ -126,8 +152,8 @@ def main():
 
     print("Leave-SUBJECTS-out validation vs measured VO2max:")
     cv_regress(df, ["age", "sex_female", "bmi"], "A. demographic-only (no exercise)")
-    # C is the SHIPPED run-calibrated model: profile + HR-at-(grade-adjusted)-pace + HRR, NaN-aware.
-    cv_regress(df, fc.RUN_FEATURES, "C. run-calibrated (GPS pace + baro grade)", allow_nan=True)
+    # C is the SHIPPED run-calibrated model: profile + uth + speed-at-%HRR + %HRR-at-pace, NaN-aware.
+    cv_regress(df, fc.RUN_FEATURES, "C. run-calibrated (Firstbeat %HRR feats)", allow_nan=True)
 
     # The naive ACSM extrapolation we REJECT — even with perfect pace it overestimates, because
     # metabolic demand outruns actual VO2 past the aerobic ceiling (you go anaerobic).
@@ -152,10 +178,10 @@ def main():
         d = df.dropna(subset=["vo2max_true"])
         X = d[fc.RUN_FEATURES].to_numpy(float)
         y = d["vo2max_true"].to_numpy(float)
-        model = HistGradientBoostingRegressor(max_depth=4, max_iter=400, learning_rate=0.05, random_state=0)
+        model = _make_model(fc.RUN_FEATURES)
         model.fit(X, y)
         fc._RUN_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"model": model, "features": fc.RUN_FEATURES, "mae": 5.4,
+        joblib.dump({"model": model, "features": fc.RUN_FEATURES, "mae": fc._RUN_MODEL_MAE,
                      "source": "treadmill-exercise-cardioresp", "n": int(len(y))}, fc._RUN_MODEL_PATH)
         print(f"\nsaved → {fc._RUN_MODEL_PATH}  ({len(y)} tests)")
 

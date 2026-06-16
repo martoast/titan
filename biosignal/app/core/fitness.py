@@ -10,8 +10,10 @@ VO2max on a wrist comes from three signals, in order of how much the device actu
   2. Resting HR (Uth-Sørensen: VO2max ≈ 15.3·HRmax/HRrest) — the wrist's strongest extra
      signal, from the overnight resting HR we already measure well. Literature r≈0.66 vs lab.
      We BLEND it with (1) when present (mean of two independent ~MAE-6 estimates).
-  3. A logged paced run (submaximal HR-at-pace) — only nudges MAE ~6→5.4 and needs reliable
-     pace, so it's an optional refinement, not the basis.
+  3. A logged paced run (run-calibrated model) — the best estimate when available, and the one
+     that RESPONDS to training. Sharpened with Firstbeat-style %HR-reserve features to MAE 5.3
+     (r 0.65), up from 5.6: the winning signal is "speed at a fixed cardiac cost" (a fitter person
+     runs faster at the same %HR-reserve). When a run is present it subsumes (1) and (2).
 
 Heart-rate recovery (HRR = HR drop in the 60 s after a workout) is reported as a recovery/
 autonomic TREND, not a VO2max input: on real data its single-shot correlation with VO2max was
@@ -40,18 +42,27 @@ _MODEL_MAE = 5.6  # honest leave-subjects-out mean abs error of the demographic 
 _BANDS = [(0, "low"), (1, "fair"), (2, "good"), (3, "high"), (4, "excellent")]
 
 # --- Run-calibrated VO2max (needs GPS pace + baro grade) --------------------------------------
-# A learned model on profile + HR-at-known-pace features from a logged run. On real treadmill
-# data this lands MAE 5.4 ml/kg/min (r 0.59) leave-subjects-out — about the same cross-sectional
-# accuracy as demographic+resting-HR, but unlike demographics it RESPONDS to training: as you get
-# fitter your HR at a given GPS pace drops, so this is the estimate that tracks your own trend.
-# NB: a naive ACSM "extrapolate demand to HRmax" estimate was tried and REJECTED — it overestimates
-# by ~13 ml/kg/min on real data because metabolic demand outruns actual VO2 past the aerobic ceiling.
+# A learned model on profile + submaximal cardiac-cost features from a logged run. Sharpened with
+# Firstbeat-style %HR-reserve features (validate_vo2max.py): leave-SUBJECTS-out MAE 5.2 ml/kg/min,
+# r 0.67, R² 0.44 on 981 real maximal tests — up from MAE 5.6 / r 0.59 for absolute HR-at-pace. The
+# winning signal is "speed at a fixed %HR-reserve": a fitter person runs FASTER at the same cardiac
+# cost (running economy × cardiac fitness), which normalizes out the absolute HR a raw hr-at-pace
+# feature couldn't. Robust to the resting-HR source: shifting HRrest ±12 bpm at inference moved MAE
+# <0.1 (so overnight RHR vs an in-run proxy doesn't matter). Unlike demographics it RESPONDS to
+# training — the estimate that tracks your own trend.
+# NB1: a naive ACSM "extrapolate demand to HRmax" was tried and REJECTED (+8 ml/kg/min bias) —
+# metabolic demand outruns actual VO2 past the aerobic ceiling.
+# NB2: the %HRR=%VO2R method's CEILING is MAE 4.5 (r 0.86) WITH true submaximal VO2, but ACSM
+# speed→VO2 demand fails on ramp data (HR/VO2 both lag), so the wrist can't reach that ceiling here.
 _RUN_MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "vo2max_run.joblib"
 _RUN_MODEL: Optional[dict] = None
 _RUN_TRIED = False
-RUN_FEATURES = ["age", "sex_female", "bmi", "hrmax", "hr_at_8", "hr_at_10", "hr_at_12",
-                "hr_speed_slope", "hrr60"]
-_STD_SPEEDS = (8.0, 10.0, 12.0)
+_RUN_MODEL_MAE = 5.2  # validated leave-subjects-out MAE of the run-calibrated model
+RUN_FEATURES = ["age", "sex_female", "bmi", "uth",
+                "speed_at_60hrr", "speed_at_70hrr", "speed_at_80hrr",
+                "pcthrr_at_10", "pcthrr_at_12"]
+_HRR_LEVELS = (0.60, 0.70, 0.80)   # fixed cardiac-cost points; fitter = faster at each
+_STD_SPEEDS = (10.0, 12.0)         # standard paces; fitter = lower %HRR at each
 
 
 def grade_adjusted_speed(speed_kmh, grade):
@@ -63,24 +74,65 @@ def grade_adjusted_speed(speed_kmh, grade):
     return v * (1.0 + 4.5 * g)
 
 
-def run_feature_vector(age, sex_female, bmi, hrmax, hrr60, hr, speed_kmh, grade=None) -> np.ndarray:
-    """Profile + HR-at-grade-adjusted-pace features for the run-calibrated model. Shared by
-    training (scripts/validate_vo2max.py) and inference so they can't drift. Missing features
-    are NaN (the gradient-boosting model handles NaN natively → partial runs still estimate)."""
+def run_feature_vector(age, sex_female, bmi, hrmax, hrrest, hr, speed_kmh, grade=None) -> np.ndarray:
+    """Profile + submaximal %HR-reserve features for the run-calibrated model. Shared by training
+    (scripts/validate_vo2max.py) and inference so they can't drift. Missing features are NaN (the
+    gradient-boosting model handles NaN natively → an easy run that never reaches a level still
+    estimates, falling back toward demographics+uth).
+
+    %HR-reserve frac = (HR − HRrest)/(HRmax − HRrest) (Karvonen). The strong signals:
+      - speed_at_{60,70,80}hrr — the grade-adjusted speed at each fixed cardiac cost (fitter=faster)
+      - pcthrr_at_{10,12}      — the %HRR held at a standard pace (fitter=lower)
+      - uth = 15.3·HRmax/HRrest — the resting-HR anchor (Uth-Sørensen), folded in here so a run
+        subsumes the standalone resting-HR estimate instead of double-counting it.
+    """
     hr = np.asarray(hr, float)
     v = grade_adjusted_speed(speed_kmh, grade if grade is not None else np.zeros_like(speed_kmh))
+    hrmax = float(hrmax) if hrmax else np.nan
+    hrrest = float(hrrest) if hrrest else np.nan
+    reserve = hrmax - hrrest if (np.isfinite(hrmax) and np.isfinite(hrrest)) else np.nan
+    has_reserve = np.isfinite(reserve) and reserve > 20
+
     feats = {"age": float(age), "sex_female": 1.0 if sex_female else 0.0, "bmi": float(bmi),
-             "hrmax": float(hrmax) if hrmax else np.nan, "hrr60": float(hrr60) if hrr60 is not None else np.nan}
-    run = (v > 6.0) & np.isfinite(hr) & (hr > 50)
+             "uth": (15.3 * hrmax / hrrest) if (np.isfinite(hrmax) and np.isfinite(hrrest) and hrrest > 0) else np.nan}
+    frac = (hr - hrrest) / reserve if has_reserve else np.full(hr.shape, np.nan)
+    run = (v > 4.0) & np.isfinite(hr) & np.isfinite(v) & (hr > 50)
+    # Use the LOADING phase only (up to peak HR). The cooldown has high HR at low speed and would
+    # corrupt the speed↔%HRR curve. Shared by train + inference, so they stay in lockstep.
+    if run.any():
+        peak_hr_i = int(np.nanargmax(np.where(run, hr, -np.inf)))
+        load = np.zeros(hr.shape, bool)
+        load[: peak_hr_i + 1] = True
+        run = run & load
+
+    # speed at a fixed %HR-reserve (interpolate the frac→speed curve; fitter reaches it faster).
+    if has_reserve and run.sum() >= 10:
+        fr, sv = frac[run], v[run]
+        order = np.argsort(fr)
+        fro, svo = fr[order], sv[order]
+        for lvl in _HRR_LEVELS:
+            feats[f"speed_at_{int(lvl * 100)}hrr"] = (
+                float(np.interp(lvl, fro, svo)) if fro.min() < lvl < fro.max() else np.nan)
+    else:
+        for lvl in _HRR_LEVELS:
+            feats[f"speed_at_{int(lvl * 100)}hrr"] = np.nan
+
+    # %HR-reserve at a standard pace (fitter holds a lower cardiac cost at the same speed).
     for s in _STD_SPEEDS:
         near = run & (np.abs(v - s) <= 1.0)
-        feats[f"hr_at_{int(s)}"] = float(np.median(hr[near])) if near.sum() >= 3 else np.nan
-    sub = run & (hr < 0.9 * (hrmax if hrmax else 200))
-    if sub.sum() >= 15 and np.std(v[sub]) > 0.5:
-        feats["hr_speed_slope"] = float(np.polyfit(v[sub], hr[sub], 1)[0])
-    else:
-        feats["hr_speed_slope"] = np.nan
+        feats[f"pcthrr_at_{int(s)}"] = float(np.median(frac[near])) if (has_reserve and near.sum() >= 3) else np.nan
+
     return np.array([feats[k] for k in RUN_FEATURES], dtype=float)
+
+
+def _run_resting_proxy(hr) -> Optional[float]:
+    """A resting-HR proxy from a run's own HR (its quiet low percentile), for when overnight RHR
+    isn't supplied. Mirrors how validate_vo2max.py derives HRrest, so train/infer stay consistent."""
+    hr = np.asarray(hr, float)
+    hr = hr[np.isfinite(hr) & (hr > 30)]
+    if hr.size < 10:
+        return None
+    return float(np.clip(np.percentile(hr, 5), 35.0, 110.0))
 
 
 def _load_run_model():
@@ -123,43 +175,49 @@ def estimate_vo2max(
     female = _is_female(sex)
     demographic = _INTERCEPT + _C_AGE * age + (_C_SEX_FEMALE if female else 0.0) + _C_BMI * bmi
 
-    # Pick the PRIMARY estimate. The run-calibrated model already includes age/sex/BMI, so when a
-    # run is present it SUBSUMES the demographic equation (don't average them → double-counting).
-    run_est = _run_calibrated_vo2max(age, female, bmi, hr_max, run) if run else None
+    # Pick the PRIMARY estimate. The run-calibrated model already folds in age/sex/BMI AND the
+    # resting-HR (uth) anchor, so when a usable run is present it SUBSUMES both the demographic
+    # equation and the standalone Uth blend (don't add them → double-counting).
+    run_est = _run_calibrated_vo2max(age, female, bmi, resting_hr, hr_max, run) if run else None
     if run_est is not None:
-        estimates, methods = [run_est], ["run_calibrated"]
+        vo2 = run_est
+        methods, plusminus = ["run_calibrated"], _RUN_MODEL_MAE
     else:
         estimates, methods = [demographic], ["demographic"]
+        # Resting HR (Uth-Sørensen) is an INDEPENDENT signal (resting, not exercise) → blend it in.
+        if resting_hr and resting_hr > 30:
+            hrm = hr_max if (hr_max and hr_max > 120) else (208 - 0.7 * age)  # Tanaka HRmax
+            estimates.append(15.3 * hrm / resting_hr)
+            methods.append("uth_resting_hr")
+        vo2 = float(np.mean(estimates))
+        plusminus = _MODEL_MAE
 
-    # Resting HR (Uth-Sørensen) is an INDEPENDENT signal (resting, not exercise) → blend it in.
-    if resting_hr and resting_hr > 30:
-        hrm = hr_max if (hr_max and hr_max > 120) else (208 - 0.7 * age)  # Tanaka HRmax
-        estimates.append(15.3 * hrm / resting_hr)
-        methods.append("uth_resting_hr")
-
-    vo2 = float(np.clip(np.mean(estimates), 15.0, 90.0))
+    vo2 = float(np.clip(vo2, 15.0, 90.0))
     level, band = fitness_level(vo2, age, female)
     return {
         "vo2max": round(vo2, 1),
         "methods": methods,
-        "plusminus": _MODEL_MAE,
+        "plusminus": plusminus,
         "fitness_level": level,
         "fitness_percentile_band": band,
     }
 
 
-def _run_calibrated_vo2max(age, female, bmi, hr_max, run: dict) -> Optional[float]:
-    """Run a logged paced workout through the learned HR-at-pace model. None if no model /
-    the run lacks usable pace+HR (e.g. GPS off)."""
+def _run_calibrated_vo2max(age, female, bmi, resting_hr, hr_max, run: dict) -> Optional[float]:
+    """Run a logged paced workout through the learned %HR-reserve model. None if no model /
+    the run lacks usable pace+HR (e.g. GPS off). Uses overnight resting HR for the %HRR features
+    when supplied, else a low-percentile proxy from the run itself (validated robust to the source)."""
     model = _load_run_model()
     hr = run.get("hr")
     speed = run.get("speed_kmh")
     if model is None or hr is None or speed is None or len(hr) < 30:
         return None
     hrmax = hr_max if (hr_max and hr_max > 120) else float(np.nanmax(np.asarray(hr, float)))
-    x = run_feature_vector(age, female, bmi, hrmax, run.get("hrr60"), hr, speed, run.get("grade"))
-    # Need at least one HR-at-pace anchor or the run carries no calibration signal.
-    if not np.any(np.isfinite(x[4:7])):
+    hrrest = resting_hr if (resting_hr and resting_hr > 30) else _run_resting_proxy(hr)
+    x = run_feature_vector(age, female, bmi, hrmax, hrrest, hr, speed, run.get("grade"))
+    # Need at least one submaximal cardiac-cost feature (uth or a %HRR feature) or the run carries
+    # no calibration signal beyond demographics → defer to the demographic/Uth path.
+    if not np.any(np.isfinite(x[3:])):
         return None
     return float(np.clip(model["model"].predict(x.reshape(1, -1))[0], 15.0, 90.0))
 
