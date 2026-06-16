@@ -118,6 +118,38 @@ class Biomarkers
                 'low' => 8, 'high' => 20, 'direction' => 'mid',
                 'aliases' => ['bun', 'urea nitrogen', 'blood urea nitrogen'],
             ],
+
+            // --- CBC + CMP markers that complete the PhenoAge panel (Levine/Liu 2018) ---
+            'albumin' => [
+                'label' => 'Albumin', 'unit' => 'g/dL',
+                'low' => 4.0, 'high' => 5.0, 'direction' => 'mid',
+                'aliases' => ['albumin', 'serum albumin', 'alb'],
+            ],
+            'alkaline_phosphatase' => [
+                'label' => 'Alkaline Phosphatase', 'unit' => 'U/L',
+                'low' => 30, 'high' => 100, 'direction' => 'mid',
+                'aliases' => ['alkaline phosphatase', 'alp', 'alk phos', 'alkp'],
+            ],
+            'wbc' => [
+                'label' => 'White Blood Cell Count', 'unit' => '10^3/uL',
+                'low' => 3.5, 'high' => 7.0, 'direction' => 'mid',
+                'aliases' => ['wbc', 'white blood cell count', 'white blood cells', 'leukocytes', 'leukocyte count'],
+            ],
+            'lymphocyte_percent' => [
+                'label' => 'Lymphocyte %', 'unit' => '%',
+                'low' => 30, 'high' => 45, 'direction' => 'mid',
+                'aliases' => ['lymphocyte percent', 'lymphocyte %', 'lymphocytes %', 'lymph %', 'lymphs', 'lymphocyte percentage'],
+            ],
+            'mcv' => [
+                'label' => 'Mean Cell Volume', 'unit' => 'fL',
+                'low' => 80, 'high' => 95, 'direction' => 'mid',
+                'aliases' => ['mcv', 'mean cell volume', 'mean corpuscular volume'],
+            ],
+            'rdw' => [
+                'label' => 'Red Cell Distribution Width', 'unit' => '%',
+                'low' => null, 'high' => 13.0, 'direction' => 'lower',
+                'aliases' => ['rdw', 'red cell distribution width', 'red blood cell distribution width', 'rdw-cv'],
+            ],
         ];
     }
 

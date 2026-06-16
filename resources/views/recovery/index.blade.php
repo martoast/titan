@@ -72,6 +72,52 @@
             </div>
         </div>
 
+        {{-- Biological Age — blood PhenoAge + VO₂max fitness age + wearable levers --}}
+        @if ($bioAge)
+            @php
+                $aTone = match ($bioAge['band']) {
+                    'much_younger', 'younger' => 'text-emerald-300',
+                    'on_par' => 'text-cyan-300',
+                    'older' => 'text-amber-300',
+                    default => 'text-orange-300',
+                };
+                $confLabel = ['high' => 'blood + fitness', 'medium' => 'partial data', 'low' => 'wearable only'][$bioAge['confidence']] ?? '';
+            @endphp
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <p class="text-[11px] uppercase tracking-wider text-gray-500">Biological age</p>
+                        <div class="mt-1 flex items-baseline gap-2">
+                            <span class="font-display text-4xl font-black nums {{ $aTone }} leading-none">{{ number_format($bioAge['biological_age'], 0) }}</span>
+                            <span class="text-sm text-gray-500">vs {{ number_format($bioAge['chronological_age'], 0) }} actual</span>
+                        </div>
+                        <p class="mt-1 text-sm {{ $aTone }}">{{ $bioAge['label'] }}
+                            <span class="text-gray-600 nums">({{ $bioAge['delta'] <= 0 ? '' : '+' }}{{ number_format($bioAge['delta'], 1) }} yr)</span>
+                        </p>
+                    </div>
+                    <span class="shrink-0 rounded-full border border-white/10 px-2.5 py-1 text-[10px] uppercase tracking-wide text-gray-400">{{ $confLabel }}</span>
+                </div>
+
+                {{-- Component breakdown: the two anchors + the modifiable levers --}}
+                <div class="mt-3 space-y-1.5">
+                    @foreach ($bioAge['components'] as $c)
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-gray-400">{{ $c['label'] }}@if ($c['kind'] === 'anchor')<span class="text-[9px] text-gray-600 uppercase ml-1">anchor</span>@endif</span>
+                            <span class="nums {{ $c['years'] <= 0 ? 'text-emerald-400/80' : 'text-amber-400/80' }}">{{ $c['years'] <= 0 ? '' : '+' }}{{ number_format($c['years'], 1) }} yr</span>
+                        </div>
+                    @endforeach
+                </div>
+
+                @if (! empty($bioAge['missing_for_bloodwork']))
+                    <p class="mt-3 text-[11px] text-gray-500 leading-relaxed">
+                        Add a blood test for the mortality-validated <span class="text-gray-400">PhenoAge</span> clock — still missing:
+                        <span class="text-gray-400">{{ implode(', ', array_slice($bioAge['missing_for_bloodwork'], 0, 6)) }}</span>.
+                    </p>
+                @endif
+                <p class="mt-2 text-[10px] text-gray-600 leading-relaxed">A transparent estimate combining your bloodwork, fitness and habits against age norms — a wellness trend, not a clinical test or a mortality prediction.</p>
+            </div>
+        @endif
+
         {{-- Metabolic-health forecast — composite of the signals that predict type-2 diabetes --}}
         @if ($metabolic)
             @php

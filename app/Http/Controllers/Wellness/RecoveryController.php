@@ -54,9 +54,13 @@ class RecoveryController extends Controller
         // Metabolic-health forecast: composite of the wearable signals that predict T2D (§08 research).
         $metabolic = MetabolicHealth::assess($profile);
 
+        // Biological age: blood PhenoAge + VO2max fitness age + wearable levers (§10 research).
+        $bioAge = \App\Support\BiologicalAge::assess($profile);
+
         return view('recovery.index', [
             'profile' => $profile,
             'metabolic' => $metabolic,
+            'bioAge' => $bioAge,
             'latest' => $latest,
             'trend' => $trend,
             'readiness' => $readiness['score'],

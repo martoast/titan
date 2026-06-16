@@ -16,6 +16,7 @@ use App\Models\Workout;
 use App\Models\WorkoutExercise;
 use App\Models\WorkoutSet;
 use App\Services\Coach\CoachTools;
+use App\Support\BiologicalAge;
 use App\Support\CircadianRhythm;
 use App\Support\MetabolicHealth;
 use App\Support\MovementBreaks;
@@ -394,6 +395,7 @@ class AssistantTools
         $readiness = Readiness::compute($p, $rec?->logged_at);
         $sri = SleepRegularity::compute($month);
         $metabolic = MetabolicHealth::assess($p);
+        $bioAge = BiologicalAge::assess($p);
 
         return [
             'name' => $p->display_name ?? $this->user->name,
@@ -404,6 +406,7 @@ class AssistantTools
             'activity' => ['steps' => $steps, 'goal' => $stepGoal['target'], 'progress_pct' => $stepGoal['pct'], 'movement' => MovementBreaks::assess($p->dailyActivity()->whereDate('date', Carbon::today())->value('hourly'))],
             'fitness' => ['vo2max' => $vo2 ? (float) $vo2 : null, 'training_load' => $load ? ['acwr' => $load['acwr'], 'band' => $load['band']] : null],
             'metabolic_health' => $metabolic['score'] ?? null,
+            'biological_age' => $bioAge ? ['estimate' => $bioAge['biological_age'], 'vs_actual' => $bioAge['delta'], 'confidence' => $bioAge['confidence']] : null,
             'nutrition_today' => $todayMeals->count() ? ['calories' => (int) $todayMeals->sum('calories'), 'protein_g' => round((float) $todayMeals->sum('protein_g'), 1)] : null,
             'weight_kg' => $weight ? (float) $weight : null,
             'flagged_biomarkers' => $flagged->map(fn ($b) => ['marker' => $b->marker, 'value' => (float) $b->value, 'unit' => $b->unit, 'flag' => $b->flag])->values(),
@@ -417,6 +420,7 @@ class AssistantTools
         $rec = $p->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
 
         return [
+            'biological_age' => BiologicalAge::assess($p),
             'sleep_regularity' => SleepRegularity::compute($p->sleepLogs()->where('slept_at', '>=', Carbon::today()->subDays(27))->get()),
             'circadian_rhythm' => CircadianRhythm::compute($p->dailyActivity()->where('date', '>=', Carbon::today()->subDays(13))->get()),
             'metabolic_health' => MetabolicHealth::assess($p),

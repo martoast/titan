@@ -27,6 +27,7 @@ a `biosignal/app/models/*.joblib`. Re-run any of them to reproduce the number.
 | **In-motion HR** | bpm during exercise | PhysioNet wrist-PPG — vs chest **ECG**, 8 subj | walk/run/bike, 8 s windows | naive peaks **18 bpm MAE** → ❌ not good enough | ❌ deferred to on-device |
 | **Training load (ACWR)** | injury guardrail | — *no real-data validation* (see note) | EWMA 7d:28d on TRIMP | deterministic ratio; literature bands | ⚪ heuristic, honest |
 | **Floors / elevation** | floors climbed | synthetic from BMP280 noise + weather drift + stair geometry | 1 Hz baro, 1–20 flights | **MAE 0.83 floors**, **0 phantom** on a flat day | 🟡 sensor-model, HW-gated |
+| **Biological age** | blood/fitness/wearable | PhenoAge: NHANES (Levine/Liu); Fitness Age: 940 treadmill subjects | golden-value + anchor calibration | PhenoAge **golden-value tested**; fitness anchor **calibrated** (gap +0.3) | 🟡 PhenoAge validated; blend composed |
 
 Grade key: ✅ ship with confidence · 🟡 ship as a **trend**, not an absolute, with honest caveats · ❌ not
 trustworthy yet — do not build on it.
@@ -156,6 +157,19 @@ drift toward a medical claim we won't make. What survives the critique is the un
 wellness language (sweet-spot 0.8–1.3, spike >1.5 → ease off), explicitly **not** a diagnosis. The math
 (EWMA, banding) is unit-tested; the *claim* is deliberately modest. Listed here so the honest scope is on
 the record next to the validated metrics.
+
+### 9. Biological Age — `PhenoAge.php` + `BiologicalAge.php` (**one validated core, one honest composite**)
+Titan's synthesis of bloodwork + fitness + wearable into "how old your body looks" (full design: doc 10).
+Two layers, two honesty levels:
+- **PhenoAge (blood) — genuinely validated.** The Levine/Liu 2018 clock is mortality-trained on NHANES;
+  we implement the exact formula and pin it with a **golden-value unit test** (healthy 50-yr-old → 39.9,
+  inflamed → ~71). The risk is units, not statistics — a single test locks the US→SI conversions + the
+  log-CRP step. This carries the mortality-validated weight.
+- **The blend + fitness anchor — composed, honestly graded.** Fitness Age uses literature VO₂max norms
+  (a data-driven clock on our cohort was no better than guessing the mean — kept as a negative); it's
+  *calibrated* (average-fitness gap +0.3 yr) and behaves (gap vs VO₂max r −0.72). The wearable levers are
+  bounded, evidence-weighted offsets. The composite is **not** outcome-calibrated (we have no mortality
+  follow-up) — surfaced with a confidence level, never as a clinical test. Honest scope, on the record.
 
 ---
 
