@@ -143,6 +143,47 @@
         </div>
     </div>
 
+    {{-- Training-load guardrail: acute:chronic workload ratio (the "don't ramp too fast" check) --}}
+    @if ($trainingLoad)
+        @php
+            $tl = $trainingLoad;
+            $tone = match ($tl['band']) {
+                'optimal' => ['border-emerald-500/20', 'bg-emerald-500/[0.07]', 'text-emerald-300'],
+                'caution' => ['border-amber-500/25', 'bg-amber-500/[0.07]', 'text-amber-300'],
+                'high' => ['border-rose-500/25', 'bg-rose-500/[0.07]', 'text-rose-300'],
+                'detraining' => ['border-sky-500/20', 'bg-sky-500/[0.06]', 'text-sky-300'],
+                default => ['border-white/10', 'bg-white/[0.03]', 'text-gray-300'],
+            };
+            // Balance bar: where ACWR sits across 0.5–2.0, with the 0.8–1.3 sweet spot shaded.
+            $pos = $tl['acwr'] !== null ? max(0, min(100, (($tl['acwr'] - 0.5) / 1.5) * 100)) : null;
+        @endphp
+        <div class="mt-3 rounded-2xl border {{ $tone[0] }} {{ $tone[1] }} p-4">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Training load · {{ $tl['label'] }}</div>
+                    <div class="mt-1 font-display text-3xl font-bold nums {{ $tone[2] }} leading-none">
+                        {{ $tl['acwr'] !== null ? number_format($tl['acwr'], 2) : '—' }}<span class="text-gray-500 text-base font-normal"> ACWR</span>
+                    </div>
+                </div>
+                <div class="text-right text-[11px] text-gray-500 nums shrink-0">
+                    <div>acute {{ number_format($tl['acute'], 0) }}</div>
+                    <div>chronic {{ number_format($tl['chronic'], 0) }}</div>
+                </div>
+            </div>
+            @if ($pos !== null)
+                <div class="relative mt-3 h-1.5 rounded-full bg-white/5">
+                    {{-- sweet spot 0.8–1.3 → (0.3/1.5)..(0.8/1.5) of the 0.5–2.0 track --}}
+                    <div class="absolute inset-y-0 rounded-full bg-emerald-500/20" style="left:20%;right:46.7%"></div>
+                    <div class="absolute -top-0.5 h-2.5 w-2.5 rounded-full {{ $tone[2] }} bg-current -translate-x-1/2" style="left:{{ $pos }}%"></div>
+                </div>
+            @endif
+            <p class="mt-2.5 text-xs text-gray-400 leading-relaxed">{{ $tl['advice'] }}</p>
+            @if ($tl['sufficient'])
+                <p class="mt-1.5 text-[10px] text-gray-600">Acute (7-day) vs chronic (28-day) load, EWMA. A guide to progress gradually — not a medical prediction.</p>
+            @endif
+        </div>
+    @endif
+
     {{-- Sessions --}}
     <h2 class="mt-6 mb-2 text-[11px] uppercase tracking-wider text-gray-500">Recent sessions</h2>
     @if ($sessions->isEmpty())

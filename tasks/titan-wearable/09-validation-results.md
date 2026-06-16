@@ -25,6 +25,7 @@ a `biosignal/app/models/*.joblib`. Re-run any of them to reproduce the number.
 | **VO₂max / fitness** | cardiorespiratory fitness | PhysioNet treadmill — measured **VO₂**, 981 tests / 846 ppl | leave-subj | demo **6.0** → run-calibrated **5.2 ml/kg/min**, r 0.65 | 🟡 cross-sectional |
 | **Energy expenditure** | calories (grade-aware) | PhysioNet treadmill — measured **VO₂**, 922 tests / 107k samples | flat submaximal | cost of transport **3.67** vs Minetti 3.60; EE **10% MAPE** | ✅ engine validated |
 | **In-motion HR** | bpm during exercise | PhysioNet wrist-PPG — vs chest **ECG**, 8 subj | walk/run/bike, 8 s windows | naive peaks **18 bpm MAE** → ❌ not good enough | ❌ deferred to on-device |
+| **Training load (ACWR)** | injury guardrail | — *no real-data validation* (see note) | EWMA 7d:28d on TRIMP | deterministic ratio; literature bands | ⚪ heuristic, honest |
 
 Grade key: ✅ ship with confidence · 🟡 ship as a **trend**, not an absolute, with honest caveats · ❌ not
 trustworthy yet — do not build on it.
@@ -130,6 +131,17 @@ for trustworthy workout HR / TRIMP / HR-zones / VO₂. A quick accel-aware spect
 (~37, locks onto motion harmonics). **Design implication: split the HR path** — raw PPG→IBI for *resting*
 HRV (validated), and the watch's **on-device accel-corrected bpm** (VC31 `e.bpm`, what Garmin/Apple use)
 for *workout* HR, to be validated on hardware. Workout-HR rigor is **gated on hardware**, not claimed now.
+
+### 8. Training load / ACWR — `TrainingLoad.php` (**a heuristic we ship honestly, not a validated predictor**)
+The acute:chronic workload ratio (EWMA 7-day vs 28-day TRIMP, Williams 2017) is a "don't ramp too fast"
+guardrail for the sedentary people we're nudging to move. It has **no real-data validation here** — and
+that's deliberate: ACWR's *individual* injury-prediction validity is genuinely contested (Impellizzeri
+2020; Lolli 2019 flag the ratio's mathematical coupling), and validating an injury predictor would itself
+drift toward a medical claim we won't make. What survives the critique is the uncontroversial principle —
+*progress load gradually, don't spike it* — so we surface ACWR as that gentle progressive-overload check in
+wellness language (sweet-spot 0.8–1.3, spike >1.5 → ease off), explicitly **not** a diagnosis. The math
+(EWMA, banding) is unit-tested; the *claim* is deliberately modest. Listed here so the honest scope is on
+the record next to the validated metrics.
 
 ---
 

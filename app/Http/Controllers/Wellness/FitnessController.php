@@ -7,6 +7,7 @@ use App\Models\ActivitySession;
 use App\Models\DailyActivity;
 use App\Support\MovementBreaks;
 use App\Support\StepGoal;
+use App\Support\TrainingLoad;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -43,6 +44,11 @@ class FitnessController extends Controller
             ->where('started_at', '>=', now()->startOfWeek())
             ->sum('trimp');
 
+        // Training-load guardrail: acute:chronic workload ratio over the last ~6 weeks.
+        $trainingLoad = TrainingLoad::assess(
+            $profile->activitySessions()->where('started_at', '>=', now()->subDays(42))->get()
+        );
+
         // --- Daily movement: today's steps vs the evidence-based personalized target ---
         $today = $profile->dailyActivity()->whereDate('date', Carbon::today())->first();
         $stepTarget = StepGoal::targetFor($profile);
@@ -66,6 +72,7 @@ class FitnessController extends Controller
             'latestHrr' => $latestHrr,
             'vo2Trend' => $vo2Trend,
             'weekTrimp' => (float) $weekTrimp,
+            'trainingLoad' => $trainingLoad,
             'steps' => $steps,
             'stepGoal' => $stepGoal,
             'stepTrend' => $stepTrend,

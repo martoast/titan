@@ -22,6 +22,7 @@ use App\Support\MovementBreaks;
 use App\Support\Readiness;
 use App\Support\SleepRegularity;
 use App\Support\StepGoal;
+use App\Support\TrainingLoad;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -175,10 +176,15 @@ class AssistantTools
         $sessions = $this->profile->activitySessions()->orderByDesc('started_at')->limit(20)->get();
         $latestVo2 = $sessions->firstWhere(fn ($s) => $s->vo2max !== null);
 
+        // ACWR needs ~6 weeks of history → its own query (not capped at the 20 most recent).
+        $loadSessions = $this->profile->activitySessions()
+            ->where('started_at', '>=', Carbon::now()->subDays(42))->get();
+
         return [
             'vo2max' => $latestVo2?->vo2max,
             'fitness_level' => $latestVo2?->fitness_level,
             'latest_hrr_bpm' => $sessions->firstWhere(fn ($s) => $s->hrr_bpm !== null)?->hrr_bpm,
+            'training_load' => TrainingLoad::assess($loadSessions),
             'recent_sessions' => $sessions->take(8)->map(fn ($s) => [
                 'date' => optional($s->started_at)->toDateString(), 'type' => $s->activity_type,
                 'duration_min' => $s->duration_min, 'distance_km' => $s->distance_km, 'avg_hr' => $s->avg_hr,
@@ -378,6 +384,7 @@ class AssistantTools
         $steps = (int) ($p->dailyActivity()->whereDate('date', Carbon::today())->value('steps') ?? 0);
         $stepGoal = StepGoal::assess($steps, StepGoal::targetFor($p));
         $vo2 = $p->activitySessions()->whereNotNull('vo2max')->orderByDesc('started_at')->value('vo2max');
+        $load = TrainingLoad::assess($p->activitySessions()->where('started_at', '>=', Carbon::now()->subDays(42))->get());
         $weight = $p->bodyMetrics()->latest('taken_at')->value('weight_kg');
         $todayMeals = $p->meals()->whereDate('eaten_at', Carbon::today())->get();
         $flagged = $p->biomarkerReadings()->whereNotNull('flag')->where('flag', '!=', 'normal')
@@ -394,7 +401,7 @@ class AssistantTools
             'sleep' => $sleep ? ['hours' => round($sleep->duration_min / 60, 1), 'quality' => $sleep->quality, 'regularity_sri' => $sri['sri'] ?? null] : null,
             'recovery' => ['resting_hr' => $rec?->resting_hr, 'hrv_ms' => $rec?->hrv_ms],
             'activity' => ['steps' => $steps, 'goal' => $stepGoal['target'], 'progress_pct' => $stepGoal['pct'], 'movement' => MovementBreaks::assess($p->dailyActivity()->whereDate('date', Carbon::today())->value('hourly'))],
-            'fitness' => ['vo2max' => $vo2 ? (float) $vo2 : null],
+            'fitness' => ['vo2max' => $vo2 ? (float) $vo2 : null, 'training_load' => $load ? ['acwr' => $load['acwr'], 'band' => $load['band']] : null],
             'metabolic_health' => $metabolic['score'] ?? null,
             'nutrition_today' => $todayMeals->count() ? ['calories' => (int) $todayMeals->sum('calories'), 'protein_g' => round((float) $todayMeals->sum('protein_g'), 1)] : null,
             'weight_kg' => $weight ? (float) $weight : null,
