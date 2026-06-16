@@ -47,7 +47,7 @@ Ranked by **(evidence strength) × (feasibility on our hardware) × (mission fit
 | 4 | **Metabolic-risk forecast** (composite of RHR + HRV + VO₂max + sleep) | Each input forecasts incident T2D: RHR RR 1.20/+10bpm; VO₂max −28%/SD; HRV ↓; short sleep HR 1.45. Prevention *before* disease. | ✅ (all derivable) |
 | 5 | **Post-meal / sitting-break movement nudges** | 2-min walk every 20–30 min cuts postprandial glucose & insulin ~24–30% (Dunstan 2012). The single highest-leverage *acute* anti-obesity lever; timing is everything and we know timing. | ✅ |
 | 6 | **AFib / pulse-irregularity screening** (overnight, SQI-gated) | Best clinical evidence of any PPG metric; Fitbit PPV 98%, Apple 84%; same LED/accel/wrist config as every big study. Stroke prevention. | ✅ (frame as screening, "confirm with ECG") |
-| 7 | **Respiratory rate during sleep** | RMSE ~1.8 bpm (Smart Fusion / Dehkordi 2018); illness & recovery marker; nearly free on the clean nightly windows we already use. | ✅ |
+| 7 | ~~**Respiratory rate during sleep**~~ — ✅ **BUILT & validated** | Smart Fusion (3 PPG modulations) on BIDMC real PPG + manual breath annotations at 25 Hz: **MAE 2.89 br/min, median 0.67, ±2=67%**. Surfaced as an overnight trend (claim rail: not apnea detection). See doc 09 §1b. | ✅ done |
 | 8 | **Resting-HR & HRV personal-baseline trends + illness early-warning** | RHR +10bpm → all-cause RR 1.09–1.17 (Zhang/Aune meta-analyses, >1M people); RHR *leads* temperature for infection (Mishra 2020; Radin 2020). | ✅ |
 | 9 | **Pipeline: SQI gating + parabolic peak interpolation** (see §8) | The biggest *quality* multiplier — every metric above gets more trustworthy. `vital_sqi` (MIT); skewness/perfusion/DTW gates. | ✅ |
 

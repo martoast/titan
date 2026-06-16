@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Http;
  * we hand it a window of raw signal (the §5 window JSON) and it returns metrics —
  * it holds no state and never touches our DB.
  *
- *   POST /process/hrv      → {algo_version, metrics:{hrv_ms,resting_hr,rmssd,sdnn,pnn50,lf_hf,artifact_pct,valid}}
+ *   POST /process/hrv      → {algo_version, metrics:{hrv_ms,resting_hr,rmssd,sdnn,pnn50,lf_hf,resp_rate,artifact_pct,valid}}
  *   POST /process/sleep    → {algo_version, metrics:{duration_min,deep_min,rem_min,light_min,awake_min,bedtime,wake_time,quality,hypnogram_30s}}
  *   POST /process/activity → {algo_version, metrics:{duration_min,trimp,avg_hr,strain}}
  */

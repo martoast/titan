@@ -297,6 +297,17 @@ def process_hrv(
     hrv = compute_hrv_metrics(clean)
     rhr = resting_hr_from_ibi(clean)
 
+    # 3b. Respiratory rate (PPG path only) — breaths/min from the pulse wave's breathing
+    # modulations, Smart-Fusion gated (app/core/respiration.py). A resting/sleep wellness trend.
+    resp_rate = None
+    if from_ppg:
+        try:
+            from .respiration import estimate_respiratory_rate
+            rr = estimate_respiratory_rate(ppg, sample_rate_hz)
+            resp_rate = rr["resp_rate"] if rr["valid"] else None
+        except Exception:
+            resp_rate = None  # RR is secondary; never fail the HRV request on it.
+
     # 4. Quality gate (03-algorithms.md §1: >=97% beat accuracy; suppress poor signal).
     valid = (
         clean.size >= MIN_VALID_BEATS
@@ -312,6 +323,7 @@ def process_hrv(
         "sdnn": round(hrv["sdnn"], 2) if hrv["sdnn"] is not None else None,
         "pnn50": round(hrv["pnn50"], 2) if hrv["pnn50"] is not None else None,
         "lf_hf": round(hrv["lf_hf"], 3) if hrv["lf_hf"] is not None else None,
+        "resp_rate": round(resp_rate, 1) if resp_rate is not None else None,
         "artifact_pct": round(artifact_pct, 2),
         "valid": bool(valid),
         "n_beats_raw": n_raw,

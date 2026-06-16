@@ -40,6 +40,7 @@ class HrvMetrics(BaseModel):
     sdnn: Optional[float]
     pnn50: Optional[float]
     lf_hf: Optional[float]
+    resp_rate: Optional[float]      # breaths/min from PPG (resting/sleep wellness trend; PPG path)
     artifact_pct: float
     valid: bool
     n_beats_raw: int

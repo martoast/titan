@@ -157,6 +157,8 @@ class ProcessWindowJob implements ShouldQueue
                 'recovery_log_id' => $log->id,
                 'rmssd' => $metrics['rmssd'] ?? null,
                 'sdnn' => $metrics['sdnn'] ?? null,
+                // Per-window respiratory rate (breaths/min) → sealed to a whole-night median.
+                'resp_rate' => $metrics['resp_rate'] ?? null,
                 'artifact_pct' => $metrics['artifact_pct'] ?? null,
                 // Persist the clean per-window IBI so SealNightJob can compute a true
                 // whole-night RMSSD (ppg_raw blobs hold samples, not IBI).

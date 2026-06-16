@@ -223,11 +223,20 @@ class SealNightJob implements ShouldQueue
                 $algoVersion = $result['algo_version'] ?? config('services.biosignal.algo_version', 'v1');
 
                 if ($metrics['valid'] ?? true) {
+                    // Whole-night respiratory rate = median of the per-window RR (each already
+                    // Smart-Fusion gated in the biosignal service). RR needs the PPG waveform, which
+                    // isn't re-sent at seal time, so we aggregate the per-window values, not recompute.
+                    $respRate = $ibiWindows
+                        ->map(fn (DeviceIngestion $i) => $i->result_refs['resp_rate'] ?? null)
+                        ->filter(fn ($v) => is_numeric($v))
+                        ->median();
+
                     $log = RecoveryLog::updateOrCreate(
                         ['profile_id' => $profile->id, 'logged_at' => $date],
                         array_filter([
                             'hrv_ms' => isset($metrics['hrv_ms']) ? (int) round($metrics['hrv_ms']) : null,
                             'resting_hr' => isset($metrics['resting_hr']) ? (int) round($metrics['resting_hr']) : null,
+                            'resp_rate' => $respRate !== null ? round((float) $respRate, 1) : null,
                             'updated_via' => 'biosignal:sealed',
                         ], fn ($v) => $v !== null),
                     );

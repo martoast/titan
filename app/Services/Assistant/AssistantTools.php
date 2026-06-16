@@ -136,6 +136,7 @@ class AssistantTools
             'readiness' => Readiness::compute($this->profile, $rec?->logged_at)['score'] ?? null,
             'resting_hr' => $rec?->resting_hr,
             'hrv_ms' => $rec?->hrv_ms,
+            'resp_rate' => $rec?->resp_rate,
             'last_sleep_hours' => $sleep ? round($sleep->duration_min / 60, 1) : null,
             'steps' => $steps,
             'step_goal' => $goal['target'],
@@ -149,7 +150,7 @@ class AssistantTools
         $rec = $this->profile->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
 
         return [
-            'latest' => $rec ? ['date' => optional($rec->logged_at)->toDateString(), 'hrv_ms' => $rec->hrv_ms, 'resting_hr' => $rec->resting_hr, 'stress' => $rec->stress, 'mood' => $rec->mood, 'energy' => $rec->energy] : null,
+            'latest' => $rec ? ['date' => optional($rec->logged_at)->toDateString(), 'hrv_ms' => $rec->hrv_ms, 'resting_hr' => $rec->resting_hr, 'resp_rate' => $rec->resp_rate, 'stress' => $rec->stress, 'mood' => $rec->mood, 'energy' => $rec->energy] : null,
             'readiness' => Readiness::compute($this->profile, $rec?->logged_at)['score'] ?? null,
             'metabolic_health' => MetabolicHealth::assess($this->profile),
         ];

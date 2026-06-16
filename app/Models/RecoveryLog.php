@@ -16,13 +16,13 @@ class RecoveryLog extends Model
     use HasFactory;
 
     protected $fillable = [
-        'profile_id', 'logged_at', 'hrv_ms', 'resting_hr',
+        'profile_id', 'logged_at', 'hrv_ms', 'resting_hr', 'resp_rate',
         'stress', 'soreness', 'mood', 'energy', 'notes', 'updated_via',
     ];
 
     protected function casts(): array
     {
-        return ['logged_at' => 'date'];
+        return ['logged_at' => 'date', 'resp_rate' => 'float'];
     }
 
     public function profile(): BelongsTo

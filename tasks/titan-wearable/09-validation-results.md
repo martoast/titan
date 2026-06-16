@@ -17,6 +17,7 @@ a `biosignal/app/models/*.joblib`. Re-run any of them to reproduce the number.
 | Pillar | What we measure | Dataset (reference) | Protocol | **Honest result** | Grade |
 |---|---|---|---|---|---|
 | **Resting HRV** | overnight RMSSD | PPG-DaLiA — wrist PPG vs chest **ECG**, 15 subj | leave-subj, 25 Hz, 559 low-motion windows | raw **195 ms** MAE → gated **55 ms** MAE | 🟡 trend-grade |
+| **Respiratory rate** | breaths/min (sleep) | BIDMC — fingertip PPG vs **manual breath annotations**, 24 rec | 25 Hz, Smart-Fusion windows | **MAE 2.89 br/min**, median 0.67, ±2=67% | 🟡 trend-grade |
 | **Sleep staging** | sleep/wake + 4-class | PhysioNet Walch — wrist accel+HR vs **PSG**, 28 subj | leave-subj, 30-s epochs | sleep/wake **κ 0.496**, 4-class κ 0.323, 59.4% acc | 🟡 at lit. benchmark |
 | **Activity / workout type** | rest/walk/run/cycle/stairs | PAMAP2 — hand accel, 9 subj | leave-subj, 25 Hz, accel-only | grouped **87.3% κ 0.83**; 12-class 76.9% κ 0.74 | ✅ strong |
 | **Gym — exercise ID** | 10 lifts/bodyweight | MM-Fit — smartwatch wrist accel | leave-**workout**, 25 Hz | **95.4% κ 0.95**; lift-vs-cardio 97.7% κ 0.94 | ✅ strong |
@@ -45,6 +46,21 @@ recorded alongside a chest ECG with hand-corrected R-peaks), decimated to the Ba
 - **Honest ceiling:** 55 ms ≈ the magnitude of resting RMSSD itself → **trend-grade**: trust the
   whole-night number, flag pNN50 as low-confidence at 25 Hz. Real-world should be *better* than this lab
   number because our Bangle streams beat-to-beat at rest (this E4 reference is motion-heavy daytime).
+
+### 1b. Respiratory rate — `validate_respiration.py` (core: `respiration.py`)
+Overnight breaths/min from the **PPG-only** T2 waveform (no accel in that stream). Breathing modulates
+the pulse wave three ways — baseline (RIIV), amplitude (RIAV), and heart-rate sinus arrhythmia (RIFV) —
+so we read each one's breathing-band spectral peak and apply **Smart Fusion** (Karlen 2013): report the
+mean only when the three agree (≤ 2 br/min spread), else discard the window. Validated on **BIDMC** (24
+recordings, fingertip PPG vs two experts' manual breath annotations) at 25 Hz: **MAE 2.89 br/min, median
+|error| 0.67, within ±2 = 67 %, coverage 38 %**.
+- **Honest limitation:** a systematic **~2 br/min under-estimate** that persists at every gate threshold
+  (methodological, not the disagreement tail). BIDMC is tachypneic ICU patients (RR up to 23); our target
+  regime is resting/sleep RR (~12–18 br/min), lower and cleaner, where the sub-1-br/min median holds. We
+  surface it as a **trend** (like HRV), not an absolute, and report the bias rather than fabricate a
+  correction (which would overfit BIDMC). Competitive with the literature (~3 br/min) — at decimated 25 Hz.
+- **Claim rail:** resting/sleep RR trend ✅ (what Oura/Whoop report); **not** apnea/respiratory-event
+  detection (❌, stays behind the firewall).
 
 ### 2. Sleep staging — `validate_on_physionet.py` (model: `sleep_stager.joblib`)
 PhysioNet Walch "Motion + heart rate" (28 subjects with usable **PSG** labels), the exact signals our

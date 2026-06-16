@@ -161,6 +161,20 @@
                     <div class="mt-1.5 text-xs text-gray-600 nums">14d avg {{ $rhrBaseline }} bpm</div>
                 @endif
             </div>
+
+            {{-- Respiratory rate (overnight, from PPG) — a wellness trend, not apnea screening --}}
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 col-span-2">
+                <div class="flex items-center justify-between">
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Respiratory rate · sleep</div>
+                    @if ($sealed && $latest?->resp_rate !== null)
+                        <span class="text-[10px] text-emerald-400/80" title="Median over the night's PPG">night</span>
+                    @endif
+                </div>
+                <div class="font-display text-3xl font-bold nums text-sky-300 mt-1 leading-none">
+                    {{ $latest?->resp_rate !== null ? number_format($latest->resp_rate, 1) : '—' }}<span class="text-gray-500 text-base font-normal">{{ $latest?->resp_rate !== null ? ' br/min' : '' }}</span>
+                </div>
+                <div class="mt-1.5 text-xs text-gray-600">Breaths per minute while you slept — track your own trend.</div>
+            </div>
         </div>
 
         {{-- Subjective self-ratings --}}
