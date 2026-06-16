@@ -70,6 +70,7 @@ class AssistantTools
             ['name' => 'get_biomarkers', 'description' => 'Most recent bloodwork / biomarker results with flags.', 'args' => []],
             ['name' => 'assess_chair_stand', 'description' => 'Score a guided 30-second chair-stand test (lower-body function / frailty screen) against the user\'s age/sex norms. Guide them: arms crossed, stand fully and sit as many times as they can in 30s, then pass the count.', 'args' => ['reps' => 'int — full stands in 30 seconds']],
             ['name' => 'get_meals', 'description' => 'Recent nutrition: per-day calories/macros and recent meals.', 'args' => ['days' => 'int — default 7']],
+            ['name' => 'get_pantry', 'description' => "The food the user currently has on hand (their kitchen). Read this before suggesting meals so you only suggest things they can actually make.", 'args' => []],
             ['name' => 'get_profile', 'description' => 'Profile basics: name, age, sex, height, latest weight, primary goal.', 'args' => []],
             ['name' => 'get_devices', 'description' => 'Paired wearables and their last sync time.', 'args' => []],
             // --- writes ---
@@ -80,6 +81,7 @@ class AssistantTools
             ['name' => 'log_workout', 'description' => 'Log a strength workout with its exercises and sets.', 'args' => ['name' => 'string (optional)', 'performed_at' => 'ISO datetime (optional)', 'exercises' => '[{name, sets:[{reps, weight_kg, rpe?}]}]'], 'write' => true],
             ['name' => 'set_goal', 'description' => "Set the profile's primary goal.", 'args' => ['goal' => 'string'], 'write' => true],
             ['name' => 'log_meal', 'description' => 'Log a meal with its macros.', 'args' => ['name' => 'string', 'calories' => 'int', 'protein_g' => 'number (optional)', 'carbs_g' => 'number (optional)', 'fat_g' => 'number (optional)', 'eaten_at' => 'ISO datetime (optional, default now)'], 'write' => true],
+            ['name' => 'update_pantry', 'description' => "Update the user's kitchen inventory when they say what they have or bought (e.g. \"I bought ground beef, eggs, tuna\"). mode=add appends, replace overwrites, remove deletes. Then suggest meals from what they have.", 'args' => ['items' => 'string (comma-separated) or array', 'mode' => 'add|replace|remove — default add'], 'write' => true],
             ['name' => 'log_cardio', 'description' => 'Log a cardio session (run/walk/ride/etc).', 'args' => ['type' => 'run|walk|cycle|other', 'duration_min' => 'int', 'distance_km' => 'number (optional)', 'avg_hr' => 'int (optional)', 'calories_kcal' => 'int (optional)', 'started_at' => 'ISO datetime (optional)'], 'write' => true],
             ['name' => 'log_biomarker', 'description' => 'Log a bloodwork / biomarker result (the abnormal-range flag is computed automatically).', 'args' => ['marker' => 'string e.g. ldl, hba1c, vitamin_d', 'value' => 'number', 'unit' => 'string (optional)', 'taken_at' => 'YYYY-MM-DD (optional)'], 'write' => true],
             ['name' => 'update_profile', 'description' => 'Update profile basics.', 'args' => ['birthdate' => 'YYYY-MM-DD (optional)', 'sex' => 'M|F (optional)', 'height_cm' => 'number (optional)', 'primary_goal' => 'string (optional)'], 'write' => true],
@@ -108,6 +110,7 @@ class AssistantTools
             'get_workouts' => $this->coach->dispatch('recent_workouts', $args),
             'get_biomarkers' => $this->coach->dispatch('recent_biomarkers', $args),
             'get_meals' => $this->coach->dispatch('recent_meals', $args),
+            'get_pantry' => $this->getPantry(),
             'get_profile' => $this->getProfile(),
             'get_devices' => $this->getDevices(),
             'log_sleep' => $this->logSleep($args),
@@ -116,6 +119,7 @@ class AssistantTools
             'log_weight' => $this->logWeight($args),
             'log_workout' => $this->logWorkout($args),
             'log_meal' => $this->logMeal($args),
+            'update_pantry' => $this->updatePantry($args),
             'log_cardio' => $this->logCardio($args),
             'log_biomarker' => $this->logBiomarker($args),
             'update_profile' => $this->updateProfile($args),
@@ -476,6 +480,35 @@ class AssistantTools
         return ['days' => $days, 'recovery' => $recovery, 'sleep' => $sleep, 'weight' => $weight, 'steps' => $steps];
     }
 
+    private function getPantry(): array
+    {
+        $items = \App\Support\Pantry::get($this->profile);
+
+        return [
+            'items' => $items,
+            'count' => count($items),
+            'updated_at' => optional(\App\Support\Pantry::updatedAt($this->profile))->toIso8601String(),
+            'note' => $items === [] ? 'Empty — ask the user what they have, then update_pantry.' : 'Suggest meals the user can make from these.',
+        ];
+    }
+
+    private function updatePantry(array $a): array
+    {
+        $items = $a['items'] ?? null;
+        if (! is_array($items) && ! is_string($items)) {
+            return ['error' => 'provide items as a comma-separated string or an array'];
+        }
+        $mode = strtolower((string) ($a['mode'] ?? 'add'));
+        $p = $this->profile;
+        $result = match ($mode) {
+            'replace' => \App\Support\Pantry::set($p, \App\Support\Pantry::parse($items)),
+            'remove' => \App\Support\Pantry::remove($p, $items),
+            default => \App\Support\Pantry::add($p, $items),
+        };
+
+        return ['ok' => true, 'mode' => $mode, 'items' => $result, 'count' => count($result)];
+    }
+
     private function getNutrition(int $days): array
     {
         $days = max(1, min(31, $days));
@@ -492,6 +525,8 @@ class AssistantTools
             // The meal-timing coach: when the next meal is due + what it should carry. Use this to
             // nudge the user to eat (they overwork and forget) — protein-forward, before hunger hits.
             'meal_timing' => \App\Support\MealCoach::assess($this->profile),
+            // What's in their kitchen — suggest meals from these, not things they'd have to buy.
+            'pantry' => \App\Support\Pantry::get($this->profile),
         ];
     }
 

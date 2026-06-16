@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/meals', [MealController::class, 'index'])->name('meals.index');
 
-// AI meal ideas: suggest sized to the next meal, view a recipe, log it.
+// AI meal ideas: suggest sized to the next meal, view a recipe, log it. Pantry = what's in the kitchen.
+Route::post('/meals/pantry', [MealSuggestionController::class, 'pantry'])->name('meals.pantry');
 Route::post('/meals/suggest', [MealSuggestionController::class, 'suggest'])->name('meals.suggest');
 Route::get('/meals/suggestions/{suggestion}', [MealSuggestionController::class, 'recipe'])->name('meals.recipe');
 Route::post('/meals/suggestions/{suggestion}/log', [MealSuggestionController::class, 'log'])->name('meals.suggestion.log');

@@ -8,6 +8,7 @@ use App\Models\Profile;
 use App\Services\Ai\AiService;
 use App\Services\Ai\NanoBananaClient;
 use App\Support\MealCoach;
+use App\Support\Pantry;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -38,8 +39,11 @@ class MealSuggestionService
         $calories = $meal['this_meal']['calories'] ?: 600;
         $goal = $profile->primary_goal ?: 'build a lean, strong physique';
         $prefs = trim((string) ($profile->settings['food_prefs'] ?? ''));
+        $pantry = Pantry::get($profile);
 
-        $rows = $this->writeMeals($count, $protein, $calories, $goal, $prefs);
+        $rows = $this->writeMeals($count, $protein, $calories, $goal, $prefs, $pantry);
+        $ctx = $pantry === [] ? sprintf('next meal · ~%dg protein', $protein)
+            : sprintf('next meal · ~%dg protein · from your kitchen', $protein);
 
         $saved = collect();
         foreach ($rows as $r) {
@@ -51,8 +55,9 @@ class MealSuggestionService
                 'carbs_g' => isset($r['carbs_g']) ? round((float) $r['carbs_g'], 1) : null,
                 'fat_g' => isset($r['fat_g']) ? round((float) $r['fat_g'], 1) : null,
                 'ingredients' => array_values(array_filter((array) ($r['ingredients'] ?? []), 'is_string')),
+                'extras' => array_values(array_filter((array) ($r['extras'] ?? []), 'is_string')),
                 'steps' => array_values(array_filter((array) ($r['steps'] ?? []), 'is_string')),
-                'context' => sprintf('next meal · ~%dg protein', $protein),
+                'context' => $ctx,
             ]);
             $this->paint($s);   // best-effort image — failure leaves a clean text card
             $saved->push($s);
@@ -61,20 +66,36 @@ class MealSuggestionService
         return $saved;
     }
 
-    /** Ask the LLM for the meals. @return array<int,array<string,mixed>> */
-    private function writeMeals(int $count, int $protein, int $calories, string $goal, string $prefs): array
+    /**
+     * Ask the LLM for the meals. When the pantry is known, cook from it.
+     *
+     * @param  array<int,string>  $pantry
+     * @return array<int,array<string,mixed>>
+     */
+    private function writeMeals(int $count, int $protein, int $calories, string $goal, string $prefs, array $pantry = []): array
     {
+        $pantryRule = $pantry === []
+            ? "The user hasn't listed their kitchen, so suggest common, accessible meals."
+            : 'The user has THESE foods on hand: '.implode(', ', $pantry).". Suggest meals they can make MOSTLY "
+                ."from these (assume basic staples: salt, pepper, oil, common spices, water). It's fine to need "
+                .'1-2 cheap extras — if so, list them in an "extras" array. Do NOT invent ingredients they likely '
+                ."don't have. Prioritise using their highest-protein items.";
+
         $system = <<<SYS
         You are Titan's nutrition coach. Suggest {$count} realistic, quick-to-make meal ideas that hit
         roughly {$protein} g protein and {$calories} kcal EACH. They should suit someone whose goal is:
         {$goal}. Protein-forward, whole-food-leaning, genuinely appetising — not bland "diet food".
 
+        {$pantryRule}
+
         Return STRICT JSON only:
         {"meals":[{"name":"...","description":"one appetising sentence","calories":<int>,"protein_g":<int>,
-          "carbs_g":<int>,"fat_g":<int>,"ingredients":["qty + item", ...],"steps":["short step", ...]}]}
+          "carbs_g":<int>,"fat_g":<int>,"ingredients":["qty + item", ...],"extras":["item to buy", ...],
+          "steps":["short step", ...]}]}
 
         Rules: 4-9 ingredients with rough quantities; 3-6 short imperative steps; macros should land near
-        the target; vary the {$count} ideas (different proteins/cuisines). No markdown, no prose outside JSON.
+        the target; vary the {$count} ideas (different proteins/cuisines). "extras" is only items NOT on hand
+        (empty array if none). No markdown, no prose outside JSON.
         SYS;
 
         $user = 'Suggest the meals.'.($prefs !== '' ? " Preferences / constraints: {$prefs}." : '');

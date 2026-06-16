@@ -26,6 +26,44 @@
     @endunless
 
     @if ($isToday)
+        {{-- Your kitchen — what you have on hand, so suggestions are makeable right now --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-3" x-data="{ open: {{ empty($pantry) ? 'true' : 'false' }} }">
+            <button type="button" @click="open = !open" class="w-full flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-base">🧊</span>
+                    <div class="text-left min-w-0">
+                        <div class="font-display font-bold text-gray-100">Your kitchen</div>
+                        <div class="text-[11px] text-gray-500">{{ count($pantry) ? count($pantry).' items — suggestions cook from these' : 'Tell Titan what you bought' }}</div>
+                    </div>
+                </div>
+                <svg class="h-5 w-5 text-gray-500 shrink-0 transition" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <div x-show="open" x-collapse class="mt-3">
+                @if (count($pantry))
+                    <div class="flex flex-wrap gap-1.5 mb-3">
+                        @foreach ($pantry as $item)
+                            <form method="POST" action="{{ route('meals.pantry') }}" class="inline">
+                                @csrf
+                                <input type="hidden" name="remove" value="{{ $item }}">
+                                <button type="submit" class="group inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] pl-2.5 pr-1.5 py-1 text-xs text-gray-200 active:bg-white/10">
+                                    {{ $item }}
+                                    <span class="grid place-items-center h-4 w-4 rounded-full text-gray-500 group-hover:text-rose-300">×</span>
+                                </button>
+                            </form>
+                        @endforeach
+                    </div>
+                @else
+                    <p class="text-sm text-gray-400 mb-3 leading-relaxed">Just went shopping? List what you got — Titan will only suggest meals you can actually make. You can also just tell your agent: <span class="text-gray-300">"I bought ground beef, eggs, milk, tuna."</span></p>
+                @endif
+                <form method="POST" action="{{ route('meals.pantry') }}" class="flex items-center gap-2">
+                    @csrf
+                    <input type="text" name="items" placeholder="ground beef, eggs, milk, tuna…" required
+                           class="flex-1 h-10 rounded-xl bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 focus:border-cyan-500/50 focus:outline-none">
+                    <button type="submit" class="h-10 shrink-0 rounded-xl bg-white/5 border border-white/10 px-4 text-sm font-semibold text-gray-200 active:bg-white/10">Add</button>
+                </form>
+            </div>
+        </div>
+
         {{-- What should I eat? — next-meal timing + AI suggestions with generated photos --}}
         @php
             $mc = $mealCoach;
@@ -45,7 +83,7 @@
                             class="inline-flex items-center gap-1.5 rounded-xl bg-indigo-500/90 px-3.5 py-2 text-xs font-semibold text-white active:bg-indigo-400 disabled:opacity-60">
                         <svg x-show="!busy" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
                         <svg x-show="busy" x-cloak class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path></svg>
-                        <span x-text="busy ? 'Cooking up ideas…' : 'Suggest meals'"></span>
+                        <span x-text="busy ? 'Cooking up ideas…' : '{{ count($pantry) ? 'Cook from my kitchen' : 'Suggest meals' }}'"></span>
                     </button>
                 </form>
             </div>

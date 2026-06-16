@@ -6,6 +6,7 @@ use App\Exceptions\AiException;
 use App\Http\Controllers\Controller;
 use App\Models\MealSuggestion;
 use App\Services\Meals\MealSuggestionService;
+use App\Support\Pantry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -32,6 +33,26 @@ class MealSuggestionController extends Controller
         }
 
         return redirect()->route('meals.index')->with('status', $made->count().' meal ideas ready — tap one for the recipe.');
+    }
+
+    /** Update the kitchen: add what you bought, remove an item, or clear it. */
+    public function pantry(Request $request)
+    {
+        $profile = $request->user()->ensureProfile();
+        $data = $request->validate([
+            'items' => ['nullable', 'string', 'max:2000'],
+            'remove' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        if ($request->boolean('clear')) {
+            Pantry::set($profile, []);
+        } elseif (! empty($data['remove'])) {
+            Pantry::remove($profile, $data['remove']);
+        } elseif (! empty($data['items'])) {
+            Pantry::add($profile, $data['items']);
+        }
+
+        return back()->with('status', 'Kitchen updated.');
     }
 
     /** The recipe for one suggestion. */

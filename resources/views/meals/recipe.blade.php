@@ -46,6 +46,18 @@
             </div>
         @endif
 
+        {{-- Extras to grab (not in your kitchen) --}}
+        @if (! empty($s->extras))
+            <div class="rounded-2xl border border-amber-500/20 bg-amber-500/[0.05] p-4 md:p-5">
+                <h2 class="font-display font-bold text-amber-200 mb-2 flex items-center gap-2"><span>🛒</span> You'll need to grab</h2>
+                <div class="flex flex-wrap gap-1.5">
+                    @foreach ($s->extras as $x)
+                        <span class="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-100">{{ $x }}</span>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
         {{-- Steps --}}
         @if (! empty($s->steps))
             <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">

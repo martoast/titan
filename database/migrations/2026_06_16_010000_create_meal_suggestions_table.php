@@ -19,6 +19,7 @@ return new class extends Migration
             $table->decimal('carbs_g', 5, 1)->nullable();
             $table->decimal('fat_g', 5, 1)->nullable();
             $table->json('ingredients')->nullable();   // string[]
+            $table->json('extras')->nullable();        // string[] — items to buy (not on hand)
             $table->json('steps')->nullable();         // string[]
             $table->string('image_path')->nullable();  // generated meal photo (public disk)
             $table->string('context')->nullable();     // why it was suggested, e.g. "next meal · 50g protein"

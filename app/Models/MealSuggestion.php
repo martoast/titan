@@ -17,7 +17,7 @@ class MealSuggestion extends Model
 
     protected $fillable = [
         'profile_id', 'name', 'description', 'calories', 'protein_g', 'carbs_g', 'fat_g',
-        'ingredients', 'steps', 'image_path', 'context',
+        'ingredients', 'extras', 'steps', 'image_path', 'context',
     ];
 
     protected function casts(): array
@@ -28,6 +28,7 @@ class MealSuggestion extends Model
             'carbs_g' => 'decimal:1',
             'fat_g' => 'decimal:1',
             'ingredients' => 'array',
+            'extras' => 'array',
             'steps' => 'array',
         ];
     }
