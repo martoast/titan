@@ -107,6 +107,26 @@ class CoachTools
             ], []);
         }
 
+        // --- Menstrual cycle (read + write) — only offered when she tracks it ---
+        if (\App\Support\Cycle::available($this->profile)) {
+            $tools[] = $this->fn('cycle_status', "Get where she is in her menstrual cycle right now — cycle day, phase (menstrual/follicular/fertile/ovulation/luteal), predicted next period and ovulation, the estimated fertile window and conception likelihood, regularity, today's logged symptoms, and how her cycle phase relates to her recovery (resting-HR/HRV). Use this for ANY cycle, period, fertility, PMS, or 'how will my cycle affect X' question. Awareness only — never present fertility info as contraception or a diagnosis.", [], []);
+
+            $tools[] = $this->fn('log_period', "Log a period event. event='start' records day 1 of a new period (the anchor for all cycle math); event='end' marks the last day of bleeding. Use when she says her period started/ended.", [
+                'event' => ['type' => 'string', 'enum' => ['start', 'end'], 'description' => 'start = first day of bleeding; end = last day.'],
+                'date' => ['type' => 'string', 'description' => "Date (YYYY-MM-DD, 'today', 'yesterday'); default today."],
+            ], ['event']);
+
+            $tools[] = $this->fn('log_cycle', 'Log how she feels today within her cycle — flow, symptoms, mood/energy, basal body temperature. Use when she mentions cramps, PMS, flow, etc.', [
+                'flow' => ['type' => 'string', 'enum' => ['none', 'spotting', 'light', 'medium', 'heavy'], 'description' => 'Menstrual flow level.'],
+                'symptoms' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'e.g. cramps, headache, bloating, fatigue, mood_swings, tender_breasts, cravings, acne, nausea, insomnia.'],
+                'mood' => ['type' => 'integer', 'description' => 'Mood 1 (low) to 5 (great).'],
+                'energy' => ['type' => 'integer', 'description' => 'Energy 1 (low) to 5 (high).'],
+                'bbt_c' => ['type' => 'number', 'description' => 'Basal body temperature in °C, if measured.'],
+                'date' => ['type' => 'string', 'description' => "Date; default today."],
+                'notes' => ['type' => 'string', 'description' => 'Free-text notes.'],
+            ], []);
+        }
+
         return $tools;
     }
 
@@ -127,6 +147,9 @@ class CoachTools
             'finish_workout' => 'Wrapping up your workout',
             'start_activity' => 'Priming your wearable',
             'finish_activity' => 'Closing out your activity',
+            'cycle_status' => 'Checking your cycle',
+            'log_period' => 'Logging your period',
+            'log_cycle' => 'Logging your cycle day',
             default => 'Looking that up',
         };
     }
@@ -168,6 +191,9 @@ class CoachTools
             'finish_workout' => $this->finishWorkout($args),
             'start_activity' => $this->startActivity($args),
             'finish_activity' => $this->finishActivity($args),
+            'cycle_status' => $this->cycleStatus(),
+            'log_period' => $this->logPeriod($args),
+            'log_cycle' => $this->logCycle($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
     }
@@ -572,6 +598,71 @@ class CoachTools
         ];
     }
 
+    // ---- Menstrual cycle ------------------------------------------------------
+
+    private function cycleStatus(): mixed
+    {
+        $s = \App\Support\Cycle::status($this->profile);
+        $insight = \App\Support\Cycle::recoveryByPhase($this->profile);
+        if (! empty($insight['note'])) {
+            $s['recovery_insight'] = $insight['note'];
+        }
+        $s['_guidance'] = 'Be warm, matter-of-fact and supportive — this is normal health. Lead with the phase + day and what it means for how she likely feels, her training and her nutrition (e.g. luteal: a small readiness dip is expected; menstrual: watch iron; follicular: often peak energy). For any fertility/pregnancy question, give the estimate AND the disclaimer — never present it as contraception or a diagnosis. If she has hormone bloodwork, remember those values only make sense against the cycle day they were drawn.';
+
+        return $s;
+    }
+
+    private function logPeriod(array $args): mixed
+    {
+        $date = $this->cycleDate($args['date'] ?? null);
+        $event = strtolower((string) ($args['event'] ?? 'start'));
+
+        if ($event === 'end') {
+            $cycle = \App\Support\Cycle::endPeriod($this->profile, $date);
+
+            return $cycle
+                ? ['ok' => true, 'message' => 'Logged your period ending '.$date->toDateString().'.']
+                : ['error' => 'No cycle to end yet — log a period start first.'];
+        }
+
+        \App\Support\Cycle::startPeriod($this->profile, $date, 'coach');
+        $s = \App\Support\Cycle::status($this->profile, $date);
+
+        return [
+            'ok' => true,
+            'cycle_day' => 1,
+            'next_period_predicted' => $s['next_period']['date'] ?? null,
+            'message' => 'Logged day 1 of your period on '.$date->toDateString().". I'll track your phases and predictions from here.",
+        ];
+    }
+
+    private function logCycle(array $args): mixed
+    {
+        $date = $this->cycleDate($args['date'] ?? null);
+        $log = \App\Support\Cycle::logDay($this->profile, $date, $args, 'coach');
+
+        return [
+            'ok' => true,
+            'date' => $date->toDateString(),
+            'flow' => $log->flow,
+            'symptoms' => $log->symptoms,
+            'message' => 'Logged your cycle notes for '.$date->toDateString().'.',
+        ];
+    }
+
+    /** Resolve a tool date arg (today/yesterday/ISO) in the profile's timezone. */
+    private function cycleDate($value): Carbon
+    {
+        $tz = $this->profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $raw = strtolower(trim((string) ($value ?? '')));
+
+        return match ($raw) {
+            '', 'today' => Carbon::now($tz)->startOfDay(),
+            'yesterday' => Carbon::now($tz)->subDay()->startOfDay(),
+            default => rescue(fn () => Carbon::parse($value, $tz)->startOfDay(), Carbon::now($tz)->startOfDay(), false),
+        };
+    }
+
     /**
      * Everything for one day, in one shot — the "how was my day / my vitals today" tool.
      * Pulls raw wearable vitals plus the computed pillars (readiness, sleep, strain, activity,
@@ -782,6 +873,25 @@ class CoachTools
                         'performed_at' => optional($w->performed_at)->toIso8601String(),
                         'duration_min' => $w->getAttribute('duration_min'),
                     ], fn ($v) => $v !== null))->all();
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        // --- Menstrual cycle (context for readiness/nutrition/training) ---
+        if (\App\Support\Cycle::available($this->profile)) {
+            try {
+                $cs = \App\Support\Cycle::status($this->profile, $day);
+                if ($cs['has_data'] ?? false) {
+                    $out['cycle'] = [
+                        'cycle_day' => $cs['cycle_day'],
+                        'phase' => $cs['phase_label'],
+                        'next_period_in_days' => $cs['next_period']['in_days'] ?? null,
+                        'fertile_window_active' => $cs['fertile_window']['active'] ?? null,
+                        'late' => $cs['late'] ?? false,
+                        'note' => $cs['note'],
+                    ];
                 }
             } catch (\Throwable) {
                 // ignore
