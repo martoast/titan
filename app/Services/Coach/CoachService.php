@@ -221,6 +221,10 @@ class CoachService
           live. Do the plate + bar math (standard barbell = 45 lb / 20 kg; plates given per side
           → total = bar + 2 × per-side) and pass the TOTAL weight in the unit they used. Confirm
           each set in one short line and keep the session going. Don't ask for data you can infer.
+        - For CARDIO ("going for a run", "heading out on a ride", "starting a swim"), call
+          start_activity with the type — this also PRIMES the wearable to sense for that activity
+          (GPS + faster HR for a run, low-power otherwise). Call finish_activity when they're done.
+          Use start_workout/log_set for lifting, start_activity for endurance work.
         - Keep replies focused and skimmable. Short paragraphs or tight bullets. Lead with
           the answer, then the reasoning.
 

@@ -26,6 +26,10 @@ Route::prefix('devices')->group(function () {
     // Device → server: signed biosignal batches (HMAC auth, no session).
     Route::post('/ingest', [DeviceIngestionController::class, 'ingest']);
 
+    // Server → device: the active activity to sense for (HMAC auth). The band polls this
+    // on connection so the coach's "starting a run" can switch it into the right mode.
+    Route::get('/activity', [DeviceIngestionController::class, 'activity']);
+
     // Owner-operated management (web/session auth).
     Route::middleware('auth')->group(function () {
         Route::post('/pair', [DeviceIngestionController::class, 'pair']);

@@ -92,6 +92,21 @@ class CoachTools
             ], []);
         }
 
+        // --- Cardio / activity sessions (write) — start an activity and PRIME the wearable for it ---
+        if (class_exists(\App\Models\ActivitySession::class)) {
+            $tools[] = $this->fn('start_activity', "Start a cardio/endurance activity when the user says they're beginning one (run, walk, hike, bike ride, swim, row, HIIT, etc.). This opens a session AND primes the Titan wearable to sense for that activity — the band reads the activity on its next connection and switches to the right sampling (e.g. GPS + faster HR for a run). Use this for cardio; use start_workout/log_set for weight training.", [
+                'type' => ['type' => 'string', 'description' => 'Activity, e.g. run, walk, hike, cycle, swim, row, hiit. Free text is fine — it gets normalized.'],
+                'note' => ['type' => 'string', 'description' => 'Optional note, e.g. "easy zone 2", "tempo".'],
+            ], ['type']);
+
+            $tools[] = $this->fn('finish_activity', 'Close the open cardio activity when the user is done, and stand the wearable down from activity mode. Optionally attach distance/heart-rate/calories if the user reports them (the band fills these in on sync otherwise).', [
+                'distance_km' => ['type' => 'number', 'description' => 'Optional distance in km.'],
+                'avg_hr' => ['type' => 'integer', 'description' => 'Optional average heart rate (bpm).'],
+                'calories_kcal' => ['type' => 'integer', 'description' => 'Optional calories burned.'],
+                'note' => ['type' => 'string', 'description' => 'Optional summary note.'],
+            ], []);
+        }
+
         return $tools;
     }
 
@@ -110,6 +125,8 @@ class CoachTools
             'start_workout' => 'Starting your workout',
             'log_set' => 'Logging your set',
             'finish_workout' => 'Wrapping up your workout',
+            'start_activity' => 'Priming your wearable',
+            'finish_activity' => 'Closing out your activity',
             default => 'Looking that up',
         };
     }
@@ -149,6 +166,8 @@ class CoachTools
             'start_workout' => $this->startWorkout($args),
             'log_set' => $this->logSet($args),
             'finish_workout' => $this->finishWorkout($args),
+            'start_activity' => $this->startActivity($args),
+            'finish_activity' => $this->finishActivity($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
     }
@@ -458,6 +477,98 @@ class CoachTools
             'exercises' => $workout->exercises()->count(),
             'sets' => $totalSets,
             'message' => "Nice work — {$totalSets} sets logged over {$minutes} min. Saved to your training log.",
+        ];
+    }
+
+    // ---- Cardio activity + wearable priming -----------------------------------
+
+    /** The open cardio session (started within 6h and not yet ended), else null. */
+    private function openActivity(): ?\App\Models\ActivitySession
+    {
+        return $this->profile->activitySessions()
+            ->whereNull('ended_at')
+            ->where('started_at', '>=', Carbon::now()->subHours(6))
+            ->latest('started_at')->first();
+    }
+
+    private function startActivity(array $args): mixed
+    {
+        $type = \App\Support\ActivityPriming::normalize((string) ($args['type'] ?? 'other'));
+        $sensing = \App\Support\ActivityPriming::profile($type);
+        $now = Carbon::now();
+
+        $session = $this->profile->activitySessions()->create([
+            'source' => 'coach',
+            'started_at' => $now,
+            'activity_type' => $type,
+            'updated_via' => 'coach',
+        ]);
+
+        // Prime the wearable: stash the active activity on the profile. The band reads it on
+        // its next connection (GET /api/devices/activity) and switches to this sensing profile.
+        $settings = $this->profile->settings ?? [];
+        $settings['active_activity'] = [
+            'type' => $type,
+            'label' => $sensing['label'],
+            'started_at' => $now->toIso8601String(),
+            'session_id' => $session->id,
+            'sampling' => $sensing,
+        ];
+        $this->profile->update(['settings' => $settings]);
+
+        $gps = $sensing['gps'] ? 'GPS on' : 'GPS off';
+
+        return [
+            'ok' => true,
+            'session_id' => $session->id,
+            'activity' => $sensing['label'],
+            'wearable_primed' => true,
+            'sampling' => $sensing,
+            'message' => "{$sensing['label']} started — I've primed your band for it ({$gps}, HR {$sensing['hr_hz']}Hz). It'll switch modes on its next sync. Have a good one.",
+        ];
+    }
+
+    private function finishActivity(array $args): mixed
+    {
+        $session = $this->openActivity();
+
+        // Clear the priming regardless, so the band stands back down to its everyday mode.
+        $settings = $this->profile->settings ?? [];
+        $hadPrime = isset($settings['active_activity']);
+        unset($settings['active_activity']);
+        $this->profile->update(['settings' => $settings]);
+
+        if (! $session) {
+            return $hadPrime
+                ? ['ok' => true, 'wearable_primed' => false, 'message' => 'Stood your band back down to everyday sensing.']
+                : ['error' => 'No open activity to finish.'];
+        }
+
+        $now = Carbon::now();
+        $minutes = (int) round($now->diffInMinutes($session->started_at, true));
+        $session->update([
+            'ended_at' => $now,
+            'duration_min' => $minutes ?: null,
+            'distance_km' => isset($args['distance_km']) ? (float) $args['distance_km'] : $session->distance_km,
+            'avg_hr' => isset($args['avg_hr']) ? (int) $args['avg_hr'] : $session->avg_hr,
+            'calories_kcal' => isset($args['calories_kcal']) ? (int) $args['calories_kcal'] : $session->calories_kcal,
+        ]);
+
+        $label = \App\Support\ActivityPriming::profile((string) $session->activity_type)['label'];
+        $bits = [$minutes.' min'];
+        if ($session->distance_km) {
+            $bits[] = rtrim(rtrim(number_format((float) $session->distance_km, 2), '0'), '.').' km';
+        }
+        if ($session->avg_hr) {
+            $bits[] = $session->avg_hr.' bpm avg';
+        }
+
+        return [
+            'ok' => true,
+            'session_id' => $session->id,
+            'wearable_primed' => false,
+            'duration_min' => $minutes,
+            'message' => "{$label} done — ".implode(' · ', $bits).'. Band is back on everyday sensing; full stats land when it syncs.',
         ];
     }
 

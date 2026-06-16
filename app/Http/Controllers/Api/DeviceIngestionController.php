@@ -96,6 +96,43 @@ class DeviceIngestionController extends Controller
     }
 
     /**
+     * Device → server READ: the band polls this on connection to learn what activity (if any)
+     * the user has started via the coach, so it can switch to the right sensing profile —
+     * GPS + faster HR for a run, low-power for everyday. Same HMAC auth as /ingest (the GET
+     * has an empty body, which the device signs). Returns {active:false} when nothing is set.
+     */
+    public function activity(Request $request): JsonResponse
+    {
+        $connection = $this->authenticate($request);
+        if (! $connection) {
+            return response()->json(['error' => 'unauthorized'], 401);
+        }
+
+        $active = $connection->profile?->settings['active_activity'] ?? null;
+        if (! is_array($active)) {
+            return response()->json(['active' => false]);
+        }
+
+        $sinceMin = null;
+        if (! empty($active['started_at'])) {
+            try {
+                $sinceMin = (int) round(now()->diffInMinutes(\Illuminate\Support\Carbon::parse($active['started_at']), true));
+            } catch (\Throwable) {
+                // leave null
+            }
+        }
+
+        return response()->json([
+            'active' => true,
+            'type' => $active['type'] ?? 'other',
+            'label' => $active['label'] ?? null,
+            'started_at' => $active['started_at'] ?? null,
+            'since_min' => $sinceMin,
+            'sampling' => $active['sampling'] ?? \App\Support\ActivityPriming::profile((string) ($active['type'] ?? 'other')),
+        ]);
+    }
+
+    /**
      * Pair a device to the authenticated user's profile. Issues a public device_id and
      * a 32-byte secret returned ONCE (only its sha256 is stored). This route runs under
      * web auth (registered in routes/api.php inside the auth middleware) — the device
