@@ -179,6 +179,7 @@ Honest science means recording what failed. Each of these was tried on real data
 
 | Tried | Why it failed | What we do instead |
 |---|---|---|
+| **Vascular age / arterial stiffness** (APG b/a, aging index) | On real wrist PPG it doesn't track age — r −0.3 @ 25 Hz, −0.04 @ 64 Hz, *wrong sign* (should rise with age). Wrist green-LED is morphology-poor | Don't ship it; `validate_vascular.py` keeps the reproducible negative for future better-SNR hardware |
 | Extra skewness/perfusion/template **SQI gate** on top of the pipeline | Didn't beat the existing gate (279 ms vs 55 ms) on PPG-DaLiA | Existing template+Kubios+artifact gate (validated 55 ms) |
 | **Parabolic peak refinement** (naive, no artifact correction) | Worse (108 ms) — Kubios does the real timing repair at 25 Hz | Keep 25→250 Hz upsample + Kubios fixpeaks |
 | **ACSM submaximal HR→pace extrapolation** for VO₂max | Predicts metabolic *demand*, overshoots actual VO₂ past the aerobic ceiling (MAE 10.5–27, r 0.12–0.26) | Run-calibrated learned model on the ascending phase |
