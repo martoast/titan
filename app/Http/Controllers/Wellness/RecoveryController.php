@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Wellness;
 
 use App\Http\Controllers\Controller;
 use App\Models\RecoveryLog;
+use App\Support\MetabolicHealth;
 use App\Support\Readiness;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -50,8 +51,12 @@ class RecoveryController extends Controller
         $fromWearable = $latest && str_starts_with((string) $latest->updated_via, 'biosignal');
         $sealed = $latest && $latest->updated_via === 'biosignal:sealed';
 
+        // Metabolic-health forecast: composite of the wearable signals that predict T2D (§08 research).
+        $metabolic = MetabolicHealth::assess($profile);
+
         return view('recovery.index', [
             'profile' => $profile,
+            'metabolic' => $metabolic,
             'latest' => $latest,
             'trend' => $trend,
             'readiness' => $readiness['score'],

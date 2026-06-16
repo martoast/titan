@@ -75,6 +75,28 @@
             Your goal is age-personalized to where the science shows the mortality benefit plateaus — <span class="text-gray-400">~{{ number_format($stepGoal['target']) }} steps</span>, not the "10,000" myth. Each extra ~1,000 steps/day is linked to roughly <span class="text-gray-400">15% lower all-cause mortality</span>.
             @if ($weekAvgSteps !== null)<span class="text-gray-600"> · 7-day avg {{ number_format($weekAvgSteps) }}.</span>@endif
         </p>
+
+        {{-- Movement breaks: how many waking hours had real movement (don't sit too long) --}}
+        @if ($movement)
+            @php $mvTone = $movement['met'] ? 'text-emerald-300' : ($movement['longest_sit'] >= 4 ? 'text-orange-300' : 'text-amber-300'); @endphp
+            <div class="mt-4 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Active hours</div>
+                        <div class="font-display text-xl font-bold nums {{ $mvTone }} leading-none mt-0.5">{{ $movement['active'] }}<span class="text-gray-500 text-sm font-normal">/{{ $movement['waking'] }} waking hrs moved</span></div>
+                    </div>
+                    @if ($movement['longest_sit'] >= 3)
+                        <div class="text-right shrink-0">
+                            <div class="text-[11px] uppercase tracking-wide text-gray-500">Longest sit</div>
+                            <div class="font-display text-xl font-bold nums text-gray-300 leading-none mt-0.5">{{ $movement['longest_sit'] }}h</div>
+                        </div>
+                    @endif
+                </div>
+                <p class="mt-3 text-[11px] text-gray-500 leading-relaxed">
+                    Breaking up long sits — a 2-minute walk after meals or every half-hour — cuts post-meal blood-sugar spikes by ~25%. It's about <span class="text-gray-400">when</span> you move, not just how much.
+                </p>
+            </div>
+        @endif
     </div>
 
     {{-- VO2max hero --}}

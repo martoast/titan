@@ -72,6 +72,53 @@
             </div>
         </div>
 
+        {{-- Metabolic-health forecast — composite of the signals that predict type-2 diabetes --}}
+        @if ($metabolic)
+            @php
+                $mTone = match ($metabolic['band']) {
+                    'strong' => 'text-emerald-300', 'good' => 'text-cyan-300',
+                    'fair' => 'text-amber-300', default => 'text-orange-300',
+                };
+            @endphp
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h3 class="font-display font-bold text-gray-100">Metabolic health</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">A forecast from the signals that predict type-2 diabetes risk — caught early, while it's most modifiable.</p>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="font-display text-4xl font-black nums {{ $mTone }} leading-none">{{ $metabolic['score'] }}</div>
+                        <div class="text-[10px] uppercase tracking-wider text-gray-500 mt-1">/ 100</div>
+                    </div>
+                </div>
+
+                <div class="mt-3 flex items-center justify-between">
+                    <span class="text-sm font-semibold {{ $mTone }}">{{ $metabolic['label'] }}</span>
+                    @if ($metabolic['weakest_label'])
+                        <span class="text-xs text-gray-500">Biggest lever: <span class="text-gray-300">{{ $metabolic['weakest_label'] }}</span></span>
+                    @endif
+                </div>
+
+                {{-- Component breakdown --}}
+                <div class="mt-3 space-y-2">
+                    @php $compMeta = ['fitness'=>'Cardio fitness','resting_hr'=>'Resting HR','sleep'=>'Sleep','steps'=>'Daily activity','hrv'=>'HRV']; @endphp
+                    @foreach ($metabolic['components'] as $key => $val)
+                        <div class="flex items-center gap-3">
+                            <span class="w-24 shrink-0 text-xs text-gray-400">{{ $compMeta[$key] ?? $key }}</span>
+                            <div class="flex-1 h-2 rounded-full bg-white/5 overflow-hidden">
+                                <div class="h-full rounded-full {{ $val >= 60 ? 'bg-emerald-400/70' : ($val >= 40 ? 'bg-amber-400/70' : 'bg-orange-400/70') }}" style="width: {{ $val }}%"></div>
+                            </div>
+                            <span class="w-7 shrink-0 text-right text-xs nums text-gray-400">{{ $val }}</span>
+                        </div>
+                    @endforeach
+                </div>
+
+                <p class="mt-3 text-[11px] text-gray-600 leading-relaxed">
+                    A wellness estimate from {{ $metabolic['inputs'] }} signals — each individually linked to diabetes/metabolic risk in large studies. Not a diagnosis. HRV &amp; fitness scores are age-influenced; track your own trend.
+                </p>
+            </div>
+        @endif
+
         {{-- Objective signals — HRV (RMSSD) + RHR, lead with a vs-baseline read --}}
         @php
             // Whole-night HRV (RMSSD) vs the 14-day baseline. A positive delta = recovered.

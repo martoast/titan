@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Wellness;
 use App\Http\Controllers\Controller;
 use App\Models\ActivitySession;
 use App\Models\DailyActivity;
+use App\Support\MovementBreaks;
 use App\Support\StepGoal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -47,6 +48,7 @@ class FitnessController extends Controller
         $stepTarget = StepGoal::targetFor($profile);
         $steps = (int) ($today->steps ?? 0);
         $stepGoal = StepGoal::assess($steps, $stepTarget);
+        $movement = MovementBreaks::assess($today?->hourly);
 
         $stepWeek = $profile->dailyActivity()
             ->where('date', '>=', Carbon::today()->subDays(6))
@@ -68,6 +70,7 @@ class FitnessController extends Controller
             'stepGoal' => $stepGoal,
             'stepTrend' => $stepTrend,
             'weekAvgSteps' => $weekAvgSteps,
+            'movement' => $movement,
         ]);
     }
 
