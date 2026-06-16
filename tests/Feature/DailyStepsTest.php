@@ -51,6 +51,6 @@ class DailyStepsTest extends TestCase
         $user->ensureProfile()->dailyActivity()->create(['date' => now()->toDateString(), 'steps' => 6400, 'source' => 'manual']);
 
         $this->actingAs($user)->get('/dashboard')->assertOk()
-            ->assertSee('Steps today')->assertSee('6,400');
+            ->assertSee('Steps')->assertSee('6,400');
     }
 }

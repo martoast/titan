@@ -1,123 +1,178 @@
-<x-titan-layout title="Dashboard" subtitle="Your operating system for the strongest version of yourself">
-    @php
-        $p = auth()->user()?->profile;
-
-        // Today strip: latest objective recovery row + last night's sleep, pulled live.
-        $todayRecovery = $p?->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
-        $todaySleep = $p?->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
-
-        // Today's steps vs the evidence-based personalized goal.
-        $todaySteps = (int) ($p?->dailyActivity()->whereDate('date', \Illuminate\Support\Carbon::today())->value('steps') ?? 0);
-        $stepTarget = \App\Support\StepGoal::targetFor($p);
-        $stepGoal = \App\Support\StepGoal::assess($todaySteps, $stepTarget);
-        $todayReadiness = $p ? \App\Support\Readiness::compute($p, $todayRecovery?->logged_at) : ['score' => null, 'label' => '', 'note' => '', 'components' => [], 'provisional' => false];
-        $hasToday = ($todayReadiness['score'] ?? null) !== null || $todaySleep || ($todayRecovery?->resting_hr);
-
-        $rTone = match (true) {
-            ($todayReadiness['score'] ?? null) === null => 'text-gray-400',
-            $todayReadiness['score'] >= 80 => 'text-emerald-300',
-            $todayReadiness['score'] >= 60 => 'text-cyan-300',
-            $todayReadiness['score'] >= 40 => 'text-amber-300',
-            $todayReadiness['score'] >= 20 => 'text-orange-300',
-            default => 'text-rose-300',
-        };
-    @endphp
-
+<x-titan-layout title="Dashboard" subtitle="Your trajectory toward the strongest version of yourself">
     <div class="space-y-4 md:space-y-5">
-        {{-- Welcome / goal banner --}}
-        <div class="rounded-2xl border border-white/5 bg-gradient-to-br from-indigo-500/10 to-cyan-400/[0.06] p-4 md:p-5">
-            <div class="text-[11px] uppercase tracking-wide text-gray-500">Welcome back</div>
-            <h2 class="font-display text-xl md:text-2xl font-bold text-gray-100 mt-0.5">{{ auth()->user()->name }}</h2>
-            <p class="text-sm text-gray-400 mt-1.5">{{ $p?->primary_goal ?? 'Set your goal to start tracking toward your dream physique.' }}</p>
-        </div>
 
-        {{-- Today strip: readiness · last night's sleep · resting HR --}}
+        {{-- ============ FUTURE SELF — the living dream-physique render ============ --}}
+        <a href="/photos" class="block group">
+            <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-500/15 via-gray-900 to-cyan-400/10">
+                @if ($futureSelf['image'])
+                    <div class="grid grid-cols-2">
+                        {{-- Now --}}
+                        <div class="relative aspect-[3/4] bg-gray-950">
+                            @if ($futureSelf['now_image'])
+                                <img src="{{ $futureSelf['now_image'] }}" alt="Now" class="absolute inset-0 h-full w-full object-cover opacity-90">
+                            @else
+                                <div class="absolute inset-0 grid place-items-center text-xs text-gray-600">Add a progress photo</div>
+                            @endif
+                            <span class="absolute top-2 left-2 rounded-full bg-black/50 backdrop-blur px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-300">Now</span>
+                        </div>
+                        {{-- Future self --}}
+                        <div class="relative aspect-[3/4] bg-gray-950">
+                            <img src="{{ $futureSelf['image'] }}" alt="Your future self" class="absolute inset-0 h-full w-full object-cover">
+                            <span class="absolute top-2 right-2 rounded-full bg-indigo-500/80 backdrop-blur px-2 py-0.5 text-[10px] uppercase tracking-wide font-semibold text-white">Future self</span>
+                        </div>
+                    </div>
+                    {{-- Progress toward the dream physique --}}
+                    <div class="p-4 md:p-5">
+                        <div class="flex items-end justify-between gap-3">
+                            <div>
+                                <div class="text-[11px] uppercase tracking-wider text-indigo-300/80 font-semibold">Toward your dream physique</div>
+                                <div class="mt-0.5 font-display text-2xl font-bold text-gray-100">
+                                    {{ $futureSelf['pct'] !== null ? $futureSelf['pct'].'%' : 'Tracking' }}
+                                    <span class="text-sm font-normal text-gray-500">there</span>
+                                </div>
+                            </div>
+                            @if ($futureSelf['adherence'] !== null)
+                                <div class="text-right shrink-0">
+                                    <div class="text-[11px] text-gray-500">consistency</div>
+                                    <div class="font-display text-lg font-bold nums text-cyan-300">{{ $futureSelf['adherence'] }}%</div>
+                                </div>
+                            @endif
+                        </div>
+                        @if ($futureSelf['pct'] !== null)
+                            <div class="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
+                                <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style="width: {{ max(3, min(100, $futureSelf['pct'])) }}%"></div>
+                            </div>
+                        @endif
+                        <p class="mt-2.5 text-[11px] text-gray-500 leading-relaxed">Your future self advances as you stay consistent. Keep showing up and the gap closes.</p>
+                    </div>
+                @else
+                    {{-- No goal yet → the emotional CTA --}}
+                    <div class="p-6 md:p-8 text-center">
+                        <h2 class="font-display text-xl md:text-2xl font-bold text-gray-100">Meet your future self</h2>
+                        <p class="mt-2 text-sm text-gray-400 max-w-md mx-auto leading-relaxed">Upload a photo and Titan renders your dream physique — a living image that advances toward the goal as you stay consistent. It's the whole point.</p>
+                        <span class="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-500/90 px-4 py-2 text-sm font-semibold text-white group-active:bg-indigo-400">Create your dream physique →</span>
+                    </div>
+                @endif
+            </div>
+        </a>
+
+        {{-- ============ TODAY — the daily pulse, kept light ============ --}}
+        @php
+            $rTone = match (true) {
+                $today['readiness'] === null => 'text-gray-400',
+                $today['readiness'] >= 80 => 'text-emerald-300', $today['readiness'] >= 60 => 'text-cyan-300',
+                $today['readiness'] >= 40 => 'text-amber-300', default => 'text-orange-300',
+            };
+            $sg = $today['step_goal'];
+        @endphp
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
             <div class="flex items-center justify-between mb-3">
                 <div class="text-[11px] uppercase tracking-wide text-gray-500">Today</div>
-                @if ($hasToday && str_starts_with((string) ($todayRecovery?->updated_via), 'biosignal'))
+                @if ($today['from_wearable'])
                     <span class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400/80">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.55a11 11 0 0114 0M8.5 16.05a6 6 0 017 0M2 9.05a16 16 0 0120 0M12 20h.01"/></svg>
                         Wearable
                     </span>
                 @endif
             </div>
-
-            @if ($hasToday)
-                <div class="grid grid-cols-3 gap-3 md:gap-4">
-                    <a href="/recovery" class="block active:opacity-80">
-                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Readiness</div>
-                        <div class="font-display text-2xl md:text-3xl font-bold nums {{ $rTone }} mt-0.5 leading-none">{{ $todayReadiness['score'] ?? '—' }}</div>
-                        <div class="text-xs text-gray-500 mt-1 truncate">{{ $todayReadiness['label'] ?? '' }}</div>
-                    </a>
-                    <a href="/sleep" class="block active:opacity-80">
-                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Last sleep</div>
-                        <div class="font-display text-2xl md:text-3xl font-bold nums text-indigo-300 mt-0.5 leading-none">{{ $todaySleep ? $todaySleep->durationLabel() : '—' }}</div>
-                        <div class="text-xs text-gray-500 mt-1 truncate">{{ $todaySleep?->quality !== null ? $todaySleep->quality.'/100 quality' : 'duration' }}</div>
-                    </a>
-                    <a href="/recovery" class="block active:opacity-80">
-                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Resting HR</div>
-                        <div class="font-display text-2xl md:text-3xl font-bold nums text-cyan-300 mt-0.5 leading-none">{{ $todayRecovery?->resting_hr ?? '—' }}<span class="text-gray-500 text-sm font-normal">{{ $todayRecovery?->resting_hr !== null ? ' bpm' : '' }}</span></div>
-                        <div class="text-xs text-gray-500 mt-1 truncate">overnight</div>
-                    </a>
-                </div>
-            @else
-                <div class="flex items-center justify-between gap-3">
-                    <p class="text-sm text-gray-400">Connect a device or run the Simulator to see your readiness, sleep and resting HR here.</p>
-                    <a href="/recovery" class="shrink-0 text-xs font-medium text-indigo-400 active:text-indigo-300">Recovery →</a>
-                </div>
-            @endif
+            <div class="grid grid-cols-3 gap-3 md:gap-4">
+                <a href="/recovery" class="block active:opacity-80">
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Readiness</div>
+                    <div class="font-display text-2xl md:text-3xl font-bold nums {{ $rTone }} mt-0.5 leading-none">{{ $today['readiness'] ?? '—' }}</div>
+                    <div class="text-xs text-gray-500 mt-1 truncate">{{ $today['readiness_label'] ?: 'connect a device' }}</div>
+                </a>
+                <a href="/sleep" class="block active:opacity-80">
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Last sleep</div>
+                    <div class="font-display text-2xl md:text-3xl font-bold nums text-indigo-300 mt-0.5 leading-none">{{ $today['sleep'] ?? '—' }}</div>
+                    <div class="text-xs text-gray-500 mt-1 truncate">{{ $today['sleep_quality'] !== null ? $today['sleep_quality'].'/100 quality' : 'duration' }}</div>
+                </a>
+                <a href="/fitness" class="block active:opacity-80">
+                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Steps</div>
+                    <div class="font-display text-2xl md:text-3xl font-bold nums text-cyan-300 mt-0.5 leading-none">{{ number_format($today['steps']) }}</div>
+                    <div class="text-xs text-gray-500 mt-1 truncate nums">{{ $sg['to_go'] > 0 ? number_format($sg['to_go']).' to goal' : 'goal reached 🎉' }}</div>
+                </a>
+            </div>
         </div>
 
-        {{-- Steps toward the personalized daily goal --}}
-        <a href="/fitness" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 active:bg-white/[0.05] transition">
-            @php
-                $stepTone = match ($stepGoal['band']) {
-                    'excellent' => 'text-emerald-300', 'good' => 'text-cyan-300', 'fair' => 'text-amber-300', default => 'text-orange-300',
-                };
-                $stepBar = match ($stepGoal['band']) {
-                    'excellent' => 'from-emerald-500 to-emerald-400', 'good' => 'from-cyan-500 to-cyan-400',
-                    'fair' => 'from-amber-500 to-amber-400', default => 'from-orange-500 to-orange-400',
-                };
-            @endphp
-            <div class="flex items-end justify-between gap-3 mb-2">
-                <div>
-                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Steps today</div>
-                    <div class="font-display text-2xl md:text-3xl font-bold nums {{ $stepTone }} mt-0.5 leading-none">{{ number_format($todaySteps) }}<span class="text-gray-500 text-sm font-normal"> / {{ number_format($stepGoal['target']) }}</span></div>
-                </div>
-                <div class="text-right shrink-0">
-                    <div class="text-sm font-semibold {{ $stepTone }}">{{ $stepGoal['label'] }}</div>
-                    <div class="text-[11px] text-gray-600 nums">{{ $stepGoal['to_go'] > 0 ? number_format($stepGoal['to_go']).' to go' : 'goal reached' }}</div>
-                </div>
-            </div>
-            <div class="h-2 rounded-full bg-white/5 overflow-hidden">
-                <div class="h-full rounded-full bg-gradient-to-r {{ $stepBar }}" style="width: {{ $stepGoal['pct'] }}%"></div>
-            </div>
-        </a>
+        {{-- ============ TRAJECTORY — the graphs that show you're improving ============ --}}
+        @if (count($trajectories) || $bioAge)
+            <div>
+                <h2 class="text-[11px] uppercase tracking-wider text-gray-500 mb-2 px-1">Your trajectory</h2>
+                <div class="grid grid-cols-2 gap-3 md:gap-4">
 
-        {{-- Section cards. Each links to a domain the feature builds fill in. --}}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-            @php
-                $cards = [
-                    ['Bloodwork',  'biomarkers', 'Upload labs, track Testosterone, ApoB, HbA1c & more over time.'],
-                    ['Meals',      'meals',      'Snap a photo — AI logs calories & macros instantly.'],
-                    ['Workouts',   'workouts',   'Log sessions with adaptive progressive overload.'],
-                    ['Sleep',      'sleep',      'Track duration, quality and trends.'],
-                    ['Recovery',   'recovery',   'HRV, resting HR, stress and soreness.'],
-                    ['Physique',   'photos',     'Your living dream-physique image & progress photos.'],
-                    ['The Brain',  'brain',      'Your AI long-term memory — everything it knows about you.'],
-                    ['Coach',      'coach',      'Talk to your AI coach, grounded in all your data.'],
-                    ['Duo',        'duo',        'Race your brother toward your goals.'],
-                ];
-            @endphp
-            @foreach ($cards as [$label, $path, $desc])
-                <a href="/{{ $path }}" class="group rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 transition hover:border-indigo-500/40 hover:bg-gray-900 active:bg-white/[0.06]">
-                    <div class="flex items-center justify-between gap-2">
-                        <h3 class="font-display font-bold text-gray-100">{{ $label }}</h3>
-                        <svg class="h-4 w-4 shrink-0 text-gray-600 transition group-hover:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-                    </div>
-                    <p class="text-sm text-gray-500 mt-2">{{ $desc }}</p>
-                </a>
+                    @foreach ($trajectories as $t)
+                        @php
+                            $vals = $t['values']; $min = min($vals); $max = max($vals); $span = max($max - $min, 0.0001);
+                            $n = count($vals); $w = 100; $h = 34;
+                            $pts = collect($vals)->map(fn ($v, $i) => round($i / max($n - 1, 1) * $w, 1).','.round($h - ($v - $min) / $span * $h, 1))->implode(' ');
+                            $tone = $t['improving'] === true ? 'text-emerald-300' : ($t['improving'] === false ? 'text-rose-300' : 'text-indigo-300');
+                            $stroke = $t['improving'] === true ? '#6ee7b7' : ($t['improving'] === false ? '#fda4af' : '#a5b4fc');
+                        @endphp
+                        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <div class="text-[11px] uppercase tracking-wide text-gray-500">{{ $t['label'] }}</div>
+                                    <div class="mt-0.5 font-display text-2xl font-bold nums text-gray-100 leading-none">{{ $t['current'] }}<span class="text-gray-500 text-sm font-normal">{{ $t['unit'] ? ' '.$t['unit'] : '' }}</span></div>
+                                </div>
+                                <div class="text-right shrink-0 text-xs nums {{ $tone }}">{{ $t['delta'] }}{{ $t['unit'] ? ' '.$t['unit'] : '' }}</div>
+                            </div>
+                            <svg viewBox="0 0 100 34" preserveAspectRatio="none" class="mt-3 w-full h-9">
+                                <polyline points="{{ $pts }}" fill="none" stroke="{{ $stroke }}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+                            </svg>
+                        </div>
+                    @endforeach
+
+                    {{-- Biological age — the "are you winning the long game" number --}}
+                    @if ($bioAge)
+                        @php
+                            $aTone = match ($bioAge['band']) {
+                                'much_younger', 'younger' => 'text-emerald-300', 'on_par' => 'text-cyan-300',
+                                'older' => 'text-amber-300', default => 'text-orange-300',
+                            };
+                        @endphp
+                        <a href="/recovery" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 active:bg-white/[0.05]">
+                            <div class="text-[11px] uppercase tracking-wide text-gray-500">Biological age</div>
+                            <div class="mt-0.5 flex items-baseline gap-2">
+                                <span class="font-display text-2xl font-bold nums {{ $aTone }} leading-none">{{ number_format($bioAge['biological_age'], 0) }}</span>
+                                <span class="text-xs text-gray-500">vs {{ number_format($bioAge['chronological_age'], 0) }} actual</span>
+                            </div>
+                            <p class="mt-2 text-xs {{ $aTone }}">{{ $bioAge['delta'] <= 0 ? abs($bioAge['delta']).' yr younger' : '+'.$bioAge['delta'].' yr' }}<span class="text-gray-600"> · {{ $bioAge['confidence'] }} confidence</span></p>
+                        </a>
+                    @endif
+                </div>
+            </div>
+        @endif
+
+        {{-- ============ PROGRESS PHOTOS — the visual journey ============ --}}
+        @if ($photos->count())
+            <div>
+                <div class="flex items-center justify-between mb-2 px-1">
+                    <h2 class="text-[11px] uppercase tracking-wider text-gray-500">Your journey</h2>
+                    <a href="/photos" class="text-[11px] font-medium text-indigo-400 active:text-indigo-300">All photos →</a>
+                </div>
+                <div class="flex gap-3 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 md:-mx-1 md:px-1 snap-x">
+                    @foreach ($photos as $ph)
+                        <a href="/photos" class="shrink-0 snap-start active:opacity-80">
+                            <div class="relative h-40 w-28 overflow-hidden rounded-xl border border-white/10 bg-gray-950">
+                                <img src="{{ $ph['url'] }}" alt="Progress {{ $ph['date'] }}" class="absolute inset-0 h-full w-full object-cover">
+                                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                                    <div class="text-[10px] font-semibold text-gray-200 nums">{{ $ph['date'] }}</div>
+                                    @if ($ph['weight'])<div class="text-[9px] text-gray-400 nums">{{ $ph['weight'] }}</div>@endif
+                                </div>
+                            </div>
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
+        {{-- ============ EXPLORE — slim links, the detail lives in each domain ============ --}}
+        <div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            @foreach ([
+                ['Coach', 'coach'], ['Meals', 'meals'], ['Workouts', 'workouts'],
+                ['Bloodwork', 'biomarkers'], ['Brain', 'brain'], ['Duo', 'duo'],
+            ] as [$label, $path])
+                <a href="/{{ $path }}" class="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-3 text-center text-xs font-semibold text-gray-300 transition hover:border-indigo-500/40 hover:bg-gray-900 active:bg-white/[0.06]">{{ $label }}</a>
             @endforeach
         </div>
     </div>

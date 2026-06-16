@@ -34,9 +34,17 @@ body {
 
 [x-cloak] { display: none !important; }
 
-/* Horizontal scrollers (chips, day strips) without an ugly bar. */
+/* Horizontal scrollers (chips, day strips) without an ugly bar, with iOS momentum. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+
+/* iPhone: Safari auto-zooms when you focus an input whose text is < 16px. Force 16px on touch
+   devices only (pointer: coarse) so every form on every page stays put — desktop keeps its sizing. */
+@media (pointer: coarse) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea { font-size: 16px; }
+}
 
 /* iOS safe-area helpers (used with viewport-fit=cover). */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
