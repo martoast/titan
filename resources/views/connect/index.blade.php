@@ -64,7 +64,7 @@
     }
   }
 }</code></pre>
-        <p class="text-[11px] text-gray-600 mt-2">Tools available: <code class="text-gray-500">get_today, get_recovery, get_sleep, get_fitness, get_activity, get_workouts, get_biomarkers, get_meals, get_profile, get_devices, log_sleep, log_steps, log_recovery, log_weight, log_workout, set_goal, pair_device</code>.</p>
+        <p class="text-[11px] text-gray-600 mt-2"><span class="text-gray-400">29 tools.</span> Reads: <code class="text-gray-500">get_overview</code> (start here), get_longevity, get_trends, get_today, get_recovery, get_sleep, get_fitness, get_activity, get_nutrition, get_workouts, get_biomarkers, get_meals, get_physique, get_profile, get_devices, search_knowledge. Writes: <code class="text-gray-500">log_sleep, log_steps, log_recovery, log_weight, log_workout, log_meal, log_cardio, log_biomarker, set_goal, update_profile, save_knowledge, pair_device, unpair_device</code>.</p>
     </div>
 
     {{-- Existing tokens --}}

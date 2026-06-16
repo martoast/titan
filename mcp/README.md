@@ -43,11 +43,16 @@ The server is **catalog-driven**: it fetches the tool list from your Titan insta
 
 ## Tools (current catalog)
 
-**Read** — `get_today`, `get_recovery`, `get_sleep`, `get_fitness`, `get_activity`, `get_workouts`,
-`get_biomarkers`, `get_meals`, `get_profile`, `get_devices`.
+The catalog is fetched live from your instance, so it always matches your server. Today:
 
-**Write** — `log_sleep`, `log_steps`, `log_recovery`, `log_weight`, `log_workout`, `set_goal`,
-`pair_device`.
+**Read** — `get_overview` (**start here** — the whole account in one call), `get_longevity`,
+`get_trends`, `get_today`, `get_recovery`, `get_sleep`, `get_fitness`, `get_activity`,
+`get_nutrition`, `get_workouts`, `get_biomarkers`, `get_meals`, `get_physique`, `get_profile`,
+`get_devices`, `search_knowledge`.
+
+**Write** — `log_sleep`, `log_steps`, `log_recovery`, `log_weight`, `log_workout`, `log_meal`,
+`log_cardio`, `log_biomarker`, `set_goal`, `update_profile`, `save_knowledge`, `pair_device`,
+`unpair_device`.
 
 A **read-only** token (chosen at creation) can call the reads but is blocked from the writes with a 403.
 

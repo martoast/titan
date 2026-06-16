@@ -2,9 +2,14 @@
 
 namespace App\Services\Assistant;
 
+use App\Models\ActivitySession;
+use App\Models\BiomarkerReading;
 use App\Models\BodyMetric;
 use App\Models\Exercise;
+use App\Models\Meal;
 use App\Models\Profile;
+use App\Models\RecoveryLog;
+use App\Models\SleepLog;
 use App\Models\User;
 use App\Models\WearableConnection;
 use App\Models\Workout;
@@ -45,8 +50,16 @@ class AssistantTools
     public function schemas(): array
     {
         return [
+            // --- the one-call entry point ---
+            ['name' => 'get_overview', 'description' => "START HERE. A complete snapshot of the user right now — readiness, last night's sleep + regularity, recovery (HRV/resting HR), steps vs goal + movement, VO2max, metabolic health, today's nutrition, latest weight, flagged biomarkers and their primary goal. Call this first to understand someone before answering or acting.", 'args' => []],
+
             // --- reads ---
             ['name' => 'get_today', 'description' => "Today's snapshot: readiness, last sleep, resting HR, steps vs goal, metabolic health.", 'args' => []],
+            ['name' => 'get_longevity', 'description' => 'The longevity panel: Sleep Regularity Index, circadian rest-activity rhythm, metabolic-health forecast, VO2max, resting HR & HRV — each with the score and what it means. The "how well am I aging" view.', 'args' => []],
+            ['name' => 'get_trends', 'description' => 'Time-series over recent days so you can spot patterns: HRV, resting HR, sleep hours, weight, steps. Great for "how has my X changed".', 'args' => ['days' => 'int — default 30']],
+            ['name' => 'get_nutrition', 'description' => "Today's calories & macros (and recent days) vs targets.", 'args' => ['days' => 'int — default 7']],
+            ['name' => 'get_physique', 'description' => 'Physique status: latest body composition, the dream-physique goal and progress.', 'args' => []],
+            ['name' => 'search_knowledge', 'description' => "Search the user's personal knowledge base / notes (their 'brain') in natural language.", 'args' => ['query' => 'string']],
             ['name' => 'get_recovery', 'description' => 'Latest HRV (RMSSD), resting HR, readiness, baselines and the metabolic-health forecast.', 'args' => []],
             ['name' => 'get_sleep', 'description' => 'Recent nights, the 7-day average, the Sleep Regularity Index and the circadian rest-activity rhythm.', 'args' => ['days' => 'int — nights back (default 14)']],
             ['name' => 'get_fitness', 'description' => 'VO2max estimate + trend, heart-rate recovery, and recent cardio sessions.', 'args' => []],
@@ -63,7 +76,13 @@ class AssistantTools
             ['name' => 'log_weight', 'description' => 'Log a body-weight (kg) measurement.', 'args' => ['weight_kg' => 'number', 'date' => 'YYYY-MM-DD (optional)', 'body_fat_pct' => 'number (optional)'], 'write' => true],
             ['name' => 'log_workout', 'description' => 'Log a strength workout with its exercises and sets.', 'args' => ['name' => 'string (optional)', 'performed_at' => 'ISO datetime (optional)', 'exercises' => '[{name, sets:[{reps, weight_kg, rpe?}]}]'], 'write' => true],
             ['name' => 'set_goal', 'description' => "Set the profile's primary goal.", 'args' => ['goal' => 'string'], 'write' => true],
+            ['name' => 'log_meal', 'description' => 'Log a meal with its macros.', 'args' => ['name' => 'string', 'calories' => 'int', 'protein_g' => 'number (optional)', 'carbs_g' => 'number (optional)', 'fat_g' => 'number (optional)', 'eaten_at' => 'ISO datetime (optional, default now)'], 'write' => true],
+            ['name' => 'log_cardio', 'description' => 'Log a cardio session (run/walk/ride/etc).', 'args' => ['type' => 'run|walk|cycle|other', 'duration_min' => 'int', 'distance_km' => 'number (optional)', 'avg_hr' => 'int (optional)', 'calories_kcal' => 'int (optional)', 'started_at' => 'ISO datetime (optional)'], 'write' => true],
+            ['name' => 'log_biomarker', 'description' => 'Log a bloodwork / biomarker result (the abnormal-range flag is computed automatically).', 'args' => ['marker' => 'string e.g. ldl, hba1c, vitamin_d', 'value' => 'number', 'unit' => 'string (optional)', 'taken_at' => 'YYYY-MM-DD (optional)'], 'write' => true],
+            ['name' => 'update_profile', 'description' => 'Update profile basics.', 'args' => ['birthdate' => 'YYYY-MM-DD (optional)', 'sex' => 'M|F (optional)', 'height_cm' => 'number (optional)', 'primary_goal' => 'string (optional)'], 'write' => true],
+            ['name' => 'save_knowledge', 'description' => "Save a note to the user's brain. Pin to inject it into every future coach conversation (use sparingly).", 'args' => ['title' => 'string', 'content' => 'markdown', 'pinned' => 'bool (optional)'], 'write' => true],
             ['name' => 'pair_device', 'description' => 'Pair a Titan wearable and return its device id + one-time secret (show the secret to the user once).', 'args' => ['name' => 'string (optional)'], 'write' => true],
+            ['name' => 'unpair_device', 'description' => 'Revoke a paired wearable so it can no longer sync.', 'args' => ['device_id' => 'string'], 'write' => true],
         ];
     }
 
@@ -71,7 +90,13 @@ class AssistantTools
     public function dispatch(string $name, array $args): mixed
     {
         return match ($name) {
+            'get_overview' => $this->getOverview(),
             'get_today' => $this->getToday(),
+            'get_longevity' => $this->getLongevity(),
+            'get_trends' => $this->getTrends((int) ($args['days'] ?? 30)),
+            'get_nutrition' => $this->getNutrition((int) ($args['days'] ?? 7)),
+            'get_physique' => $this->coach->dispatch('physique_status', []),
+            'search_knowledge' => $this->coach->dispatch('search_knowledge', $args),
             'get_recovery' => $this->getRecovery(),
             'get_sleep' => $this->getSleep((int) ($args['days'] ?? 14)),
             'get_fitness' => $this->getFitness(),
@@ -86,8 +111,14 @@ class AssistantTools
             'log_recovery' => $this->logRecovery($args),
             'log_weight' => $this->logWeight($args),
             'log_workout' => $this->logWorkout($args),
+            'log_meal' => $this->logMeal($args),
+            'log_cardio' => $this->logCardio($args),
+            'log_biomarker' => $this->logBiomarker($args),
+            'update_profile' => $this->updateProfile($args),
+            'save_knowledge' => $this->coach->dispatch('save_knowledge', $args),
             'set_goal' => $this->setGoal($args),
             'pair_device' => $this->pairDevice($args),
+            'unpair_device' => $this->unpairDevice($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
     }
@@ -334,6 +365,177 @@ class AssistantTools
             'secret' => $secret,   // shown ONCE — the user enters this on the watch / bridge
             'note' => 'Give the device_id + secret to the watch bridge to start syncing. The secret is shown only once.',
         ];
+    }
+
+    /** The streamlined first call — everything an agent needs to understand the user at a glance. */
+    private function getOverview(): array
+    {
+        $p = $this->profile;
+        $rec = $p->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
+        $sleep = $p->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        $month = $p->sleepLogs()->where('slept_at', '>=', Carbon::today()->subDays(27))->get();
+        $steps = (int) ($p->dailyActivity()->whereDate('date', Carbon::today())->value('steps') ?? 0);
+        $stepGoal = StepGoal::assess($steps, StepGoal::targetFor($p));
+        $vo2 = $p->activitySessions()->whereNotNull('vo2max')->orderByDesc('started_at')->value('vo2max');
+        $weight = $p->bodyMetrics()->latest('taken_at')->value('weight_kg');
+        $todayMeals = $p->meals()->whereDate('eaten_at', Carbon::today())->get();
+        $flagged = $p->biomarkerReadings()->whereNotNull('flag')->where('flag', '!=', 'normal')
+            ->orderByDesc('taken_at')->limit(5)->get();
+
+        $readiness = Readiness::compute($p, $rec?->logged_at);
+        $sri = SleepRegularity::compute($month);
+        $metabolic = MetabolicHealth::assess($p);
+
+        return [
+            'name' => $p->display_name ?? $this->user->name,
+            'primary_goal' => $p->primary_goal,
+            'readiness' => ['score' => $readiness['score'] ?? null, 'label' => $readiness['label'] ?? null],
+            'sleep' => $sleep ? ['hours' => round($sleep->duration_min / 60, 1), 'quality' => $sleep->quality, 'regularity_sri' => $sri['sri'] ?? null] : null,
+            'recovery' => ['resting_hr' => $rec?->resting_hr, 'hrv_ms' => $rec?->hrv_ms],
+            'activity' => ['steps' => $steps, 'goal' => $stepGoal['target'], 'progress_pct' => $stepGoal['pct'], 'movement' => MovementBreaks::assess($p->dailyActivity()->whereDate('date', Carbon::today())->value('hourly'))],
+            'fitness' => ['vo2max' => $vo2 ? (float) $vo2 : null],
+            'metabolic_health' => $metabolic['score'] ?? null,
+            'nutrition_today' => $todayMeals->count() ? ['calories' => (int) $todayMeals->sum('calories'), 'protein_g' => round((float) $todayMeals->sum('protein_g'), 1)] : null,
+            'weight_kg' => $weight ? (float) $weight : null,
+            'flagged_biomarkers' => $flagged->map(fn ($b) => ['marker' => $b->marker, 'value' => (float) $b->value, 'unit' => $b->unit, 'flag' => $b->flag])->values(),
+        ];
+    }
+
+    /** The longevity panel in one call. */
+    private function getLongevity(): array
+    {
+        $p = $this->profile;
+        $rec = $p->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
+
+        return [
+            'sleep_regularity' => SleepRegularity::compute($p->sleepLogs()->where('slept_at', '>=', Carbon::today()->subDays(27))->get()),
+            'circadian_rhythm' => CircadianRhythm::compute($p->dailyActivity()->where('date', '>=', Carbon::today()->subDays(13))->get()),
+            'metabolic_health' => MetabolicHealth::assess($p),
+            'vo2max' => $p->activitySessions()->whereNotNull('vo2max')->orderByDesc('started_at')->value('vo2max'),
+            'resting_hr' => $rec?->resting_hr,
+            'hrv_ms' => $rec?->hrv_ms,
+            'note' => 'Each is independently linked to longevity in large cohorts. Track your own trend over weeks, not single readings.',
+        ];
+    }
+
+    /** Daily time-series for pattern-spotting. */
+    private function getTrends(int $days): array
+    {
+        $days = max(2, min(180, $days));
+        $since = Carbon::today()->subDays($days - 1);
+
+        $recovery = $this->profile->recoveryLogs()->where('logged_at', '>=', $since)->orderBy('logged_at')->get()
+            ->map(fn (RecoveryLog $r) => ['date' => $r->logged_at->toDateString(), 'hrv_ms' => $r->hrv_ms, 'resting_hr' => $r->resting_hr])->values();
+        $sleep = $this->profile->sleepLogs()->where('slept_at', '>=', $since)->orderBy('slept_at')->get()
+            ->map(fn (SleepLog $s) => ['date' => $s->slept_at->toDateString(), 'hours' => round($s->duration_min / 60, 1)])->values();
+        $weight = $this->profile->bodyMetrics()->where('taken_at', '>=', $since)->orderBy('taken_at')->get()
+            ->map(fn ($b) => ['date' => optional($b->taken_at)->toDateString(), 'weight_kg' => (float) $b->weight_kg])->values();
+        $steps = $this->profile->dailyActivity()->where('date', '>=', $since)->orderBy('date')->get()
+            ->map(fn ($d) => ['date' => $d->date->toDateString(), 'steps' => (int) $d->steps])->values();
+
+        return ['days' => $days, 'recovery' => $recovery, 'sleep' => $sleep, 'weight' => $weight, 'steps' => $steps];
+    }
+
+    private function getNutrition(int $days): array
+    {
+        $days = max(1, min(31, $days));
+        $meals = $this->profile->meals()->where('eaten_at', '>=', Carbon::today()->subDays($days - 1)->startOfDay())->get();
+        $byDay = $meals->groupBy(fn (Meal $m) => optional($m->eaten_at)->toDateString())->map(fn ($g, $d) => [
+            'date' => $d, 'meals' => $g->count(), 'calories' => (int) $g->sum('calories'),
+            'protein_g' => round((float) $g->sum('protein_g'), 1), 'carbs_g' => round((float) $g->sum('carbs_g'), 1), 'fat_g' => round((float) $g->sum('fat_g'), 1),
+        ])->values();
+        $settings = $this->profile->settings ?? [];
+        $targets = (array) ($settings['nutrition_targets'] ?? ['calories' => 2800, 'protein_g' => 200, 'carbs_g' => 280, 'fat_g' => 80]);
+
+        return ['window_days' => $days, 'targets' => $targets, 'by_day' => $byDay];
+    }
+
+    private function logMeal(array $a): array
+    {
+        $name = trim((string) ($a['name'] ?? ''));
+        if ($name === '') {
+            return ['error' => 'name is required'];
+        }
+        $meal = $this->profile->meals()->create([
+            'name' => $name,
+            'eaten_at' => isset($a['eaten_at']) ? Carbon::parse($a['eaten_at']) : now(),
+            'calories' => (int) round((float) ($a['calories'] ?? 0)),
+            'protein_g' => round((float) ($a['protein_g'] ?? 0), 1),
+            'carbs_g' => round((float) ($a['carbs_g'] ?? 0), 1),
+            'fat_g' => round((float) ($a['fat_g'] ?? 0), 1),
+            'source' => 'assistant',
+        ]);
+
+        return ['ok' => true, 'meal_id' => $meal->id, 'name' => $meal->name, 'calories' => $meal->calories];
+    }
+
+    private function logCardio(array $a): array
+    {
+        $dur = (int) ($a['duration_min'] ?? 0);
+        if ($dur <= 0) {
+            return ['error' => 'duration_min is required'];
+        }
+        $start = isset($a['started_at']) ? Carbon::parse($a['started_at']) : now()->subMinutes($dur);
+        $session = $this->profile->activitySessions()->updateOrCreate(
+            ['started_at' => $start],
+            array_filter([
+                'source' => 'assistant',
+                'ended_at' => $start->copy()->addMinutes($dur),
+                'duration_min' => $dur,
+                'activity_type' => $a['type'] ?? 'other',
+                'distance_km' => $a['distance_km'] ?? null,
+                'avg_hr' => isset($a['avg_hr']) ? (int) $a['avg_hr'] : null,
+                'calories_kcal' => isset($a['calories_kcal']) ? (int) $a['calories_kcal'] : null,
+                'updated_via' => 'assistant',
+            ], fn ($v) => $v !== null),
+        );
+
+        return ['ok' => true, 'activity_session_id' => $session->id, 'type' => $session->activity_type, 'duration_min' => $dur];
+    }
+
+    private function logBiomarker(array $a): array
+    {
+        $marker = trim((string) ($a['marker'] ?? ''));
+        if ($marker === '' || ! isset($a['value'])) {
+            return ['error' => 'marker and value are required'];
+        }
+        $r = $this->profile->biomarkerReadings()->create([
+            'marker' => $marker,
+            'value' => (float) $a['value'],
+            'unit' => $a['unit'] ?? null,
+            'taken_at' => $this->date($a['taken_at'] ?? null),
+            'source' => 'assistant',
+        ]);
+
+        return ['ok' => true, 'marker' => $r->marker, 'value' => (float) $r->value, 'flag' => $r->flag];
+    }
+
+    private function updateProfile(array $a): array
+    {
+        $fields = array_filter([
+            'birthdate' => isset($a['birthdate']) ? $this->date($a['birthdate']) : null,
+            'sex' => isset($a['sex']) ? strtoupper(substr((string) $a['sex'], 0, 1)) : null,
+            'height_cm' => isset($a['height_cm']) ? (float) $a['height_cm'] : null,
+            'primary_goal' => $a['primary_goal'] ?? null,
+        ], fn ($v) => $v !== null && $v !== '');
+        if ($fields === []) {
+            return ['error' => 'provide at least one of birthdate, sex, height_cm, primary_goal'];
+        }
+        $this->profile->forceFill($fields)->save();
+
+        return ['ok' => true, 'updated' => array_keys($fields)];
+    }
+
+    private function unpairDevice(array $a): array
+    {
+        $id = (string) ($a['device_id'] ?? '');
+        $device = $this->profile->wearableConnections()->where('device_id', $id)->first();
+        if (! $device) {
+            return ['error' => 'device not found'];
+        }
+        $device->forceFill(['device_token_hash' => null, 'status' => 'revoked'])->save();
+
+        return ['ok' => true, 'device_id' => $id, 'status' => 'revoked'];
     }
 
     private function date(?string $value): string

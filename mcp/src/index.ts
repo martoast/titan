@@ -78,7 +78,16 @@ async function main() {
 
   const server = new Server(
     { name: "titan", version: "0.1.0" },
-    { capabilities: { tools: {} } }
+    {
+      capabilities: { tools: {} },
+      instructions:
+        "Titan is the user's open-source health & longevity OS. You are their interface to it.\n" +
+        "- Call `get_overview` FIRST to understand the user's current state before answering or acting.\n" +
+        "- `get_longevity` is the aging panel (sleep regularity, circadian rhythm, metabolic health, VO2max); `get_trends` shows change over time.\n" +
+        "- `log_*`, `set_goal`, `update_profile`, `pair_device` WRITE real data — confirm ambiguous details with the user first.\n" +
+        "- Scores are wellness estimates and personal trends, not medical diagnoses; never imply screening or diagnosis.\n" +
+        `- ${catalog.length} tools are available; their schemas describe the arguments.`,
+    }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

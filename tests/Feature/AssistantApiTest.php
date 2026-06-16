@@ -98,6 +98,58 @@ class AssistantApiTest extends TestCase
         $this->assertDatabaseHas('wearable_connections', ['profile_id' => $user->profile->id, 'device_id' => $r['device_id']]);
     }
 
+    public function test_overview_and_longevity_compose_the_whole_account(): void
+    {
+        $user = User::factory()->create(['name' => 'Jordan']);
+        $token = $this->token($user);
+        $p = $user->ensureProfile();
+        $p->update(['primary_goal' => 'Lean recomposition', 'birthdate' => now()->subYears(33)->toDateString()]);
+        $p->dailyActivity()->create(['date' => now()->toDateString(), 'steps' => 9100, 'source' => 'manual']);
+
+        $this->postJson('/api/tool', ['tool' => 'get_overview'], $this->auth($token))->assertOk()
+            ->assertJsonPath('result.name', 'Jordan')
+            ->assertJsonPath('result.primary_goal', 'Lean recomposition')
+            ->assertJsonPath('result.activity.steps', 9100);
+
+        $this->postJson('/api/tool', ['tool' => 'get_longevity'], $this->auth($token))->assertOk()
+            ->assertJsonStructure(['result' => ['sleep_regularity', 'circadian_rhythm', 'metabolic_health', 'vo2max']]);
+    }
+
+    public function test_new_write_tools_persist(): void
+    {
+        $user = User::factory()->create();
+        $token = $this->token($user);
+        $pid = $user->ensureProfile()->id;
+
+        $this->postJson('/api/tool', ['tool' => 'log_meal', 'args' => ['name' => 'Chicken & rice', 'calories' => 650, 'protein_g' => 55]], $this->auth($token))
+            ->assertOk()->assertJsonPath('result.ok', true);
+        $this->assertDatabaseHas('meals', ['profile_id' => $pid, 'name' => 'Chicken & rice', 'calories' => 650]);
+
+        $this->postJson('/api/tool', ['tool' => 'log_cardio', 'args' => ['type' => 'run', 'duration_min' => 32, 'distance_km' => 5.4, 'avg_hr' => 150]], $this->auth($token))
+            ->assertOk()->assertJsonPath('result.type', 'run');
+        $this->assertDatabaseHas('activity_sessions', ['profile_id' => $pid, 'activity_type' => 'run', 'duration_min' => 32]);
+
+        $this->postJson('/api/tool', ['tool' => 'log_biomarker', 'args' => ['marker' => 'ldl', 'value' => 95, 'unit' => 'mg/dL']], $this->auth($token))
+            ->assertOk()->assertJsonPath('result.ok', true);
+        $this->assertDatabaseHas('biomarker_readings', ['profile_id' => $pid, 'marker' => 'ldl']);
+
+        $this->postJson('/api/tool', ['tool' => 'update_profile', 'args' => ['height_cm' => 181, 'primary_goal' => 'Run a sub-20 5k']], $this->auth($token))
+            ->assertOk()->assertJsonPath('result.ok', true);
+        $this->assertSame('Run a sub-20 5k', $user->profile->fresh()->primary_goal);
+    }
+
+    public function test_full_tool_catalog_is_exposed(): void
+    {
+        $user = User::factory()->create();
+        $names = collect($this->getJson('/api/tools', $this->auth($this->token($user)))->json('tools'))->pluck('name');
+        // A representative slice across every domain.
+        foreach (['get_overview', 'get_longevity', 'get_trends', 'get_nutrition', 'get_physique', 'search_knowledge',
+            'log_meal', 'log_cardio', 'log_biomarker', 'update_profile', 'save_knowledge', 'unpair_device'] as $t) {
+            $this->assertContains($t, $names->all(), "missing tool: {$t}");
+        }
+        $this->assertGreaterThanOrEqual(28, $names->count());
+    }
+
     public function test_connect_page_mints_a_token_shown_once(): void
     {
         $user = User::factory()->create();
