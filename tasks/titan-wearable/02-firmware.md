@@ -107,3 +107,129 @@ open-sourced later.*
 **Critical risks:** (a) iOS background BLE (P5) — design for a persistent notifying connection from the start;
 (b) multi-day power (P4) — PPG LEDs dominate, duty-cycling is mandatory; (c) raw-buffer storage (P3) — 8 MB QSPI
 holds only ~2.5 h raw, so the IBI fallback is required for long offline windows.
+
+## 10. Activity priming (coach → bridge → watch)
+
+**Goal.** Let the user *tell the app* what they're about to do — "going for a run" in the coach chat — and have
+the watch switch into the right sensing mode for it (GPS + faster HR for a run, low-power for a swim/lift),
+instead of waiting for the on-watch motion gate to guess. This is the device half of the server feature
+already shipped (`start_activity` / `finish_activity` coach tools writing `profile.settings.active_activity`,
+read back over `GET /api/devices/activity`).
+
+**Architecture — the watch never does HTTP.** The Bangle.js is a dumb NUS sensor; only the **bridge**
+(`firmware/banglejs/bridge.html`, or the companion app) has internet. So priming flows in three hops:
+
+```
+coach chat  ──start_activity──▶  Titan server  (settings.active_activity = {type, sampling})
+                                       ▲ │
+              GET /api/devices/activity│ │ {active, type, sampling:{gps,hr_hz,accel_hz}}
+                                       │ ▼
+                                   BRIDGE (polls every ~20 s, HMAC-signed)
+                                       │
+                       NUS RX write:  "C1:{\"type\":\"run\",\"gps\":true,\"accel_hz\":12.5}\n"
+                                       ▼
+                                   WATCH  → applyPriming() → typed manual workout, GPS/accel per profile
+```
+
+`finish_activity` clears the server state; the bridge then sees `{active:false}` and sends `C0:` to stand
+the watch back down. The command channel reuses the existing NUS link — the bridge already holds the RX
+characteristic (`bridge.html`: `NUS_RX = 6e400002-…`, `rxChar = await svc.getCharacteristic(NUS_RX)`).
+
+### 10a. Bridge side — poll the endpoint, relay a NUS command
+
+Add to `bridge.html`. It reuses the exact ingest auth: read `apiUrl`/`deviceId`/`secret` from the form inputs
+and sign with the existing `hmacSha256Hex(secret, message)` helper (which derives `sha256(secret)` = the
+server's `device_token_hash` internally). The activity GET signs the **same `"{t}.{body}"` string with an
+empty body**, identical to `verifyDeviceSignature`:
+
+```js
+// --- Activity priming: poll what the coach started, relay it to the watch over NUS ---
+let primedType = null;                       // last activity we pushed to the watch (de-dupe)
+
+async function pollActivity() {
+  if (!rxChar) return;                        // only while a watch is connected
+  const base = $("apiUrl").value.trim();
+  const deviceId = $("deviceId").value.trim();
+  const secret = $("secret").value.trim();
+  if (!base || !deviceId || !secret) return;
+  const url = base.replace(/\/ingest$/, "/activity");
+  try {
+    const t = Math.floor(Date.now() / 1000);
+    const sig = await hmacSha256Hex(secret, t + ".");      // empty body → sign "{t}."
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "X-Device-Id": deviceId, "X-Titan-Signature": "t=" + t + ",v1=" + sig,
+                 "Accept": "application/json" },
+    });
+    if (!res.ok) return;
+    const a = await res.json();
+    if (a.active && a.type !== primedType) {            // newly started → prime
+      primedType = a.type;
+      const cmd = "C1:" + JSON.stringify({ type: a.type, gps: !!a.sampling.gps,
+        hr_hz: a.sampling.hr_hz, accel_hz: a.sampling.accel_hz }) + "\n";
+      await rxChar.writeValue(new TextEncoder().encode(cmd));
+    } else if (!a.active && primedType !== null) {      // finished → stand down
+      primedType = null;
+      await rxChar.writeValue(new TextEncoder().encode("C0:\n"));
+    }
+  } catch (e) { /* offline / link hiccup — retry next tick */ }
+}
+setInterval(pollActivity, 20000);   // 20 s cadence: responsive without hammering the API or the BLE link
+```
+
+### 10b. Watch side — receive the command, apply the sensing profile
+
+The watch currently only *writes* NUS (`Bluetooth.println`). To *receive* commands we add a line-buffered
+inbound handler. Inbound NUS bytes are normally fed to the Espruino REPL, so we take the console off BLE
+first (it stays on USB for debugging) — then the channel is ours alone. Add near "Wire everything up" in
+`titan.app.js`:
+
+```js
+// --- Inbound command channel (coach activity priming) -----------------------
+// Keep the JS REPL on USB only, so inbound NUS is OUR command stream, not code eval.
+try { E.setConsole("USB", { force: false }); } catch (e) {}
+
+var primed = null;     // active coach-primed activity, or null
+var cmdBuf = "";
+Bluetooth.on("data", function (d) {
+  cmdBuf += d;
+  var nl;
+  while ((nl = cmdBuf.indexOf("\n")) >= 0) {
+    var line = cmdBuf.substr(0, nl).trim();
+    cmdBuf = cmdBuf.substr(nl + 1);
+    if (line.substr(0, 3) === "C1:") {            // prime: start a typed activity
+      try { applyPriming(JSON.parse(line.substr(3))); } catch (e) {}
+    } else if (line.substr(0, 2) === "C0") {      // stand down
+      primed = null;
+      if (state.workout && state.workoutManual) endWorkout();
+    }
+  }
+});
+
+// Switch the watch into the activity's sensing profile. We start a MANUAL workout (so a still
+// gap mid-set / red light won't auto-end it — the user explicitly began this), then honor the
+// per-activity sampling: GPS only when it helps, accel rate to match the server classifier.
+function applyPriming(p) {
+  primed = { type: (p && p.type) || "other", gps: !!(p && p.gps),
+             accelHz: (p && p.accel_hz) || 25 };
+  if (!state.streaming) startStreaming();         // ensure HR + accel are powered
+  startWorkout(true);                             // manual → only C0/finish ends it
+  powerGps(primed.gps);                           // override the motion-gate default (off for swim/lift)
+  try { Bangle.setPollInterval(Math.round(1000 / primed.accelHz)); } catch (e) {}
+  try { Bangle.buzz(150); } catch (e) {}          // haptic ack so the user knows it primed
+  if (uiVisible) drawUI();
+}
+```
+
+**Notes & caveats (for whoever flashes this):**
+- *Console relocation* — `E.setConsole("USB", …)` requires USB to be the debug path; if you debug over BLE,
+  keep a physical-button escape (long-press already toggles a manual workout) so you're never locked out.
+- *De-dupe* — the bridge only sends `C1:` when `type` *changes*, so re-polling the same active run is a no-op;
+  the watch also guards (`startWorkout` early-returns if a workout is already running).
+- *Honesty* — this is **near-real-time, not instant**: priming lands on the next 20 s bridge poll while the
+  watch is connected. If the watch is offline (phone-free run) the motion gate still auto-starts the workout;
+  the coach's typing just makes it *immediate and correctly typed* when the bridge is in range. Matches how the
+  rest of the device already trades real-time for power.
+- *Security* — the command carries no secrets and the watch only acts on `C1:`/`C0:`; the trust boundary is the
+  bonded BLE link + the HMAC the bridge uses to read the server. The watch never authenticates the command
+  itself (it can't), so treat the bonded bridge as trusted, as the rest of the NUS protocol already does.
