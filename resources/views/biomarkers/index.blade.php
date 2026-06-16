@@ -14,6 +14,45 @@
         </div>
     @endif
 
+    {{-- Biological-age clock — turns a blood upload into the mortality-validated PhenoAge --}}
+    @php $total = count($phenoStatus); $pa = $bioAge['pheno_age'] ?? null; @endphp
+    <div class="rounded-2xl border border-cyan-500/20 bg-gradient-to-b from-cyan-500/[0.07] to-transparent p-4 md:p-5">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-[11px] uppercase tracking-wider text-cyan-300/80 font-semibold">Biological age clock · PhenoAge</p>
+                @if ($pa !== null)
+                    <div class="mt-1 flex items-baseline gap-2">
+                        <span class="font-display text-4xl font-black nums text-cyan-200 leading-none">{{ number_format($pa, 0) }}</span>
+                        <span class="text-sm text-gray-500">blood biological age</span>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-300">Mortality-validated from your 9 markers. See the full picture on <a href="{{ route('recovery.index') }}" class="text-cyan-300 underline decoration-cyan-500/40">Recovery</a>.</p>
+                @else
+                    <div class="mt-1 flex items-baseline gap-2">
+                        <span class="font-display text-4xl font-black nums text-cyan-200 leading-none">{{ $phenoHave }}<span class="text-gray-600 text-2xl">/{{ $total }}</span></span>
+                        <span class="text-sm text-gray-500">markers to unlock</span>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-300">Add the missing markers below (one blood panel covers them all) to unlock a mortality-validated biological age.</p>
+                @endif
+            </div>
+            <div class="shrink-0 text-right">
+                <div class="text-[11px] text-gray-500">{{ round($phenoHave / max($total, 1) * 100) }}% complete</div>
+                <div class="mt-1.5 h-1.5 w-24 rounded-full bg-white/10 overflow-hidden">
+                    <div class="h-full rounded-full bg-cyan-400" style="width: {{ round($phenoHave / max($total, 1) * 100) }}%"></div>
+                </div>
+            </div>
+        </div>
+        {{-- 9-marker checklist --}}
+        <div class="mt-3 flex flex-wrap gap-1.5">
+            @foreach ($phenoStatus as $m)
+                <span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] {{ $m['have'] ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-white/10 bg-white/[0.02] text-gray-500' }}">
+                    @if ($m['have'])<span class="text-emerald-400">✓</span>@else<span class="text-gray-600">＋</span>@endif
+                    {{ $m['label'] }}@if ($m['have'])<span class="text-emerald-400/60 nums"> {{ $m['value'] }}</span>@endif
+                </span>
+            @endforeach
+        </div>
+        <p class="mt-2.5 text-[10px] text-gray-600 leading-relaxed">PhenoAge (Levine 2018) — a wellness estimate from routine labs, not a diagnosis. Fasting draw, away from acute illness, gives the truest read.</p>
+    </div>
+
     {{-- Coach assessment — "what to work on" after a scan --}}
     @php $assessment = session('assessment'); @endphp
     @if ($assessment)

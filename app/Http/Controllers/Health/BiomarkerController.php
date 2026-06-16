@@ -63,12 +63,28 @@ class BiomarkerController extends Controller
             return $rank($a) <=> $rank($b);
         });
 
+        // PhenoAge "biological-age clock" panel: which of the 9 markers are in, what's missing,
+        // and the computed biological age — the thing that turns a blood upload into a real clock.
+        $phenoMarkers = \App\Support\PhenoAge::requiredMarkers();
+        $phenoStatus = array_map(function ($key) use ($readings) {
+            $latest = $readings->get($key)?->last();
+            return [
+                'key' => $key, 'label' => Biomarkers::label($key),
+                'have' => $latest !== null,
+                'value' => $latest ? rtrim(rtrim(number_format((float) $latest->value, 2, '.', ''), '0'), '.') : null,
+                'unit' => $latest?->unit,
+            ];
+        }, $phenoMarkers);
+
         return view('biomarkers.index', [
             'profile' => $profile,
             'cards' => $cards,
             'catalog' => Biomarkers::all(),
             'parsed' => session('parsed'),       // confirmation set after an upload
             'parsedMeta' => session('parsedMeta'),
+            'phenoStatus' => $phenoStatus,
+            'phenoHave' => count(array_filter($phenoStatus, fn ($s) => $s['have'])),
+            'bioAge' => \App\Support\BiologicalAge::assess($profile),
         ]);
     }
 
