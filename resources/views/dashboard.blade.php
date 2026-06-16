@@ -56,18 +56,18 @@
             </div>
         </a>
 
-        {{-- ============ TODAY — the daily pulse, kept light ============ --}}
+        {{-- ============ TODAY'S FOCUS — the one thing to work on ============ --}}
         @php
-            $rTone = match (true) {
-                $today['readiness'] === null => 'text-gray-400',
-                $today['readiness'] >= 80 => 'text-emerald-300', $today['readiness'] >= 60 => 'text-cyan-300',
-                $today['readiness'] >= 40 => 'text-amber-300', default => 'text-orange-300',
+            $focusTone = match ($focus['focus']) {
+                'recover' => ['border-orange-500/25', 'from-orange-500/[0.10]', 'text-orange-300'],
+                'sleep' => ['border-indigo-500/25', 'from-indigo-500/[0.10]', 'text-indigo-300'],
+                'push' => ['border-emerald-500/25', 'from-emerald-500/[0.10]', 'text-emerald-300'],
+                default => ['border-cyan-500/20', 'from-cyan-500/[0.08]', 'text-cyan-300'],
             };
-            $sg = $today['step_goal'];
         @endphp
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
-            <div class="flex items-center justify-between mb-3">
-                <div class="text-[11px] uppercase tracking-wide text-gray-500">Today</div>
+        <div class="rounded-2xl border {{ $focusTone[0] }} bg-gradient-to-b {{ $focusTone[1] }} to-transparent p-4 md:p-5">
+            <div class="flex items-center justify-between">
+                <div class="text-[11px] uppercase tracking-wider {{ $focusTone[2] }} font-semibold">Today's focus</div>
                 @if ($today['from_wearable'])
                     <span class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400/80">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.55a11 11 0 0114 0M8.5 16.05a6 6 0 017 0M2 9.05a16 16 0 0120 0M12 20h.01"/></svg>
@@ -75,23 +75,42 @@
                     </span>
                 @endif
             </div>
-            <div class="grid grid-cols-3 gap-3 md:gap-4">
-                <a href="/recovery" class="block active:opacity-80">
-                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Readiness</div>
-                    <div class="font-display text-2xl md:text-3xl font-bold nums {{ $rTone }} mt-0.5 leading-none">{{ $today['readiness'] ?? '—' }}</div>
-                    <div class="text-xs text-gray-500 mt-1 truncate">{{ $today['readiness_label'] ?: 'connect a device' }}</div>
-                </a>
-                <a href="/sleep" class="block active:opacity-80">
-                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Last sleep</div>
-                    <div class="font-display text-2xl md:text-3xl font-bold nums text-indigo-300 mt-0.5 leading-none">{{ $today['sleep'] ?? '—' }}</div>
-                    <div class="text-xs text-gray-500 mt-1 truncate">{{ $today['sleep_quality'] !== null ? $today['sleep_quality'].'/100 quality' : 'duration' }}</div>
-                </a>
-                <a href="/fitness" class="block active:opacity-80">
-                    <div class="text-[11px] uppercase tracking-wide text-gray-500">Steps</div>
-                    <div class="font-display text-2xl md:text-3xl font-bold nums text-cyan-300 mt-0.5 leading-none">{{ number_format($today['steps']) }}</div>
-                    <div class="text-xs text-gray-500 mt-1 truncate nums">{{ $sg['to_go'] > 0 ? number_format($sg['to_go']).' to goal' : 'goal reached 🎉' }}</div>
-                </a>
-            </div>
+            <h2 class="mt-1 font-display text-xl font-bold {{ $focusTone[2] }}">{{ $focus['headline'] }}</h2>
+            <p class="mt-1 text-sm text-gray-300 leading-relaxed">{{ $focus['detail'] }}</p>
+        </div>
+
+        {{-- ============ THE DAILY LOOP — Recovery · Strain · Sleep ============ --}}
+        @php
+            $rTone = match (true) {
+                $today['readiness'] === null => 'text-gray-400',
+                $today['readiness'] >= 67 => 'text-emerald-300', $today['readiness'] >= 34 => 'text-amber-300',
+                default => 'text-orange-300',
+            };
+            $sTone = match ($strain['band']) {
+                'all_out', 'high' => 'text-cyan-300', 'moderate' => 'text-indigo-300', default => 'text-gray-300',
+            };
+            $perf = $sleepCoach['performance_pct'] ?? null;
+            $slTone = $perf === null ? 'text-gray-400' : ($perf >= 88 ? 'text-emerald-300' : ($perf >= 78 ? 'text-cyan-300' : 'text-amber-300'));
+        @endphp
+        <div class="grid grid-cols-3 gap-3 md:gap-4">
+            {{-- Recovery --}}
+            <a href="/recovery" class="rounded-2xl border border-white/5 bg-white/[0.03] p-3.5 md:p-4 active:bg-white/[0.05]">
+                <div class="text-[11px] uppercase tracking-wide text-gray-500">Recovery</div>
+                <div class="font-display text-2xl md:text-3xl font-bold nums {{ $rTone }} mt-0.5 leading-none">{{ $today['readiness'] ?? '—' }}<span class="text-gray-600 text-sm font-normal">{{ $today['readiness'] !== null ? '%' : '' }}</span></div>
+                <div class="text-[11px] text-gray-500 mt-1 truncate">{{ $today['readiness_label'] ?: 'connect a device' }}</div>
+            </a>
+            {{-- Strain (vs recovery-driven target) --}}
+            <a href="/fitness" class="rounded-2xl border border-white/5 bg-white/[0.03] p-3.5 md:p-4 active:bg-white/[0.05]">
+                <div class="text-[11px] uppercase tracking-wide text-gray-500">Strain</div>
+                <div class="font-display text-2xl md:text-3xl font-bold nums {{ $sTone }} mt-0.5 leading-none">{{ number_format($strain['strain'], 1) }}<span class="text-gray-600 text-sm font-normal nums"> / {{ number_format($strain['target']['high'], 0) }}</span></div>
+                <div class="text-[11px] text-gray-500 mt-1 truncate">{{ $strain['target']['label'] }}</div>
+            </a>
+            {{-- Sleep (performance vs need) --}}
+            <a href="/sleep" class="rounded-2xl border border-white/5 bg-white/[0.03] p-3.5 md:p-4 active:bg-white/[0.05]">
+                <div class="text-[11px] uppercase tracking-wide text-gray-500">Sleep</div>
+                <div class="font-display text-2xl md:text-3xl font-bold nums {{ $slTone }} mt-0.5 leading-none">{{ $perf !== null ? $perf : '—' }}<span class="text-gray-600 text-sm font-normal">{{ $perf !== null ? '%' : '' }}</span></div>
+                <div class="text-[11px] text-gray-500 mt-1 truncate">{{ $sleepCoach ? 'need '.number_format($sleepCoach['need_h'], 1).'h' : 'no nights yet' }}</div>
+            </a>
         </div>
 
         {{-- ============ TRAJECTORY — the graphs that show you're improving ============ --}}

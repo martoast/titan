@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Support\BiologicalAge;
+use App\Support\DailyFocus;
 use App\Support\Readiness;
+use App\Support\SleepCoach;
+use App\Support\Strain;
 use App\Support\StepGoal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -37,17 +40,16 @@ class DashboardController extends Controller
             'has_goal' => (bool) $goal,
         ];
 
-        // --- Today's pulse (kept light) ---
+        // --- The daily loop: Recovery → Strain → Sleep, plus the one thing to work on ---
         $rec = $p->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
-        $sleep = $p->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
-        $steps = (int) ($p->dailyActivity()->whereDate('date', Carbon::today())->value('steps') ?? 0);
         $readiness = Readiness::compute($p, $rec?->logged_at);
+        $focus = DailyFocus::compute($p);
+        $strain = Strain::assess($p);
+        $sleepCoach = SleepCoach::assess($p);
+        $steps = (int) ($p->dailyActivity()->whereDate('date', Carbon::today())->value('steps') ?? 0);
         $today = [
             'readiness' => $readiness['score'] ?? null,
             'readiness_label' => $readiness['label'] ?? '',
-            'sleep' => $sleep?->durationLabel(),
-            'sleep_quality' => $sleep?->quality,
-            'resting_hr' => $rec?->resting_hr,
             'from_wearable' => str_starts_with((string) $rec?->updated_via, 'biosignal'),
             'steps' => $steps,
             'step_goal' => StepGoal::assess($steps, StepGoal::targetFor($p)),
@@ -77,6 +79,9 @@ class DashboardController extends Controller
             'name' => $request->user()->name,
             'futureSelf' => $futureSelf,
             'today' => $today,
+            'focus' => $focus,
+            'strain' => $strain,
+            'sleepCoach' => $sleepCoach,
             'trajectories' => $trajectories,
             'photos' => $photos,
             'bioAge' => $bioAge,

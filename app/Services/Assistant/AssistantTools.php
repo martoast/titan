@@ -146,6 +146,10 @@ class AssistantTools
             'step_goal' => $goal['target'],
             'step_progress_pct' => $goal['pct'],
             'metabolic_health' => MetabolicHealth::assess($this->profile)['score'] ?? null,
+            // The daily loop: today's focus + Strain (vs recovery-driven target) + Sleep coaching.
+            'focus' => \App\Support\DailyFocus::compute($this->profile),
+            'strain' => \App\Support\Strain::assess($this->profile),
+            'sleep_coach' => \App\Support\SleepCoach::assess($this->profile),
         ];
     }
 

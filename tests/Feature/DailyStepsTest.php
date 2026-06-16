@@ -45,12 +45,14 @@ class DailyStepsTest extends TestCase
             ->assertSee('to your')->assertSee('lower all-cause mortality');
     }
 
-    public function test_dashboard_shows_steps_tile(): void
+    public function test_dashboard_shows_the_daily_loop(): void
     {
         $user = User::factory()->create();
         $user->ensureProfile()->dailyActivity()->create(['date' => now()->toDateString(), 'steps' => 6400, 'source' => 'manual']);
 
+        // Steps now feed the Strain card (ambient load); the dashboard leads with the Recovery →
+        // Strain → Sleep loop + today's focus, not a raw steps tile.
         $this->actingAs($user)->get('/dashboard')->assertOk()
-            ->assertSee('Steps')->assertSee('6,400');
+            ->assertSee('Recovery')->assertSee('Strain')->assertSee('Sleep');
     }
 }
