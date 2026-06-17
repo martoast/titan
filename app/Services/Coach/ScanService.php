@@ -160,11 +160,13 @@ class ScanService
         ]);
 
         $conf = strtolower((string) ($m['confidence'] ?? ''));
-        $hedge = match ($conf) {
-            'low' => ' These are rough estimates from the photo — tweak them if you know better.',
-            'medium' => ' Macros are estimated from the photo.',
-            default => '',
-        };
+        $hedge = ! empty($m['grounded'])
+            ? ' Macros grounded in real nutrition data for this dish.'
+            : match ($conf) {
+                'low' => ' These are rough estimates from the photo — tweak them if you know better.',
+                'medium' => ' Macros are estimated from the photo.',
+                default => '',
+            };
 
         // Lead with the updated macros card, then a short confirmation line.
         $reply = \App\Support\Macros::fenced($profile)
