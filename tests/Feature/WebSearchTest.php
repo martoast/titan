@@ -78,10 +78,7 @@ class WebSearchTest extends TestCase
 
         $names = array_map(fn ($t) => $t['function']['name'], $tools->schemas());
         $this->assertContains('web_search', $names);
-        $this->assertContains('lookup_food', $names);
-
-        $res = $tools->dispatch('lookup_food', ['food' => '100g grilled chicken breast']);
-        $this->assertStringContainsString('195', $res['nutrition_facts']);
+        $this->assertContains('lookup_food', $names);   // food lookup itself is covered in FoodLibraryTest
 
         $ws = $tools->dispatch('web_search', ['query' => 'creatine dose']);
         $this->assertNotEmpty($ws['results']);
