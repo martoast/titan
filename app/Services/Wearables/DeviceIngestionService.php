@@ -59,13 +59,22 @@ class DeviceIngestionService
         }
 
         // --- Shape C: provider summaries → straight to canonical tables ---
+        $recoveryLanded = false;
         foreach (($payload['summaries'] ?? []) as $summary) {
             if (! is_array($summary)) {
                 continue;
             }
             if ($this->writeSummary($connection, $summary, $tz)) {
                 $summariesWritten++;
+                if (($summary['kind'] ?? '') === 'recovery') {
+                    $recoveryLanded = true;
+                }
             }
+        }
+
+        // Fresh overnight recovery just landed → let the coach react (deduped to once a day in the job).
+        if ($recoveryLanded && class_exists(\App\Jobs\ReactToDeviceSync::class)) {
+            \App\Jobs\ReactToDeviceSync::dispatch($connection->profile_id);
         }
 
         // Capture device telemetry (battery, firmware) if the band reported it this sync.
