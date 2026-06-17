@@ -26,6 +26,7 @@ class RegistrationTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        // New users are sent to the onboarding wizard, not straight to the dashboard.
+        $response->assertRedirect(route('onboarding', absolute: false));
     }
 }

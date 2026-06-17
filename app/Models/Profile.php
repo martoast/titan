@@ -19,7 +19,7 @@ class Profile extends Model
 
     protected $fillable = [
         'user_id', 'display_name', 'birthdate', 'sex', 'height_cm',
-        'primary_goal', 'coach_tone', 'settings',
+        'primary_goal', 'coach_tone', 'settings', 'onboarded_at',
     ];
 
     protected function casts(): array
@@ -27,7 +27,13 @@ class Profile extends Model
         return [
             'birthdate' => 'date',
             'settings' => 'array',
+            'onboarded_at' => 'datetime',
         ];
+    }
+
+    public function isOnboarded(): bool
+    {
+        return $this->onboarded_at !== null;
     }
 
     public function user(): BelongsTo

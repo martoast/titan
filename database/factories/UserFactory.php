@@ -42,4 +42,22 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /**
+     * Factory users are treated as already-onboarded so feature tests can hit gated routes
+     * directly. Use ->notOnboarded() to exercise the onboarding gate / wizard.
+     */
+    public function configure(): static
+    {
+        return $this->afterCreating(function (User $user) {
+            $user->ensureProfile()->update(['onboarded_at' => now()]);
+        });
+    }
+
+    public function notOnboarded(): static
+    {
+        return $this->afterCreating(function (User $user) {
+            $user->ensureProfile()->update(['onboarded_at' => null]);
+        });
+    }
 }

@@ -46,6 +46,7 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
 
-        return redirect(route('dashboard', absolute: false));
+        // New users land in the onboarding wizard, not the dashboard.
+        return redirect(route('onboarding', absolute: false));
     }
 }

@@ -1,0 +1,146 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Support\Cycle;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\View\View;
+
+/**
+ * First-run onboarding — the wizard that turns a fresh account into a real Titan profile.
+ * Collects the vitals (who they are, their goal, coaching style, nutrition, and — for women —
+ * their cycle), seeds personalized macro targets, logs a starting weight, and marks the
+ * profile onboarded so the `onboarded` gate lets them into the rest of the app.
+ */
+class OnboardingController extends Controller
+{
+    private const GOALS = [
+        'build_muscle' => 'Build muscle',
+        'lose_fat' => 'Lose fat / get lean',
+        'recomp' => 'Recomposition (lean + strong)',
+        'longevity' => 'Longevity & healthspan',
+        'performance' => 'Athletic performance',
+        'general' => 'General health & energy',
+    ];
+
+    public function show(Request $request): View|RedirectResponse
+    {
+        $profile = $request->user()->ensureProfile();
+        if ($profile->isOnboarded()) {
+            return redirect()->route('dashboard');
+        }
+
+        return view('onboarding.index', [
+            'profile' => $profile,
+            'name' => $profile->display_name ?: $request->user()->name,
+            'goals' => self::GOALS,
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $data = $request->validate([
+            'display_name' => ['required', 'string', 'max:60'],
+            'birthdate' => ['required', 'date', 'before:today', 'after:1900-01-01'],
+            'sex' => ['required', 'in:F,M,other'],
+            'units' => ['required', 'in:metric,imperial'],
+            'height' => ['required', 'numeric', 'min:1', 'max:300'],
+            'weight' => ['required', 'numeric', 'min:1', 'max:600'],
+            'activity_level' => ['required', 'in:sedentary,light,moderate,active'],
+            'primary_goal' => ['required', 'in:'.implode(',', array_keys(self::GOALS))],
+            'coach_tone' => ['required', 'in:tough_love,balanced,gentle'],
+            'meals_per_day' => ['required', 'integer', 'min:2', 'max:6'],
+            'eat_start' => ['nullable', 'date_format:H:i'],
+            'eat_end' => ['nullable', 'date_format:H:i'],
+            'timezone' => ['nullable', 'timezone'],
+            // Cycle (women, optional)
+            'cycle_enabled' => ['nullable', 'boolean'],
+            'last_period' => ['nullable', 'date', 'before_or_equal:today'],
+            'cycle_length' => ['nullable', 'integer', 'min:21', 'max:45'],
+            'birth_control' => ['nullable', 'in:none,pill,patch,ring,hormonal_iud,copper_iud,implant,injection,other'],
+            'cycle_intent' => ['nullable', 'in:tracking,conceiving,avoiding'],
+        ]);
+
+        $imperial = $data['units'] === 'imperial';
+        $heightCm = $imperial ? round($data['height'] * 2.54, 1) : (float) $data['height'];
+        $weightKg = $imperial ? round($data['weight'] * 0.45359237, 2) : (float) $data['weight'];
+        $female = $data['sex'] === 'F';
+
+        $settings = $profile->settings ?? [];
+        $settings['units'] = $data['units'];
+        $settings['timezone'] = $data['timezone'] ?? ($settings['timezone'] ?? config('app.timezone', 'UTC'));
+        $settings['activity_level'] = $data['activity_level'];
+        $settings['meal_plan'] = [
+            'meals' => (int) $data['meals_per_day'],
+            'start' => ($data['eat_start'] ?? null) ?: '08:00',
+            'end' => ($data['eat_end'] ?? null) ?: '21:00',
+        ];
+        $settings['macro_targets'] = $this->macros($weightKg, $heightCm, Carbon::parse($data['birthdate'])->age, $female, $data['activity_level'], $data['primary_goal']);
+
+        // Cycle config for women who opted in.
+        if ($female && $request->boolean('cycle_enabled')) {
+            $settings['cycle'] = array_merge($settings['cycle'] ?? [], [
+                'enabled' => true,
+                'avg_length' => $data['cycle_length'] ?? Cycle::DEFAULT_LENGTH,
+                'avg_period' => $settings['cycle']['avg_period'] ?? Cycle::DEFAULT_PERIOD,
+                'luteal_length' => $settings['cycle']['luteal_length'] ?? Cycle::DEFAULT_LUTEAL,
+                'birth_control' => $data['birth_control'] ?? 'none',
+                'intent' => $data['cycle_intent'] ?? 'tracking',
+            ]);
+        }
+
+        $profile->update([
+            'display_name' => $data['display_name'],
+            'birthdate' => $data['birthdate'],
+            'sex' => $data['sex'],
+            'height_cm' => $heightCm,
+            'primary_goal' => self::GOALS[$data['primary_goal']],
+            'coach_tone' => $data['coach_tone'],
+            'settings' => $settings,
+            'onboarded_at' => now(),
+        ]);
+
+        // Seed a starting weight so trajectories + biological age have an anchor.
+        if (method_exists($profile, 'bodyMetrics')) {
+            $profile->bodyMetrics()->create(['taken_at' => Carbon::today(), 'weight_kg' => $weightKg]);
+        }
+
+        // First period → anchors the cycle engine immediately.
+        if ($female && $request->boolean('cycle_enabled') && ! empty($data['last_period'])) {
+            Cycle::startPeriod($profile, Carbon::parse($data['last_period']));
+        }
+
+        return redirect()->route('dashboard')->with('status', "Welcome to Titan, {$data['display_name']} — your profile is ready.");
+    }
+
+    /**
+     * Personalized daily macro targets — Mifflin-St Jeor BMR × activity × goal, protein from
+     * bodyweight. A sensible starting point the coach can refine later, not a prescription.
+     *
+     * @return array{calories:int,protein_g:int}
+     */
+    private function macros(float $kg, float $cm, int $age, bool $female, string $activity, string $goal): array
+    {
+        $bmr = 10 * $kg + 6.25 * $cm - 5 * $age + ($female ? -161 : 5);
+        $af = ['sedentary' => 1.2, 'light' => 1.375, 'moderate' => 1.55, 'active' => 1.725][$activity] ?? 1.375;
+        $tdee = $bmr * $af;
+
+        $goalMult = match ($goal) {
+            'lose_fat' => 0.80,
+            'build_muscle' => 1.10,
+            'performance' => 1.05,
+            default => 1.0,
+        };
+        $calories = (int) (round($tdee * $goalMult / 10) * 10);
+
+        // Higher protein for muscle/lean goals; solid baseline otherwise.
+        $perKg = in_array($goal, ['build_muscle', 'lose_fat', 'recomp'], true) ? 2.1 : 1.8;
+        $protein = (int) round($kg * $perKg);
+
+        return ['calories' => max(1200, $calories), 'protein_g' => $protein];
+    }
+}

@@ -14,7 +14,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Personal-API-token auth for the assistant/MCP surface (stateless bearer tokens).
-        $middleware->alias(['auth.token' => \App\Http\Middleware\AuthenticateApiToken::class]);
+        $middleware->alias([
+            'auth.token' => \App\Http\Middleware\AuthenticateApiToken::class,
+            'onboarded' => \App\Http\Middleware\EnsureOnboarded::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
