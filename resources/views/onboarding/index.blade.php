@@ -8,255 +8,354 @@
     <title>Set up your Titan</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <style>
+        [x-cloak] { display: none !important; }
+        .ob-glow {
+            position: fixed; inset: -30% 0 auto 0; height: 60vh; z-index: 0; pointer-events: none;
+            background: radial-gradient(60% 60% at 50% 0%, var(--accent, #6366f1) 0%, transparent 70%);
+            opacity: 0.16; filter: blur(20px); transition: background 0.6s ease, opacity 0.6s ease;
+        }
+        /* margin:auto centres a short step but lets a tall one (e.g. 6 goal cards) scroll on small phones */
+        .ob-step { animation: ob-in 0.42s cubic-bezier(0.16,1,0.3,1) both; margin-block: auto; width: 100%; }
+        @keyframes ob-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        .ob-opt { transition: transform 0.12s ease, border-color 0.18s ease, background 0.18s ease; }
+        .ob-opt:active { transform: scale(0.985); }
+        @media (prefers-reduced-motion: reduce) {
+            .ob-step, .ob-opt { animation: none !important; transition: none !important; }
+        }
+        /* big, centred number fields */
+        .ob-num { font-family: 'Archivo', sans-serif; font-weight: 800; letter-spacing: -0.02em; }
+        .ob-num::-webkit-outer-spin-button, .ob-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
 </head>
-<body class="bg-[#07080a] text-gray-100 min-h-[100dvh]">
-    @php
-        $tz = $profile->settings['timezone'] ?? 'America/Mexico_City';
-    @endphp
+<body class="bg-[#07080a] text-gray-100">
+    @php $tz = $profile->settings['timezone'] ?? 'America/Mexico_City'; @endphp
 
-    <div x-data="onboardingWizard('{{ addslashes($name) }}', '{{ $tz }}')" class="mx-auto flex min-h-[100dvh] max-w-lg flex-col px-5 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
+    <div x-data="onboardingWizard('{{ addslashes($name) }}', '{{ $tz }}')"
+         class="relative mx-auto flex min-h-[100dvh] max-w-md flex-col px-6"
+         :style="`--accent: ${accent}`">
+
+        <div class="ob-glow"></div>
 
         {{-- Progress --}}
-        <div class="sticky top-0 z-10 -mx-5 bg-[#07080a]/90 px-5 pt-3 pb-3 backdrop-blur">
-            <div class="flex items-center justify-between mb-2">
-                <span class="font-display text-sm font-bold tracking-tight text-indigo-300">TITAN</span>
-                <span class="text-[11px] text-gray-500" x-text="`Step ${idx + 1} of ${steps.length}`"></span>
+        <header class="relative z-10 pt-[max(1.25rem,env(safe-area-inset-top))]">
+            <div class="flex items-center justify-between">
+                <span class="font-display text-base font-extrabold tracking-tight" :style="`color:${accent}`">TITAN</span>
+                <span class="font-display text-xs font-bold tabular-nums text-gray-500">
+                    <span x-text="String(idx + 1).padStart(2,'0')"></span><span class="text-gray-700"> / <span x-text="String(steps.length).padStart(2,'0')"></span></span>
+                </span>
             </div>
-            <div class="h-1 rounded-full bg-white/10 overflow-hidden">
-                <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-300"
-                     :style="`width: ${((idx + 1) / steps.length) * 100}%`"></div>
+            <div class="mt-3 h-1 rounded-full bg-white/[0.07] overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-500 ease-out"
+                     :style="`width:${((idx + 1) / steps.length) * 100}%; background:linear-gradient(90deg, #6366f1, ${accent})`"></div>
             </div>
-        </div>
+        </header>
 
-        <form method="POST" action="/onboarding" class="flex flex-1 flex-col" @submit="submitting = true">
+        <form method="POST" action="/onboarding" class="relative z-10 flex flex-1 flex-col" @submit="submitting = true">
             @csrf
+            {{-- All submitted values live in always-present hidden inputs, so they post even when
+                 their step isn't currently rendered (sections use x-if). Visible inputs only x-model. --}}
+            <input type="hidden" name="display_name" :value="form.display_name">
+            <input type="hidden" name="birthdate" :value="form.birthdate">
+            <input type="hidden" name="sex" :value="form.sex">
+            <input type="hidden" name="units" :value="form.units">
+            <input type="hidden" name="height" :value="form.height">
+            <input type="hidden" name="weight" :value="form.weight">
+            <input type="hidden" name="activity_level" :value="form.activity_level">
+            <input type="hidden" name="primary_goal" :value="form.primary_goal">
+            <input type="hidden" name="coach_tone" :value="form.coach_tone">
+            <input type="hidden" name="meals_per_day" :value="form.meals_per_day">
+            <input type="hidden" name="eat_start" :value="form.eat_start">
+            <input type="hidden" name="eat_end" :value="form.eat_end">
+            <input type="hidden" name="timezone" :value="form.timezone">
+            <input type="hidden" name="cycle_enabled" :value="form.cycle_enabled ? 1 : 0">
+            <input type="hidden" name="last_period" :value="form.last_period">
+            <input type="hidden" name="cycle_length" :value="form.cycle_length">
+            <input type="hidden" name="birth_control" :value="form.birth_control">
+            <input type="hidden" name="cycle_intent" :value="form.cycle_intent">
 
-            <div class="flex-1 py-6">
-                {{-- 1 · Welcome --}}
-                <section x-show="current === 'welcome'" x-cloak class="text-center pt-6">
-                    <div class="mx-auto mb-5 h-16 w-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-cyan-400 grid place-items-center">
-                        <svg class="h-8 w-8 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                    </div>
-                    <h1 class="font-display text-3xl font-extrabold tracking-tight">Welcome, <span x-text="form.display_name"></span>.</h1>
-                    <p class="mt-3 text-gray-400 leading-relaxed">Titan is your own AI health, longevity and physique coach — grounded in <em>your</em> data. Let's spend two minutes building your profile so it can actually help you.</p>
-                    <ul class="mt-6 space-y-2.5 text-left text-sm text-gray-300">
-                        <li class="flex gap-2.5"><span class="text-indigo-400">●</span> The vitals that personalize everything</li>
-                        <li class="flex gap-2.5"><span class="text-indigo-400">●</span> Your goal and how you want to be coached</li>
-                        <li class="flex gap-2.5"><span class="text-indigo-400">●</span> Nutrition targets, calculated for you</li>
-                    </ul>
-                </section>
-
-                {{-- 2 · About you --}}
-                <section x-show="current === 'about'" x-cloak>
-                    <h2 class="font-display text-2xl font-bold">About you</h2>
-                    <p class="mt-1 text-sm text-gray-500">The basics behind every score — readiness, biological age, macros.</p>
-
-                    <div class="mt-5 space-y-4">
-                        <div>
-                            <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Preferred name</label>
-                            <input name="display_name" x-model="form.display_name" type="text" maxlength="60" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
+            <main class="flex flex-1 flex-col overflow-y-auto py-5">
+                <template x-if="current === 'welcome'">
+                    <section class="ob-step text-center">
+                        <div class="mx-auto mb-7 grid h-20 w-20 place-items-center rounded-[1.4rem] bg-gradient-to-br from-indigo-500 to-cyan-400 shadow-lg shadow-indigo-500/20">
+                            <svg class="h-10 w-10 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                         </div>
-                        <div>
-                            <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Date of birth</label>
-                            <input name="birthdate" x-model="form.birthdate" type="date" max="{{ now()->subYears(13)->toDateString() }}" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
+                        <h1 class="font-display text-[2.1rem] font-extrabold leading-[1.05] tracking-tight">Hey <span x-text="form.display_name"></span>.<br>Let's build your Titan.</h1>
+                        <p class="mx-auto mt-4 max-w-xs text-[15px] leading-relaxed text-gray-400">A few quick questions so your coach knows exactly who it's training. Takes about a minute.</p>
+                    </section>
+                </template>
+
+                {{-- Name --}}
+                <template x-if="current === 'name'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">First things first</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">What should I call you?</h2>
+                        <input x-model="form.display_name" type="text" maxlength="60" autocomplete="given-name"
+                               class="mt-7 w-full border-0 border-b-2 border-white/15 bg-transparent px-1 pb-3 font-display text-3xl font-extrabold tracking-tight text-gray-100 placeholder-gray-700 focus:border-indigo-400 focus:ring-0"
+                               placeholder="Your name" @keydown.enter.prevent="valid() && next()">
+                    </section>
+                </template>
+
+                {{-- Birthday --}}
+                <template x-if="current === 'birthday'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Your age shapes every score</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">When were you born?</h2>
+                        <input x-model="form.birthdate" type="date" max="{{ now()->subYears(13)->toDateString() }}"
+                               class="mt-7 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 font-display text-2xl font-bold tracking-tight text-gray-100 focus:border-indigo-400 focus:ring-0">
+                        <p class="mt-3 text-sm text-gray-600">Readiness, biological age and your macros all use this.</p>
+                    </section>
+                </template>
+
+                {{-- Sex --}}
+                <template x-if="current === 'sex'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Physiology differs</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">What's your sex?</h2>
+                        <p class="mt-2 text-sm text-gray-500">Drives HRV baselines, macros, and cycle tracking.</p>
+                        <div class="mt-6 space-y-3">
+                            <template x-for="o in sexes" :key="o.value">
+                                <button type="button" @click="pick('sex', o.value)"
+                                        class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left"
+                                        :style="form.sex === o.value ? `border-color:${o.accent}; background:${o.accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
+                                    <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-2xl font-bold" :style="`background:${o.accent}26; color:${o.accent}`" x-text="o.glyph"></span>
+                                    <span class="flex-1 font-display text-lg font-bold text-gray-100" x-text="o.label"></span>
+                                    <svg x-show="form.sex === o.value" class="h-6 w-6" :style="`color:${o.accent}`" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                </button>
+                            </template>
                         </div>
-                        <div>
-                            <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Sex (for physiology — HRV, macros, cycle)</label>
-                            <div class="grid grid-cols-3 gap-2">
-                                <template x-for="opt in [{v:'F',l:'Female'},{v:'M',l:'Male'},{v:'other',l:'Other'}]" :key="opt.v">
-                                    <button type="button" @click="form.sex = opt.v"
-                                            :class="form.sex === opt.v ? 'border-indigo-400/60 bg-indigo-400/15 text-indigo-100' : 'border-white/10 text-gray-300'"
-                                            class="rounded-xl border px-3 py-2.5 text-sm font-medium transition" x-text="opt.l"></button>
-                                </template>
+                    </section>
+                </template>
+
+                {{-- Units --}}
+                <template x-if="current === 'units'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Measurements</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Pick your units.</h2>
+                        <div class="mt-6 grid grid-cols-2 gap-3">
+                            <template x-for="o in unitsList" :key="o.value">
+                                <button type="button" @click="pick('units', o.value)"
+                                        class="ob-opt flex flex-col items-center gap-2 rounded-2xl border-2 px-4 py-6"
+                                        :style="form.units === o.value ? `border-color:${accent}; background:${accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
+                                    <span class="font-display text-2xl font-extrabold" :style="form.units === o.value ? `color:${accent}` : 'color:#e5e7eb'" x-text="o.big"></span>
+                                    <span class="text-xs text-gray-500" x-text="o.label"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </section>
+                </template>
+
+                {{-- Body (height + weight) --}}
+                <template x-if="current === 'body'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">The baseline</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Your height &amp; weight.</h2>
+                        <div class="mt-7 space-y-4">
+                            <div class="flex items-baseline gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
+                                <span class="w-20 text-sm font-medium text-gray-500">Height</span>
+                                <input x-model="form.height" type="number" step="0.1" inputmode="decimal" placeholder="0"
+                                       class="ob-num min-w-0 flex-1 border-0 bg-transparent p-0 text-right text-3xl text-gray-100 placeholder-gray-700 focus:ring-0">
+                                <span class="w-8 text-lg font-semibold text-gray-500" x-text="form.units === 'metric' ? 'cm' : 'in'"></span>
                             </div>
-                            <input type="hidden" name="sex" :value="form.sex">
-                        </div>
-
-                        <div>
-                            <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Units</label>
-                            <div class="grid grid-cols-2 gap-2">
-                                <button type="button" @click="form.units = 'metric'" :class="form.units === 'metric' ? 'border-indigo-400/60 bg-indigo-400/15 text-indigo-100' : 'border-white/10 text-gray-300'" class="rounded-xl border px-3 py-2.5 text-sm font-medium transition">Metric (kg / cm)</button>
-                                <button type="button" @click="form.units = 'imperial'" :class="form.units === 'imperial' ? 'border-indigo-400/60 bg-indigo-400/15 text-indigo-100' : 'border-white/10 text-gray-300'" class="rounded-xl border px-3 py-2.5 text-sm font-medium transition">Imperial (lb / in)</button>
-                            </div>
-                            <input type="hidden" name="units" :value="form.units">
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Height (<span x-text="form.units === 'metric' ? 'cm' : 'in'"></span>)</label>
-                                <input name="height" x-model="form.height" type="number" step="0.1" inputmode="decimal" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
-                            </div>
-                            <div>
-                                <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Weight (<span x-text="form.units === 'metric' ? 'kg' : 'lb'"></span>)</label>
-                                <input name="weight" x-model="form.weight" type="number" step="0.1" inputmode="decimal" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
+                            <div class="flex items-baseline gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
+                                <span class="w-20 text-sm font-medium text-gray-500">Weight</span>
+                                <input x-model="form.weight" type="number" step="0.1" inputmode="decimal" placeholder="0"
+                                       class="ob-num min-w-0 flex-1 border-0 bg-transparent p-0 text-right text-3xl text-gray-100 placeholder-gray-700 focus:ring-0">
+                                <span class="w-8 text-lg font-semibold text-gray-500" x-text="form.units === 'metric' ? 'kg' : 'lb'"></span>
                             </div>
                         </div>
+                    </section>
+                </template>
 
-                        <div>
-                            <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Typical activity</label>
-                            <div class="space-y-2">
-                                <template x-for="opt in [{v:'sedentary',l:'Sedentary',d:'Desk job, little exercise'},{v:'light',l:'Light',d:'1–3 workouts / week'},{v:'moderate',l:'Moderate',d:'4–5 workouts / week'},{v:'active',l:'Very active',d:'6+ or physical job'}]" :key="opt.v">
-                                    <button type="button" @click="form.activity_level = opt.v"
-                                            :class="form.activity_level === opt.v ? 'border-indigo-400/60 bg-indigo-400/10' : 'border-white/10'"
-                                            class="flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition">
-                                        <span class="text-sm font-medium text-gray-200" x-text="opt.l"></span>
-                                        <span class="text-xs text-gray-500" x-text="opt.d"></span>
-                                    </button>
-                                </template>
-                            </div>
-                            <input type="hidden" name="activity_level" :value="form.activity_level">
-                            <input type="hidden" name="timezone" :value="form.timezone">
+                {{-- Activity --}}
+                <template x-if="current === 'activity'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Day to day</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">How active are you?</h2>
+                        <div class="mt-6 space-y-3">
+                            <template x-for="o in activities" :key="o.value">
+                                <button type="button" @click="pick('activity_level', o.value)"
+                                        class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-3.5 text-left"
+                                        :style="form.activity_level === o.value ? `border-color:${accent}; background:${accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
+                                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl" :style="`background:${accent}22; color:${accent}`">
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" :d="o.icon"/></svg>
+                                    </span>
+                                    <span class="flex-1">
+                                        <span class="block font-display text-base font-bold text-gray-100" x-text="o.label"></span>
+                                        <span class="block text-xs text-gray-500" x-text="o.desc"></span>
+                                    </span>
+                                </button>
+                            </template>
                         </div>
-                    </div>
-                </section>
+                    </section>
+                </template>
 
-                {{-- 3 · Goal --}}
-                <section x-show="current === 'goal'" x-cloak>
-                    <h2 class="font-display text-2xl font-bold">Your main goal</h2>
-                    <p class="mt-1 text-sm text-gray-500">What should Titan optimize you toward? You can change this anytime.</p>
-                    <div class="mt-5 space-y-2.5">
-                        @foreach ($goals as $key => $label)
-                            <button type="button" @click="form.primary_goal = '{{ $key }}'"
-                                    :class="form.primary_goal === '{{ $key }}' ? 'border-indigo-400/60 bg-indigo-400/10' : 'border-white/10'"
-                                    class="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left transition">
-                                <span class="h-2.5 w-2.5 rounded-full shrink-0" :class="form.primary_goal === '{{ $key }}' ? 'bg-indigo-400' : 'bg-white/15'"></span>
-                                <span class="text-sm font-medium text-gray-100">{{ $label }}</span>
+                {{-- Goal --}}
+                <template x-if="current === 'goal'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">The mission</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">What's your main goal?</h2>
+                        <div class="mt-6 space-y-3">
+                            <template x-for="o in goals" :key="o.value">
+                                <button type="button" @click="pick('primary_goal', o.value)"
+                                        class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-3.5 text-left"
+                                        :style="form.primary_goal === o.value ? `border-color:${o.accent}; background:${o.accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
+                                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl" :style="`background:${o.accent}26; color:${o.accent}`">
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" :d="o.icon"/></svg>
+                                    </span>
+                                    <span class="flex-1">
+                                        <span class="block font-display text-base font-bold text-gray-100" x-text="o.label"></span>
+                                        <span class="block text-xs text-gray-500" x-text="o.desc"></span>
+                                    </span>
+                                    <svg x-show="form.primary_goal === o.value" class="h-5 w-5 shrink-0" :style="`color:${o.accent}`" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                </button>
+                            </template>
+                        </div>
+                    </section>
+                </template>
+
+                {{-- Coaching tone --}}
+                <template x-if="current === 'tone'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Your coach's voice</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">How should I push you?</h2>
+                        <div class="mt-6 space-y-3">
+                            <template x-for="o in tones" :key="o.value">
+                                <button type="button" @click="pick('coach_tone', o.value)"
+                                        class="ob-opt block w-full rounded-2xl border-2 px-5 py-4 text-left"
+                                        :style="form.coach_tone === o.value ? `border-color:${o.accent}; background:${o.accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
+                                    <span class="flex items-center gap-2">
+                                        <span class="text-xl" x-text="o.emoji"></span>
+                                        <span class="font-display text-lg font-bold text-gray-100" x-text="o.label"></span>
+                                    </span>
+                                    <span class="mt-1 block text-[13px] leading-snug text-gray-500" x-text="o.desc"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </section>
+                </template>
+
+                {{-- Cycle: enable --}}
+                <template x-if="current === 'cycle_enable'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Women's health</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Track your cycle?</h2>
+                        <p class="mt-2 text-sm text-gray-500">Titan weaves your phase into recovery, nutrition and training. Private, and yours alone — never contraception or diagnosis.</p>
+                        <div class="mt-6 space-y-3">
+                            <button type="button" @click="form.cycle_enabled = true; pickAdvance()"
+                                    class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left"
+                                    :style="form.cycle_enabled ? 'border-color:#fb7185; background:#fb71851f' : 'border-color:rgba(255,255,255,0.08)'">
+                                <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl" style="background:#fb718526; color:#fb7185">
+                                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-2.64-6.36M21 4v4h-4"/></svg>
+                                </span>
+                                <span class="flex-1 font-display text-lg font-bold text-gray-100">Yes, track it</span>
                             </button>
-                        @endforeach
-                    </div>
-                    <input type="hidden" name="primary_goal" :value="form.primary_goal">
-                </section>
-
-                {{-- 4 · Coaching style --}}
-                <section x-show="current === 'tone'" x-cloak>
-                    <h2 class="font-display text-2xl font-bold">How should I coach you?</h2>
-                    <p class="mt-1 text-sm text-gray-500">Your coach's voice. Be honest about what gets you moving.</p>
-                    <div class="mt-5 space-y-2.5">
-                        <template x-for="opt in [
-                            {v:'tough_love',l:'Tough love',d:'Direct and demanding. Calls out excuses, pushes you hard.'},
-                            {v:'balanced',l:'Balanced',d:'Supportive but straight — encourages and tells you the truth.'},
-                            {v:'gentle',l:'Gentle',d:'Warm and patient. Celebrates small wins, never shames.'}
-                        ]" :key="opt.v">
-                            <button type="button" @click="form.coach_tone = opt.v"
-                                    :class="form.coach_tone === opt.v ? 'border-indigo-400/60 bg-indigo-400/10' : 'border-white/10'"
-                                    class="block w-full rounded-xl border px-4 py-3.5 text-left transition">
-                                <span class="text-sm font-semibold text-gray-100" x-text="opt.l"></span>
-                                <span class="mt-0.5 block text-xs text-gray-500" x-text="opt.d"></span>
+                            <button type="button" @click="form.cycle_enabled = false; pickAdvance()"
+                                    class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left border-white/[0.08]">
+                                <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/5 text-gray-400">
+                                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </span>
+                                <span class="flex-1 font-display text-lg font-bold text-gray-300">Not now</span>
                             </button>
-                        </template>
-                    </div>
-                    <input type="hidden" name="coach_tone" :value="form.coach_tone">
-                </section>
-
-                {{-- 5 · Cycle (women only) --}}
-                <section x-show="current === 'cycle'" x-cloak>
-                    <h2 class="font-display text-2xl font-bold">Your cycle</h2>
-                    <p class="mt-1 text-sm text-gray-500">Titan can weave your menstrual cycle into recovery, nutrition and training. Optional — and yours alone.</p>
-
-                    <label class="mt-5 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
-                        <span class="text-sm font-medium text-gray-200">Track my cycle</span>
-                        <input type="checkbox" name="cycle_enabled" value="1" x-model="form.cycle_enabled" class="h-5 w-9 appearance-none rounded-full bg-white/15 checked:bg-indigo-500 transition relative cursor-pointer before:absolute before:top-0.5 before:left-0.5 before:h-4 before:w-4 before:rounded-full before:bg-white before:transition checked:before:translate-x-4">
-                    </label>
-
-                    <div x-show="form.cycle_enabled" x-cloak class="mt-4 space-y-4">
-                        <div>
-                            <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">First day of your last period</label>
-                            <input name="last_period" x-model="form.last_period" type="date" max="{{ now()->toDateString() }}" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
                         </div>
-                        <div class="grid grid-cols-2 gap-3">
+                    </section>
+                </template>
+
+                {{-- Cycle: details --}}
+                <template x-if="current === 'cycle_details'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Cycle setup</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">A few cycle details.</h2>
+                        <div class="mt-6 space-y-4">
                             <div>
-                                <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Cycle length (days)</label>
-                                <input name="cycle_length" x-model="form.cycle_length" type="number" min="21" max="45" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
+                                <label class="mb-1.5 block text-xs font-medium text-gray-500">First day of your last period</label>
+                                <input x-model="form.last_period" type="date" max="{{ now()->toDateString() }}"
+                                       class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-lg font-semibold text-gray-100 focus:border-rose-400 focus:ring-0">
                             </div>
                             <div>
-                                <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Birth control</label>
-                                <select name="birth_control" x-model="form.birth_control" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
-                                    <option value="none">None</option>
-                                    <option value="pill">Pill</option>
-                                    <option value="hormonal_iud">Hormonal IUD</option>
-                                    <option value="copper_iud">Copper IUD</option>
-                                    <option value="implant">Implant</option>
-                                    <option value="ring">Ring</option>
-                                    <option value="patch">Patch</option>
-                                    <option value="injection">Injection</option>
-                                    <option value="other">Other</option>
+                                <label class="mb-1.5 block text-xs font-medium text-gray-500">Typical cycle length</label>
+                                <div class="flex items-baseline gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3.5">
+                                    <input x-model="form.cycle_length" type="number" min="21" max="45"
+                                           class="ob-num min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl text-gray-100 focus:ring-0">
+                                    <span class="text-sm text-gray-500">days</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="mb-1.5 block text-xs font-medium text-gray-500">Birth control</label>
+                                <select x-model="form.birth_control" class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 focus:border-rose-400 focus:ring-0">
+                                    <option value="none">None</option><option value="pill">Pill</option>
+                                    <option value="hormonal_iud">Hormonal IUD</option><option value="copper_iud">Copper IUD</option>
+                                    <option value="implant">Implant</option><option value="ring">Ring</option>
+                                    <option value="patch">Patch</option><option value="injection">Injection</option><option value="other">Other</option>
                                 </select>
                             </div>
                         </div>
-                        <div>
-                            <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">I'm…</label>
-                            <select name="cycle_intent" x-model="form.cycle_intent" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
-                                <option value="tracking">Just tracking</option>
-                                <option value="conceiving">Trying to conceive</option>
-                                <option value="avoiding">Avoiding pregnancy</option>
-                            </select>
-                        </div>
-                        <p class="text-[11px] text-amber-300/70 leading-relaxed">Cycle features are for awareness and coaching — never contraception or medical diagnosis.</p>
-                    </div>
-                </section>
+                    </section>
+                </template>
 
-                {{-- 6 · Nutrition --}}
-                <section x-show="current === 'nutrition'" x-cloak>
-                    <h2 class="font-display text-2xl font-bold">Eating rhythm</h2>
-                    <p class="mt-1 text-sm text-gray-500">Titan reminds you to eat <em>before</em> you're hungry — and we'll calculate your daily targets from your vitals and goal.</p>
-
-                    <div class="mt-5 space-y-4">
-                        <div>
-                            <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Meals per day</label>
-                            <div class="grid grid-cols-5 gap-2">
-                                <template x-for="n in [2,3,4,5,6]" :key="n">
-                                    <button type="button" @click="form.meals_per_day = n"
-                                            :class="form.meals_per_day === n ? 'border-indigo-400/60 bg-indigo-400/15 text-indigo-100' : 'border-white/10 text-gray-300'"
-                                            class="rounded-xl border py-3 text-base font-semibold transition" x-text="n"></button>
-                                </template>
-                            </div>
-                            <input type="hidden" name="meals_per_day" :value="form.meals_per_day">
+                {{-- Nutrition --}}
+                <template x-if="current === 'nutrition'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Fuel</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">How many meals a day?</h2>
+                        <p class="mt-2 text-sm text-gray-500">Titan reminds you to eat before you're hungry. We'll calculate your targets.</p>
+                        <div class="mt-6 grid grid-cols-5 gap-2.5">
+                            <template x-for="n in [2,3,4,5,6]" :key="n">
+                                <button type="button" @click="form.meals_per_day = n; pickAdvance()"
+                                        class="ob-opt grid aspect-square place-items-center rounded-2xl border-2 font-display text-2xl font-extrabold"
+                                        :style="form.meals_per_day === n ? `border-color:${accent}; background:${accent}1f; color:${accent}` : 'border-color:rgba(255,255,255,0.08); color:#d1d5db'"
+                                        x-text="n"></button>
+                            </template>
                         </div>
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="mt-5 grid grid-cols-2 gap-3">
                             <div>
-                                <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">First meal</label>
-                                <input name="eat_start" x-model="form.eat_start" type="time" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
+                                <label class="mb-1.5 block text-xs font-medium text-gray-500">First meal</label>
+                                <input x-model="form.eat_start" type="time" class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-gray-100 focus:ring-0">
                             </div>
                             <div>
-                                <label class="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Last meal</label>
-                                <input name="eat_end" x-model="form.eat_end" type="time" class="w-full rounded-xl border border-white/10 bg-gray-950/60 px-4 py-3 text-base">
+                                <label class="mb-1.5 block text-xs font-medium text-gray-500">Last meal</label>
+                                <input x-model="form.eat_end" type="time" class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-gray-100 focus:ring-0">
                             </div>
                         </div>
-                    </div>
-                </section>
+                    </section>
+                </template>
 
-                {{-- 7 · Finish --}}
-                <section x-show="current === 'finish'" x-cloak class="text-center pt-4">
-                    <div class="mx-auto mb-5 h-16 w-16 rounded-full bg-emerald-500/15 grid place-items-center">
-                        <svg class="h-8 w-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                    </div>
-                    <h2 class="font-display text-2xl font-bold">Your Titan is ready</h2>
-                    <p class="mt-2 text-gray-400 leading-relaxed">I've got your vitals, your goal, and your coaching style. I'll calculate your nutrition targets and start learning from everything you log.</p>
-                    <div class="mt-6 rounded-2xl border border-white/5 bg-white/[0.03] p-4 text-left text-sm">
-                        <div class="flex justify-between py-1"><span class="text-gray-500">Goal</span><span class="text-gray-200 font-medium" x-text="goalLabel"></span></div>
-                        <div class="flex justify-between py-1"><span class="text-gray-500">Coaching</span><span class="text-gray-200 font-medium capitalize" x-text="form.coach_tone.replace('_',' ')"></span></div>
-                        <div class="flex justify-between py-1"><span class="text-gray-500">Meals / day</span><span class="text-gray-200 font-medium" x-text="form.meals_per_day"></span></div>
-                        <div class="flex justify-between py-1" x-show="form.sex === 'F' && form.cycle_enabled"><span class="text-gray-500">Cycle</span><span class="text-gray-200 font-medium">Tracking on</span></div>
-                    </div>
-                    <p class="mt-4 text-[11px] text-gray-600">Titan is coaching and wellness, not medical advice.</p>
-                </section>
-            </div>
+                {{-- Finish --}}
+                <template x-if="current === 'finish'">
+                    <section class="ob-step text-center">
+                        <div class="mx-auto mb-6 grid h-20 w-20 place-items-center rounded-full bg-emerald-500/15">
+                            <svg class="h-10 w-10 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        </div>
+                        <h2 class="font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">You're all set, <span x-text="form.display_name"></span>.</h2>
+                        <p class="mx-auto mt-3 max-w-xs text-[15px] leading-relaxed text-gray-400">I'll calculate your nutrition targets and start learning from everything you log.</p>
+                        <div class="mt-7 space-y-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4 text-left text-sm">
+                            <div class="flex justify-between"><span class="text-gray-500">Goal</span><span class="font-semibold text-gray-200" x-text="goalLabel"></span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">Coaching</span><span class="font-semibold capitalize text-gray-200" x-text="form.coach_tone.replace('_',' ')"></span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">Meals / day</span><span class="font-semibold text-gray-200" x-text="form.meals_per_day"></span></div>
+                            <div class="flex justify-between" x-show="form.sex === 'F' && form.cycle_enabled"><span class="text-gray-500">Cycle</span><span class="font-semibold text-rose-300">Tracking on</span></div>
+                        </div>
+                    </section>
+                </template>
+            </main>
 
-            {{-- Nav --}}
-            <div class="sticky bottom-0 -mx-5 flex gap-3 bg-[#07080a]/90 px-5 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
-                <button type="button" x-show="idx > 0" @click="back()" class="rounded-xl border border-white/10 px-5 py-3.5 text-sm font-semibold text-gray-300 active:bg-white/5">Back</button>
-                <button type="button" x-show="current !== 'finish'" @click="next()" :disabled="!valid()"
-                        class="flex-1 rounded-xl bg-indigo-500 px-5 py-3.5 text-sm font-bold text-white active:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                    Continue
+            {{-- Sticky nav --}}
+            <footer class="sticky bottom-0 z-10 -mx-6 flex items-center gap-3 bg-gradient-to-t from-[#07080a] via-[#07080a]/95 to-transparent px-6 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
+                <button type="button" x-show="idx > 0" @click="back()" aria-label="Back"
+                        class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white/10 text-gray-400 active:bg-white/5">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
                 </button>
+                <button type="button" x-show="current !== 'finish'" @click="next()" :disabled="!valid()"
+                        class="h-14 flex-1 rounded-2xl font-display text-base font-bold text-white transition disabled:opacity-30 disabled:cursor-not-allowed"
+                        :style="valid() ? `background:linear-gradient(90deg, #6366f1, ${accent})` : 'background:rgba(255,255,255,0.08)'"
+                        x-text="idx === 0 ? 'Get started' : 'Continue'"></button>
                 <button type="submit" x-show="current === 'finish'" :disabled="submitting"
-                        class="flex-1 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-400 px-5 py-3.5 text-sm font-bold text-gray-900 active:opacity-90 disabled:opacity-50 transition">
+                        class="h-14 flex-1 rounded-2xl bg-gradient-to-r from-indigo-500 to-cyan-400 font-display text-base font-bold text-gray-900 active:opacity-90 disabled:opacity-60">
                     <span x-show="!submitting">Enter Titan →</span>
                     <span x-show="submitting" x-cloak>Setting up…</span>
                 </button>
-            </div>
+            </footer>
         </form>
     </div>
 
@@ -268,44 +367,91 @@
                 form: {
                     display_name: name || '',
                     birthdate: '', sex: '', units: 'metric', height: '', weight: '',
-                    activity_level: 'light', timezone: tz || 'UTC',
-                    primary_goal: '', coach_tone: 'balanced',
-                    meals_per_day: 4, eat_start: '08:00', eat_end: '21:00',
+                    activity_level: '', timezone: tz || 'UTC',
+                    primary_goal: '', coach_tone: '',
+                    meals_per_day: 0, eat_start: '08:00', eat_end: '21:00',
                     cycle_enabled: false, last_period: '', cycle_length: 28, birth_control: 'none', cycle_intent: 'tracking',
                 },
+
+                sexes: [
+                    { value: 'F', label: 'Female', glyph: '♀', accent: '#fb7185' },
+                    { value: 'M', label: 'Male', glyph: '♂', accent: '#22d3ee' },
+                    { value: 'other', label: 'Other / prefer not to say', glyph: '⚬', accent: '#a78bfa' },
+                ],
+                unitsList: [
+                    { value: 'metric', big: 'kg · cm', label: 'Metric' },
+                    { value: 'imperial', big: 'lb · in', label: 'Imperial' },
+                ],
+                activities: [
+                    { value: 'sedentary', label: 'Sedentary', desc: 'Desk job, little exercise', icon: 'M4 19h16M4 19V9m16 10V5M9 19v-6m6 6v-9' },
+                    { value: 'light', label: 'Light', desc: '1–3 workouts a week', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+                    { value: 'moderate', label: 'Moderate', desc: '4–5 workouts a week', icon: 'M3 12h3l2-7 4 14 2-7h7' },
+                    { value: 'active', label: 'Very active', desc: '6+ a week, or a physical job', icon: 'M6.5 6.5l11 11M4 9l1.5-1.5M9 4L7.5 5.5m9 13L18 17m-1-9l2-2' },
+                ],
+                goals: [
+                    { value: 'build_muscle', label: 'Build muscle', desc: 'Add lean mass and strength', accent: '#a78bfa', icon: 'M6.5 6.5l11 11M4 9l1.5-1.5M9 4L7.5 5.5m9 13L18 17m-1-9l2-2' },
+                    { value: 'lose_fat', label: 'Get lean', desc: 'Drop fat, keep muscle', accent: '#22d3ee', icon: 'M19 14l-7 7-7-7M12 3v18' },
+                    { value: 'recomp', label: 'Recomposition', desc: 'Leaner and stronger at once', accent: '#818cf8', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
+                    { value: 'longevity', label: 'Longevity', desc: 'Add healthy years', accent: '#34d399', icon: 'M12 21s-6-4.35-9-8.5C1 9 3 5 7 5c2 0 3 1 5 3 2-2 3-3 5-3 4 0 6 4 4 7.5C18 16.65 12 21 12 21z' },
+                    { value: 'performance', label: 'Performance', desc: 'Train for output and capacity', accent: '#fbbf24', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+                    { value: 'general', label: 'Feel good', desc: 'Energy, sleep, general health', accent: '#fb7185', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+                ],
+                tones: [
+                    { value: 'tough_love', label: 'Tough love', emoji: '🔥', desc: 'Direct and demanding. Calls out excuses, pushes you hard.', accent: '#fb7185' },
+                    { value: 'balanced', label: 'Balanced', emoji: '⚖️', desc: 'Supportive but straight — honest about what needs work.', accent: '#818cf8' },
+                    { value: 'gentle', label: 'Gentle', emoji: '🌱', desc: 'Warm and patient. Celebrates small wins, never shames.', accent: '#34d399' },
+                ],
                 goalLabels: {
-                    build_muscle: 'Build muscle', lose_fat: 'Lose fat / get lean', recomp: 'Recomposition',
-                    longevity: 'Longevity & healthspan', performance: 'Athletic performance', general: 'General health',
+                    build_muscle: 'Build muscle', lose_fat: 'Get lean', recomp: 'Recomposition',
+                    longevity: 'Longevity', performance: 'Performance', general: 'Feel good',
                 },
+                stepAccents: {
+                    welcome: '#6366f1', name: '#6366f1', birthday: '#6366f1', sex: '#a78bfa', units: '#22d3ee',
+                    body: '#22d3ee', activity: '#22d3ee', goal: '#a78bfa', tone: '#818cf8',
+                    cycle_enable: '#fb7185', cycle_details: '#fb7185', nutrition: '#34d399', finish: '#22d3ee',
+                },
+
                 get goalLabel() { return this.goalLabels[this.form.primary_goal] || '—'; },
                 get steps() {
-                    const base = ['welcome', 'about', 'goal', 'tone'];
-                    if (this.form.sex === 'F') base.push('cycle');
-                    base.push('nutrition', 'finish');
-                    return base;
+                    const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'goal', 'tone'];
+                    if (this.form.sex === 'F') {
+                        s.push('cycle_enable');
+                        if (this.form.cycle_enabled) s.push('cycle_details');
+                    }
+                    s.push('nutrition', 'finish');
+                    return s;
                 },
                 get current() { return this.steps[Math.min(this.idx, this.steps.length - 1)]; },
+                get accent() { return this.stepAccents[this.current] || '#6366f1'; },
+
                 valid() {
                     const f = this.form;
                     switch (this.current) {
-                        case 'about':
-                            return f.display_name.trim() && f.birthdate && f.sex && f.units
-                                && Number(f.height) > 0 && Number(f.weight) > 0 && f.activity_level;
+                        case 'name': return f.display_name.trim().length > 0;
+                        case 'birthday': return !!f.birthdate;
+                        case 'sex': return !!f.sex;
+                        case 'units': return !!f.units;
+                        case 'body': return Number(f.height) > 0 && Number(f.weight) > 0;
+                        case 'activity': return !!f.activity_level;
                         case 'goal': return !!f.primary_goal;
                         case 'tone': return !!f.coach_tone;
                         case 'nutrition': return Number(f.meals_per_day) >= 2;
                         default: return true;
                     }
                 },
+
+                // Choose a value then glide to the next screen (the one-tap feel).
+                pick(field, value) { this.form[field] = value; this.pickAdvance(); },
+                pickAdvance() {
+                    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    setTimeout(() => { if (this.valid()) this.next(); }, reduce ? 0 : 320);
+                },
                 next() {
                     if (!this.valid()) return;
                     if (this.idx < this.steps.length - 1) this.idx++;
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    window.scrollTo({ top: 0 });
                 },
-                back() {
-                    if (this.idx > 0) this.idx--;
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                },
+                back() { if (this.idx > 0) this.idx--; window.scrollTo({ top: 0 }); },
             };
         }
     </script>
