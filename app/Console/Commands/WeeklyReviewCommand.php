@@ -38,6 +38,8 @@ class WeeklyReviewCommand extends Command
                 if (! $review) {
                     continue;
                 }
+                // Freeze the week so next week has a real week-over-week comparison + the trend grows.
+                WeeklyReview::snapshot($profile);
 
                 $tz = $profile->settings['timezone'] ?? config('app.timezone', 'UTC');
                 $weekKey = 'review:'.Carbon::now($tz)->startOfWeek()->toDateString();
@@ -45,8 +47,14 @@ class WeeklyReviewCommand extends Command
                     continue;
                 }
 
-                $bits = collect($review['metrics'])->take(3)->map(fn ($m) => $m['label'].' '.$m['value'])->implode(' · ');
-                $body = trim($review['headline'].' — '.$bits.'. Tap for your full review.');
+                $score = $review['score'];
+                $delta = $review['score_delta'];
+                $lead = $score !== null
+                    ? 'Week score '.$score.($delta ? ' ('.($delta > 0 ? '+' : '').$delta.' vs last week)' : '').'. '
+                    : '';
+                $streak = $review['streak'] >= 2 ? " · {$review['streak']}-week streak 🔥" : '';
+                $bits = collect($review['metrics'])->take(2)->map(fn ($m) => $m['label'].' '.$m['value'])->implode(' · ');
+                $body = trim($lead.$review['headline'].' — '.$bits.$streak.'. Tap for the full review.');
 
                 $notifications->notify($profile, '📊 Your week in review', Str::limit($body, 180), '/coach', 'review');
 

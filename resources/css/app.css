@@ -287,14 +287,24 @@ body {
 
 /* ---- Weekly review card ---- */
 .tcard-review-eyebrow { font-family: var(--font-display); font-weight: 700; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; }
-.tcard-review-headline { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; color: #f1f5f9; line-height: 1.25; margin-top: 0.25rem; }
+.tcard-review-headline { font-family: var(--font-display); font-weight: 800; font-size: 1.05rem; color: #f1f5f9; line-height: 1.25; margin-top: 0.7rem; }
+.tcard-review-scorewrap { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.45rem; }
+.tcard-review-score { font-family: var(--font-display); font-weight: 900; font-size: 2.6rem; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tcard-review-score span { font-size: 0.95rem; font-weight: 700; color: #6b7280; margin-left: 0.1rem; }
+.tcard-review-scoremeta { margin-top: 0.3rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.74rem; color: #9ca3af; }
+.tcard-review-streak { background: rgba(251,146,60,0.14); color: #fdba74; border-radius: 999px; padding: 0.1rem 0.45rem; font-weight: 600; }
+.tcard-review-spark { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+.tcard-review-spark svg { display: block; }
+.tcard-review-sparklbl { font-size: 0.62rem; color: #6b7280; }
 .tcard-review-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .tcard-review-row:first-of-type { margin-top: 0.7rem; }
 .tcard-review-row i { width: 0.5rem; height: 0.5rem; border-radius: 999px; flex-shrink: 0; }
 .tcard-review-rl { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .tcard-review-rlabel { font-size: 0.85rem; font-weight: 600; color: #e5e7eb; }
 .tcard-review-rsub { font-size: 0.7rem; color: #6b7280; }
-.tcard-review-rval { font-size: 0.82rem; font-weight: 600; color: #f1f5f9; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tcard-review-rr { text-align: right; white-space: nowrap; }
+.tcard-review-rval { font-size: 0.82rem; font-weight: 600; color: #f1f5f9; font-variant-numeric: tabular-nums; }
+.tcard-review-rdelta { font-size: 0.68rem; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 0.05rem; }
 .tcard-review-list { margin: 0.7rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.3rem; }
 .tcard-review-list li { font-size: 0.8rem; color: #cbd5e1; line-height: 1.4; }
 .tcard-review-list li span { display: inline-block; width: 1rem; font-weight: 700; }

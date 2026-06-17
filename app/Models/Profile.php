@@ -149,6 +149,11 @@ class Profile extends Model
         return $this->hasMany(CoachMemory::class);
     }
 
+    public function weeklySnapshots(): HasMany
+    {
+        return $this->hasMany(WeeklySnapshot::class);
+    }
+
     /** Convenience: the "other" profile in the duo (the brother). */
     public function duoPartner(): ?Profile
     {

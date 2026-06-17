@@ -1427,7 +1427,7 @@ class CoachTools
 
         return [
             'card' => ['type' => 'review'] + $r,
-            '_show' => 'Open with this `review` card (emit the card object inside a ```titan-card fence), then tell the progress STORY in your own voice and coach tone: 2–3 sentences naming the biggest win, the main thing to watch, and exactly what changes next week (use the `next` recommendation and tie it to their program/goal). Honest and motivating — this is the moment that makes the week feel like it went somewhere.',
+            '_show' => 'Open with this `review` card (emit the card object inside a ```titan-card fence), then tell the progress STORY in your own voice and coach tone: lead with their week score and momentum (the score, whether it moved vs last week, and any streak), then the biggest win, the main thing to watch, and exactly what changes next week (use the `next` recommendation and tie it to their program/goal). Honest and motivating — this is the moment that makes the week feel like it went somewhere.',
         ];
     }
 

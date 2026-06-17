@@ -499,12 +499,55 @@ function buildMemory(d) {
     return el;
 }
 
-// Weekly review: the week's scorecard — domains with deltas, wins, watch-outs, next week.
+// Small SVG sparkline of weekly scores (0–100), last point emphasised.
+function reviewSparkline(scores, scoreColor) {
+    const w = 84, h = 34, pad = 4, n = scores.length;
+    const x = i => pad + (i * (w - 2 * pad)) / (n - 1);
+    const y = v => h - pad - (Math.max(0, Math.min(100, v)) / 100) * (h - 2 * pad);
+    const wrap = document.createElement('div'); wrap.className = 'tcard-review-spark';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`); svg.setAttribute('width', w); svg.setAttribute('height', h);
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    path.setAttribute('points', scores.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' '));
+    path.setAttribute('fill', 'none'); path.setAttribute('stroke', '#6366f1'); path.setAttribute('stroke-width', '2');
+    path.setAttribute('stroke-linejoin', 'round'); path.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(path);
+    const last = scores[n - 1];
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', x(n - 1)); dot.setAttribute('cy', y(last)); dot.setAttribute('r', '2.6');
+    dot.setAttribute('fill', scoreColor(last)); svg.appendChild(dot);
+    wrap.appendChild(svg);
+    const lbl = document.createElement('div'); lbl.className = 'tcard-review-sparklbl'; lbl.textContent = `${n}-wk trend`;
+    wrap.appendChild(lbl);
+    return wrap;
+}
+
+// Weekly review: the week's score + momentum + scorecard — domains with WoW deltas, wins, next week.
 function buildReview(d) {
     const sColor = s => ({ good: '#34d399', ok: '#fbbf24', low: '#fb7185', neutral: '#9ca3af' })[s] || '#9ca3af';
+    const scoreColor = v => v >= 75 ? '#34d399' : v >= 50 ? '#fbbf24' : '#fb7185';
     const el = document.createElement('div'); el.className = 'tcard tcard-review';
     const eyebrow = document.createElement('div'); eyebrow.className = 'tcard-review-eyebrow';
     eyebrow.textContent = 'Week in review' + (d.range ? ' · ' + d.range : ''); el.appendChild(eyebrow);
+
+    // Headline score + momentum + streak + trend sparkline.
+    if (d.score != null) {
+        const top = document.createElement('div'); top.className = 'tcard-review-scorewrap';
+        const left = document.createElement('div');
+        const num = document.createElement('div'); num.className = 'tcard-review-score'; num.style.color = scoreColor(d.score);
+        num.textContent = d.score; const out = document.createElement('span'); out.textContent = '/100'; num.appendChild(out);
+        left.appendChild(num);
+        const meta = document.createElement('div'); meta.className = 'tcard-review-scoremeta';
+        if (d.score_delta != null && d.score_delta !== 0) {
+            const up = d.score_delta > 0;
+            meta.innerHTML = `<span style="color:${up ? '#34d399' : '#fb7185'}">${up ? '▲' : '▼'} ${Math.abs(d.score_delta)} vs last week</span>`;
+        } else { meta.textContent = 'this week'; }
+        if (d.streak >= 2) { const s = document.createElement('span'); s.className = 'tcard-review-streak'; s.textContent = `🔥 ${d.streak}-wk streak`; meta.appendChild(s); }
+        left.appendChild(meta);
+        top.appendChild(left);
+        if (Array.isArray(d.trend) && d.trend.length >= 2) top.appendChild(reviewSparkline(d.trend, scoreColor));
+        el.appendChild(top);
+    }
     if (d.headline) { const h = document.createElement('div'); h.className = 'tcard-review-headline'; h.textContent = d.headline; el.appendChild(h); }
 
     (d.metrics || []).forEach(m => {
@@ -512,8 +555,16 @@ function buildReview(d) {
         const dot = document.createElement('i'); dot.style.background = sColor(m.state);
         const l = document.createElement('div'); l.className = 'tcard-review-rl';
         l.innerHTML = `<span class="tcard-review-rlabel">${m.label || ''}</span>${m.sub ? `<span class="tcard-review-rsub">${m.sub}</span>` : ''}`;
+        const right = document.createElement('div'); right.className = 'tcard-review-rr';
         const v = document.createElement('div'); v.className = 'tcard-review-rval'; v.textContent = m.value || '';
-        row.append(dot, l, v); el.appendChild(row);
+        right.appendChild(v);
+        if (m.delta && m.delta.text) {
+            const dd = document.createElement('div'); dd.className = 'tcard-review-rdelta';
+            dd.style.color = m.delta.good ? '#34d399' : '#fb7185';
+            dd.textContent = (m.delta.good ? '▲ ' : '▼ ') + m.delta.text;
+            right.appendChild(dd);
+        }
+        row.append(dot, l, right); el.appendChild(row);
     });
 
     const list = (items, cls, sym) => {

@@ -73,7 +73,7 @@ class WeeklyReviewTest extends TestCase
         $this->assertStringContainsString('titan-card', $res['_show']);
     }
 
-    public function test_command_pushes_once_per_week(): void
+    public function test_command_pushes_once_per_week_and_writes_a_snapshot(): void
     {
         $u = $this->activeWeek();
         $p = $u->profile;
@@ -82,8 +82,47 @@ class WeeklyReviewTest extends TestCase
         $this->artisan('coach:weekly-review')->assertSuccessful();
         $this->assertDatabaseHas('notifications', ['profile_id' => $p->id, 'type' => 'review']);
         $this->assertSame(1, \App\Models\Notification::where('profile_id', $p->id)->count());
+        $this->assertSame(1, $p->weeklySnapshots()->count());           // froze the week
 
-        $this->artisan('coach:weekly-review')->assertSuccessful();   // deduped
+        $this->artisan('coach:weekly-review')->assertSuccessful();       // deduped push
         $this->assertSame(1, \App\Models\Notification::where('profile_id', $p->id)->count());
+    }
+
+    public function test_score_is_0_to_100_and_snapshot_persists_the_measures(): void
+    {
+        $p = $this->activeWeek()->profile;
+        $snap = WeeklyReview::snapshot($p);
+
+        $this->assertNotNull($snap);
+        $this->assertGreaterThanOrEqual(0, $snap->score);
+        $this->assertLessThanOrEqual(100, $snap->score);
+        $this->assertArrayHasKey('training', $snap->metrics);
+        $this->assertSame(4, $snap->metrics['training']['sessions']);
+    }
+
+    public function test_week_over_week_delta_and_streak_from_prior_snapshots(): void
+    {
+        $p = $this->activeWeek()->profile;
+
+        // Seed two prior consistent weeks directly as snapshots.
+        $monday = Carbon::now('UTC')->startOfWeek();
+        foreach ([1, 2] as $back) {
+            $p->weeklySnapshots()->create([
+                'week_start' => $monday->copy()->subWeeks($back)->toDateString(),
+                'score' => 70,
+                'metrics' => ['have' => true, 'training' => ['sessions' => 4, 'sets' => 16, 'target' => 4, 'state' => 'good'], 'nutrition' => null, 'sleep' => null, 'recovery' => null, 'weight' => null, 'lifts_improving' => false],
+                'headline' => 'prior',
+            ]);
+        }
+
+        $r = WeeklyReview::compile($p);
+        $this->assertNotNull($r['score']);
+        $this->assertNotNull($r['score_delta']);            // compared to last week's 70
+        $this->assertGreaterThanOrEqual(3, $r['streak']);   // 2 prior + this week
+        $this->assertGreaterThanOrEqual(3, count($r['trend']));
+
+        // Training row carries a week-over-week sets delta (this week has 4 sets vs prior 16).
+        $training = collect($r['metrics'])->firstWhere('key', 'training');
+        $this->assertNotNull($training['delta']);
     }
 }
