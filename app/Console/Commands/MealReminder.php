@@ -30,7 +30,7 @@ class MealReminder extends Command
     {
         $sent = 0;
         foreach ($this->resolveProfiles() as $profile) {
-            if (($profile->settings['meal_reminders'] ?? true) === false) {
+            if (! \App\Support\Reminders::enabled($profile, 'meals')) {
                 continue;
             }
             try {

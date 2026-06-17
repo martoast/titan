@@ -125,10 +125,10 @@ class MorningBriefing extends Command
         return $query->get();
     }
 
-    /** Opt-in flag at profile.settings['briefings'] — defaults ON. */
+    /** On per the profile's coaching intensity (and the legacy settings['briefings'] flag). */
     public static function briefingsEnabled(Profile $profile): bool
     {
-        return (bool) (data_get($profile->settings, 'briefings', true));
+        return \App\Support\Reminders::enabled($profile, 'briefing');
     }
 
     /**

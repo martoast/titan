@@ -82,6 +82,7 @@
             <input type="hidden" name="activity_level" :value="form.activity_level">
             <input type="hidden" name="primary_goal" :value="form.primary_goal">
             <input type="hidden" name="coach_tone" :value="form.coach_tone">
+            <input type="hidden" name="coaching_intensity" :value="form.coaching_intensity">
             <input type="hidden" name="meals_per_day" :value="form.meals_per_day">
             <input type="hidden" name="eat_start" :value="form.eat_start">
             <input type="hidden" name="eat_end" :value="form.eat_end">
@@ -272,6 +273,28 @@
                     </section>
                 </template>
 
+                {{-- Coaching intensity --}}
+                <template x-if="current === 'intensity'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">How present should I be?</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Your coach, all day?</h2>
+                        <p class="mt-2 text-sm text-gray-500">How often I reach out — reminders to eat, train, move and sleep. Change it anytime.</p>
+                        <div class="mt-6 space-y-3">
+                            <template x-for="o in intensities" :key="o.value">
+                                <button type="button" @click="pick('coaching_intensity', o.value)"
+                                        class="ob-opt block w-full rounded-2xl border-2 px-5 py-4 text-left"
+                                        :style="form.coaching_intensity === o.value ? `border-color:${o.accent}; background:${o.accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
+                                    <span class="flex items-center gap-2">
+                                        <span class="text-xl" x-text="o.emoji"></span>
+                                        <span class="font-display text-lg font-bold text-gray-100" x-text="o.label"></span>
+                                    </span>
+                                    <span class="mt-1 block text-[13px] leading-snug text-gray-500" x-text="o.desc"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </section>
+                </template>
+
                 {{-- Cycle: enable --}}
                 <template x-if="current === 'cycle_enable'">
                     <section class="ob-step">
@@ -405,7 +428,7 @@
                     display_name: name || '',
                     bMonth: '', bDay: '', bYear: '', sex: '', units: 'metric', height: '', weight: '',
                     activity_level: '', timezone: tz || 'UTC',
-                    primary_goal: '', coach_tone: '',
+                    primary_goal: '', coach_tone: '', coaching_intensity: 'balanced',
                     meals_per_day: 0, eat_start: '08:00', eat_end: '21:00',
                     cycle_enabled: false, last_period: '', cycle_length: 28, birth_control: 'none', cycle_intent: 'tracking',
                 },
@@ -438,13 +461,18 @@
                     { value: 'balanced', label: 'Balanced', emoji: '⚖️', desc: 'Supportive but straight — honest about what needs work.', accent: '#818cf8' },
                     { value: 'gentle', label: 'Gentle', emoji: '🌱', desc: 'Warm and patient. Celebrates small wins, never shames.', accent: '#34d399' },
                 ],
+                intensities: [
+                    { value: 'intense', label: 'All-in', emoji: '🔥', desc: "On you all day — eat, train, move, stretch, sleep. A coach in your pocket.", accent: '#fb7185' },
+                    { value: 'balanced', label: 'Balanced', emoji: '⚖️', desc: 'Morning briefing, meal timing, a nightly wind-down, cycle heads-ups.', accent: '#818cf8' },
+                    { value: 'minimal', label: 'Light touch', emoji: '🍃', desc: 'Just a morning briefing. I stay out of your way.', accent: '#34d399' },
+                ],
                 goalLabels: {
                     build_muscle: 'Build muscle', lose_fat: 'Get lean', recomp: 'Recomposition',
                     longevity: 'Longevity', performance: 'Performance', general: 'Feel good',
                 },
                 stepAccents: {
                     welcome: '#6366f1', name: '#6366f1', birthday: '#6366f1', sex: '#a78bfa', units: '#22d3ee',
-                    body: '#22d3ee', activity: '#22d3ee', goal: '#a78bfa', tone: '#818cf8',
+                    body: '#22d3ee', activity: '#22d3ee', goal: '#a78bfa', tone: '#818cf8', intensity: '#fb7185',
                     cycle_enable: '#fb7185', cycle_details: '#fb7185', nutrition: '#34d399', finish: '#22d3ee',
                 },
 
@@ -502,7 +530,7 @@
                 clearSaved() { try { localStorage.removeItem(this.STORE_KEY); } catch (e) {} },
 
                 get steps() {
-                    const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'goal', 'tone'];
+                    const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'goal', 'tone', 'intensity'];
                     if (this.form.sex === 'F') {
                         s.push('cycle_enable');
                         if (this.form.cycle_enabled) s.push('cycle_details');

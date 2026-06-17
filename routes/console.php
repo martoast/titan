@@ -22,5 +22,11 @@ Schedule::command('coach:evening-nudge')->dailyAt('18:30')->timezone(config('app
 // Meal-timing coach: nudge people who forget to eat when a planned meal comes due (per-slot deduped).
 Schedule::command('meals:remind')->everyFifteenMinutes()->withoutOverlapping();
 
+// Proactive coach through the day — gated by each profile's coaching intensity + per-type prefs.
+Schedule::command('coach:nudge training')->dailyAt('08:30')->timezone(config('app.timezone'));
+Schedule::command('coach:nudge cycle')->dailyAt('07:30')->timezone(config('app.timezone'));
+Schedule::command('coach:nudge move')->dailyAt('14:30')->timezone(config('app.timezone'));
+Schedule::command('coach:nudge sleep')->everyThirtyMinutes()->between('20:00', '23:30')->timezone(config('app.timezone'));
+
 // Living goal-physique: weekly render of the progress step toward the dream physique.
 Schedule::command('physique:living-render')->weeklyOn(1, '06:00');

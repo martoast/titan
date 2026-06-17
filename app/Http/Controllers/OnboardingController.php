@@ -53,6 +53,7 @@ class OnboardingController extends Controller
             'activity_level' => ['required', 'in:sedentary,light,moderate,active'],
             'primary_goal' => ['required', 'in:'.implode(',', array_keys(self::GOALS))],
             'coach_tone' => ['required', 'in:tough_love,balanced,gentle'],
+            'coaching_intensity' => ['nullable', 'in:minimal,balanced,intense'],
             'meals_per_day' => ['required', 'integer', 'min:2', 'max:6'],
             'eat_start' => ['nullable', 'date_format:H:i'],
             'eat_end' => ['nullable', 'date_format:H:i'],
@@ -74,6 +75,7 @@ class OnboardingController extends Controller
         $settings['units'] = $data['units'];
         $settings['timezone'] = $data['timezone'] ?? ($settings['timezone'] ?? config('app.timezone', 'UTC'));
         $settings['activity_level'] = $data['activity_level'];
+        $settings['coaching_intensity'] = $data['coaching_intensity'] ?? 'balanced';
         $settings['meal_plan'] = [
             'meals' => (int) $data['meals_per_day'],
             'start' => ($data['eat_start'] ?? null) ?: '08:00',

@@ -188,6 +188,12 @@ class CoachTools
             'goal' => ['type' => 'string', 'description' => 'The primary goal, in their words.'],
         ], ['goal']);
 
+        $tools[] = $this->fn('set_reminders', "Adjust how proactive/present the coach is. Set overall intensity (minimal = just a morning briefing · balanced = briefing + meals + sleep + cycle · intense = all-day eat/train/move/stretch/sleep), and/or toggle one reminder type on/off. Use when the user wants more or less nudging, or to turn a specific reminder on/off ('stop reminding me to eat', 'remind me to stretch', 'be more on me').", [
+            'intensity' => ['type' => 'string', 'enum' => ['minimal', 'balanced', 'intense'], 'description' => 'Overall coaching presence.'],
+            'type' => ['type' => 'string', 'enum' => ['briefing', 'meals', 'sleep', 'cycle', 'move', 'training'], 'description' => 'A specific reminder to toggle.'],
+            'on' => ['type' => 'boolean', 'description' => 'Turn the specified type on (true) or off (false).'],
+        ], []);
+
         $tools[] = $this->fn('coaching_playbook', "Titan's deep advanced-physique knowledge — the published methods of the greats (Arnold, Mentzer, Yates, Cutler/FST-7, O'Hearn, Coleman) distilled with modern hypertrophy science. Call this whenever the user wants to PUSH hard or go advanced: programming/periodization, intensity techniques, hypertrophy volume/failure, lean-gaining or contest-lean nutrition, peak week, recovery, mindset. Pass their intent as the topic and apply the principles in your answer. Natural, evidence-based only.", [
             'topic' => ['type' => 'string', 'description' => 'What they want to go deep on, in natural language (e.g. "break a chest plateau", "program a hypertrophy block", "cut to single-digit body fat", "intensity techniques").'],
         ], ['topic']);
@@ -278,6 +284,7 @@ class CoachTools
             'log_biomarker' => 'Logging your bloodwork',
             'log_cardio' => 'Logging your cardio',
             'set_goal' => 'Updating your goal',
+            'set_reminders' => 'Updating your reminders',
             'coaching_playbook' => 'Consulting the playbook',
             'generate_mesocycle' => 'Building your program',
             'current_program' => 'Pulling your program',
@@ -345,7 +352,8 @@ class CoachTools
             'log_biomarker' => $this->logBiomarker($args),
             'log_cardio' => $this->logCardio($args),
             'set_goal' => $this->setGoal($args),
-            'coaching_playbook' => \App\Support\TrainingPlaybook::lookup((string) ($args['topic'] ?? '')) + ['_show' => 'Apply these principles in YOUR voice, tailored to this user\'s data, goal and level — don\'t just paste them. Be specific and prescriptive (sets, reps, RIR, calories, weeks). Honour the natural-only rail: never prescribe or advise PEDs/SARMs/diuretics/insulin.'],
+            'set_reminders' => $this->setReminders($args),
+            'coaching_playbook' =>\App\Support\TrainingPlaybook::lookup((string) ($args['topic'] ?? '')) + ['_show' => 'Apply these principles in YOUR voice, tailored to this user\'s data, goal and level — don\'t just paste them. Be specific and prescriptive (sets, reps, RIR, calories, weeks). Honour the natural-only rail: never prescribe or advise PEDs/SARMs/diuretics/insulin.'],
             'generate_mesocycle' => $this->generateMesocycle($args),
             'current_program' => $this->currentProgram(),
             'advance_program' => $this->advanceProgram(),
@@ -973,6 +981,25 @@ class CoachTools
         );
 
         return ['ok' => true, 'type' => $session->activity_type, 'duration_min' => $dur, 'message' => "Logged a {$dur}-min {$session->activity_type}."];
+    }
+
+    private function setReminders(array $a): mixed
+    {
+        if (! empty($a['intensity'])) {
+            \App\Support\Reminders::setIntensity($this->profile, (string) $a['intensity']);
+        }
+        if (! empty($a['type']) && array_key_exists('on', $a)) {
+            \App\Support\Reminders::setType($this->profile, (string) $a['type'], (bool) $a['on']);
+        }
+        $this->profile->refresh();
+        $s = \App\Support\Reminders::summary($this->profile);
+
+        return [
+            'ok' => true,
+            'intensity' => $s['intensity'],
+            'reminders' => $s['types'],
+            'message' => 'Updated how I check in with you.',
+        ];
     }
 
     private function setGoal(array $a): mixed
