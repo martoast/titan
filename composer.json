@@ -55,6 +55,14 @@
             "@php artisan config:clear --ansi @no_additional_args",
             "@php artisan test"
         ],
+        "test:all": [
+            "Composer\\Config::disableProcessTimeout",
+            "bash tests/run.sh"
+        ],
+        "test:browser": [
+            "Composer\\Config::disableProcessTimeout",
+            "bash tests/run.sh --browser"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"

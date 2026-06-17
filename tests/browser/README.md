@@ -15,8 +15,17 @@ state directly.
 ## Run
 
 ```bash
-tests/browser/smoke.sh          # full smoke; non-zero exit on any failure; screenshots in /tmp/titan-browse
+tests/run.sh                    # ⭐ single entrypoint: PHP suite + both browser suites
+tests/run.sh --browser          # browser suites only   (composer test:browser)
+composer test:all               # same as tests/run.sh
+
+tests/browser/smoke.sh          # switching, pagination, loading overlay
+tests/browser/features.sh       # every generative card via live tool-calling + pages
 ```
+
+Screenshots land in `/tmp/titan-browse`. The combined run skips the browser suites with a warning
+(rather than failing) if the app isn't up or the `browse` binary is missing — so `tests/run.sh`
+is safe in CI.
 
 ## Harness
 
