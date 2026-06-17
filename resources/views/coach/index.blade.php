@@ -93,7 +93,22 @@
 
         {{-- Chat panel --}}
         <section
-            class="flex flex-col rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden min-h-0">
+            class="relative flex flex-col rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden min-h-0">
+
+            {{-- Switching conversations: overlay anchored to the PANEL (not the scroll content, which
+                 would scroll the loader off-screen on a long thread) so it always covers the view. --}}
+            <div x-show="loadingChat" x-cloak x-transition.opacity
+                 class="absolute inset-0 z-30 flex items-center justify-center bg-[#0c0e12]/85 backdrop-blur-sm">
+                <div class="flex flex-col items-center gap-3">
+                    <span class="relative grid h-12 w-12 place-items-center">
+                        <span class="absolute inset-0 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 opacity-30 animate-ping"></span>
+                        <span class="relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400">
+                            <svg class="h-6 w-6 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        </span>
+                    </span>
+                    <span class="text-xs font-medium text-gray-400">Loading conversation…</span>
+                </div>
+            </div>
 
             {{-- Mobile: conversation switcher + new chat (collapses the sidebar) --}}
             <div class="lg:hidden flex items-center gap-2 p-2.5 border-b border-white/5"
@@ -138,20 +153,6 @@
                 {{-- Loading older messages (scroll-up pagination) --}}
                 <div x-show="loadingMore" x-cloak class="flex justify-center py-1.5">
                     <svg class="h-4 w-4 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
-                </div>
-
-                {{-- Switching conversations: a clean overlay loader until the thread is ready --}}
-                <div x-show="loadingChat" x-cloak x-transition.opacity
-                     class="absolute inset-0 z-20 flex items-center justify-center bg-[#0c0e12]/85 backdrop-blur-sm">
-                    <div class="flex flex-col items-center gap-3">
-                        <span class="relative grid h-12 w-12 place-items-center">
-                            <span class="absolute inset-0 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 opacity-30 animate-ping"></span>
-                            <span class="relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400">
-                                <svg class="h-6 w-6 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                            </span>
-                        </span>
-                        <span class="text-xs font-medium text-gray-400">Loading conversation…</span>
-                    </div>
                 </div>
 
                 {{-- Empty state: greeting + starter prompts --}}

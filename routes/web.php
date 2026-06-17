@@ -9,6 +9,24 @@ Route::get('/', function () {
     return auth()->check() ? redirect('/coach') : view('welcome');
 });
 
+// --- Browser-test login shortcut (LOCAL ONLY) ---
+// Authenticates a user without a password so the headless browser harness can sign in. Registered
+// only in the local environment and guarded again in the handler — it never exists in production.
+if (app()->environment('local')) {
+    Route::get('/dev/login', function (\Illuminate\Http\Request $request) {
+        abort_unless(app()->environment('local'), 404);
+        $user = $request->filled('email')
+            ? \App\Models\User::where('email', $request->string('email'))->first()
+            : \App\Models\User::query()->oldest('id')->first();
+        abort_unless($user, 404, 'No user available to log in.');
+
+        \Illuminate\Support\Facades\Auth::login($user);
+        $request->session()->regenerate();
+
+        return redirect($request->string('to', '/coach'));
+    })->name('dev.login');
+}
+
 Route::middleware(['auth'])->group(function () {
     // Onboarding wizard — runs OUTSIDE the `onboarded` gate (it's where the gate sends you).
     Route::get('/onboarding', [OnboardingController::class, 'show'])->name('onboarding');
