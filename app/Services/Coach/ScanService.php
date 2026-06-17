@@ -35,7 +35,7 @@ class ScanService
         A user sent this photo to their health app. Identify what it is and extract structured data.
         Return ONLY a JSON object of this exact shape:
         {
-          "kind": "meal" | "bloodwork" | "other",
+          "kind": "meal" | "bloodwork" | "physique" | "other",
           "meal": { "name": string, "items": [string], "calories": int, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high" },
           "bloodwork": [ { "marker": string, "value": number, "unit": string } ],
           "note": string
@@ -43,6 +43,7 @@ class ScanService
         Rules:
         - If it's food/a meal/a drink: fill "meal" with your best estimate of the macros for the WHOLE portion shown, plus a short name and the visible items. Leave "bloodwork" as [].
         - If it's a lab/bloodwork report, printout, or screenshot of results: fill "bloodwork" with EVERY marker you can read. Use canonical snake_case marker keys (e.g. ldl, hdl, total_cholesterol, triglycerides, glucose, hba1c, vitamin_d, crp, alt, ast, tsh, ferritin, creatinine). Keep the printed unit. Leave "meal" empty.
+        - If it's a photo of a PERSON'S BODY/PHYSIQUE — a progress photo, gym selfie, or a full or upper-body shot of themselves — set kind "physique". (Leave "meal" and "bloodwork" empty.)
         - Otherwise set kind "other" and explain in "note".
         - "note" is one friendly sentence summarising what you saw. Never diagnose or give medical advice.
         TXT;
@@ -62,6 +63,9 @@ class ScanService
         if ($kind === 'bloodwork' && ! empty($data['bloodwork']) && is_array($data['bloodwork'])) {
             return $this->logBloodwork($profile, $data['bloodwork'], $imageUrl);
         }
+        if ($kind === 'physique') {
+            return $this->logPhysique($profile, $path, $imageUrl);
+        }
 
         return [
             'kind' => 'other',
@@ -70,6 +74,25 @@ class ScanService
             'reply' => $data['note']
                 ?? "I couldn't tell what this is. For meals, snap the plate from above; for bloodwork, capture the results page so the marker names and numbers are legible.",
             'data' => $data,
+        ];
+    }
+
+    /** A body/progress photo → save it, and tee up the dream-physique render. */
+    private function logPhysique(Profile $profile, string $path, string $imageUrl): array
+    {
+        $photo = $profile->progressPhotos()->create([
+            'photo_path' => $path,
+            'taken_at' => now()->toDateString(),
+        ]);
+
+        return [
+            'kind' => 'physique',
+            'logged' => true,
+            'image_url' => $imageUrl,
+            'progress_photo_id' => $photo->id,
+            'reply' => "Saved as a progress photo. Want me to render your **dream physique** from this? Tell me the goal (e.g. \"+10 lb lean muscle\") or just say go, and I'll show you your future self.",
+            'data' => ['progress_photo_id' => $photo->id],
+            '_followup' => 'physique_render_offer',
         ];
     }
 

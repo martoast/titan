@@ -127,6 +127,86 @@ class CoachTools
             ], []);
         }
 
+        // --- Logging & data entry (write) — so the chat can run the whole platform ---
+        if (class_exists(\App\Models\Meal::class)) {
+            $tools[] = $this->fn('log_meal', 'Log a meal with its macros when the user tells you what they ate. (For a photo of food they use the camera button.)', [
+                'name' => ['type' => 'string', 'description' => 'Short meal name.'],
+                'calories' => ['type' => 'integer', 'description' => 'Calories (kcal).'],
+                'protein_g' => ['type' => 'number', 'description' => 'Protein grams.'],
+                'carbs_g' => ['type' => 'number', 'description' => 'Carb grams.'],
+                'fat_g' => ['type' => 'number', 'description' => 'Fat grams.'],
+                'eaten_at' => ['type' => 'string', 'description' => 'ISO datetime; default now.'],
+            ], ['name']);
+        }
+        if (class_exists(\App\Models\BodyMetric::class)) {
+            $tools[] = $this->fn('log_weight', 'Log a body-weight measurement (kg), optionally body-fat %.', [
+                'weight_kg' => ['type' => 'number', 'description' => 'Body weight in kg.'],
+                'body_fat_pct' => ['type' => 'number', 'description' => 'Optional body-fat %.'],
+                'date' => ['type' => 'string', 'description' => 'Date; default today.'],
+            ], ['weight_kg']);
+        }
+        if (class_exists(\App\Models\RecoveryLog::class)) {
+            $tools[] = $this->fn('log_recovery', 'Log resting HR / HRV / subjective recovery (stress, mood, energy, soreness) for a day. Use when the wearable is not connected and the user reports these.', [
+                'resting_hr' => ['type' => 'integer', 'description' => 'Resting heart rate (bpm).'],
+                'hrv_ms' => ['type' => 'integer', 'description' => 'HRV / RMSSD (ms).'],
+                'stress' => ['type' => 'integer', 'description' => 'Stress 1–10.'],
+                'mood' => ['type' => 'integer', 'description' => 'Mood 1–10.'],
+                'energy' => ['type' => 'integer', 'description' => 'Energy 1–10.'],
+                'soreness' => ['type' => 'integer', 'description' => 'Soreness 1–10.'],
+                'date' => ['type' => 'string', 'description' => 'Date; default today.'],
+            ], []);
+        }
+        if (class_exists(\App\Models\SleepLog::class)) {
+            $tools[] = $this->fn('log_sleep', 'Log a night of sleep.', [
+                'hours' => ['type' => 'number', 'description' => 'Hours slept.'],
+                'bedtime' => ['type' => 'string', 'description' => 'HH:MM (optional).'],
+                'wake_time' => ['type' => 'string', 'description' => 'HH:MM (optional).'],
+                'quality' => ['type' => 'integer', 'description' => 'Quality 1–100 (optional).'],
+                'date' => ['type' => 'string', 'description' => 'The morning date; default today.'],
+            ], ['hours']);
+        }
+        if (class_exists(\App\Models\BiomarkerReading::class)) {
+            $tools[] = $this->fn('log_biomarker', 'Log a bloodwork / biomarker result the user tells you (the abnormal-range flag is computed automatically). For a lab photo they use the camera button.', [
+                'marker' => ['type' => 'string', 'description' => 'e.g. ldl, hba1c, vitamin_d, ferritin.'],
+                'value' => ['type' => 'number', 'description' => 'The measured value.'],
+                'unit' => ['type' => 'string', 'description' => 'Unit (optional).'],
+                'taken_at' => ['type' => 'string', 'description' => 'YYYY-MM-DD (optional).'],
+            ], ['marker', 'value']);
+        }
+        if (class_exists(\App\Models\ActivitySession::class)) {
+            $tools[] = $this->fn('log_cardio', 'Log a COMPLETED cardio session after the fact (run/walk/ride/swim/row). For a live session use start_activity/finish_activity.', [
+                'type' => ['type' => 'string', 'description' => 'run | walk | cycle | swim | row | other.'],
+                'duration_min' => ['type' => 'integer', 'description' => 'Duration in minutes.'],
+                'distance_km' => ['type' => 'number', 'description' => 'Distance in km (optional).'],
+                'avg_hr' => ['type' => 'integer', 'description' => 'Average HR (optional).'],
+                'calories_kcal' => ['type' => 'integer', 'description' => 'Calories (optional).'],
+                'started_at' => ['type' => 'string', 'description' => 'ISO datetime (optional).'],
+            ], ['duration_min']);
+        }
+
+        $tools[] = $this->fn('set_goal', "Set the user's primary goal (e.g. \"build muscle\", \"get lean for summer\", \"longevity\").", [
+            'goal' => ['type' => 'string', 'description' => 'The primary goal, in their words.'],
+        ], ['goal']);
+
+        if (class_exists(\App\Support\Pantry::class)) {
+            $tools[] = $this->fn('get_pantry', 'See the food the user currently has on hand. Read this before suggesting meals so you only suggest things they can make.', [], []);
+            $tools[] = $this->fn('update_pantry', "Update the kitchen inventory when the user says what they have or bought. mode add appends, replace overwrites, remove deletes.", [
+                'items' => ['type' => 'string', 'description' => 'Comma-separated items, e.g. "ground beef, eggs, tuna".'],
+                'mode' => ['type' => 'string', 'enum' => ['add', 'replace', 'remove'], 'description' => 'Default add.'],
+            ], ['items']);
+        }
+
+        $tools[] = $this->fn('show_trend', "Get a metric's time-series to render as a sparkline card in the chat. Use when the user asks how something has changed over time. Then emit a ```titan-card {\"type\":\"sparkline\",…}``` with the points.", [
+            'metric' => ['type' => 'string', 'enum' => ['weight', 'hrv', 'resting_hr', 'sleep', 'steps', 'vo2max'], 'description' => 'Which metric to chart.'],
+            'days' => ['type' => 'integer', 'description' => 'Days back (default 30).'],
+        ], ['metric']);
+
+        if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
+            $tools[] = $this->fn('render_dream_physique', "THE marquee feature: render the user's realistic future self from their most recent uploaded body photo (they upload via the camera button). Pass an optional description of the goal (e.g. \"+10 lb lean muscle\", \"lean and shredded\"). Returns an image URL — embed it inline as markdown so they SEE their future self. Use whenever they ask to see, create, or update their dream physique.", [
+                'description' => ['type' => 'string', 'description' => 'Optional goal description for the render.'],
+            ], []);
+        }
+
         return $tools;
     }
 
@@ -150,6 +230,17 @@ class CoachTools
             'cycle_status' => 'Checking your cycle',
             'log_period' => 'Logging your period',
             'log_cycle' => 'Logging your cycle day',
+            'log_meal' => 'Logging your meal',
+            'log_weight' => 'Logging your weight',
+            'log_recovery' => 'Logging your recovery',
+            'log_sleep' => 'Logging your sleep',
+            'log_biomarker' => 'Logging your bloodwork',
+            'log_cardio' => 'Logging your cardio',
+            'set_goal' => 'Updating your goal',
+            'get_pantry' => 'Checking your pantry',
+            'update_pantry' => 'Updating your pantry',
+            'show_trend' => 'Charting your trend',
+            'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
     }
@@ -194,6 +285,17 @@ class CoachTools
             'cycle_status' => $this->cycleStatus(),
             'log_period' => $this->logPeriod($args),
             'log_cycle' => $this->logCycle($args),
+            'log_meal' => $this->logMeal($args),
+            'log_weight' => $this->logWeight($args),
+            'log_recovery' => $this->logRecovery($args),
+            'log_sleep' => $this->logSleep($args),
+            'log_biomarker' => $this->logBiomarker($args),
+            'log_cardio' => $this->logCardio($args),
+            'set_goal' => $this->setGoal($args),
+            'get_pantry' => $this->getPantry(),
+            'update_pantry' => $this->updatePantry($args),
+            'show_trend' => $this->showTrend($args),
+            'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
     }
@@ -661,6 +763,250 @@ class CoachTools
             'yesterday' => Carbon::now($tz)->subDay()->startOfDay(),
             default => rescue(fn () => Carbon::parse($value, $tz)->startOfDay(), Carbon::now($tz)->startOfDay(), false),
         };
+    }
+
+    // ---- Logging & data entry (the chat as the control surface) ---------------
+
+    private function logMeal(array $a): mixed
+    {
+        $name = trim((string) ($a['name'] ?? ''));
+        if ($name === '') {
+            return ['error' => 'A meal name is required.'];
+        }
+        $meal = $this->profile->meals()->create([
+            'name' => \Illuminate\Support\Str::limit($name, 80, ''),
+            'eaten_at' => isset($a['eaten_at']) ? rescue(fn () => Carbon::parse($a['eaten_at']), Carbon::now(), false) : Carbon::now(),
+            'calories' => (int) round((float) ($a['calories'] ?? 0)),
+            'protein_g' => round((float) ($a['protein_g'] ?? 0), 1),
+            'carbs_g' => round((float) ($a['carbs_g'] ?? 0), 1),
+            'fat_g' => round((float) ($a['fat_g'] ?? 0), 1),
+            'source' => 'coach',
+        ]);
+
+        return ['ok' => true, 'name' => $meal->name, 'calories' => $meal->calories, 'protein_g' => $meal->protein_g,
+            'message' => "Logged {$meal->name} — {$meal->calories} kcal, {$meal->protein_g}g protein."];
+    }
+
+    private function logWeight(array $a): mixed
+    {
+        $w = (float) ($a['weight_kg'] ?? 0);
+        if ($w <= 0) {
+            return ['error' => 'weight_kg is required.'];
+        }
+        $this->profile->bodyMetrics()->create(array_filter([
+            'taken_at' => $this->cycleDate($a['date'] ?? null)->toDateString(),
+            'weight_kg' => round($w, 2),
+            'body_fat_pct' => isset($a['body_fat_pct']) ? round((float) $a['body_fat_pct'], 1) : null,
+        ], fn ($v) => $v !== null));
+
+        return ['ok' => true, 'weight_kg' => round($w, 2), 'message' => "Logged your weight: {$w} kg."];
+    }
+
+    private function logRecovery(array $a): mixed
+    {
+        $fields = array_filter([
+            'resting_hr' => isset($a['resting_hr']) ? (int) $a['resting_hr'] : null,
+            'hrv_ms' => isset($a['hrv_ms']) ? (int) $a['hrv_ms'] : null,
+            'stress' => isset($a['stress']) ? (int) $a['stress'] : null,
+            'mood' => isset($a['mood']) ? (int) $a['mood'] : null,
+            'energy' => isset($a['energy']) ? (int) $a['energy'] : null,
+            'soreness' => isset($a['soreness']) ? (int) $a['soreness'] : null,
+        ], fn ($v) => $v !== null);
+        if ($fields === []) {
+            return ['error' => 'Provide at least one of resting_hr, hrv_ms, stress, mood, energy, soreness.'];
+        }
+        $log = $this->profile->recoveryLogs()->updateOrCreate(
+            ['logged_at' => $this->cycleDate($a['date'] ?? null)->toDateString()],
+            $fields + ['updated_via' => 'coach'],
+        );
+
+        return ['ok' => true, 'logged_at' => $log->logged_at->toDateString(), 'message' => 'Recovery logged.'];
+    }
+
+    private function logSleep(array $a): mixed
+    {
+        $hours = (float) ($a['hours'] ?? 0);
+        if ($hours <= 0) {
+            return ['error' => 'hours is required and must be > 0.'];
+        }
+        $log = $this->profile->sleepLogs()->updateOrCreate(
+            ['slept_at' => $this->cycleDate($a['date'] ?? null)->toDateString()],
+            array_filter([
+                'duration_min' => (int) round($hours * 60),
+                'bedtime' => $a['bedtime'] ?? null,
+                'wake_time' => $a['wake_time'] ?? null,
+                'quality' => isset($a['quality']) ? (int) $a['quality'] : null,
+                'updated_via' => 'coach',
+            ], fn ($v) => $v !== null),
+        );
+
+        return ['ok' => true, 'hours' => round($log->duration_min / 60, 1), 'message' => 'Sleep logged: '.round($hours, 1).' h.'];
+    }
+
+    private function logBiomarker(array $a): mixed
+    {
+        $marker = trim((string) ($a['marker'] ?? ''));
+        if ($marker === '' || ! isset($a['value'])) {
+            return ['error' => 'marker and value are required.'];
+        }
+        $r = $this->profile->biomarkerReadings()->create([
+            'marker' => \Illuminate\Support\Str::of($marker)->lower()->trim()->replace(' ', '_')->value(),
+            'value' => (float) $a['value'],
+            'unit' => $a['unit'] ?? null,
+            'taken_at' => $this->cycleDate($a['taken_at'] ?? null)->toDateString(),
+            'source' => 'coach',
+        ]);
+
+        return ['ok' => true, 'marker' => $r->marker, 'value' => (float) $r->value, 'flag' => $r->flag,
+            'message' => "Logged {$r->marker} = {$r->value}".($r->flag && $r->flag !== 'normal' ? " ({$r->flag})" : '')];
+    }
+
+    private function logCardio(array $a): mixed
+    {
+        $dur = (int) ($a['duration_min'] ?? 0);
+        if ($dur <= 0) {
+            return ['error' => 'duration_min is required.'];
+        }
+        $start = isset($a['started_at']) ? rescue(fn () => Carbon::parse($a['started_at']), Carbon::now()->subMinutes($dur), false) : Carbon::now()->subMinutes($dur);
+        $session = $this->profile->activitySessions()->updateOrCreate(
+            ['started_at' => $start],
+            array_filter([
+                'source' => 'coach',
+                'ended_at' => $start->copy()->addMinutes($dur),
+                'duration_min' => $dur,
+                'activity_type' => $a['type'] ?? 'other',
+                'distance_km' => isset($a['distance_km']) ? (float) $a['distance_km'] : null,
+                'avg_hr' => isset($a['avg_hr']) ? (int) $a['avg_hr'] : null,
+                'calories_kcal' => isset($a['calories_kcal']) ? (int) $a['calories_kcal'] : null,
+                'updated_via' => 'coach',
+            ], fn ($v) => $v !== null),
+        );
+
+        return ['ok' => true, 'type' => $session->activity_type, 'duration_min' => $dur, 'message' => "Logged a {$dur}-min {$session->activity_type}."];
+    }
+
+    private function setGoal(array $a): mixed
+    {
+        $goal = trim((string) ($a['goal'] ?? ''));
+        if ($goal === '') {
+            return ['error' => 'goal is required.'];
+        }
+        $this->profile->forceFill(['primary_goal' => \Illuminate\Support\Str::limit($goal, 120, '')])->save();
+
+        return ['ok' => true, 'primary_goal' => $this->profile->primary_goal, 'message' => "Your goal is now: {$this->profile->primary_goal}."];
+    }
+
+    private function getPantry(): mixed
+    {
+        $items = \App\Support\Pantry::get($this->profile);
+
+        return [
+            'items' => $items,
+            'count' => count($items),
+            'note' => $items === [] ? 'Empty — ask what they have, then update_pantry.' : 'Only suggest meals they can make from these.',
+        ];
+    }
+
+    private function updatePantry(array $a): mixed
+    {
+        $items = $a['items'] ?? null;
+        if (! is_array($items) && ! is_string($items)) {
+            return ['error' => 'Provide items as a comma-separated string or an array.'];
+        }
+        $mode = strtolower((string) ($a['mode'] ?? 'add'));
+        $result = match ($mode) {
+            'replace' => \App\Support\Pantry::set($this->profile, \App\Support\Pantry::parse($items)),
+            'remove' => \App\Support\Pantry::remove($this->profile, $items),
+            default => \App\Support\Pantry::add($this->profile, $items),
+        };
+
+        return ['ok' => true, 'mode' => $mode, 'items' => $result, 'count' => count($result), 'message' => 'Pantry updated.'];
+    }
+
+    private function showTrend(array $a): mixed
+    {
+        $metric = strtolower(trim((string) ($a['metric'] ?? 'weight')));
+        $days = max(7, min(180, (int) ($a['days'] ?? 30)));
+        $since = Carbon::today()->subDays($days)->toDateString();
+
+        [$points, $unit, $label] = match ($metric) {
+            'weight' => [$this->trendSeries($this->profile->bodyMetrics(), 'taken_at', 'weight_kg', $since), 'kg', 'Weight'],
+            'hrv' => [$this->trendSeries($this->profile->recoveryLogs(), 'logged_at', 'hrv_ms', $since), 'ms', 'HRV'],
+            'resting_hr', 'rhr' => [$this->trendSeries($this->profile->recoveryLogs(), 'logged_at', 'resting_hr', $since), 'bpm', 'Resting HR'],
+            'steps' => [$this->trendSeries($this->profile->dailyActivity(), 'date', 'steps', $since), '', 'Steps'],
+            'vo2max' => [$this->trendSeries($this->profile->activitySessions(), 'started_at', 'vo2max', $since), '', 'VO₂max'],
+            'sleep' => [$this->profile->sleepLogs()->whereDate('slept_at', '>=', $since)->whereNotNull('duration_min')->orderBy('slept_at')->pluck('duration_min')->map(fn ($m) => round($m / 60, 1))->filter(fn ($v) => $v > 0)->values()->all(), 'h', 'Sleep'],
+            default => [[], '', ucfirst($metric)],
+        };
+
+        if (count($points) < 2) {
+            return ['note' => "Not enough {$label} data yet to chart — needs at least 2 points. Keep logging and it'll fill in."];
+        }
+
+        return [
+            'metric' => $metric, 'label' => $label, 'unit' => $unit, 'points' => $points,
+            'first' => $points[0], 'last' => $points[count($points) - 1], 'n' => count($points),
+            '_show' => 'Render this inline as a sparkline card: ```titan-card {"type":"sparkline","label":"'.$label.($unit ? ' ('.$unit.')' : '').'","unit":"'.$unit.'","points":['.implode(',', $points).']}``` then add one short sentence reading the trend.',
+        ];
+    }
+
+    /** @param  \Illuminate\Database\Eloquent\Relations\HasMany  $rel */
+    private function trendSeries($rel, string $dateCol, string $valCol, string $since): array
+    {
+        return $rel->whereDate($dateCol, '>=', $since)->whereNotNull($valCol)
+            ->orderBy($dateCol)->pluck($valCol)
+            ->map(fn ($v) => (float) $v)->filter(fn ($v) => $v > 0)->values()->all();
+    }
+
+    // ---- Dream physique — the marquee, rendered right in the chat --------------
+
+    private function renderDreamPhysique(array $a): mixed
+    {
+        if (! class_exists(\App\Models\PhysiqueGoal::class) || ! class_exists(\App\Models\ProgressPhoto::class)) {
+            return ['error' => 'The physique module is not available.'];
+        }
+        $nano = app(\App\Services\Ai\NanoBananaClient::class);
+        if (! $nano->configured()) {
+            return ['error' => 'Image generation is not configured yet (no image API key).'];
+        }
+        $photo = $this->profile->progressPhotos()->latest('taken_at')->latest('id')->first();
+        if (! $photo || ! $photo->photo_path) {
+            return ['error' => 'No photo of you yet. Tap the camera button and upload a photo of yourself, then ask me to render your dream physique.'];
+        }
+
+        $description = trim((string) ($a['description'] ?? '')) ?: '+10 lb of lean muscle, leaner and more athletic';
+        $prompt = <<<PROMPT
+        Take this person's photo and render them as their realistic future self after a dedicated period of
+        training and nutrition: {$description}. Keep their exact face, identity, skin tone, hair, body
+        proportions, pose, lighting and background unchanged — this must look unmistakably like the SAME
+        person, just fitter. Photorealistic, natural and believable — not an exaggerated bodybuilder, not a
+        fantasy filter.
+        PROMPT;
+
+        try {
+            $input = $nano->imageFromDisk($photo->photo_path);
+            $generated = $nano->generateToDisk($prompt, 'physique/goal', [$input]);
+        } catch (\Throwable $e) {
+            return ['error' => 'Could not render the image right now: '.$e->getMessage()];
+        }
+
+        $this->profile->physiqueGoals()->update(['is_active' => false]);
+        $goal = $this->profile->physiqueGoals()->create([
+            'source_photo_path' => $photo->photo_path,
+            'goal_image_path' => $generated['path'],
+            'prompt' => $prompt,
+            'description' => $description,
+            'is_active' => true,
+        ]);
+
+        return [
+            'ok' => true,
+            'description' => $description,
+            'future_self_image_url' => $goal->goalUrl(),
+            'now_image_url' => $photo->photoUrl(),
+            '_show' => 'Embed future_self_image_url inline as markdown ![your future self]('.($goal->goalUrl() ?? 'url').') so they SEE it. Celebrate it warmly and tell them this is where consistency takes them — it advances toward this as they stay on track.',
+            'message' => 'Rendered your dream physique.',
+        ];
     }
 
     /**

@@ -62,6 +62,24 @@ class CoachScanTest extends TestCase
         $this->assertDatabaseHas('biomarker_readings', ['marker' => 'hba1c', 'source' => 'photo']);
     }
 
+    public function test_a_body_photo_is_saved_as_a_progress_photo_for_the_physique_render(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $user->ensureProfile();
+
+        $vision = Mockery::mock(AiService::class);
+        $vision->shouldReceive('vision')->once()->andReturn(json_encode(['kind' => 'physique', 'note' => 'A front-facing physique photo.']));
+        $this->app->instance(AiService::class, $vision);
+
+        $response = $this->actingAs($user)->post('/coach/scan', [
+            'photo' => UploadedFile::fake()->image('me.jpg'),
+        ]);
+
+        $response->assertOk()->assertJson(['ok' => true, 'kind' => 'physique', 'logged' => true]);
+        $this->assertDatabaseHas('progress_photos', ['profile_id' => $user->profile->id]);
+    }
+
     public function test_a_photo_requires_an_image(): void
     {
         $user = User::factory()->create();
