@@ -18,7 +18,7 @@ class KnowledgePage extends Model
 {
     use HasFactory, SoftDeletes;
 
-    public const TYPES = ['note', 'entity', 'concept', 'overview'];
+    public const TYPES = ['note', 'entity', 'concept', 'overview', 'research'];
 
     protected $fillable = ['profile_id', 'updated_by_user_id', 'title', 'slug', 'type', 'content', 'is_pinned', 'embedding', 'embed_hash'];
 

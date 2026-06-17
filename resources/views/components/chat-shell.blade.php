@@ -6,6 +6,7 @@
         ['label' => 'Dashboard', 'path' => 'dashboard'],
         ['label' => 'Progress', 'path' => 'progress'],
         ['label' => 'The Brain', 'path' => 'brain'],
+        ['label' => 'Research', 'path' => 'research'],
         ['label' => 'Bloodwork', 'path' => 'biomarkers'],
         ['label' => 'Meals', 'path' => 'meals'],
         ['label' => 'Workouts', 'path' => 'workouts'],

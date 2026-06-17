@@ -40,6 +40,10 @@ Route::middleware(['auth'])->group(function () {
         // Progress & trends — the visual longitudinal view around the dream physique.
         Route::get('/progress', [\App\Http\Controllers\ProgressController::class, 'index'])->name('progress');
 
+        // Research library — every deep-dive brief the coach has written.
+        Route::get('/research', [\App\Http\Controllers\ResearchLibraryController::class, 'index'])->name('research.index');
+        Route::get('/research/{page}', [\App\Http\Controllers\ResearchLibraryController::class, 'show'])->name('research.show');
+
         // Breeze account settings (name / email / password) — distinct from the
         // health Profile model.
         Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

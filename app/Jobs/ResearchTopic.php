@@ -56,7 +56,7 @@ class ResearchTopic implements ShouldQueue
         if (class_exists(KnowledgePage::class)) {
             $page = $profile->knowledgePages()->updateOrCreate(
                 ['title' => $result['title']],
-                ['content' => $result['markdown'], 'type' => 'note', 'slug' => KnowledgePage::slugFor($result['title'])],
+                ['content' => $result['markdown'], 'type' => 'research', 'slug' => KnowledgePage::slugFor($result['title'])],
             );
             if (class_exists(\App\Services\Brain\KnowledgeSearch::class)) {
                 rescue(fn () => app(\App\Services\Brain\KnowledgeSearch::class)->embedPage($page), null, false);
