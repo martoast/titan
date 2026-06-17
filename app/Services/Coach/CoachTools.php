@@ -1173,7 +1173,13 @@ class CoachTools
             'focus' => ['headline' => $focus['headline'] ?? null, 'detail' => $focus['detail'] ?? null],
         ];
 
-        return ['card' => $card, '_show' => 'Open your reply with this `checkin` card (emit it inside a ```titan-card fence), then one short line on the single thing to do today.'];
+        // For women tracking their cycle, the phase belongs on the daily check-in — it shapes the day.
+        $cycleLine = rescue(fn () => \App\Support\Cycle::shortLine($this->profile), null, false);
+        if ($cycleLine) {
+            $card['cycle'] = $cycleLine;
+        }
+
+        return ['card' => $card, '_show' => 'Open your reply with this `checkin` card (emit it inside a ```titan-card fence), then one short line on the single thing to do today.'.($cycleLine ? ' Her cycle phase is on the card — factor it into that one thing.' : '')];
     }
 
     private function sleepDetail(): mixed
@@ -1813,6 +1819,7 @@ class CoachTools
             try {
                 $cs = \App\Support\Cycle::status($this->profile, $day);
                 if ($cs['has_data'] ?? false) {
+                    $g = \App\Support\Cycle::guidanceFor($cs['phase']);
                     $out['cycle'] = [
                         'cycle_day' => $cs['cycle_day'],
                         'phase' => $cs['phase_label'],
@@ -1820,6 +1827,7 @@ class CoachTools
                         'fertile_window_active' => $cs['fertile_window']['active'] ?? null,
                         'late' => $cs['late'] ?? false,
                         'note' => $cs['note'],
+                        'means_today' => array_filter(['training' => $g['training'], 'nutrition' => $g['nutrition'], 'body' => $g['body']]),
                     ];
                 }
             } catch (\Throwable) {
@@ -1840,7 +1848,7 @@ class CoachTools
             }
         }
 
-        $out['_guidance'] = 'Give a warm, brief daily check-in. Lead with the headline vitals and readiness, call out anything notably good or off, and end with the one thing to focus on. Use a small markdown table for the vitals when there are several. Only mention sections that have data.';
+        $out['_guidance'] = 'Give a warm, brief daily check-in. Lead with the headline vitals and readiness, call out anything notably good or off, and end with the one thing to focus on. Use a small markdown table for the vitals when there are several. Only mention sections that have data. If a `cycle` section is present, work her phase into the read (what it means for energy/training/nutrition today) — it is part of her everyday life, not an afterthought.';
 
         return $out;
     }

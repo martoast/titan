@@ -209,6 +209,11 @@ const gradeColor = (v, mid, hi) => v >= hi ? '#34d399' : v >= mid ? '#fbbf24' : 
 function buildCheckin(d) {
     const el = document.createElement('div'); el.className = 'tcard tcard-checkin';
     const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = d.date || 'Today'; el.appendChild(head);
+    if (d.cycle) {
+        const cy = document.createElement('div'); cy.className = 'tcard-checkin-cycle';
+        cy.innerHTML = `<span>🌸</span> ${d.cycle}`;
+        el.appendChild(cy);
+    }
     const grid = document.createElement('div'); grid.className = 'tcard-checkin-grid';
     const cell = (label, big, sub, color) => {
         const c = document.createElement('div'); c.className = 'tcard-checkin-cell';

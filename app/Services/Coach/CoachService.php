@@ -336,6 +336,12 @@ class CoachService
                 ."\nKeep this goal front and centre: connect your advice back to it, frame progress against it, and when they ask how they're doing / if they're on track, call physique_progress. This is the whole point — make every week move them toward it.";
         }
 
+        $cycle = class_exists(\App\Support\Cycle::class) ? \App\Support\Cycle::coachDigest($profile) : '';
+        if ($cycle !== '') {
+            $prompt .= "\n\n--- HER CYCLE TODAY (factor this into EVERYTHING) ---\n".$cycle
+                ."\nFor {$name}, the menstrual cycle shapes energy, training capacity, nutrition, recovery, mood and libido — it's part of her everyday life, not a separate topic. Weave the current phase into your coaching across all of these, naturally and supportively (e.g. lean into heavy training in the follicular phase, ease volume and add a little fuel in the late luteal phase, normalise PMS or period symptoms). Awareness and wellness only — never medical, diagnostic or contraceptive advice.";
+        }
+
         $memory = class_exists(\App\Support\CoachMemoryBook::class) ? \App\Support\CoachMemoryBook::digest($profile) : '';
         if ($memory !== '') {
             $prompt .= "\n\n--- WHAT YOU REMEMBER ABOUT {$name} (your coach memory — weave it in, never re-ask) ---\n".$memory;

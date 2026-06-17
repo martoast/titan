@@ -175,7 +175,8 @@ body {
 .tcard-bioage-caption { margin-top: 0.7rem; font-size: 0.82rem; color: #9ca3af; }
 
 /* ---- Daily check-in card ---- */
-.tcard-checkin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.tcard-checkin-cycle { margin: 0.5rem 0 0.1rem; display: flex; align-items: center; gap: 0.4rem; border-radius: 999px; background: rgba(244,114,182,0.12); border: 1px solid rgba(244,114,182,0.22); padding: 0.3rem 0.7rem; font-size: 0.76rem; font-weight: 600; color: #f9a8d4; width: fit-content; }
+.tcard-checkin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.7rem; }
 .tcard-checkin-cell { border-radius: 0.8rem; background: rgba(0,0,0,0.25); padding: 0.7rem 0.4rem; text-align: center; }
 .tcard-checkin-big { font-family: var(--font-display); font-weight: 800; font-size: 1.45rem; line-height: 1; color: #f1f5f9; font-variant-numeric: tabular-nums; }
 .tcard-checkin-lbl { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-top: 0.35rem; }

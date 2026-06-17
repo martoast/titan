@@ -172,6 +172,79 @@ class Cycle
         ];
     }
 
+    /**
+     * Wellness guidance for a phase — how it tends to shape training, nutrition, body/energy and intimacy.
+     * Supportive and evidence-informed, never clinical. @return array{training:string,nutrition:string,body:string,vibe:string}
+     */
+    public static function guidanceFor(string $phase): array
+    {
+        return match ($phase) {
+            'menstrual' => [
+                'training' => 'Energy can be low on heavier-flow days — train to feel; lighter is fine and it often lifts as the period eases.',
+                'nutrition' => 'Lean on iron-rich foods (red meat, leafy greens, lentils) to offset menstrual losses.',
+                'body' => 'Cramps and fatigue are normal — warmth, hydration and rest help.',
+                'vibe' => 'menstrual — train to feel, refuel iron',
+            ],
+            'follicular' => [
+                'training' => 'Rising estrogen means strength and energy are climbing — your best window to PUSH: PRs, heavy loads, higher volume.',
+                'nutrition' => 'Insulin sensitivity is great here — carbs are well used, so fuel the harder training.',
+                'body' => 'Mood and motivation usually run high — capitalise on it.',
+                'vibe' => 'follicular — prime to push hard',
+            ],
+            'fertile', 'ovulation' => [
+                'training' => 'Peak strength and power — go for PRs. Joints are a touch laxer near ovulation, so keep form tight on heavy lifts.',
+                'nutrition' => 'Appetite is usually steady — keep protein up around the hard sessions.',
+                'body' => 'Energy and libido typically peak. This is the fertile window — pregnancy is most likely now if not using contraception (awareness only).',
+                'vibe' => 'ovulation — peak power, fertile window',
+            ],
+            'luteal' => [
+                'training' => 'Energy may dip later in this phase and resting HR runs a little higher — favour moderate volume over max intensity, especially the few days before your period.',
+                'nutrition' => 'Metabolism and hunger rise — a small calorie bump (~5–10%) is normal; lean on protein and fibre for cravings, and ease off salt for bloating.',
+                'body' => 'PMS — mood swings, poorer sleep, bloating — can show up premenstrually; extra sleep and self-compassion go a long way.',
+                'vibe' => 'luteal — recover well, fuel a little more',
+            ],
+            default => ['training' => '', 'nutrition' => '', 'body' => '', 'vibe' => ''],
+        };
+    }
+
+    /** A concise always-on digest of where she is in her cycle + what it means today (for the coach context). */
+    public static function coachDigest(Profile $profile): string
+    {
+        if (! self::available($profile)) {
+            return '';
+        }
+        $s = rescue(fn () => self::status($profile), null, false);
+        if (! $s || empty($s['phase'])) {
+            return '';
+        }
+        $g = self::guidanceFor($s['phase']);
+        $line = "Day {$s['cycle_day']}, {$s['phase_label']} phase";
+        if (isset($s['next_period']['in_days']) && $s['next_period']['in_days'] !== null) {
+            $line .= " (~{$s['next_period']['in_days']}d to next period)";
+        }
+        $line .= ". Training: {$g['training']} Nutrition: {$g['nutrition']} Body: {$g['body']}";
+        if (! empty($s['fertile_window']['active'])) {
+            $line .= ' She is in her fertile window now.';
+        }
+
+        return $line;
+    }
+
+    /** A short phase tag for cards/summaries, e.g. "Day 8 · follicular — prime to push hard". */
+    public static function shortLine(Profile $profile): ?string
+    {
+        if (! self::available($profile)) {
+            return null;
+        }
+        $s = rescue(fn () => self::status($profile), null, false);
+        if (! $s || empty($s['phase'])) {
+            return null;
+        }
+        $vibe = self::guidanceFor($s['phase'])['vibe'] ?: $s['phase_label'];
+
+        return "Day {$s['cycle_day']} · {$vibe}";
+    }
+
     /** Phase + cycle day for ANY date, by finding the cycle that contains it. Powers per-phase insights. */
     public static function phaseOn(Profile $profile, Carbon $date): ?array
     {

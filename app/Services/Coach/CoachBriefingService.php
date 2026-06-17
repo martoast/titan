@@ -115,6 +115,11 @@ class CoachBriefingService
             $system .= "\n\n--- PINNED FACTS about {$name} (honor these) ---\n".$core;
         }
 
+        $cycle = class_exists(\App\Support\Cycle::class) ? \App\Support\Cycle::coachDigest($profile) : '';
+        if ($cycle !== '') {
+            $system .= "\n\n--- HER CYCLE TODAY (work it into the briefing — phase shapes energy, training & nutrition) ---\n".$cycle;
+        }
+
         $dataBlock = "Here is {$name}'s real data right now:\n".json_encode(
             $facts,
             JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
