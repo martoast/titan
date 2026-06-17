@@ -159,7 +159,7 @@ class AiService
      * @param  callable(string,array):mixed  $dispatch  runs a tool, returns its result
      * @param  array{model?:string,temperature?:float,max_steps?:int}  $opts
      */
-    public function chatWithTools(array $messages, array $tools, callable $dispatch, array $opts = []): string
+    public function chatWithTools(array $messages, array|\Closure $tools, callable $dispatch, array $opts = []): string
     {
         if (! $this->configured()) {
             throw new AiException('OpenAI is not configured (missing OPENAI_API_KEY).');
@@ -168,13 +168,15 @@ class AiService
         $maxSteps = (int) ($opts['max_steps'] ?? 6);
 
         for ($step = 0; $step < $maxSteps; $step++) {
+            // Resolve tools each step so the model can load more mid-loop (tool-gating).
+            $resolvedTools = $tools instanceof \Closure ? ($tools)() : $tools;
             $payload = [
                 'model' => $opts['model'] ?? config('services.openai.chat_model'),
                 'messages' => $messages,
                 'temperature' => $opts['temperature'] ?? 0.4,
             ];
-            if ($tools !== []) {
-                $payload['tools'] = $tools;
+            if ($resolvedTools !== []) {
+                $payload['tools'] = $resolvedTools;
                 $payload['tool_choice'] = 'auto';
             }
 
@@ -223,7 +225,7 @@ class AiService
      */
     public function chatWithToolsStreaming(
         array $messages,
-        array $tools,
+        array|\Closure $tools,
         callable $dispatch,
         callable $onDelta,
         ?callable $onToolCall = null,
@@ -236,13 +238,14 @@ class AiService
         $maxSteps = (int) ($opts['max_steps'] ?? 6);
 
         for ($step = 0; $step < $maxSteps; $step++) {
+            $resolvedTools = $tools instanceof \Closure ? ($tools)() : $tools;
             $payload = [
                 'model' => $opts['model'] ?? config('services.openai.chat_model'),
                 'messages' => $messages,
                 'temperature' => $opts['temperature'] ?? 0.4,
             ];
-            if ($tools !== []) {
-                $payload['tools'] = $tools;
+            if ($resolvedTools !== []) {
+                $payload['tools'] = $resolvedTools;
                 $payload['tool_choice'] = 'auto';
             }
 

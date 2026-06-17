@@ -70,7 +70,7 @@ class CoachUniversalToolsTest extends TestCase
 
     public function test_new_tools_are_registered(): void
     {
-        $names = array_map(fn ($t) => $t['function']['name'], $this->tools()->schemas());
+        $names = array_map(fn ($t) => $t['function']['name'], $this->tools()->withAllTools()->schemas());
         foreach (['log_meal', 'log_weight', 'log_recovery', 'log_sleep', 'log_biomarker', 'log_cardio', 'set_goal', 'get_pantry', 'update_pantry', 'show_trend', 'render_dream_physique'] as $n) {
             $this->assertContains($n, $names, "missing tool: {$n}");
         }

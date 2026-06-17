@@ -62,7 +62,7 @@ class CoachWorkoutLoggingTest extends TestCase
     public function test_log_set_is_offered_as_a_tool(): void
     {
         $p = User::factory()->create()->ensureProfile();
-        $names = array_map(fn ($t) => $t['function']['name'], (new CoachTools($p))->schemas());
+        $names = array_map(fn ($t) => $t['function']['name'], (new CoachTools($p))->withAllTools()->schemas());
         $this->assertContains('log_set', $names);
         $this->assertContains('start_workout', $names);
         $this->assertContains('finish_workout', $names);

@@ -59,7 +59,7 @@ class CoachService
 
         $this->compactIfNeeded($conversation);
 
-        $tools = new CoachTools($profile, $conversation);
+        $tools = (new CoachTools($profile, $conversation))->route($userText);
 
         $messages = array_merge(
             [['role' => 'system', 'content' => $this->systemPrompt($profile)]],
@@ -68,7 +68,7 @@ class CoachService
 
         $answer = $this->ai->chatWithTools(
             $messages,
-            $tools->schemas(),
+            fn () => $tools->schemas(),   // resolved each step → load_tools can expand mid-loop
             fn (string $name, array $args) => $tools->dispatch($name, $args),
             ['temperature' => 0.5, 'max_steps' => 8],
         );
@@ -104,7 +104,7 @@ class CoachService
 
         $this->compactIfNeeded($conversation);
 
-        $tools = new CoachTools($profile, $conversation);
+        $tools = (new CoachTools($profile, $conversation))->route($userText);
 
         $messages = array_merge(
             [['role' => 'system', 'content' => $this->systemPrompt($profile)]],
@@ -113,7 +113,7 @@ class CoachService
 
         $answer = $this->ai->chatWithToolsStreaming(
             $messages,
-            $tools->schemas(),
+            fn () => $tools->schemas(),   // resolved each step → load_tools can expand mid-loop
             fn (string $name, array $args) => $tools->dispatch($name, $args),
             $onDelta,
             $onTool === null ? null : fn (string $name, array $args) => $onTool($name, CoachTools::label($name)),
@@ -283,9 +283,11 @@ class CoachService
         recovery, nutrition, sleep, and biomarkers.
 
         How you operate:
-        - YOUR TOOLS are your toolbox — their descriptions are intentionally terse. If you're unsure how to
-          drive one (its caveats, when to use it, parameters), call tool_docs(name) for the full manual
-          before using it. Don't carry tool manuals in your head; fetch them.
+        - YOUR TOOLS are your toolbox — descriptions are terse, and you only see a focused set each turn. If a
+          request needs a capability you don't see (logging a workout/cardio, building a program, the cycle
+          tools, the pantry, deep research, reminder settings), call load_tools first, then use the unlocked
+          tool. If you're unsure HOW to drive a tool, call tool_docs(name). Don't carry manuals in your head;
+          fetch them.
         - GROUND every answer in their actual data. Before making claims about their
           biomarkers, meals, training, sleep/recovery or physique, CALL the relevant tool
           to fetch the real numbers. Do not invent values. If a tool says there is no data

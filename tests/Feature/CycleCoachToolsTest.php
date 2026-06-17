@@ -15,13 +15,13 @@ class CycleCoachToolsTest extends TestCase
     {
         $woman = User::factory()->create()->ensureProfile();
         $woman->update(['sex' => 'F']);
-        $names = array_map(fn ($t) => $t['function']['name'], (new CoachTools($woman->refresh()))->schemas());
+        $names = array_map(fn ($t) => $t['function']['name'], (new CoachTools($woman->refresh()))->withAllTools()->schemas());
         $this->assertContains('cycle_status', $names);
         $this->assertContains('log_period', $names);
 
         $man = User::factory()->create()->ensureProfile();
         $man->update(['sex' => 'M']);
-        $mnames = array_map(fn ($t) => $t['function']['name'], (new CoachTools($man->refresh()))->schemas());
+        $mnames = array_map(fn ($t) => $t['function']['name'], (new CoachTools($man->refresh()))->withAllTools()->schemas());
         $this->assertNotContains('cycle_status', $mnames);
     }
 

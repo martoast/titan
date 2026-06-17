@@ -33,7 +33,7 @@ class ToolDocsTest extends TestCase
     {
         // Guard against re-bloat: every tool description should be a tight one-liner.
         $p = User::factory()->create()->ensureProfile();
-        foreach ((new CoachTools($p))->schemas() as $s) {
+        foreach ((new CoachTools($p))->withAllTools()->schemas() as $s) {
             $len = strlen($s['function']['description']);
             $this->assertLessThanOrEqual(260, $len, "{$s['function']['name']} description is {$len} chars — keep it terse, move detail to ToolDocs");
         }

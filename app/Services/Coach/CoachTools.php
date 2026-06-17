@@ -21,6 +21,83 @@ class CoachTools
         protected ?\App\Models\Conversation $conversation = null,
     ) {}
 
+    /** Specialized tools, grouped — gated out of the default toolset until the turn needs them. */
+    private const TOOL_GROUPS = [
+        // Live training logging (writes) — distinctive triggers, only mid-session.
+        'start_workout' => 'logging', 'log_set' => 'logging', 'finish_workout' => 'logging',
+        'start_activity' => 'logging', 'finish_activity' => 'logging', 'log_cardio' => 'logging',
+        // Heavy program-building + advanced knowledge.
+        'generate_mesocycle' => 'mesocycle', 'coaching_playbook' => 'mesocycle',
+        // Niche.
+        'cycle_status' => 'cycle', 'log_period' => 'cycle', 'log_cycle' => 'cycle',
+        'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
+        'research_topic' => 'research',
+        'set_reminders' => 'reminders',
+        // autoregulate / current_program / advance_program stay CORE — asked often with ambiguous phrasing.
+    ];
+
+    /** Keywords that pre-load a group from the user's message (load_tools is the fallback for the rest). */
+    private const GROUP_TRIGGERS = [
+        'logging' => ['workout', 'lift', 'bench', 'squat', 'deadlift', 'barbell', 'dumbbell', 'gym', ' set ', 'sets', 'reps', 'training', 'went for a run', ' run', ' ran', 'jog', 'bike', 'ride', 'cycling', 'swim', 'row', 'cardio', 'i did ', 'log my'],
+        'mesocycle' => ['program', 'plan my training', 'mesocycle', 'meso', 'routine', 'deload', 'periodi', 'split', 'push pull legs', 'ppl', 'hypertrophy', 'grow my', 'bring up', 'lagging', 'specializ', 'playbook', 'go advanced', 'intensity technique', 'peak week', 'volume landmark'],
+        'cycle' => ['period', 'cycle', 'menstr', 'pms', 'ovulat', 'fertile', 'cramp', 'luteal', 'follicular', 'flow', 'bbt'],
+        'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
+        'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
+        'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
+    ];
+
+    /** @var array<int,string> tool groups currently active (beyond the always-on core) */
+    protected array $activeGroups = [];
+
+    /** Pre-load the tool groups whose triggers appear in the message (cheap, deterministic). */
+    public function route(?string $text): static
+    {
+        $t = ' '.mb_strtolower((string) $text).' ';
+        foreach (self::GROUP_TRIGGERS as $group => $words) {
+            foreach ($words as $w) {
+                if (str_contains($t, $w)) {
+                    $this->activeGroups[] = $group;
+                    break;
+                }
+            }
+        }
+        $this->activeGroups = array_values(array_unique($this->activeGroups));
+
+        return $this;
+    }
+
+    /** Expose every tool (ungated) — for callers/tests that need the full registry. */
+    public function withAllTools(): static
+    {
+        $this->loadGroup(null);
+
+        return $this;
+    }
+
+    /** Activate a specialized group (or all) — called by the load_tools tool mid-loop. */
+    public function loadGroup(?string $area): array
+    {
+        $groups = array_values(array_unique(self::TOOL_GROUPS));
+        $this->activeGroups = ($area && in_array($area, $groups, true)) ? array_values(array_unique([...$this->activeGroups, $area])) : $groups;
+
+        return $this->activeGroups;
+    }
+
+    /**
+     * The gated toolset for this turn: the always-on core + any active specialized groups. Keeps the
+     * per-turn tool list small (better selection, less context); load_tools unlocks the rest on demand.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function schemas(): array
+    {
+        return array_values(array_filter($this->allSchemas(), function ($s) {
+            $group = self::TOOL_GROUPS[$s['function']['name']] ?? 'core';
+
+            return $group === 'core' || in_array($group, $this->activeGroups, true);
+        }));
+    }
+
     /**
      * OpenAI tool schemas advertised to the model. Knowledge tools are only offered
      * when the Brain vertical exists, so the coach never promises a capability it
@@ -28,7 +105,8 @@ class CoachTools
      *
      * @return array<int,array<string,mixed>>
      */
-    public function schemas(): array
+    /** The full registry of every tool (before gating). @return array<int,array<string,mixed>> */
+    private function allSchemas(): array
     {
         $tools = [];
 
@@ -43,6 +121,11 @@ class CoachTools
         $tools[] = $this->fn('tool_docs', "Get the FULL usage notes for a tool (caveats, when-to-use, parameter details) when its short description isn't enough. Call before using a tool you're unsure how to drive.", [
             'tool' => ['type' => 'string', 'description' => 'The tool name to look up, e.g. "log_set", "research_topic".'],
         ], ['tool']);
+
+        // Only a focused toolset is exposed each turn. If you need a capability you don't see, load it.
+        $tools[] = $this->fn('load_tools', 'Unlock the specialized tools — live workout/cardio logging, program-building + the advanced playbook, the cycle tools, the pantry, deep research, or reminder settings — when the current toolset lacks what a request needs. They become available immediately.', [
+            'area' => ['type' => 'string', 'description' => 'Optional hint: logging | mesocycle | cycle | pantry | research | reminders. Omit to load all.'],
+        ], []);
 
         if (class_exists(\App\Support\PhysiqueProgress::class)) {
             $tools[] = $this->fn('physique_progress', "Progress toward their dream physique (the north star) → `physique` card. For 'am I on track to my goal / how's my progress'; also use proactively to tie advice to the goal.", [], []);
@@ -312,6 +395,7 @@ class CoachTools
         return match ($name) {
             'daily_summary' => 'Reading your day',
             'tool_docs' => 'Checking how to use that',
+            'load_tools' => 'Getting the right tools',
             'search_knowledge' => 'Searching your brain',
             'save_knowledge' => 'Saving to your brain',
             'research_topic' => 'Sending off deep research',
@@ -390,6 +474,7 @@ class CoachTools
         return match ($name) {
             'daily_summary' => $this->dailySummary((string) ($args['date'] ?? 'today')),
             'tool_docs' => ['tool' => $args['tool'] ?? '', 'docs' => \App\Services\Coach\ToolDocs::get((string) ($args['tool'] ?? ''))],
+            'load_tools' => ['ok' => true, 'active' => $this->loadGroup($args['area'] ?? null), '_show' => 'The requested tools are now available — call the one you need to fulfil the request. Do not mention loading them to the user.'],
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
             'research_topic' => $this->researchTopic($args),

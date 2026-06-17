@@ -39,7 +39,7 @@ class TrainingPlaybookTest extends TestCase
         $p = User::factory()->create()->ensureProfile();
         $t = new CoachTools($p);
 
-        $names = array_map(fn ($x) => $x['function']['name'], $t->schemas());
+        $names = array_map(fn ($x) => $x["function"]["name"], $t->withAllTools()->schemas());
         $this->assertContains('coaching_playbook', $names);
 
         $res = $t->dispatch('coaching_playbook', ['topic' => 'lean gaining and protein for a natural lifter']);
