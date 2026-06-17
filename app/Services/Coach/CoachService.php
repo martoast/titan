@@ -34,6 +34,11 @@ class CoachService
         'What should I focus on this week?',
     ];
 
+    /** Context-compaction thresholds (user+assistant turns). */
+    private const COMPACT_AFTER = 28;   // condense once the unsummarised tail exceeds this…
+    private const KEEP_RECENT = 12;     // …keeping this many recent turns verbatim
+    private const HISTORY_CAP = 40;     // hard ceiling on replayed turns, summary aside
+
     /**
      * Append the user's message, run the tool-calling coach, persist + return the
      * assistant reply. Throws AiException on AI failure (controller catches it).
@@ -51,6 +56,8 @@ class CoachService
         if (blank($conversation->title)) {
             $conversation->update(['title' => Str::limit($userText, 48)]);
         }
+
+        $this->compactIfNeeded($conversation);
 
         $tools = new CoachTools($profile);
 
@@ -94,6 +101,8 @@ class CoachService
         if (blank($conversation->title)) {
             $conversation->update(['title' => Str::limit($userText, 48)]);
         }
+
+        $this->compactIfNeeded($conversation);
 
         $tools = new CoachTools($profile);
 
@@ -160,15 +169,68 @@ class CoachService
      */
     private function history(Conversation $conversation): array
     {
-        return $conversation->messages()
-            ->whereIn('role', ['user', 'assistant'])
-            ->orderBy('id')
-            ->get()
-            ->map(fn (ChatMessage $m) => [
-                'role' => $m->role,
-                'content' => (string) $m->content,
-            ])
-            ->all();
+        $out = [];
+
+        // Condensed older context (everything up to summary_through_id) rides in as one system note.
+        if (filled($conversation->summary)) {
+            $out[] = ['role' => 'system', 'content' => "Summary of the earlier part of this conversation (older turns were condensed to keep context manageable — treat it as established context):\n".$conversation->summary];
+        }
+
+        $q = $conversation->messages()->whereIn('role', ['user', 'assistant']);
+        if ($conversation->summary_through_id) {
+            $q->where('id', '>', $conversation->summary_through_id);
+        }
+
+        // Safety net: even if compaction never ran, never replay more than the recent window.
+        // reorder() clears the relation's default id-asc order so we take the NEWEST rows.
+        $rows = $q->reorder('id', 'desc')->limit(self::HISTORY_CAP)->get()->reverse()->values();
+        foreach ($rows as $m) {
+            $out[] = ['role' => $m->role, 'content' => (string) $m->content];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Context compaction. When the unsummarised tail of a conversation grows past COMPACT_AFTER turns,
+     * fold all but the most recent KEEP_RECENT into the running summary and advance summary_through_id.
+     * The coach then continues from the summary + the recent turns, so a thread can run indefinitely
+     * without the token context exploding. Best-effort: AI failure just skips this round.
+     */
+    private function compactIfNeeded(Conversation $conversation): void
+    {
+        $q = $conversation->messages()->whereIn('role', ['user', 'assistant']);
+        if ($conversation->summary_through_id) {
+            $q->where('id', '>', $conversation->summary_through_id);
+        }
+        $tail = $q->orderBy('id')->get(['id', 'role', 'content']);
+        if ($tail->count() <= self::COMPACT_AFTER) {
+            return;
+        }
+
+        $fold = $tail->slice(0, $tail->count() - self::KEEP_RECENT)->values();
+        if ($fold->isEmpty()) {
+            return;
+        }
+
+        $transcript = $fold->map(fn (ChatMessage $m) => strtoupper($m->role).': '.Str::limit((string) $m->content, 1200))->implode("\n\n");
+        $prior = filled($conversation->summary) ? "Existing summary so far:\n{$conversation->summary}\n\n" : '';
+
+        try {
+            $summary = $this->ai->chat([
+                ['role' => 'system', 'content' => 'You maintain a running summary of an ongoing health-coaching conversation. Produce a single concise summary (a few short paragraphs or bullet points) that preserves everything needed to continue naturally: the user\'s goals and plans, decisions and advice given, programs/numbers/targets, preferences and constraints, and any open threads or promises. Merge the existing summary with the new messages; keep it tight and factual — no preamble.'],
+                ['role' => 'user', 'content' => $prior."Fold these newer messages into the summary:\n\n".$transcript],
+            ], ['temperature' => 0.3, 'max_tokens' => 600]);
+
+            if (trim($summary) !== '') {
+                $conversation->update([
+                    'summary' => trim($summary),
+                    'summary_through_id' => $fold->last()->id,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[coach] compaction failed', ['conversation' => $conversation->id, 'error' => $e->getMessage()]);
+        }
     }
 
     /** The personalized system prompt, including injected core memory. */

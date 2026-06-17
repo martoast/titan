@@ -52,7 +52,18 @@
 
     {{-- Full-height chat: fills viewport minus the sticky header and bottom tab bar.
          The shell reserves bottom space (main has pb-28); we sit above it. --}}
-    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[16rem_1fr]">
+    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[16rem_1fr]"
+        x-data="coachChat({
+            sendUrl: '{{ $sendUrl }}',
+            streamUrl: '{{ $streamUrl }}',
+            scanUrl: '{{ $scanUrl }}',
+            csrf: '{{ csrf_token() }}',
+            initial: {{ Illuminate\Support\Js::from($initialMessages) }},
+            conversationId: {{ $conversation?->id ?? 'null' }},
+            hasMore: {{ ($hasMore ?? false) ? 'true' : 'false' }},
+            oldestId: {{ $oldestId ?? 'null' }},
+            aiOffline: {{ $aiOffline ? 'true' : 'false' }},
+        })">
 
         {{-- Conversations sidebar — desktop only --}}
         <aside class="hidden lg:flex lg:flex-col rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden">
@@ -68,10 +79,10 @@
             </div>
             <nav class="flex-1 overflow-y-auto p-2 space-y-1">
                 @forelse ($conversations as $c)
-                    @php $active = $conversation && $c->id === $conversation->id; @endphp
                     <a href="/coach?c={{ $c->id }}"
-                       class="block truncate rounded-lg px-3 py-2 text-sm transition
-                              {{ $active ? 'bg-white/10 text-gray-100' : 'text-gray-400 hover:text-gray-100 hover:bg-white/5' }}">
+                       @click.prevent="openChat({{ $c->id }})"
+                       class="block truncate rounded-lg px-3 py-2 text-sm transition"
+                       :class="activeId === {{ $c->id }} ? 'bg-white/10 text-gray-100' : 'text-gray-400 hover:text-gray-100 hover:bg-white/5'">
                         {{ $c->displayTitle() }}
                     </a>
                 @empty
@@ -82,14 +93,6 @@
 
         {{-- Chat panel --}}
         <section
-            x-data="coachChat({
-                sendUrl: '{{ $sendUrl }}',
-                streamUrl: '{{ $streamUrl }}',
-                scanUrl: '{{ $scanUrl }}',
-                csrf: '{{ csrf_token() }}',
-                initial: {{ Illuminate\Support\Js::from($initialMessages) }},
-                aiOffline: {{ $aiOffline ? 'true' : 'false' }},
-            })"
             class="flex flex-col rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden min-h-0">
 
             {{-- Mobile: conversation switcher + new chat (collapses the sidebar) --}}
@@ -104,10 +107,10 @@
                     <div x-show="open" x-cloak x-transition.origin.top
                          class="absolute z-20 left-0 right-0 mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-white/10 bg-gray-900 shadow-xl shadow-black/40 p-1.5 space-y-0.5">
                         @forelse ($conversations as $c)
-                            @php $active = $conversation && $c->id === $conversation->id; @endphp
                             <a href="/coach?c={{ $c->id }}"
-                               class="block truncate rounded-lg px-3 py-2.5 text-sm transition
-                                      {{ $active ? 'bg-white/10 text-gray-100' : 'text-gray-300 active:bg-white/5' }}">
+                               @click.prevent="openChat({{ $c->id }}); open = false"
+                               class="block truncate rounded-lg px-3 py-2.5 text-sm transition"
+                               :class="activeId === {{ $c->id }} ? 'bg-white/10 text-gray-100' : 'text-gray-300 active:bg-white/5'">
                                 {{ $c->displayTitle() }}
                             </a>
                         @empty
@@ -131,9 +134,28 @@
             @endif
 
             {{-- Messages --}}
-            <div x-ref="scroll" class="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+            <div x-ref="scroll" class="relative flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+                {{-- Loading older messages (scroll-up pagination) --}}
+                <div x-show="loadingMore" x-cloak class="flex justify-center py-1.5">
+                    <svg class="h-4 w-4 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                </div>
+
+                {{-- Switching conversations: a clean overlay loader until the thread is ready --}}
+                <div x-show="loadingChat" x-cloak x-transition.opacity
+                     class="absolute inset-0 z-20 flex items-center justify-center bg-[#0c0e12]/85 backdrop-blur-sm">
+                    <div class="flex flex-col items-center gap-3">
+                        <span class="relative grid h-12 w-12 place-items-center">
+                            <span class="absolute inset-0 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 opacity-30 animate-ping"></span>
+                            <span class="relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400">
+                                <svg class="h-6 w-6 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            </span>
+                        </span>
+                        <span class="text-xs font-medium text-gray-400">Loading conversation…</span>
+                    </div>
+                </div>
+
                 {{-- Empty state: greeting + starter prompts --}}
-                <template x-if="messages.length === 0">
+                <template x-if="messages.length === 0 && !loadingChat">
                     <div class="max-w-xl mx-auto text-center py-8">
                         <div class="mx-auto mb-4 h-12 w-12 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center">
                             <svg class="h-6 w-6 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 21l1.8-4A7.97 7.97 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
@@ -283,12 +305,68 @@
                 csrf: cfg.csrf,
                 aiOffline: cfg.aiOffline,
 
+                activeId: cfg.conversationId || null,
+                loadingChat: false,    // switching to another conversation
+                loadingMore: false,    // fetching older messages (scroll up)
+                hasMore: cfg.hasMore || false,
+                oldestId: cfg.oldestId || null,
+
                 showJump: false,
 
                 init() {
                     this.$nextTick(() => { this.scrollDown(); this.enhance(); });
                     const el = this.$refs.scroll;
-                    if (el) el.addEventListener('scroll', () => { this.showJump = !this.nearBottom(); }, { passive: true });
+                    if (el) el.addEventListener('scroll', () => {
+                        this.showJump = !this.nearBottom();
+                        if (el.scrollTop < 80) this.loadOlder();
+                    }, { passive: true });
+                },
+
+                // Switch to another conversation without a full page reload — load its latest page.
+                async openChat(id) {
+                    if (!id || id === this.activeId || this.loadingChat) return;
+                    this.loadingChat = true; this.suggestions = []; this.draft = '';
+                    try {
+                        const res = await fetch('/coach/' + id + '/messages', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+                        if (!res.ok) throw new Error('load failed');
+                        const d = await res.json();
+                        this.messages = d.messages.map(m => ({ role: m.role, content: m.content }));
+                        this.oldestId = d.oldest_id;
+                        this.hasMore = d.has_more;
+                        this.activeId = id;
+                        this.sendUrl = '/coach/' + id + '/send';
+                        this.streamUrl = '/coach/' + id + '/stream';
+                        this.scanUrl = '/coach/' + id + '/scan';
+                        history.replaceState(null, '', '/coach?c=' + id);
+                        this.$nextTick(() => { this.scrollDown(); this.enhance(); });
+                    } catch (e) {
+                        // Fall back to a full navigation if the AJAX load fails.
+                        window.location = '/coach?c=' + id;
+                    }
+                    this.loadingChat = false;
+                },
+
+                // Prepend the previous page of messages when the user scrolls to the top.
+                async loadOlder() {
+                    if (!this.hasMore || this.loadingMore || this.loadingChat || !this.activeId || !this.oldestId) return;
+                    this.loadingMore = true;
+                    const el = this.$refs.scroll;
+                    const prevHeight = el ? el.scrollHeight : 0;
+                    try {
+                        const res = await fetch('/coach/' + this.activeId + '/messages?before=' + this.oldestId, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+                        const d = await res.json();
+                        const older = d.messages.map(m => ({ role: m.role, content: m.content }));
+                        if (older.length) {
+                            this.messages = older.concat(this.messages);
+                            this.oldestId = d.oldest_id || this.oldestId;
+                            this.hasMore = d.has_more;
+                            // Keep the viewport anchored where the user was reading.
+                            this.$nextTick(() => { if (el) el.scrollTop = el.scrollHeight - prevHeight; this.enhance(); });
+                        } else {
+                            this.hasMore = false;
+                        }
+                    } catch (e) { /* leave hasMore so they can retry by scrolling */ }
+                    this.loadingMore = false;
                 },
 
                 nearBottom() {
@@ -319,6 +397,7 @@
                     this.sendUrl = '/coach/' + id + '/send';
                     this.streamUrl = '/coach/' + id + '/stream';
                     this.scanUrl = '/coach/' + id + '/scan';
+                    this.activeId = id;
                     history.replaceState(null, '', '/coach?c=' + id);
                 },
 

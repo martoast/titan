@@ -9,6 +9,7 @@ use App\Http\Controllers\Coach\CoachController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/coach', [CoachController::class, 'index'])->name('coach.index');
+Route::get('/coach/{conversation}/messages', [CoachController::class, 'messages'])->name('coach.messages');
 Route::post('/coach', [CoachController::class, 'store'])->name('coach.store');
 Route::post('/coach/briefing', [CoachController::class, 'briefing'])->name('coach.briefing');
 // An optional {conversation?} mid-path can't match an empty segment, so a brand-new chat

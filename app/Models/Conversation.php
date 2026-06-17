@@ -15,7 +15,7 @@ class Conversation extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['profile_id', 'title'];
+    protected $fillable = ['profile_id', 'title', 'summary', 'summary_through_id'];
 
     public function profile(): BelongsTo
     {

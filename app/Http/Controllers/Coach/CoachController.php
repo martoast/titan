@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Coach;
 
 use App\Exceptions\AiException;
 use App\Http\Controllers\Controller;
+use App\Models\ChatMessage;
 use App\Models\Conversation;
 use App\Services\Coach\CoachBriefingService;
 use App\Services\Coach\CoachService;
@@ -23,6 +24,9 @@ use Illuminate\View\View;
  */
 class CoachController extends Controller
 {
+    /** Messages loaded per page (initial render + each scroll-up fetch). */
+    private const PAGE_SIZE = 20;
+
     public function __construct(
         protected CoachService $coach,
         protected CoachBriefingService $briefings,
@@ -49,17 +53,64 @@ class CoachController extends Controller
             ->where(fn ($q) => $q->whereNull('title')->orWhere('title', '!=', 'Daily Briefings'))
             ->latest('id')->get();
 
+        // Only the most recent page of messages renders up front — older ones load as you scroll up.
+        $page = $conversation ? $this->messagePage($conversation) : ['messages' => collect(), 'has_more' => false, 'oldest_id' => null];
+
         return view('coach.index', [
             'profile' => $profile,
             'conversation' => $conversation,
             'conversations' => $conversations,
-            'messages' => $conversation
-                ? $conversation->messages()->whereIn('role', ['user', 'assistant'])->orderBy('id')->get()
-                : collect(),
+            'messages' => $page['messages'],
+            'hasMore' => $page['has_more'],
+            'oldestId' => $page['oldest_id'],
             'starters' => CoachService::STARTERS,
             'aiOffline' => ! app(\App\Services\Ai\AiService::class)->configured(),
             'latestBriefing' => $this->briefings->latestBriefing($profile),
         ]);
+    }
+
+    /**
+     * Paginated message history for a conversation (JSON). Returns the most recent page, or — with
+     * ?before={id} — the page of messages older than that id. Powers AJAX chat switching and the
+     * load-older-as-you-scroll-up behaviour, so a long thread never loads all at once.
+     */
+    public function messages(Request $request, Conversation $conversation): JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+        abort_unless($conversation->profile_id === $profile->id, 404);
+
+        $page = $this->messagePage($conversation, $request->integer('before') ?: null);
+
+        return response()->json([
+            'messages' => $page['messages']->map(fn (ChatMessage $m) => [
+                'id' => $m->id,
+                'role' => $m->role,
+                'content' => (string) $m->content,
+            ])->values(),
+            'has_more' => $page['has_more'],
+            'oldest_id' => $page['oldest_id'],
+        ]);
+    }
+
+    /**
+     * One page of a conversation's user/assistant messages, newest-anchored. Without $before it's the
+     * latest page; with it, the page immediately older. Returns chronological order for rendering.
+     *
+     * @return array{messages:\Illuminate\Support\Collection,has_more:bool,oldest_id:?int}
+     */
+    private function messagePage(Conversation $conversation, ?int $before = null, int $limit = self::PAGE_SIZE): array
+    {
+        $q = $conversation->messages()->whereIn('role', ['user', 'assistant']);
+        if ($before) {
+            $q->where('id', '<', $before);
+        }
+        // Fetch one extra to know whether there's an older page. reorder() drops the relation's
+        // default id-asc ordering so we genuinely get the NEWEST rows.
+        $rows = $q->reorder('id', 'desc')->limit($limit + 1)->get();
+        $hasMore = $rows->count() > $limit;
+        $rows = $rows->take($limit)->reverse()->values();
+
+        return ['messages' => $rows, 'has_more' => $hasMore, 'oldest_id' => $rows->first()?->id];
     }
 
     /**
