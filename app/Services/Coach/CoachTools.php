@@ -188,6 +188,10 @@ class CoachTools
             'goal' => ['type' => 'string', 'description' => 'The primary goal, in their words.'],
         ], ['goal']);
 
+        $tools[] = $this->fn('coaching_playbook', "Titan's deep advanced-physique knowledge — the published methods of the greats (Arnold, Mentzer, Yates, Cutler/FST-7, O'Hearn, Coleman) distilled with modern hypertrophy science. Call this whenever the user wants to PUSH hard or go advanced: programming/periodization, intensity techniques, hypertrophy volume/failure, lean-gaining or contest-lean nutrition, peak week, recovery, mindset. Pass their intent as the topic and apply the principles in your answer. Natural, evidence-based only.", [
+            'topic' => ['type' => 'string', 'description' => 'What they want to go deep on, in natural language (e.g. "break a chest plateau", "program a hypertrophy block", "cut to single-digit body fat", "intensity techniques").'],
+        ], ['topic']);
+
         if (class_exists(\App\Support\Pantry::class)) {
             $tools[] = $this->fn('get_pantry', 'See the food the user currently has on hand. Read this before suggesting meals so you only suggest things they can make.', [], []);
             $tools[] = $this->fn('update_pantry', "Update the kitchen inventory when the user says what they have or bought. mode add appends, replace overwrites, remove deletes.", [
@@ -261,6 +265,7 @@ class CoachTools
             'log_biomarker' => 'Logging your bloodwork',
             'log_cardio' => 'Logging your cardio',
             'set_goal' => 'Updating your goal',
+            'coaching_playbook' => 'Consulting the playbook',
             'get_pantry' => 'Checking your pantry',
             'update_pantry' => 'Updating your pantry',
             'show_trend' => 'Charting your trend',
@@ -323,6 +328,7 @@ class CoachTools
             'log_biomarker' => $this->logBiomarker($args),
             'log_cardio' => $this->logCardio($args),
             'set_goal' => $this->setGoal($args),
+            'coaching_playbook' => \App\Support\TrainingPlaybook::lookup((string) ($args['topic'] ?? '')) + ['_show' => 'Apply these principles in YOUR voice, tailored to this user\'s data, goal and level — don\'t just paste them. Be specific and prescriptive (sets, reps, RIR, calories, weeks). Honour the natural-only rail: never prescribe or advise PEDs/SARMs/diuretics/insulin.'],
             'get_pantry' => $this->getPantry(),
             'update_pantry' => $this->updatePantry($args),
             'show_trend' => $this->showTrend($args),
