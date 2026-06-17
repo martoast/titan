@@ -17,7 +17,10 @@ use Illuminate\Support\Str;
  */
 class ResearchService
 {
-    public function __construct(protected AiService $ai) {}
+    public function __construct(
+        protected AiService $ai,
+        protected \App\Services\Web\WebSearch $web,
+    ) {}
 
     /**
      * @return array{title:string,markdown:string,summary:string}
@@ -42,12 +45,27 @@ class ResearchService
 
         // 2. INVESTIGATE — a detailed, evidence-informed pass per angle.
         $body = [];
+        $sources = [];
         foreach ($sections as $s) {
             $heading = trim((string) ($s['heading'] ?? 'Section'));
             $question = trim((string) ($s['question'] ?? $heading));
+
+            // Ground each section in LIVE web findings where available.
+            $webFacts = '';
+            if ($this->web->configured()) {
+                $hit = $this->web->search("{$topic} {$heading}", 4);
+                $webFacts = $this->web->facts("{$topic} {$heading}", 4);
+                foreach ($hit['results'] as $r) {
+                    if ($r['link']) {
+                        $sources[parse_url($r['link'], PHP_URL_HOST) ?: $r['link']] = $r['link'];
+                    }
+                }
+            }
+
             $content = $this->ai->chat([
-                ['role' => 'system', 'content' => 'You are a meticulous strength, nutrition and longevity researcher. Write one section of a research brief: accurate, specific, evidence-informed and practical (real numbers, ranges, protocols where they exist). Use tight prose and bullet points. No fluff, no medical or diagnostic claims, no headings (the heading is added for you).'],
-                ['role' => 'user', 'content' => "Research topic: {$topic}\nSection: {$heading}\nAddress: {$question}"],
+                ['role' => 'system', 'content' => 'You are a meticulous strength, nutrition and longevity researcher. Write one section of a research brief: accurate, specific, evidence-informed and practical (real numbers, ranges, protocols where they exist). Use tight prose and bullet points. Prefer the supplied LIVE web findings over memory where they apply. No fluff, no medical or diagnostic claims, no headings (the heading is added for you).'],
+                ['role' => 'user', 'content' => "Research topic: {$topic}\nSection: {$heading}\nAddress: {$question}"
+                    .($webFacts !== '' ? "\n\nLive web findings (prefer these; they are current):\n{$webFacts}" : '')],
             ], ['temperature' => 0.5, 'max_tokens' => 650]);
             $body[] = "## {$heading}\n\n".trim($content);
         }
@@ -61,12 +79,20 @@ class ResearchService
         $applies = trim((string) ($applied['applies'] ?? ''));
         $summary = trim((string) ($applied['summary'] ?? "Researched {$topic} and saved a full writeup to your Brain."));
 
+        $sourceList = '';
+        if ($sources !== []) {
+            $sourceList = "\n\n## Sources\n\n".collect($sources)->take(8)->map(fn ($url, $host) => "- [{$host}]({$url})")->implode("\n");
+        }
+
+        $grounded = $sources !== [];
         $markdown = "# {$title}\n\n"
             .implode("\n\n", $body)
             .($applies !== '' ? "\n\n## How this applies to you\n\n{$applies}" : '')
+            .$sourceList
             ."\n\n---\n*Researched by your Titan coach"
             .($focus ? " (you asked: {$focus})" : '')
-            .". This is knowledge synthesis, not live web search or medical advice — verify specifics with a qualified professional.*";
+            .($grounded ? ', grounded in live web sources' : ' (knowledge synthesis)')
+            .". Not medical advice — verify specifics with a qualified professional.*";
 
         return ['title' => $title, 'markdown' => $markdown, 'summary' => $summary];
     }

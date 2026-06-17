@@ -63,7 +63,8 @@ class ScanService
         $kind = $data['kind'] ?? 'other';
 
         if ($kind === 'meal' && ! empty($data['meal']) && is_array($data['meal'])) {
-            return $this->logMeal($profile, $data['meal'], $path, $imageUrl);
+            // Ground the macros in REAL web nutrition data instead of trusting the vision guess.
+            return $this->logMeal($profile, $this->groundMeal($data['meal']), $path, $imageUrl);
         }
         if ($kind === 'bloodwork' && ! empty($data['bloodwork']) && is_array($data['bloodwork'])) {
             return $this->logBloodwork($profile, $data['bloodwork'], $imageUrl);
@@ -102,6 +103,49 @@ class ScanService
     }
 
     /** @param  array<string,mixed>  $m */
+    /**
+     * Replace the vision model's macro GUESS with real web nutrition data where we can find it — so a
+     * snapped meal logs true calories/macros, not invented ones. Best-effort: keeps the vision estimate
+     * if the web has nothing useful.
+     */
+    private function groundMeal(array $m): array
+    {
+        if (! class_exists(\App\Services\Web\WebSearch::class)) {
+            return $m;
+        }
+        $web = app(\App\Services\Web\WebSearch::class);
+        $name = trim((string) ($m['name'] ?? ($m['items'][0] ?? '')));
+        if (! $web->configured() || $name === '') {
+            return $m;
+        }
+        $facts = $web->facts("calories protein carbs fat in {$name}");
+        if ($facts === '') {
+            return $m;
+        }
+
+        try {
+            $g = $this->ai->json([
+                ['role' => 'system', 'content' => 'You finalise a logged meal\'s macros using REAL web nutrition data. Given the meal (name, items, the vision model\'s estimate) and web nutrition facts, return JSON {"calories":int,"protein_g":number,"carbs_g":number,"fat_g":number,"grounded":bool} for the WHOLE portion shown. Prefer the web data — scale per-100g/per-serving figures up to the portion. Only fall back to the vision estimate if the web data is irrelevant. Set grounded=true when you used the web data.'],
+                ['role' => 'user', 'content' => "Meal: {$name}\nItems: ".implode(', ', (array) ($m['items'] ?? []))
+                    ."\nVision estimate: ".json_encode(\Illuminate\Support\Arr::only($m, ['calories', 'protein_g', 'carbs_g', 'fat_g']))
+                    ."\nWeb nutrition facts:\n{$facts}"],
+            ], ['temperature' => 0.2, 'max_tokens' => 300]);
+
+            foreach (['calories', 'protein_g', 'carbs_g', 'fat_g'] as $k) {
+                if (isset($g[$k]) && is_numeric($g[$k])) {
+                    $m[$k] = $g[$k];
+                }
+            }
+            if (! empty($g['grounded'])) {
+                $m['grounded'] = true;
+            }
+        } catch (\Throwable) {
+            // keep the vision estimate
+        }
+
+        return $m;
+    }
+
     private function logMeal(Profile $profile, array $m, string $path, string $imageUrl): array
     {
         $meal = $profile->meals()->create([

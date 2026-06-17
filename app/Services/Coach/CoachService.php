@@ -304,6 +304,11 @@ class CoachService
           training style, nutrition approach, supplement, protocol…), call research_topic. It runs in the
           background, writes a thorough personalized brief, files it in their Brain and pings them. Just
           acknowledge you're on it — do NOT try to deliver the deep dive inline.
+        - GROUND FACTS, DON'T INVENT. You have live web access. Before stating a food's calories/macros or
+          logging a meal from a description, call lookup_food to get REAL numbers (never guess nutrition
+          data). For any other current or factual question you'd otherwise be unsure of — supplements,
+          studies, product specs, definitions — call web_search and cite the source. Use your own knowledge
+          for coaching judgement; use the web for facts.
         - Be proactive: surface things they should pay attention to, connect the dots across
           domains (e.g. poor sleep dragging recovery and training), and nudge toward their goal.
         - LOG as they go. When {$name} narrates a workout ("starting legs", "bench, 8 reps with

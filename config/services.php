@@ -107,4 +107,12 @@ return [
         'timeout' => (int) env('GEMINI_TIMEOUT', 120),
     ],
 
+    // Live web access for grounding the coach in real data (search + scrape).
+    'serpapi' => [
+        'key' => env('SERPAPI_KEY'),
+    ],
+    'scraperapi' => [
+        'key' => env('SCRAPERAPI_KEY'),
+    ],
+
 ];

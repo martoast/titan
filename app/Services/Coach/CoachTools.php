@@ -66,6 +66,15 @@ class CoachTools
             ], ['topic']);
         }
 
+        if (class_exists(\App\Services\Web\WebSearch::class) && app(\App\Services\Web\WebSearch::class)->configured()) {
+            $tools[] = $this->fn('web_search', "Search the LIVE web (Google) for current facts or data you shouldn't guess at — study findings, product/supplement specs, definitions, news, prices, anything factual or time-sensitive. Returns the top answer + sourced snippets. Ground your reply in these and cite the source domain.", [
+                'query' => ['type' => 'string', 'description' => 'The search query.'],
+            ], ['query']);
+            $tools[] = $this->fn('lookup_food', "Look up a food's REAL calories and macros from the web BEFORE logging it or stating numbers — so you never invent nutrition data. Give the food + portion (e.g. \"1 cup cooked white rice\", \"6 oz grilled salmon\", \"a medium banana\"). Returns sourced nutrition facts to use (scaled to the portion) for an accurate log.", [
+                'food' => ['type' => 'string', 'description' => 'The food and portion to look up.'],
+            ], ['food']);
+        }
+
         if (class_exists(\App\Models\BiomarkerReading::class)) {
             $tools[] = $this->fn('recent_biomarkers', "Get the latest bloodwork value for each tracked marker, with its out-of-range flag.", [], []);
         }
@@ -296,6 +305,8 @@ class CoachTools
             'search_knowledge' => 'Searching your brain',
             'save_knowledge' => 'Saving to your brain',
             'research_topic' => 'Sending off deep research',
+            'web_search' => 'Searching the web',
+            'lookup_food' => 'Looking up the nutrition facts',
             'recent_biomarkers' => 'Checking your bloodwork',
             'recent_meals' => 'Reviewing your nutrition',
             'recent_workouts' => 'Looking at your training',
@@ -370,6 +381,8 @@ class CoachTools
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
             'research_topic' => $this->researchTopic($args),
+            'web_search' => $this->webSearch($args),
+            'lookup_food' => $this->lookupFood($args),
             'recent_biomarkers' => $this->recentBiomarkers(),
             'recent_meals' => $this->recentMeals((int) ($args['days'] ?? 7)),
             'recent_workouts' => $this->recentWorkouts((int) ($args['days'] ?? 14)),
@@ -417,6 +430,42 @@ class CoachTools
     }
 
     // ---- Tool implementations -------------------------------------------------
+
+    private function webSearch(array $a): mixed
+    {
+        $q = trim((string) ($a['query'] ?? ''));
+        if ($q === '') {
+            return ['error' => 'What should I search for?'];
+        }
+        $r = app(\App\Services\Web\WebSearch::class)->search($q, 5);
+        if (! $r['answer'] && $r['results'] === []) {
+            return ['note' => "No live results for that — answer from what you know and flag it as approximate."];
+        }
+
+        return [
+            'answer' => $r['answer'],
+            'results' => $r['results'],
+            '_show' => 'Ground your answer in these LIVE web results and cite the source domain. If they conflict or are thin, say so rather than overstating.',
+        ];
+    }
+
+    private function lookupFood(array $a): mixed
+    {
+        $food = trim((string) ($a['food'] ?? ''));
+        if ($food === '') {
+            return ['error' => 'Which food and portion?'];
+        }
+        $facts = app(\App\Services\Web\WebSearch::class)->facts("calories protein carbs fat in {$food}");
+        if ($facts === '') {
+            return ['note' => "Couldn't find reliable web data for \"{$food}\" — estimate from similar foods and tell them it's approximate."];
+        }
+
+        return [
+            'food' => $food,
+            'nutrition_facts' => $facts,
+            '_show' => "Use these REAL web nutrition numbers (scaled to the portion described, from the most authoritative source) to answer or to log the meal — do NOT invent macros. If logging, call log_meal with the grounded values.",
+        ];
+    }
 
     private function researchTopic(array $a): mixed
     {
