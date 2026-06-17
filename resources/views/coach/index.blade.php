@@ -166,8 +166,24 @@
                 {{-- Typing / tool-activity indicator (hidden once tokens start streaming in) --}}
                 <div x-show="loading && !streaming" x-cloak class="flex justify-start">
                     <div class="rounded-2xl rounded-bl-sm bg-gray-800/60 border border-white/5 px-4 py-3">
-                        {{-- Live status while the coach pulls your data --}}
-                        <div x-show="toolStatus" x-cloak class="flex items-center gap-2 text-xs text-indigo-300/90">
+                        {{-- Knowledge-base activity: an animated neural glyph (flows IN to retrieve, OUT to ingest) --}}
+                        <div x-show="toolStatus && toolKnowledge" x-cloak class="tbrain" :class="toolMode === 'ingest' ? 'tbrain--ingest' : 'tbrain--retrieve'">
+                            <svg class="tbrain-svg" viewBox="0 0 40 32" fill="none" aria-hidden="true">
+                                <path class="tbrain-link" d="M8 16 L20 8"/>
+                                <path class="tbrain-link" d="M8 16 L20 24"/>
+                                <path class="tbrain-link" d="M20 8 L32 16"/>
+                                <path class="tbrain-link" d="M20 24 L32 16"/>
+                                <path class="tbrain-link" d="M20 8 L20 24"/>
+                                <circle class="tbrain-node" style="--d:0ms"   cx="8"  cy="16" r="3"/>
+                                <circle class="tbrain-node" style="--d:120ms" cx="20" cy="8"  r="3"/>
+                                <circle class="tbrain-node" style="--d:240ms" cx="20" cy="24" r="3"/>
+                                <circle class="tbrain-node" style="--d:360ms" cx="32" cy="16" r="3"/>
+                                <circle class="tbrain-node tbrain-core" style="--d:180ms" cx="20" cy="16" r="3.6"/>
+                            </svg>
+                            <span class="tbrain-label" x-text="toolStatus + '…'"></span>
+                        </div>
+                        {{-- Live status while the coach pulls your data (non-knowledge tools) --}}
+                        <div x-show="toolStatus && !toolKnowledge" x-cloak class="flex items-center gap-2 text-xs text-indigo-300/90">
                             <svg class="h-3.5 w-3.5 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
                             <span x-text="toolStatus + '…'"></span>
                         </div>
@@ -255,6 +271,9 @@
                 loading: false,
                 streaming: false,      // true once tokens start arriving
                 toolStatus: '',        // "Reading your day", etc. while a tool runs
+                toolName: '',          // raw tool name → drives the knowledge-base animation
+                get toolKnowledge() { return ['search_knowledge', 'save_knowledge', 'remember', 'forget', 'memory_book'].includes(this.toolName); },
+                get toolMode() { return ['save_knowledge', 'remember', 'forget'].includes(this.toolName) ? 'ingest' : 'retrieve'; },
                 suggestions: [],       // tappable follow-up chips
                 pendingPhoto: null,    // a photo attached but not yet sent
                 pendingPreview: '',    // its object URL for the preview thumbnail
@@ -366,7 +385,7 @@
                     return { event, data };
                 },
 
-                finishSend() { this.loading = false; this.streaming = false; this.toolStatus = ''; },
+                finishSend() { this.loading = false; this.streaming = false; this.toolStatus = ''; this.toolName = ''; },
 
                 async send(preset) {
                     // A photo is attached → send it (with the typed note as the caption).
@@ -441,6 +460,7 @@
                                     keepPinned();
                                 } else if (event === 'tool') {
                                     this.toolStatus = data.label || 'Working';
+                                    this.toolName = data.name || '';
                                 } else if (event === 'meta') {
                                     this.bindConversation(data.conversation_id);
                                 } else if (event === 'done') {
