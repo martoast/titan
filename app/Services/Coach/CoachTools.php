@@ -79,6 +79,10 @@ class CoachTools
             $tools[] = $this->fn('recent_biomarkers', "Get the latest bloodwork value for each tracked marker, with its out-of-range flag.", [], []);
         }
 
+        if (class_exists(\App\Support\FoodDiary::class)) {
+            $tools[] = $this->fn('my_foods', "The user's most-eaten foods and meal patterns — each with how often they've had it, typical calories/protein, and when they last ate it (computed from their logged meals). Call this for meal planning, food suggestions, or 'what do I usually eat / my go-to foods'. Fetch it when relevant; it's not in your prompt.", [], []);
+        }
+
         if (class_exists(\App\Models\Meal::class)) {
             $tools[] = $this->fn('recent_meals', 'Get recently logged meals and per-day macro totals (calories, protein, carbs, fat).', [
                 'days' => ['type' => 'integer', 'description' => 'How many days back to include (default 7).'],
@@ -309,6 +313,7 @@ class CoachTools
             'lookup_food' => 'Looking up the nutrition facts',
             'recent_biomarkers' => 'Checking your bloodwork',
             'recent_meals' => 'Reviewing your nutrition',
+            'my_foods' => 'Checking your usual foods',
             'recent_workouts' => 'Looking at your training',
             'sleep_recovery_summary' => 'Checking sleep & recovery',
             'physique_status' => 'Checking your physique progress',
@@ -385,6 +390,7 @@ class CoachTools
             'lookup_food' => $this->lookupFood($args),
             'recent_biomarkers' => $this->recentBiomarkers(),
             'recent_meals' => $this->recentMeals((int) ($args['days'] ?? 7)),
+            'my_foods' => $this->myFoods(),
             'recent_workouts' => $this->recentWorkouts((int) ($args['days'] ?? 14)),
             'sleep_recovery_summary' => $this->sleepRecoverySummary(),
             'physique_status' => $this->physiqueStatus(),
@@ -606,6 +612,19 @@ class CoachTools
             'flag' => $r->flag,
             'taken_at' => optional($r->taken_at)->toDateString(),
         ])->values()->all();
+    }
+
+    private function myFoods(): mixed
+    {
+        $foods = \App\Support\FoodDiary::topFoods($this->profile, 15);
+        if ($foods === []) {
+            return ['note' => "No meals logged yet, so there are no eating patterns to reference. Once they log meals I'll track their go-to foods here."];
+        }
+
+        return [
+            'top_foods' => $foods,
+            '_show' => 'These are their most-eaten foods (frequency + typical macros + when last eaten). Use them for meal planning, suggestions, and "what do I usually eat" — reference them, don\'t re-ask.',
+        ];
     }
 
     private function recentMeals(int $days): mixed

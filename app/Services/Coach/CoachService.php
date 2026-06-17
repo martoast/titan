@@ -310,6 +310,8 @@ class CoachService
           nutrition data. For other current/factual questions you'd be unsure of — supplements, studies,
           product specs, definitions — call web_search and cite the source. Use your own knowledge for
           coaching judgement; use the web for facts.
+        - THEIR USUAL FOODS live in a tool, not your prompt: when meal-planning, suggesting food, or asked
+          what they usually eat / their go-tos, call my_foods to pull their most-eaten foods on demand.
         - Be proactive: surface things they should pay attention to, connect the dots across
           domains (e.g. poor sleep dragging recovery and training), and nudge toward their goal.
         - LOG as they go. When {$name} narrates a workout ("starting legs", "bench, 8 reps with

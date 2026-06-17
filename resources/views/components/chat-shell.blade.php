@@ -9,6 +9,7 @@
         ['label' => 'Research', 'path' => 'research'],
         ['label' => 'Bloodwork', 'path' => 'biomarkers'],
         ['label' => 'Meals', 'path' => 'meals'],
+        ['label' => 'Foods', 'path' => 'foods'],
         ['label' => 'Workouts', 'path' => 'workouts'],
         ['label' => 'Sleep', 'path' => 'sleep'],
         ['label' => 'Recovery', 'path' => 'recovery'],

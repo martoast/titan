@@ -40,6 +40,9 @@ Route::middleware(['auth'])->group(function () {
         // Progress & trends — the visual longitudinal view around the dream physique.
         Route::get('/progress', [\App\Http\Controllers\ProgressController::class, 'index'])->name('progress');
 
+        // Food wiki — your most-eaten foods (same data the coach pulls via my_foods).
+        Route::get('/foods', [\App\Http\Controllers\FoodController::class, 'index'])->name('foods.index');
+
         // Research library — every deep-dive brief the coach has written.
         Route::get('/research', [\App\Http\Controllers\ResearchLibraryController::class, 'index'])->name('research.index');
         Route::get('/research/{page}', [\App\Http\Controllers\ResearchLibraryController::class, 'show'])->name('research.show');
