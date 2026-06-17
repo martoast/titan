@@ -43,6 +43,43 @@ class ChatPaginationCompactionTest extends TestCase
         $this->actingAs(User::factory()->create())->getJson("/coach/{$convo->id}/messages")->assertNotFound();
     }
 
+    public function test_reply_dispatches_compaction_off_the_request_path_over_threshold(): void
+    {
+        \Illuminate\Support\Facades\Bus::fake();
+
+        $ai = Mockery::mock(AiService::class);
+        $ai->shouldReceive('configured')->andReturn(true);
+        $ai->shouldReceive('chatWithTools')->andReturn('Got it.');
+        $this->app->instance(AiService::class, $ai);
+
+        $u = User::factory()->create();
+        $p = $u->ensureProfile();
+        $convo = $p->conversations()->create(['title' => 'Marathon chat']);
+        foreach (range(1, 30) as $i) {
+            $convo->messages()->create(['role' => $i % 2 ? 'user' : 'assistant', 'content' => "old msg {$i}"]);
+        }
+
+        app(CoachService::class)->reply($convo->refresh(), $p, 'one more thing');
+        \Illuminate\Support\Facades\Bus::assertDispatched(\App\Jobs\CompactConversation::class);
+    }
+
+    public function test_short_conversation_does_not_dispatch_compaction(): void
+    {
+        \Illuminate\Support\Facades\Bus::fake();
+
+        $ai = Mockery::mock(AiService::class);
+        $ai->shouldReceive('configured')->andReturn(true);
+        $ai->shouldReceive('chatWithTools')->andReturn('Hi.');
+        $this->app->instance(AiService::class, $ai);
+
+        $u = User::factory()->create();
+        $p = $u->ensureProfile();
+        $convo = $p->conversations()->create(['title' => 'Short']);
+        app(CoachService::class)->reply($convo, $p, 'hello');
+
+        \Illuminate\Support\Facades\Bus::assertNotDispatched(\App\Jobs\CompactConversation::class);
+    }
+
     public function test_long_conversation_gets_compacted_into_a_summary(): void
     {
         // Stub the AI: tool-calling reply returns a canned answer; the compaction summary call is asserted.

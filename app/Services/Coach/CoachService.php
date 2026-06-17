@@ -192,12 +192,28 @@ class CoachService
     }
 
     /**
-     * Context compaction. When the unsummarised tail of a conversation grows past COMPACT_AFTER turns,
-     * fold all but the most recent KEEP_RECENT into the running summary and advance summary_through_id.
-     * The coach then continues from the summary + the recent turns, so a thread can run indefinitely
-     * without the token context exploding. Best-effort: AI failure just skips this round.
+     * Queue context compaction when the unsummarised tail grows past COMPACT_AFTER turns. Cheap count
+     * inline; the actual AI summarisation runs off the request path (CompactConversation job on the
+     * existing redis queue worker), so it never adds latency to a reply. The HISTORY_CAP keeps the
+     * current turn bounded in the meantime.
      */
     private function compactIfNeeded(Conversation $conversation): void
+    {
+        $q = $conversation->messages()->whereIn('role', ['user', 'assistant']);
+        if ($conversation->summary_through_id) {
+            $q->where('id', '>', $conversation->summary_through_id);
+        }
+        if ($q->count() > self::COMPACT_AFTER) {
+            \App\Jobs\CompactConversation::dispatch($conversation->id);
+        }
+    }
+
+    /**
+     * Fold all but the most recent KEEP_RECENT of the unsummarised tail into the running summary and
+     * advance summary_through_id. Called by the queued job. Idempotent + best-effort: re-checks the
+     * threshold and silently skips on AI failure, so a duplicate or premature run is harmless.
+     */
+    public function compact(Conversation $conversation): void
     {
         $q = $conversation->messages()->whereIn('role', ['user', 'assistant']);
         if ($conversation->summary_through_id) {
