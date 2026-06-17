@@ -444,6 +444,42 @@ function buildProgram(d) {
     return el;
 }
 
+// Autoregulation: read of recovery × performance × adherence → a push/hold/back-off/deload nudge.
+function buildAutoreg(d) {
+    const vColors = { progress: '#34d399', hold: '#818cf8', adhere: '#fbbf24', back_off: '#fbbf24', deload: '#fb7185' };
+    const color = vColors[d.verdict] || '#9ca3af';
+    const sColor = s => ({ good: '#34d399', improving: '#34d399', on: '#34d399', moderate: '#fbbf24', flat: '#fbbf24', ahead: '#34d399', poor: '#fb7185', declining: '#fb7185', behind: '#fb7185' })[s] || '#6b7280';
+    const el = document.createElement('div'); el.className = 'tcard tcard-autoreg';
+
+    const top = document.createElement('div'); top.className = 'tcard-autoreg-top';
+    const pill = document.createElement('span'); pill.className = 'tcard-autoreg-pill'; pill.style.color = color; pill.style.background = color + '22';
+    pill.textContent = (d.verdict || '').replace('_', ' ');
+    const h = document.createElement('span'); h.className = 'tcard-autoreg-head'; h.textContent = d.headline || '';
+    top.append(pill, h); el.appendChild(top);
+
+    if (Array.isArray(d.signals) && d.signals.length) {
+        const sig = document.createElement('div'); sig.className = 'tcard-autoreg-signals';
+        d.signals.forEach(s => {
+            const row = document.createElement('div'); row.className = 'tcard-autoreg-sig';
+            const dot = document.createElement('i'); dot.style.background = sColor(s.state);
+            const l = document.createElement('span'); l.className = 'tcard-autoreg-sl'; l.textContent = s.label;
+            const v = document.createElement('span'); v.className = 'tcard-autoreg-sv'; v.textContent = (s.detail || s.state || '');
+            row.append(dot, l, v); sig.appendChild(row);
+        });
+        el.appendChild(sig);
+    }
+
+    const a = d.adjustment || {};
+    if (a.volume || a.rir) {
+        const adj = document.createElement('div'); adj.className = 'tcard-autoreg-adj';
+        if (a.volume) { const x = document.createElement('span'); x.innerHTML = `<b>Volume</b> ${a.volume}`; adj.appendChild(x); }
+        if (a.rir) { const x = document.createElement('span'); x.innerHTML = `<b>Effort</b> ${a.rir}`; adj.appendChild(x); }
+        el.appendChild(adj);
+    }
+    if (a.note) { const n = document.createElement('div'); n.className = 'tcard-autoreg-note'; n.textContent = a.note; el.appendChild(n); }
+    return el;
+}
+
 function renderCards(root) {
     root.querySelectorAll('pre > code.language-titan-card').forEach((code) => {
         const pre = code.parentElement;
@@ -451,7 +487,8 @@ function renderCards(root) {
         let d;
         try { d = JSON.parse(code.textContent); } catch (_) { return; } // leave malformed blocks as code
         let card = null;
-        if (d.type === 'program' || d.type === 'mesocycle') card = buildProgram(d);
+        if (d.type === 'autoreg') card = buildAutoreg(d);
+        else if (d.type === 'program' || d.type === 'mesocycle') card = buildProgram(d);
         else if (d.type === 'fitness' || d.type === 'athlete') card = buildFitness(d);
         else if (d.type === 'readiness' || d.type === 'ring') card = buildRing(d.score, d.label, d.caption);
         else if (d.type === 'stats' || d.type === 'vitals') card = buildStats(d.title, d.items);

@@ -272,6 +272,19 @@ body {
 .tcard-program-ds { font-size: 0.72rem; color: #9ca3af; margin-top: 0.05rem; }
 .tcard-program-dsets { font-size: 0.72rem; color: #a78bfa; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
 
+/* ---- Autoregulation card ---- */
+.tcard-autoreg-top { display: flex; align-items: center; gap: 0.5rem; }
+.tcard-autoreg-pill { border-radius: 999px; padding: 0.2rem 0.6rem; font-family: var(--font-display); font-weight: 800; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.tcard-autoreg-head { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; font-size: 1rem; }
+.tcard-autoreg-signals { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 0.8rem; }
+.tcard-autoreg-sig { display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; }
+.tcard-autoreg-sig i { width: 0.55rem; height: 0.55rem; border-radius: 999px; flex-shrink: 0; }
+.tcard-autoreg-sl { color: #9ca3af; }
+.tcard-autoreg-sv { color: #e5e7eb; font-variant-numeric: tabular-nums; }
+.tcard-autoreg-adj { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin-top: 0.8rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.7rem; font-size: 0.8rem; color: #cbd5e1; }
+.tcard-autoreg-adj b { color: #9ca3af; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.3rem; }
+.tcard-autoreg-note { margin-top: 0.7rem; font-size: 0.82rem; color: #9ca3af; line-height: 1.45; }
+
 /* Horizontal scrollers (chips, day strips) without an ugly bar, with iOS momentum. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }

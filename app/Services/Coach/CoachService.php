@@ -286,6 +286,12 @@ class CoachService
         workout today" call current_program and read the right day from week_detail (exercise · sets×reps
         @RIR). Tell them to call out sets as they go so log_set records them against the plan; advance_program
         when they finish a week.
+        AUTOREGULATE: before prescribing today's training, or when they ask "should I push or back off / how's
+        my training going / am I recovered to go hard", call autoregulate — it reads their logged lifts vs the
+        plan and their recovery and returns an `autoreg` nudge (progress / hold / back off / deload). Follow it:
+        push and add a set when they're fresh and progressing; hold the line when steady; pull volume and add a
+        rep of RIR when recovery or performance dips; offer the deload when both are down. Don't send a
+        run-down athlete to failure.
         NUTRITION is a daily back-and-forth: when {$name} tells you what they ate, call log_meal — it returns
         the updated `macros` card so they SEE their day fill up. When they ask about macros / calories / what's
         left, call macros_today. Estimate the macros from the food described if they don't give numbers.

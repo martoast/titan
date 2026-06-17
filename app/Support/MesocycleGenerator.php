@@ -20,12 +20,23 @@ class MesocycleGenerator
         'back' => [['Weighted Pull-up / Lat Pulldown', 'compound', '8-10'], ['Barbell Row', 'compound', '8-10'], ['Seated Cable Row', 'compound', '10-12'], ['Single-arm DB Row', 'isolation', '10-12']],
         'quads' => [['Back Squat', 'compound', '6-8'], ['Hack Squat / Leg Press', 'compound', '8-12'], ['Leg Extension', 'isolation', '12-15']],
         'hamstrings' => [['Romanian Deadlift', 'compound', '8-10'], ['Seated Leg Curl', 'isolation', '10-12'], ['Lying Leg Curl', 'isolation', '12-15']],
-        'glutes' => [['Hip Thrust', 'compound', '8-12'], ['Bulgarian Split Squat', 'compound', '8-12']],
+        // Glutes ordered for the heavy → stretch → pump spectrum so day-rotation spreads it across the week.
+        // Trains the maximus (thrust/hinge/squat/lunge) AND the medius "shelf" (abduction). (Contreras.)
+        'glutes' => [['Barbell Hip Thrust (pause at top)', 'compound', '6-8'], ['Sumo / Deep Squat', 'compound', '8-10'], ['Bulgarian Split Squat (slow eccentric)', 'compound', '8-12'], ['45° Hip Extension (glute-biased)', 'isolation', '12-15'], ['Cable Pull-through', 'isolation', '12-15'], ['Deficit Reverse Lunge', 'compound', '10-12'], ['Machine Hip Abduction', 'isolation', '15-20'], ['Cable Glute Kickback', 'isolation', '12-20'], ['Single-leg Glute Bridge', 'isolation', '15-20']],
         'shoulders' => [['Overhead Press', 'compound', '6-10'], ['Dumbbell Lateral Raise', 'isolation', '12-20'], ['Cable Lateral Raise', 'isolation', '12-20'], ['Rear-Delt Fly', 'isolation', '15-20']],
         'biceps' => [['Barbell Curl', 'isolation', '8-12'], ['Incline DB Curl', 'isolation', '10-15'], ['Cable Curl', 'isolation', '12-15']],
         'triceps' => [['Close-Grip Bench Press', 'compound', '8-10'], ['Triceps Pushdown', 'isolation', '10-15'], ['Overhead Cable Extension', 'isolation', '12-15']],
         'calves' => [['Standing Calf Raise', 'isolation', '10-15'], ['Seated Calf Raise', 'isolation', '12-20']],
-        'abs' => [['Cable Crunch', 'isolation', '12-15'], ['Hanging Leg Raise', 'isolation', '10-15']],
+        // Waist-friendly core: control/anti-rotation + TVA, NOT heavy loaded obliques (which can widen the waist).
+        'abs' => [['Pallof Press (anti-rotation)', 'isolation', '10-12/side'], ['Plank', 'isolation', '20-40s'], ['Dead Bug', 'isolation', '8-10/side'], ['Stomach Vacuum (TVA)', 'isolation', '10-20s holds'], ['Hanging Leg Raise', 'isolation', '10-15'], ['Cable Crunch', 'isolation', '12-15']],
+    ];
+
+    /** Movement regions — so a focus muscle is added to anatomically-sensible days. */
+    private const REGIONS = [
+        'lower' => ['quads', 'hamstrings', 'glutes', 'calves'],
+        'push' => ['chest', 'shoulders', 'triceps'],
+        'pull' => ['back', 'biceps'],
+        'core' => ['abs'],
     ];
 
     private const LABELS = [
@@ -73,12 +84,15 @@ class MesocycleGenerator
             $rir = $deload ? 4 : max(1, 3 - (int) floor(($w - 1) / max(1, $accum - 1) * 2));
 
             $days_out = [];
+            $rotation = [];   // per-muscle: how many days it has appeared this week → rotates its exercises
             foreach ($split as [$dayName, $muscles]) {
                 $exercises = [];
                 foreach ($muscles as $m) {
                     $priority = in_array($m, $focus, true);
                     $perSession = self::setsPerSession($base, $priority, $w, $deload);
-                    $exercises = array_merge($exercises, self::exercisesFor($m, $perSession, $rir, $priority, $w === $accum));
+                    $rot = $rotation[$m] ?? 0;
+                    $exercises = array_merge($exercises, self::exercisesFor($m, $perSession, $rir, $priority, $w === $accum, $rot));
+                    $rotation[$m] = $rot + 1;
                     $volume[$m][$w - 1] = ($volume[$m][$w - 1] ?? 0) + $perSession;
                 }
                 $days_out[] = ['name' => $dayName, 'exercises' => $exercises];
@@ -125,21 +139,35 @@ class MesocycleGenerator
     }
 
     /** @return array<int,array<string,mixed>> exercises covering $perSession sets for a muscle */
-    private static function exercisesFor(string $muscle, int $perSession, int $rir, bool $priority, bool $peakWeek): array
+    private static function exercisesFor(string $muscle, int $perSession, int $rir, bool $priority, bool $peakWeek, int $rotation = 0): array
     {
         $lib = self::LIBRARY[$muscle];
+        $count = count($lib);
         $nEx = $perSession <= 4 ? 1 : ($perSession <= 7 ? 2 : 3);
         if ($priority) {
             $nEx = max(2, $nEx);
         }
-        $nEx = min($nEx, count($lib));
+        $nEx = min($nEx, $count);
+
+        // Rotate which exercises this muscle uses by day, so across the week a focus muscle cycles its whole
+        // library (heavy thrust → stretch lunge → pump for glutes). Consistent week to week for overload.
+        $start = ($rotation * $nEx) % $count;
+        $picks = [];
+        for ($i = 0; $i < $nEx; $i++) {
+            $picks[] = ($start + $i) % $count;
+        }
+        // Glute focus ALWAYS finishes with hip abduction — that's the gluteus-medius "shelf" work that builds
+        // the round/3D look, and it's the one thing day-rotation can miss at low frequency. (Contreras.)
+        if ($muscle === 'glutes' && $priority && ! in_array(6, $picks, true)) {
+            $picks[$nEx - 1] = 6;
+        }
 
         $perEx = intdiv($perSession, $nEx);
         $extra = $perSession - $perEx * $nEx;
 
         $out = [];
         for ($i = 0; $i < $nEx; $i++) {
-            [$exName, $kind, $reps] = $lib[$i % count($lib)];
+            [$exName, $kind, $reps] = $lib[$picks[$i]];
             $sets = $perEx + ($i < $extra ? 1 : 0);
             if ($sets < 1) {
                 continue;
@@ -165,37 +193,67 @@ class MesocycleGenerator
         return $out;
     }
 
-    /** Ensure focus muscles are trained ~3×/week (or every day if ≤3 days) and listed FIRST. */
+    /** Ensure focus muscles are trained often (2× / 3× when there's room) on sensible days, listed FIRST. */
     private static function applyFocus(array &$split, array $focus, int $days): void
     {
         if ($focus === []) {
             return;
         }
-        $targetFreq = min($days, 3);
+        $targetFreq = min($days, $days >= 5 ? 3 : 2);
         foreach ($focus as $m) {
+            $region = self::regionOf($m);
             $onDays = [];
             foreach ($split as $i => [$name, $muscles]) {
                 if (in_array($m, $muscles, true)) {
                     $onDays[] = $i;
                 }
             }
-            // Add to the shortest days that don't have it yet, up to the target frequency.
-            $byLen = $split;
-            uasort($byLen, fn ($a, $z) => count($a[1]) <=> count($z[1]));
-            foreach (array_keys($byLen) as $i) {
+            // Candidate days to add to, preferring same-region days (a glute lands on leg days, not arm days),
+            // then the shortest. Skip days that have no same-region muscle at all when alternatives exist.
+            $candidates = array_values(array_diff(array_keys($split), $onDays));
+            usort($candidates, function ($a, $z) use ($split, $region) {
+                $ra = self::dayHasRegion($split[$a][1], $region) ? 0 : 1;
+                $rz = self::dayHasRegion($split[$z][1], $region) ? 0 : 1;
+
+                return $ra !== $rz ? $ra <=> $rz : count($split[$a][1]) <=> count($split[$z][1]);
+            });
+            foreach ($candidates as $i) {
                 if (count($onDays) >= $targetFreq) {
                     break;
                 }
-                if (! in_array($i, $onDays, true)) {
-                    $split[$i][1][] = $m;
-                    $onDays[] = $i;
+                if (! self::dayHasRegion($split[$i][1], $region)) {
+                    continue;   // don't bolt a lower-body focus onto a pure upper day
                 }
+                $split[$i][1][] = $m;
+                $onDays[] = $i;
             }
             // Move it to the front of every day it appears on (trained fresh).
             foreach ($onDays as $i) {
                 $split[$i][1] = array_values(array_unique(array_merge([$m], array_diff($split[$i][1], [$m]))));
             }
         }
+    }
+
+    private static function regionOf(string $muscle): string
+    {
+        foreach (self::REGIONS as $region => $muscles) {
+            if (in_array($muscle, $muscles, true)) {
+                return $region;
+            }
+        }
+
+        return 'other';
+    }
+
+    private static function dayHasRegion(array $muscles, string $region): bool
+    {
+        foreach ($muscles as $m) {
+            if (self::regionOf($m) === $region) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array<int,string> canonical, de-duplicated focus muscles */

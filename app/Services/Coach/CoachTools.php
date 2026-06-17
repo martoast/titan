@@ -203,6 +203,8 @@ class CoachTools
             $tools[] = $this->fn('advance_program', 'Move the active program to the next week (call when they finish a week). Returns the new week as a `program` card.', [], []);
         }
 
+        $tools[] = $this->fn('autoregulate', "Progress-aware autoregulation: reads the user's LOGGED training (are the lifts going up?) vs their plan and their RECOVERY, and returns a push/hold/back-off/deload nudge as an `autoreg` card. Use when they ask 'should I push or back off / how's my training going / am I recovered to train hard', before prescribing today's session, or proactively when their data shifts.", [], []);
+
         if (class_exists(\App\Support\Pantry::class)) {
             $tools[] = $this->fn('get_pantry', 'See the food the user currently has on hand. Read this before suggesting meals so you only suggest things they can make.', [], []);
             $tools[] = $this->fn('update_pantry', "Update the kitchen inventory when the user says what they have or bought. mode add appends, replace overwrites, remove deletes.", [
@@ -280,6 +282,7 @@ class CoachTools
             'generate_mesocycle' => 'Building your program',
             'current_program' => 'Pulling your program',
             'advance_program' => 'Advancing your program',
+            'autoregulate' => 'Reading your progress',
             'get_pantry' => 'Checking your pantry',
             'update_pantry' => 'Updating your pantry',
             'show_trend' => 'Charting your trend',
@@ -346,6 +349,7 @@ class CoachTools
             'generate_mesocycle' => $this->generateMesocycle($args),
             'current_program' => $this->currentProgram(),
             'advance_program' => $this->advanceProgram(),
+            'autoregulate' => $this->autoregulate(),
             'get_pantry' => $this->getPantry(),
             'update_pantry' => $this->updatePantry($args),
             'show_trend' => $this->showTrend($args),
@@ -1239,6 +1243,30 @@ class CoachTools
             'card' => $this->programCard($program),
             'week_detail' => $this->weekDetail($week),
             '_show' => 'Lead with the `program` card for the new week, then say what changed (more volume / tighter RIR, or — if deload — back off and recover). Read out the first session if they want it.',
+        ];
+    }
+
+    private function autoregulate(): mixed
+    {
+        $a = \App\Support\Autoregulator::assess($this->profile);
+
+        if ($a['verdict'] === 'insufficient') {
+            return ['note' => $a['adjustment']['note'] ?? "Not enough training/recovery data to autoregulate yet."];
+        }
+
+        $card = [
+            'type' => 'autoreg',
+            'verdict' => $a['verdict'],
+            'headline' => $a['headline'],
+            'signals' => $a['signals'],
+            'adjustment' => $a['adjustment'],
+        ];
+
+        return [
+            'verdict' => $a['verdict'],
+            'program' => $a['program'],
+            'card' => $card,
+            '_show' => 'Lead with the `autoreg` card, then coach TODAY\'s session to match the verdict: progress → add the set and push; hold → beat the logbook; back_off → hold volume, add a rep of RIR, drop intensity techniques; deload → cut volume hard and (if on a program) offer advance_program into the deload. Never push a poorly-recovered athlete to failure. Be specific to their focus muscles and lifts.',
         ];
     }
 

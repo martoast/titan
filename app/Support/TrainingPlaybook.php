@@ -198,6 +198,44 @@ class TrainingPlaybook
               discipline. Titan's future-self render is exactly this.
             TXT,
         ],
+        'glutes_waist' => [
+            'title' => 'Glute growth & waistline definition (the hourglass)',
+            'tags' => ['glute', 'glutes', 'butt', 'booty', 'waist', 'waistline', 'hourglass', 'hip thrust', 'abduction', 'medius', 'women', 'woman', 'female', 'shelf', 'snatched', 'curves', 'hips'],
+            'body' => <<<'TXT'
+            The most-requested women's physique goal: round, full glutes + a defined waist. Both have a clear
+            evidence base (Bret Contreras leads the glute research).
+
+            GLUTES — train BOTH heads:
+            - Gluteus MAXIMUS = the mass/projection (hip EXTENSION): hip thrusts, hinges (RDL, 45° back extension,
+              pull-through), squats, lunges. The hip thrust has the highest mean glute activation and is the lift to
+              progressively OVERLOAD (chase load/reps, pause + squeeze at lockout, ribs down — don't arch the back).
+            - Gluteus MEDIUS/MINIMUS = the upper-outer "shelf"/3D roundness (hip ABDUCTION): machine/cable/banded
+              abduction, frog pumps, single-leg work. Neglecting abduction is the #1 reason a glute is strong but
+              flat on top.
+            - The training SPECTRUM, every glute week: HEAVY activators (hip thrust ~4×6, deadlift), STRETCH/
+              muscle-damage (Bulgarian split squat, deficit lunge, deep/sumo squat, RDL — ~4×8 slow eccentric,
+              load the lengthened position), and PUMP (abduction, kickback, banded thrust, frog pump ~3×15-30,
+              short rest). Stretchers grow the most per rep but are the most fatiguing.
+            - VOLUME/FREQUENCY: glutes recover fast and tolerate a lot — ~12-20+ hard sets/week, trained 2-4×/week
+              (a specialization block can add near-daily PUMP sessions, since pumpers recover in 1-2 days). Spread
+              volume across days; run heavy/stretch days fresh (early week), pump days when fatigued.
+            - Mistakes: quad-dominant squatting, partial ROM (skipping the stretch), only going heavy, skipping
+              abduction, and the lower back/anterior tilt stealing the work from the glutes.
+
+            WAISTLINE — it's mostly fat, ratio and posture, not endless ab work:
+            - Spot reduction is a MYTH. A defined waist comes from getting LEAN (diet/energy balance) — ab work
+              shapes, it doesn't strip waist fat.
+            - For a tight, flat look, train CONTROL not size: anti-rotation (Pallof press), anti-extension (plank,
+              dead bug), and stomach VACUUMS (transverse abdominis). Keep direct oblique work LIGHT/UNLOADED —
+              heavy loaded side bends / heavy weighted twists can thicken the obliques and WIDEN the waist.
+            - The biggest visual win is RATIO: building the GLUTES/hips (waist-to-hip toward ~0.7) and the
+              SHOULDERS + lats/upper back makes the waist read smaller by contrast. Posture (ribs stacked over
+              pelvis, tall) instantly tightens the look. So "define the waist" = get lean + grow glutes & frame.
+            Coach this as a real program: a glute-focus mesocycle (heavy/stretch/pump across the week, abduction
+            every session, hip thrust overloaded), upper-body work for the frame, waist-friendly core, and a lean
+            nutrition phase. generate_mesocycle with focus ["glutes"] sets the training up automatically.
+            TXT,
+        ],
         'natural_vs_enhanced' => [
             'title' => 'Natural vs enhanced — the honest line Titan holds',
             'tags' => ['natural', 'enhanced', 'steroids', 'ped', 'peds', 'sarms', 'drugs', 'gear', 'trt', 'pharma', 'enhanced', 'safe'],
