@@ -188,6 +188,19 @@ class CoachTools
             'goal' => ['type' => 'string', 'description' => 'The primary goal, in their words.'],
         ], ['goal']);
 
+        if (class_exists(\App\Models\CoachMemory::class)) {
+            $cats = implode(', ', array_keys(\App\Models\CoachMemory::CATEGORIES));
+            $tools[] = $this->fn('remember', "Save a durable PERSONAL fact about the user so you carry it forever (a real coach remembers). Use it the moment you learn something lasting: an injury or limitation, equipment/gym access, schedule, food preferences/allergies/dislikes, exercises they love or hate, what's worked for their body, life context (travel, stress, kids), or a commitment they make. Short and specific. Don't store one-off numbers — those are logged elsewhere.", [
+                'category' => ['type' => 'string', 'enum' => array_keys(\App\Models\CoachMemory::CATEGORIES), 'description' => "One of: {$cats}."],
+                'content' => ['type' => 'string', 'description' => 'The fact in a short sentence (e.g. "Tweaked left shoulder on heavy bench — avoid flat barbell press for now").'],
+                'importance' => ['type' => 'integer', 'description' => '2 normal, 3 critical (injuries, allergies). Default 2.'],
+            ], ['category', 'content']);
+            $tools[] = $this->fn('forget', 'Remove a stored memory that is no longer true, or that the user asks you to drop. Describe the memory to forget.', [
+                'query' => ['type' => 'string', 'description' => 'What to forget (e.g. "the shoulder injury", "that they hate RDLs").'],
+            ], ['query']);
+            $tools[] = $this->fn('memory_book', "Show everything you remember about the user as a `memory` card. Use for 'what do you know / remember about me', or to let them review and correct it.", [], []);
+        }
+
         $tools[] = $this->fn('set_reminders', "Adjust how proactive/present the coach is. Set overall intensity (minimal = just a morning briefing · balanced = briefing + meals + sleep + cycle · intense = all-day eat/train/move/stretch/sleep), and/or toggle one reminder type on/off. Use when the user wants more or less nudging, or to turn a specific reminder on/off ('stop reminding me to eat', 'remind me to stretch', 'be more on me').", [
             'intensity' => ['type' => 'string', 'enum' => ['minimal', 'balanced', 'intense'], 'description' => 'Overall coaching presence.'],
             'type' => ['type' => 'string', 'enum' => ['briefing', 'meals', 'sleep', 'cycle', 'move', 'training'], 'description' => 'A specific reminder to toggle.'],
@@ -284,6 +297,9 @@ class CoachTools
             'log_biomarker' => 'Logging your bloodwork',
             'log_cardio' => 'Logging your cardio',
             'set_goal' => 'Updating your goal',
+            'remember' => 'Remembering that',
+            'forget' => 'Updating my memory',
+            'memory_book' => 'Recalling what I know about you',
             'set_reminders' => 'Updating your reminders',
             'coaching_playbook' => 'Consulting the playbook',
             'generate_mesocycle' => 'Building your program',
@@ -352,6 +368,9 @@ class CoachTools
             'log_biomarker' => $this->logBiomarker($args),
             'log_cardio' => $this->logCardio($args),
             'set_goal' => $this->setGoal($args),
+            'remember' => $this->remember($args),
+            'forget' => $this->forget($args),
+            'memory_book' => $this->memoryBook(),
             'set_reminders' => $this->setReminders($args),
             'coaching_playbook' =>\App\Support\TrainingPlaybook::lookup((string) ($args['topic'] ?? '')) + ['_show' => 'Apply these principles in YOUR voice, tailored to this user\'s data, goal and level — don\'t just paste them. Be specific and prescriptive (sets, reps, RIR, calories, weeks). Honour the natural-only rail: never prescribe or advise PEDs/SARMs/diuretics/insulin.'],
             'generate_mesocycle' => $this->generateMesocycle($args),
@@ -981,6 +1000,47 @@ class CoachTools
         );
 
         return ['ok' => true, 'type' => $session->activity_type, 'duration_min' => $dur, 'message' => "Logged a {$dur}-min {$session->activity_type}."];
+    }
+
+    private function remember(array $a): mixed
+    {
+        if (! class_exists(\App\Models\CoachMemory::class)) {
+            return ['error' => 'Memory is not available.'];
+        }
+        $m = \App\Support\CoachMemoryBook::remember(
+            $this->profile,
+            (string) ($a['category'] ?? 'misc'),
+            (string) ($a['content'] ?? ''),
+            (int) ($a['importance'] ?? 2),
+        );
+        if (! $m) {
+            return ['ok' => false, 'note' => 'Nothing to remember — content was empty.'];
+        }
+
+        return ['ok' => true, 'remembered' => $m->content, 'category' => $m->label(), '_show' => 'Acknowledge briefly and naturally that you\'ll remember it — no card needed. Then carry on.'];
+    }
+
+    private function forget(array $a): mixed
+    {
+        if (! class_exists(\App\Models\CoachMemory::class)) {
+            return ['error' => 'Memory is not available.'];
+        }
+        $n = \App\Support\CoachMemoryBook::forget($this->profile, (string) ($a['query'] ?? ''));
+
+        return ['ok' => true, 'forgotten' => $n, '_show' => $n > 0 ? 'Confirm in one short line that you\'ve let it go.' : 'Tell them you didn\'t find a matching memory to drop.'];
+    }
+
+    private function memoryBook(): mixed
+    {
+        if (! class_exists(\App\Models\CoachMemory::class)) {
+            return ['error' => 'Memory is not available.'];
+        }
+        $card = \App\Support\CoachMemoryBook::card($this->profile);
+        if ($card['count'] === 0) {
+            return ['note' => "I don't have anything saved about you yet — as we talk I'll remember your injuries, preferences, what works, and your goals. Tell me anything you want me to hold onto."];
+        }
+
+        return ['card' => $card, '_show' => 'Open with the `memory` card (emit it inside a ```titan-card fence), then one warm line inviting them to correct anything or add more.'];
     }
 
     private function setReminders(array $a): mixed

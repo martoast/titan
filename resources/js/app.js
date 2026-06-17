@@ -480,6 +480,25 @@ function buildAutoreg(d) {
     return el;
 }
 
+// Coach memory: what the coach remembers about you, grouped by category.
+function buildMemory(d) {
+    const el = document.createElement('div'); el.className = 'tcard tcard-memory';
+    const head = document.createElement('div'); head.className = 'tcard-title';
+    head.textContent = 'What I remember about you'; el.appendChild(head);
+
+    (d.groups || []).forEach(g => {
+        const grp = document.createElement('div'); grp.className = 'tcard-memory-group';
+        const gh = document.createElement('div'); gh.className = 'tcard-memory-glabel';
+        gh.innerHTML = `<span>${g.emoji || '•'}</span> ${g.label || ''}`;
+        grp.appendChild(gh);
+        const ul = document.createElement('ul'); ul.className = 'tcard-memory-items';
+        (g.items || []).forEach(it => { const li = document.createElement('li'); li.textContent = it; ul.appendChild(li); });
+        grp.appendChild(ul);
+        el.appendChild(grp);
+    });
+    return el;
+}
+
 function renderCards(root) {
     root.querySelectorAll('pre > code.language-titan-card').forEach((code) => {
         const pre = code.parentElement;
@@ -487,7 +506,8 @@ function renderCards(root) {
         let d;
         try { d = JSON.parse(code.textContent); } catch (_) { return; } // leave malformed blocks as code
         let card = null;
-        if (d.type === 'autoreg') card = buildAutoreg(d);
+        if (d.type === 'memory') card = buildMemory(d);
+        else if (d.type === 'autoreg') card = buildAutoreg(d);
         else if (d.type === 'program' || d.type === 'mesocycle') card = buildProgram(d);
         else if (d.type === 'fitness' || d.type === 'athlete') card = buildFitness(d);
         else if (d.type === 'readiness' || d.type === 'ring') card = buildRing(d.score, d.label, d.caption);

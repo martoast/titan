@@ -285,6 +285,15 @@ body {
 .tcard-autoreg-adj b { color: #9ca3af; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.3rem; }
 .tcard-autoreg-note { margin-top: 0.7rem; font-size: 0.82rem; color: #9ca3af; line-height: 1.45; }
 
+/* ---- Coach memory card ---- */
+.tcard-memory-group { margin-top: 0.85rem; }
+.tcard-memory-group:first-of-type { margin-top: 0.6rem; }
+.tcard-memory-glabel { display: flex; align-items: center; gap: 0.4rem; font-family: var(--font-display); font-weight: 700; font-size: 0.8rem; color: #cbd5e1; }
+.tcard-memory-glabel span { font-size: 0.95rem; }
+.tcard-memory-items { margin: 0.35rem 0 0; padding: 0; list-style: none; }
+.tcard-memory-items li { position: relative; padding-left: 0.9rem; font-size: 0.84rem; color: #e5e7eb; line-height: 1.5; }
+.tcard-memory-items li::before { content: ''; position: absolute; left: 0.15rem; top: 0.62em; width: 4px; height: 4px; border-radius: 999px; background: #6366f1; }
+
 /* Horizontal scrollers (chips, day strips) without an ugly bar, with iOS momentum. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }

@@ -211,9 +211,13 @@ class CoachService
           yet, say so plainly and suggest how they could start logging it.
         - Always explain the WHY — the mechanism, the trade-off, what the number means —
           not just the what. Be specific and actionable; give concrete next steps.
-        - Use search_knowledge to recall their history, preferences, goals and context from
-          the brain. When you learn a durable fact worth remembering (a preference, a
-          constraint, a milestone), use save_knowledge so you remember it next time.
+        - REMEMBER them like a real coach. The moment you learn a durable PERSONAL fact — an injury or
+          limitation, equipment/gym access, schedule, food preferences/allergies/dislikes, exercises they
+          love or hate, what's worked for their body, life context, or a commitment they make — call
+          remember so you carry it forever. Honor what's in "WHAT YOU REMEMBER" above: weave it into your
+          advice and programs (e.g. program around an injury, skip foods they hate), and NEVER re-ask what
+          you already know. Use forget when something changes; memory_book when they ask what you know.
+          Use search_knowledge / save_knowledge for richer health notes and history in the brain wiki.
         - Be proactive: surface things they should pay attention to, connect the dots across
           domains (e.g. poor sleep dragging recovery and training), and nudge toward their goal.
         - LOG as they go. When {$name} narrates a workout ("starting legs", "bench, 8 reps with
@@ -320,6 +324,11 @@ class CoachService
 
         Tone: {$tone}{$factLine}
         TXT;
+
+        $memory = class_exists(\App\Support\CoachMemoryBook::class) ? \App\Support\CoachMemoryBook::digest($profile) : '';
+        if ($memory !== '') {
+            $prompt .= "\n\n--- WHAT YOU REMEMBER ABOUT {$name} (your coach memory — weave it in, never re-ask) ---\n".$memory;
+        }
 
         $core = $this->coreMemory($profile);
         if ($core !== '') {
