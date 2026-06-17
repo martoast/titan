@@ -504,6 +504,36 @@ function buildMemory(d) {
     return el;
 }
 
+// Wearable status: is the band paired, syncing, charged — and what it's sensing.
+function buildDevice(d) {
+    const vColor = { live: '#34d399', today: '#34d399', stale: '#fbbf24', offline: '#fb7185', never: '#818cf8', unpaired: '#9ca3af' };
+    const c = vColor[d.verdict] || '#9ca3af';
+    const el = document.createElement('div'); el.className = 'tcard tcard-device';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = d.source || 'Your band'; el.appendChild(head);
+
+    const top = document.createElement('div'); top.className = 'tcard-device-top';
+    const dot = document.createElement('span'); dot.className = 'tcard-device-dot'; dot.style.background = c;
+    if (d.verdict === 'live') dot.classList.add('tcard-device-pulse');
+    const v = document.createElement('span'); v.className = 'tcard-device-verdict'; v.style.color = c; v.textContent = d.verdict_label || '';
+    top.append(dot, v);
+    if (d.last_sync_ago) { const s = document.createElement('span'); s.className = 'tcard-device-sync'; s.textContent = '· synced ' + d.last_sync_ago; top.appendChild(s); }
+    el.appendChild(top);
+
+    if (d.battery_pct != null) {
+        const bc = d.battery_pct <= 15 ? '#fb7185' : d.battery_pct <= 35 ? '#fbbf24' : '#34d399';
+        const b = document.createElement('div'); b.className = 'tcard-device-batt';
+        b.innerHTML = `<span class="tcard-device-blabel">Battery</span><span class="tcard-device-btrack"><i style="width:${Math.max(4, d.battery_pct)}%;background:${bc}"></i></span><span class="tcard-device-bpct">${d.battery_pct}%</span>`;
+        el.appendChild(b);
+    }
+
+    const chips = document.createElement('div'); chips.className = 'tcard-device-chips';
+    (d.streams || []).forEach(s => { const ch = document.createElement('span'); ch.className = 'tcard-device-chip'; ch.textContent = '● ' + s; chips.appendChild(ch); });
+    if (d.primed && d.primed.type) { const ch = document.createElement('span'); ch.className = 'tcard-device-chip tcard-device-chip--primed'; ch.textContent = '⚡ primed: ' + d.primed.type; chips.appendChild(ch); }
+    if (chips.children.length) el.appendChild(chips);
+    if (d.firmware) { const f = document.createElement('div'); f.className = 'tcard-device-fw'; f.textContent = 'firmware ' + d.firmware; el.appendChild(f); }
+    return el;
+}
+
 // Dream-physique progress: % to goal, on-track verdict, ETA — the north star.
 function buildPhysique(d) {
     const vColor = { ahead: '#34d399', on_track: '#34d399', steady: '#fbbf24', behind: '#fb7185', just_started: '#9ca3af' };
@@ -638,7 +668,8 @@ function renderCards(root) {
         let d;
         try { d = JSON.parse(code.textContent); } catch (_) { return; } // leave malformed blocks as code
         let card = null;
-        if (d.type === 'physique') card = buildPhysique(d);
+        if (d.type === 'device') card = buildDevice(d);
+        else if (d.type === 'physique') card = buildPhysique(d);
         else if (d.type === 'review') card = buildReview(d);
         else if (d.type === 'memory') card = buildMemory(d);
         else if (d.type === 'autoreg') card = buildAutoreg(d);

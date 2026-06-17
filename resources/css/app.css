@@ -286,6 +286,22 @@ body {
 .tcard-autoreg-adj b { color: #9ca3af; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.3rem; }
 .tcard-autoreg-note { margin-top: 0.7rem; font-size: 0.82rem; color: #9ca3af; line-height: 1.45; }
 
+/* ---- Wearable / device status card ---- */
+.tcard-device-top { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.6rem; flex-wrap: wrap; }
+.tcard-device-dot { width: 0.6rem; height: 0.6rem; border-radius: 999px; flex-shrink: 0; }
+.tcard-device-pulse { animation: tcard-pulse 1.4s ease-in-out infinite; }
+.tcard-device-verdict { font-family: var(--font-display); font-weight: 700; font-size: 0.92rem; }
+.tcard-device-sync { font-size: 0.74rem; color: #6b7280; }
+.tcard-device-batt { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.8rem; }
+.tcard-device-blabel { font-size: 0.7rem; color: #9ca3af; width: 3.5rem; }
+.tcard-device-btrack { flex: 1; height: 0.5rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.tcard-device-btrack i { display: block; height: 100%; border-radius: 999px; }
+.tcard-device-bpct { font-size: 0.76rem; font-weight: 600; color: #e5e7eb; font-variant-numeric: tabular-nums; width: 2.4rem; text-align: right; }
+.tcard-device-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.8rem; }
+.tcard-device-chip { border-radius: 999px; background: rgba(52,211,153,0.12); color: #6ee7b7; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.55rem; text-transform: capitalize; }
+.tcard-device-chip--primed { background: rgba(167,139,250,0.16); color: #c4b5fd; text-transform: none; }
+.tcard-device-fw { margin-top: 0.7rem; font-size: 0.68rem; color: #6b7280; }
+
 /* ---- Dream-physique progress card ---- */
 .tcard-phys-body { display: flex; gap: 0.9rem; align-items: stretch; margin-top: 0.7rem; }
 .tcard-phys-main { flex: 1; min-width: 0; }

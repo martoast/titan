@@ -64,6 +64,6 @@ class CoachToolGatingTest extends TestCase
         $core = count((new CoachTools($p))->schemas());
         $all = count((new CoachTools($p))->withAllTools()->schemas());
         $this->assertLessThan($all, $core);
-        $this->assertLessThanOrEqual(36, $core);   // keep the per-turn set tight
+        $this->assertLessThanOrEqual(38, $core);   // keep the per-turn set tight
     }
 }

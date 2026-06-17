@@ -20,7 +20,7 @@ class WearableConnection extends Model
     protected $fillable = [
         'profile_id', 'provider', 'source', 'device_token_hash', 'device_id',
         'timezone', 'terra_user_id', 'scopes', 'status',
-        'last_webhook_at', 'last_sync_at', 'last_payload_type',
+        'last_webhook_at', 'last_sync_at', 'last_payload_type', 'battery_pct', 'firmware',
     ];
 
     protected $hidden = ['device_token_hash'];

@@ -127,6 +127,10 @@ class CoachTools
             'area' => ['type' => 'string', 'description' => 'Optional hint: logging | mesocycle | cycle | pantry | research | reminders. Omit to load all.'],
         ], []);
 
+        if (class_exists(\App\Support\DeviceStatus::class)) {
+            $tools[] = $this->fn('device_status', "The wearable's own state → `device` card: paired? connected/syncing? last sync, battery, firmware, what's flowing. For 'is my band connected / synced / battery', and check it when expected data is missing.", [], []);
+        }
+
         if (class_exists(\App\Support\PhysiqueProgress::class)) {
             $tools[] = $this->fn('physique_progress', "Progress toward their dream physique (the north star) → `physique` card. For 'am I on track to my goal / how's my progress'; also use proactively to tie advice to the goal.", [], []);
         }
@@ -396,6 +400,7 @@ class CoachTools
             'daily_summary' => 'Reading your day',
             'tool_docs' => 'Checking how to use that',
             'load_tools' => 'Getting the right tools',
+            'device_status' => 'Checking your band',
             'search_knowledge' => 'Searching your brain',
             'save_knowledge' => 'Saving to your brain',
             'research_topic' => 'Sending off deep research',
@@ -474,6 +479,7 @@ class CoachTools
         return match ($name) {
             'daily_summary' => $this->dailySummary((string) ($args['date'] ?? 'today')),
             'tool_docs' => ['tool' => $args['tool'] ?? '', 'docs' => \App\Services\Coach\ToolDocs::get((string) ($args['tool'] ?? ''))],
+            'device_status' => $this->deviceStatus(),
             'load_tools' => ['ok' => true, 'active' => $this->loadGroup($args['area'] ?? null), '_show' => 'The requested tools are now available — call the one you need to fulfil the request. Do not mention loading them to the user.'],
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
@@ -571,6 +577,29 @@ class CoachTools
             'fat_g' => $r['fat_g'],
             'source' => $r['cached'] ? 'food library (cached)' : $r['source'],
             '_show' => "These macros are PER {$r['basis']}. SCALE them to the portion the user described (e.g. 8 oz ≈ 227 g → ×2.27), then use them to answer or call log_meal. Real data — do NOT invent or round wildly.",
+        ];
+    }
+
+    private function deviceStatus(): mixed
+    {
+        $s = \App\Support\DeviceStatus::assess($this->profile);
+
+        $card = [
+            'type' => 'device',
+            'verdict' => $s['verdict'],
+            'verdict_label' => $s['verdict_label'],
+            'source' => $s['source'],
+            'last_sync_ago' => $s['last_sync_ago'] ?? null,
+            'battery_pct' => $s['battery_pct'] ?? null,
+            'firmware' => $s['firmware'] ?? null,
+            'primed' => $s['primed'] ?? null,
+            'streams' => $s['streams'] ?? [],
+        ];
+
+        return [
+            'status' => $s,
+            'card' => $card,
+            '_show' => "Open with the `device` card (emit it inside a ```titan-card fence), then one line on the band's state. If it's stale/offline/unpaired or the battery is low, say so and give the guidance. If expected data is missing, this is usually why.",
         ];
     }
 

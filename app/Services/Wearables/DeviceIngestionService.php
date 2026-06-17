@@ -68,7 +68,17 @@ class DeviceIngestionService
             }
         }
 
-        $connection->forceFill(['last_sync_at' => now()])->save();
+        // Capture device telemetry (battery, firmware) if the band reported it this sync.
+        $telemetry = ['last_sync_at' => now()];
+        if (is_array($dev = $payload['device'] ?? null)) {
+            if (isset($dev['battery']) && is_numeric($dev['battery'])) {
+                $telemetry['battery_pct'] = (int) max(0, min(100, round((float) $dev['battery'])));
+            }
+            if (! empty($dev['firmware'])) {
+                $telemetry['firmware'] = \Illuminate\Support\Str::limit((string) $dev['firmware'], 40, '');
+            }
+        }
+        $connection->forceFill($telemetry)->save();
 
         return [
             'accepted' => true,

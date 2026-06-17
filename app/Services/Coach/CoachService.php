@@ -292,6 +292,10 @@ class CoachService
           biomarkers, meals, training, sleep/recovery or physique, CALL the relevant tool
           to fetch the real numbers. Do not invent values. If a tool says there is no data
           yet, say so plainly and suggest how they could start logging it.
+        - THE BAND IS YOURS TO OVERSEE. You can see the wearable's own state via device_status (paired,
+          connected, last sync, battery, what it's sensing). When expected vitals/sleep/recovery are missing,
+          check device_status and explain WHY (synced X ago / offline / low battery / not paired) instead of
+          just "no data". start_activity primes the band for cardio; daily_summary reads its data.
         - Always explain the WHY — the mechanism, the trade-off, what the number means —
           not just the what. Be specific and actionable; give concrete next steps.
         - REMEMBER them like a real coach. The moment you learn a durable PERSONAL fact — an injury or

@@ -11,6 +11,7 @@ namespace App\Services\Coach;
 class ToolDocs
 {
     private const DOCS = [
+        'device_status' => "The wearable's own state as a `device` card: paired? connected/syncing? last sync (ago), battery %, firmware, what it's primed to sense, and which streams (recovery/sleep/activity) flowed in the last ~36h. Use for 'is my band connected / synced / what's my battery', AND whenever expected vitals/sleep/recovery are missing — a stale, offline or unpaired band (or low battery) is usually why. Give the guidance it returns when the band isn't healthy.",
         'daily_summary' => "One call pulls a whole day: wearable vitals (HRV, resting HR, respiratory rate, stress, energy), readiness score, last night's sleep, today's strain, steps/activity, nutrition, workouts, and the single focus. Use for any 'how was my day/vitals/recovery/sleep' or daily check-in. Param date = today | yesterday | ISO date.",
         'physique_progress' => "How they're tracking to their DREAM PHYSIQUE — the north star. Returns a `physique` card: % of the way there, on-track verdict, ETA at current pace, recent consistency, bodyweight trend, week score. Use for 'am I on track to my goal / how's my progress', AND proactively to connect any advice back to the goal.",
         'weekly_review' => "The last 7 days as a `review` card: a 0–100 week score + momentum, training adherence and whether lifts moved, nutrition, sleep, recovery, bodyweight, plus wins, watch-outs and what to change next week. Use for 'how was my week / how am I progressing'.",
