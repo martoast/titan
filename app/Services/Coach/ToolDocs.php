@@ -1,0 +1,44 @@
+<?php
+
+namespace App\Services\Coach;
+
+/**
+ * The tool manual — full usage notes for the coach's tools, fetched on demand via the tool_docs tool.
+ * The tool SCHEMAS carry only a terse one-line description (to keep the per-turn context small); when
+ * the coach needs the nuance (caveats, when-to-use, edge cases), it looks it up here. Only tools with
+ * real nuance need an entry; everything else is covered by its description + parameters.
+ */
+class ToolDocs
+{
+    private const DOCS = [
+        'daily_summary' => "One call pulls a whole day: wearable vitals (HRV, resting HR, respiratory rate, stress, energy), readiness score, last night's sleep, today's strain, steps/activity, nutrition, workouts, and the single focus. Use for any 'how was my day/vitals/recovery/sleep' or daily check-in. Param date = today | yesterday | ISO date.",
+        'physique_progress' => "How they're tracking to their DREAM PHYSIQUE — the north star. Returns a `physique` card: % of the way there, on-track verdict, ETA at current pace, recent consistency, bodyweight trend, week score. Use for 'am I on track to my goal / how's my progress', AND proactively to connect any advice back to the goal.",
+        'weekly_review' => "The last 7 days as a `review` card: a 0–100 week score + momentum, training adherence and whether lifts moved, nutrition, sleep, recovery, bodyweight, plus wins, watch-outs and what to change next week. Use for 'how was my week / how am I progressing'.",
+        'search_knowledge' => "One fast search across the WHOLE knowledge base — your coach memory (injuries, preferences, what's worked, commitments) AND their health wiki (notes, history, doctor's notes, goals). Source-tagged hits. Search before guessing, and use it to read the body of any pinned page (the prompt only lists their titles).",
+        'save_knowledge' => "Save or update a longer-form wiki note (history, a doctor's note, a plan). Pin sparingly — pinned pages are always referenced. For short atomic facts use remember instead.",
+        'research_topic' => "ASYNC deep dive. Runs in the BACKGROUND (~1–2 min): writes a thorough, personalized brief, files it in the Brain wiki, notifies them, and posts the summary back into this chat. Use for 'research X / go learn about X / do a deep dive'. Acknowledge in one line that you're on it — do NOT attempt the deep dive inline. Params: topic, optional focus (their angle/why).",
+        'web_search' => "Live Google for current or factual things you shouldn't guess — study findings, supplement/product specs, definitions, prices, news. Returns the top answer + sourced snippets. Ground your reply in them and cite the source domain.",
+        'lookup_food' => "Real per-100g macros for a food. Checks the food-library cache first (instant, free); on a miss it researches the web once and caches it forever. ALWAYS call before log_meal unless the user gave exact macros. Pass just the food name; you scale the per-100g numbers to their portion.",
+        'my_foods' => "Their most-eaten foods (how often, typical calories/protein, when last eaten), computed live from logged meals. Use for meal planning, food suggestions, or 'what do I usually eat / my go-tos'. It's not in your prompt — fetch it when relevant.",
+        'cycle_status' => "Where she is in her menstrual cycle: cycle day, phase, predicted next period and ovulation, the fertile window + conception likelihood, regularity, today's logged symptoms, and how the phase relates to her recovery (resting-HR/HRV). Use for ANY cycle/period/fertility/PMS question. Awareness only — never present fertility as contraception or a diagnosis.",
+        'log_set' => "Logs ONE set into the open session (auto-starts one if none). 'weight' is the TOTAL load INCLUDING the bar: standard barbell = 45 lb / 20 kg; if they give plates per side, total = bar + 2 × per-side (e.g. one 45 each side = 135 lb). Dumbbell/machine weight is taken as given. Pass the unit they spoke in. Confirm each set in one short line and keep going.",
+        'start_activity' => "Starts a cardio/endurance session (run/walk/hike/bike/swim/row/HIIT) AND primes the Titan wearable to sense for it — the band switches to the right sampling on its next connection (GPS + faster HR for a run). Use this for cardio; use start_workout/log_set for weight training.",
+        'finish_activity' => "Closes the open cardio activity and stands the wearable down from activity mode. Optionally attach distance/avg HR/calories if they report them (the band fills these on sync otherwise).",
+        'remember' => "Save a durable PERSONAL fact you'll carry forever: an injury/limitation, equipment/gym access, schedule, food preferences/allergies/dislikes, exercises they love or hate, what's worked for their body, life context, or a commitment. Short and specific. importance 3 = critical (injuries, allergies). Don't store one-off numbers (those are logged elsewhere).",
+        'set_reminders' => "Tune how proactive the coach is. intensity: minimal (just a morning briefing) · balanced (briefing + meals + sleep + cycle) · intense (all-day eat/train/move/stretch/sleep). And/or toggle one type on/off (briefing, meals, sleep, cycle, move, training). Use for 'be more/less on me', 'stop reminding me to eat', 'remind me to stretch'.",
+        'coaching_playbook' => "Titan's deep advanced-physique knowledge — the published methods of the greats (Arnold, Mentzer, Yates, Cutler/FST-7, O'Hearn, Coleman) distilled with modern hypertrophy science. Pass their intent (programming/periodization, intensity techniques, hypertrophy volume/failure, lean-gain or contest-lean nutrition, peak week, recovery, mindset) and apply the principles specifically. Natural, evidence-based only.",
+        'generate_mesocycle' => "Builds and SAVES a real periodized hypertrophy mesocycle: prescribed sessions with sets/reps/RIR, volume ramping then a deload, and the FOCUS muscles prioritised (more volume, trained first/fresh, more frequency, lengthened emphasis). Returns a `program` card. Use for 'make me a program / a plan / grow my X'. Params: focus[] muscles, days_per_week (2–6), weeks (4–8), experience.",
+        'autoregulate' => "Reads their LOGGED lifts vs the plan and their RECOVERY and returns a push/hold/back-off/deload nudge as an `autoreg` card. Use before prescribing today's training, or for 'should I push or back off / am I recovered'. Follow the verdict; never send a run-down athlete to failure.",
+        'show_trend' => "Returns a metric's time-series to draw as a `sparkline` card — then emit the titan-card with the points. metrics: weight | hrv | resting_hr | sleep | steps | vo2max.",
+        'render_dream_physique' => "THE marquee feature: renders the user's realistic future self from their most recent uploaded body photo. Returns an image URL — embed it inline as markdown so they SEE it, then make it motivating. If they haven't uploaded a photo, tell them to tap the camera button.",
+        'daily_checkin' => "The 'how am I today' card: Recovery · Strain · Sleep plus the one thing to focus on. Lead any daily check-in answer with this `checkin` card.",
+        'biological_age' => "The Titan-age reveal — biological age vs real age, from bloodwork (PhenoAge), VO₂max fitness age and wearable levers. Returns a `bioage` card. Lead any 'how old is my body / biological age' answer with it.",
+        'fitness_score' => "The overall Athlete Score (0–100, VO₂max headline) from cardio, recovery, strength and activity. Returns a `fitness` card. Lead any 'how fit am I / rate me as an athlete' answer with it.",
+    ];
+
+    public static function get(string $name): string
+    {
+        return self::DOCS[$name]
+            ?? "No extended docs for `{$name}` — its description and parameters cover it. If it returns a `card`, emit the card verbatim then a short read.";
+    }
+}

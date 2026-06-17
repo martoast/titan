@@ -35,24 +35,29 @@ class CoachTools
         // The "how was my day" tool — one call pulls everything for a single day: wearable vitals
         // (HRV, resting HR, respiratory rate), readiness, last night's sleep, today's strain,
         // activity (steps/floors/movement), nutrition and any workouts, plus the day's focus.
-        $tools[] = $this->fn('daily_summary', "Pull a full snapshot of one day from the wearable and every other source — vitals (HRV, resting HR, respiratory rate, stress, energy), readiness score, last night's sleep, strain, steps/activity, nutrition and workouts, plus the single focus for the day. Use this whenever the person asks how their day/vitals/recovery/sleep were, or for a daily check-in.", [
+        $tools[] = $this->fn('daily_summary', "A full day's snapshot — vitals, readiness, sleep, strain, activity, nutrition, workouts, the day's focus. For 'how was my day / vitals / recovery' or a daily check-in.", [
             'date' => ['type' => 'string', 'description' => "Which day: 'today' (default), 'yesterday', or an ISO date like 2026-06-16."],
         ], []);
 
+        // Tool descriptions are terse to keep context lean — this fetches the full manual for any tool.
+        $tools[] = $this->fn('tool_docs', "Get the FULL usage notes for a tool (caveats, when-to-use, parameter details) when its short description isn't enough. Call before using a tool you're unsure how to drive.", [
+            'tool' => ['type' => 'string', 'description' => 'The tool name to look up, e.g. "log_set", "research_topic".'],
+        ], ['tool']);
+
         if (class_exists(\App\Support\PhysiqueProgress::class)) {
-            $tools[] = $this->fn('physique_progress', "How the user is tracking toward their DREAM PHYSIQUE (the north star) — % of the way there, an on-track verdict, ETA at current pace, recent consistency, bodyweight trend and week score, as a `physique` card. Use for 'how am I tracking to my dream physique / am I on track / how close am I to my goal / how's my progress', and proactively to connect advice back to the goal.", [], []);
+            $tools[] = $this->fn('physique_progress', "Progress toward their dream physique (the north star) → `physique` card. For 'am I on track to my goal / how's my progress'; also use proactively to tie advice to the goal.", [], []);
         }
 
         if (class_exists(\App\Support\WeeklyReview::class)) {
-            $tools[] = $this->fn('weekly_review', "A full review of the user's last 7 days — training adherence + whether the lifts moved, nutrition, sleep, recovery and bodyweight — as a `review` card, with wins, what to watch, and what to change next week. Use for 'how was my week / weekly review / how am I progressing / how's it going'.", [], []);
+            $tools[] = $this->fn('weekly_review', "Last 7 days → `review` card (week score, wins, what to change next week). For 'how was my week / how am I progressing'.", [], []);
         }
 
         if (class_exists(\App\Models\KnowledgePage::class)) {
-            $tools[] = $this->fn('search_knowledge', "Search the user's ENTIRE knowledge base in one fast call — both your coach memory of them (injuries, preferences, what's worked, commitments) AND their health wiki (notes, history, doctor's notes, goals). Returns source-tagged hits. Use to pull any relevant context before answering.", [
+            $tools[] = $this->fn('search_knowledge', "Search their whole knowledge base — your coach memory + their health wiki (notes, history, doctor's notes). Search before guessing; read pinned-page bodies here.", [
                 'query' => ['type' => 'string', 'description' => 'What to look for, in natural language.'],
             ], ['query']);
 
-            $tools[] = $this->fn('save_knowledge', 'Save or update a durable fact about this person in the brain so it is remembered in future conversations. Use for stable facts (preferences, history, goals), not transient chatter.', [
+            $tools[] = $this->fn('save_knowledge', 'Save/update a longer-form wiki note (history, doctor\'s notes, a plan). Pin sparingly. For short atomic facts use remember.', [
                 'title' => ['type' => 'string', 'description' => 'Short page title.'],
                 'content' => ['type' => 'string', 'description' => 'Markdown content of the note.'],
                 'pinned' => ['type' => 'boolean', 'description' => 'Pin as core memory (injected into every future conversation). Use sparingly.'],
@@ -60,18 +65,18 @@ class CoachTools
         }
 
         if (class_exists(\App\Jobs\ResearchTopic::class)) {
-            $tools[] = $this->fn('research_topic', "Send yourself off to DEEP-RESEARCH a topic the user wants explored — a training style or program, a nutrition approach, a supplement, a protocol, a concept. It runs in the BACKGROUND (a minute or two), writes a thorough, personalized brief, files it in their Brain wiki, and pings them + posts the summary back into this chat. Use whenever they say 'research X', 'go learn about X', 'do a deep dive on X', 'look into X for me'. Acknowledge briefly that you're on it — do NOT try to answer the topic in depth yourself.", [
+            $tools[] = $this->fn('research_topic', "ASYNC deep dive (runs in the background ~1–2 min → brief filed in the Brain + pinged + summary posted to chat). For 'research X / go learn about X'. Acknowledge only; do NOT answer the topic inline.", [
                 'topic' => ['type' => 'string', 'description' => 'What to research, e.g. "the 5/3/1 strength program", "carb cycling for fat loss", "creatine for women".'],
                 'focus' => ['type' => 'string', 'description' => "Optional — the user's specific angle or why (e.g. \"for my glute goal\", \"as a vegetarian\")."],
             ], ['topic']);
         }
 
         if (class_exists(\App\Services\Web\WebSearch::class) && app(\App\Services\Web\WebSearch::class)->configured()) {
-            $tools[] = $this->fn('web_search', "Search the LIVE web (Google) for current facts or data you shouldn't guess at — study findings, product/supplement specs, definitions, news, prices, anything factual or time-sensitive. Returns the top answer + sourced snippets. Ground your reply in these and cite the source domain.", [
+            $tools[] = $this->fn('web_search', "Live Google for current/factual things you shouldn't guess (studies, supplement specs, prices, news). Returns top answer + sources; cite the domain.", [
                 'query' => ['type' => 'string', 'description' => 'The search query.'],
             ], ['query']);
-            $tools[] = $this->fn('lookup_food', "Get a food's REAL per-100g macros so you NEVER invent nutrition numbers. Checks the food library first (instant, free) and only researches the web on a miss — then caches it forever. ALWAYS call this before log_meal unless the user gave exact macros. Just pass the food name (e.g. \"grilled chicken breast\", \"cooked white rice\", \"banana\"); you scale to their portion. Returns per-100g calories/protein/carbs/fat + whether it was cached.", [
-                'food' => ['type' => 'string', 'description' => 'The food to look up (portion optional — macros come back per 100g for you to scale).'],
+            $tools[] = $this->fn('lookup_food', "Real per-100g macros (cache-first, web on a miss, then cached). ALWAYS call before log_meal unless exact macros given. Pass the food name; you scale to the portion.", [
+                'food' => ['type' => 'string', 'description' => 'The food (portion optional — macros come back per 100g).'],
             ], ['food']);
         }
 
@@ -80,7 +85,7 @@ class CoachTools
         }
 
         if (class_exists(\App\Support\FoodDiary::class)) {
-            $tools[] = $this->fn('my_foods', "The user's most-eaten foods and meal patterns — each with how often they've had it, typical calories/protein, and when they last ate it (computed from their logged meals). Call this for meal planning, food suggestions, or 'what do I usually eat / my go-to foods'. Fetch it when relevant; it's not in your prompt.", [], []);
+            $tools[] = $this->fn('my_foods', "Their most-eaten foods (frequency, typical macros, last eaten). For meal planning / suggestions / 'what do I usually eat'.", [], []);
         }
 
         if (class_exists(\App\Models\Meal::class)) {
@@ -109,7 +114,7 @@ class CoachTools
                 'name' => ['type' => 'string', 'description' => 'Optional session name, e.g. "Push day", "Legs".'],
             ], []);
 
-            $tools[] = $this->fn('log_set', "Log ONE set the user just did, into the open workout session (auto-started if none). Use this whenever they call out a set, e.g. \"bench, 8 reps at 135\". IMPORTANT: 'weight' is the TOTAL load lifted INCLUDING the bar. A standard barbell is 45 lb (20 kg). If they describe plates per side, total = bar + 2 × (weight per side) — e.g. one 45 lb plate each side on a barbell = 45 + 90 = 135 lb. Dumbbell/machine weight is taken as given. Pass the unit the user spoke in.", [
+            $tools[] = $this->fn('log_set', "Log ONE set into the open session (auto-starts one). 'weight' = TOTAL load INCL. the bar (barbell 45 lb/20 kg; plates per side → bar + 2×per-side, e.g. a 45 each side = 135). Dumbbell/machine = as given. Pass the spoken unit.", [
                 'exercise' => ['type' => 'string', 'description' => 'Exercise name, e.g. "bench press", "back squat".'],
                 'reps' => ['type' => 'integer', 'description' => 'Reps completed in this set.'],
                 'weight' => ['type' => 'number', 'description' => 'TOTAL weight lifted including the bar, in the given unit. Omit/0 for bodyweight.'],
@@ -125,7 +130,7 @@ class CoachTools
 
         // --- Cardio / activity sessions (write) — start an activity and PRIME the wearable for it ---
         if (class_exists(\App\Models\ActivitySession::class)) {
-            $tools[] = $this->fn('start_activity', "Start a cardio/endurance activity when the user says they're beginning one (run, walk, hike, bike ride, swim, row, HIIT, etc.). This opens a session AND primes the Titan wearable to sense for that activity — the band reads the activity on its next connection and switches to the right sampling (e.g. GPS + faster HR for a run). Use this for cardio; use start_workout/log_set for weight training.", [
+            $tools[] = $this->fn('start_activity', "Start cardio (run/walk/hike/bike/swim/row/HIIT) AND prime the wearable for it (e.g. GPS + faster HR for a run). Cardio only; use start_workout/log_set for lifting.", [
                 'type' => ['type' => 'string', 'description' => 'Activity, e.g. run, walk, hike, cycle, swim, row, hiit. Free text is fine — it gets normalized.'],
                 'note' => ['type' => 'string', 'description' => 'Optional note, e.g. "easy zone 2", "tempo".'],
             ], ['type']);
@@ -140,7 +145,7 @@ class CoachTools
 
         // --- Menstrual cycle (read + write) — only offered when she tracks it ---
         if (\App\Support\Cycle::available($this->profile)) {
-            $tools[] = $this->fn('cycle_status', "Get where she is in her menstrual cycle right now — cycle day, phase (menstrual/follicular/fertile/ovulation/luteal), predicted next period and ovulation, the estimated fertile window and conception likelihood, regularity, today's logged symptoms, and how her cycle phase relates to her recovery (resting-HR/HRV). Use this for ANY cycle, period, fertility, PMS, or 'how will my cycle affect X' question. Awareness only — never present fertility info as contraception or a diagnosis.", [], []);
+            $tools[] = $this->fn('cycle_status', "Her cycle now — day, phase, next period/ovulation, fertile window, regularity, today's symptoms, phase×recovery. For any cycle/period/fertility/PMS question. Awareness only, never contraception or diagnosis.", [], []);
 
             $tools[] = $this->fn('log_period', "Log a period event. event='start' records day 1 of a new period (the anchor for all cycle math); event='end' marks the last day of bleeding. Use when she says her period started/ended.", [
                 'event' => ['type' => 'string', 'enum' => ['start', 'end'], 'description' => 'start = first day of bleeding; end = last day.'],
@@ -221,7 +226,7 @@ class CoachTools
 
         if (class_exists(\App\Models\CoachMemory::class)) {
             $cats = implode(', ', array_keys(\App\Models\CoachMemory::CATEGORIES));
-            $tools[] = $this->fn('remember', "Save a durable PERSONAL fact about the user so you carry it forever (a real coach remembers). Use it the moment you learn something lasting: an injury or limitation, equipment/gym access, schedule, food preferences/allergies/dislikes, exercises they love or hate, what's worked for their body, life context (travel, stress, kids), or a commitment they make. Short and specific. Don't store one-off numbers — those are logged elsewhere.", [
+            $tools[] = $this->fn('remember', "Save a durable PERSONAL fact (injury/limitation, equipment, schedule, food likes/dislikes/allergies, loved/hated exercises, what's worked, life context, commitments). Short + specific; importance 3 = critical. Not for one-off numbers.", [
                 'category' => ['type' => 'string', 'enum' => array_keys(\App\Models\CoachMemory::CATEGORIES), 'description' => "One of: {$cats}."],
                 'content' => ['type' => 'string', 'description' => 'The fact in a short sentence (e.g. "Tweaked left shoulder on heavy bench — avoid flat barbell press for now").'],
                 'importance' => ['type' => 'integer', 'description' => '2 normal, 3 critical (injuries, allergies). Default 2.'],
@@ -232,18 +237,18 @@ class CoachTools
             $tools[] = $this->fn('memory_book', "Show everything you remember about the user as a `memory` card. Use for 'what do you know / remember about me', or to let them review and correct it.", [], []);
         }
 
-        $tools[] = $this->fn('set_reminders', "Adjust how proactive/present the coach is. Set overall intensity (minimal = just a morning briefing · balanced = briefing + meals + sleep + cycle · intense = all-day eat/train/move/stretch/sleep), and/or toggle one reminder type on/off. Use when the user wants more or less nudging, or to turn a specific reminder on/off ('stop reminding me to eat', 'remind me to stretch', 'be more on me').", [
+        $tools[] = $this->fn('set_reminders', "Tune proactive coaching: intensity (minimal | balanced | intense) and/or toggle one reminder type on/off. For 'be more/less on me', 'stop reminding me to eat', 'remind me to stretch'.", [
             'intensity' => ['type' => 'string', 'enum' => ['minimal', 'balanced', 'intense'], 'description' => 'Overall coaching presence.'],
             'type' => ['type' => 'string', 'enum' => ['briefing', 'meals', 'sleep', 'cycle', 'move', 'training'], 'description' => 'A specific reminder to toggle.'],
             'on' => ['type' => 'boolean', 'description' => 'Turn the specified type on (true) or off (false).'],
         ], []);
 
-        $tools[] = $this->fn('coaching_playbook', "Titan's deep advanced-physique knowledge — the published methods of the greats (Arnold, Mentzer, Yates, Cutler/FST-7, O'Hearn, Coleman) distilled with modern hypertrophy science. Call this whenever the user wants to PUSH hard or go advanced: programming/periodization, intensity techniques, hypertrophy volume/failure, lean-gaining or contest-lean nutrition, peak week, recovery, mindset. Pass their intent as the topic and apply the principles in your answer. Natural, evidence-based only.", [
+        $tools[] = $this->fn('coaching_playbook', "Deep advanced-physique knowledge (the greats + modern science) for when they want to go hard: programming, intensity techniques, hypertrophy, lean-gain/contest nutrition, peak week, recovery, mindset. Pass their intent; apply specifically. Natural-only.", [
             'topic' => ['type' => 'string', 'description' => 'What they want to go deep on, in natural language (e.g. "break a chest plateau", "program a hypertrophy block", "cut to single-digit body fat", "intensity techniques").'],
         ], ['topic']);
 
         if (class_exists(\App\Models\TrainingProgram::class)) {
-            $tools[] = $this->fn('generate_mesocycle', "Build and SAVE a real, periodized hypertrophy mesocycle (a multi-week training program): sessions with prescribed exercises, sets, reps and RIR; volume ramps week to week then deloads; and the user's FOCUS muscles get priority — more volume, trained first/fresh, more frequency, and a lengthened-position emphasis — to bring up lagging parts. Use whenever they want a program, a plan, or to grow specific muscles.", [
+            $tools[] = $this->fn('generate_mesocycle', "Build + SAVE a periodized program (sets/reps/RIR, volume ramp + deload, FOCUS muscles prioritised) → `program` card. For 'make me a program / a plan / grow my X'.", [
                 'focus' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Muscles to prioritise / bring up, e.g. ["chest","side delts","arms"]. Optional but the whole point of specialization.'],
                 'days_per_week' => ['type' => 'integer', 'description' => 'Training days per week, 2–6 (default 4).'],
                 'weeks' => ['type' => 'integer', 'description' => 'Mesocycle length 4–8 weeks incl. a deload (default 5).'],
@@ -253,7 +258,7 @@ class CoachTools
             $tools[] = $this->fn('advance_program', 'Move the active program to the next week (call when they finish a week). Returns the new week as a `program` card.', [], []);
         }
 
-        $tools[] = $this->fn('autoregulate', "Progress-aware autoregulation: reads the user's LOGGED training (are the lifts going up?) vs their plan and their RECOVERY, and returns a push/hold/back-off/deload nudge as an `autoreg` card. Use when they ask 'should I push or back off / how's my training going / am I recovered to train hard', before prescribing today's session, or proactively when their data shifts.", [], []);
+        $tools[] = $this->fn('autoregulate', "Logged lifts + recovery → push/hold/back-off/deload as an `autoreg` card. Before prescribing a session, or 'should I push or back off / am I recovered'.", [], []);
 
         if (class_exists(\App\Support\Pantry::class)) {
             $tools[] = $this->fn('get_pantry', 'See the food the user currently has on hand. Read this before suggesting meals so you only suggest things they can make.', [], []);
@@ -263,16 +268,16 @@ class CoachTools
             ], ['items']);
         }
 
-        $tools[] = $this->fn('show_trend', "Get a metric's time-series to render as a sparkline card in the chat. Use when the user asks how something has changed over time. Then emit a ```titan-card {\"type\":\"sparkline\",…}``` with the points.", [
+        $tools[] = $this->fn('show_trend', "A metric's time-series → draw it as a `sparkline` card. For 'how has X changed over time'.", [
             'metric' => ['type' => 'string', 'enum' => ['weight', 'hrv', 'resting_hr', 'sleep', 'steps', 'vo2max'], 'description' => 'Which metric to chart.'],
             'days' => ['type' => 'integer', 'description' => 'Days back (default 30).'],
         ], ['metric']);
 
         if (class_exists(\App\Support\BiologicalAge::class)) {
-            $tools[] = $this->fn('biological_age', "The Titan-age reveal: the user's biological age vs their actual age, from bloodwork (PhenoAge), VO₂max fitness age and wearable levers. Returns a ready-made `bioage` card. Use for any 'how old is my body / biological age / Titan age / am I aging well' question.", [], []);
+            $tools[] = $this->fn('biological_age', "Bio age vs real age → `bioage` card. For 'how old is my body / biological age / am I aging well'.", [], []);
         }
         if (class_exists(\App\Support\AthleteScore::class)) {
-            $tools[] = $this->fn('fitness_score', "The overall Athlete Score (0–100) with VO₂max as the headline, composed from cardio, recovery, strength and activity. Returns a ready-made `fitness` card. Use for any 'how fit am I / my fitness / VO₂max / rate me as an athlete' question.", [], []);
+            $tools[] = $this->fn('fitness_score', "Athlete Score 0–100 (VO₂max headline) → `fitness` card. For 'how fit am I / rate me as an athlete'.", [], []);
         }
 
         // --- Skill cards: ready-made designed components for the common questions ---
@@ -293,7 +298,7 @@ class CoachTools
         }
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
-            $tools[] = $this->fn('render_dream_physique', "THE marquee feature: render the user's realistic future self from their most recent uploaded body photo (they upload via the camera button). Pass an optional description of the goal (e.g. \"+10 lb lean muscle\", \"lean and shredded\"). Returns an image URL — embed it inline as markdown so they SEE their future self. Use whenever they ask to see, create, or update their dream physique.", [
+            $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
                 'description' => ['type' => 'string', 'description' => 'Optional goal description for the render.'],
             ], []);
         }
@@ -306,6 +311,7 @@ class CoachTools
     {
         return match ($name) {
             'daily_summary' => 'Reading your day',
+            'tool_docs' => 'Checking how to use that',
             'search_knowledge' => 'Searching your brain',
             'save_knowledge' => 'Saving to your brain',
             'research_topic' => 'Sending off deep research',
@@ -383,6 +389,7 @@ class CoachTools
     {
         return match ($name) {
             'daily_summary' => $this->dailySummary((string) ($args['date'] ?? 'today')),
+            'tool_docs' => ['tool' => $args['tool'] ?? '', 'docs' => \App\Services\Coach\ToolDocs::get((string) ($args['tool'] ?? ''))],
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
             'research_topic' => $this->researchTopic($args),
