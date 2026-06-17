@@ -499,6 +499,40 @@ function buildMemory(d) {
     return el;
 }
 
+// Weekly review: the week's scorecard — domains with deltas, wins, watch-outs, next week.
+function buildReview(d) {
+    const sColor = s => ({ good: '#34d399', ok: '#fbbf24', low: '#fb7185', neutral: '#9ca3af' })[s] || '#9ca3af';
+    const el = document.createElement('div'); el.className = 'tcard tcard-review';
+    const eyebrow = document.createElement('div'); eyebrow.className = 'tcard-review-eyebrow';
+    eyebrow.textContent = 'Week in review' + (d.range ? ' · ' + d.range : ''); el.appendChild(eyebrow);
+    if (d.headline) { const h = document.createElement('div'); h.className = 'tcard-review-headline'; h.textContent = d.headline; el.appendChild(h); }
+
+    (d.metrics || []).forEach(m => {
+        const row = document.createElement('div'); row.className = 'tcard-review-row';
+        const dot = document.createElement('i'); dot.style.background = sColor(m.state);
+        const l = document.createElement('div'); l.className = 'tcard-review-rl';
+        l.innerHTML = `<span class="tcard-review-rlabel">${m.label || ''}</span>${m.sub ? `<span class="tcard-review-rsub">${m.sub}</span>` : ''}`;
+        const v = document.createElement('div'); v.className = 'tcard-review-rval'; v.textContent = m.value || '';
+        row.append(dot, l, v); el.appendChild(row);
+    });
+
+    const list = (items, cls, sym) => {
+        if (!items || !items.length) return;
+        const wrap = document.createElement('ul'); wrap.className = 'tcard-review-list ' + cls;
+        items.forEach(t => { const li = document.createElement('li'); li.innerHTML = `<span>${sym}</span> ${t}`; wrap.appendChild(li); });
+        el.appendChild(wrap);
+    };
+    list(d.wins, 'tcard-review-wins', '▲');
+    list(d.watch, 'tcard-review-watch', '!');
+
+    if (d.next && (d.next.text || d.next.verdict)) {
+        const n = document.createElement('div'); n.className = 'tcard-review-next';
+        n.innerHTML = `<span class="tcard-review-nlabel">Next week</span> ${d.next.text || d.next.verdict}`;
+        el.appendChild(n);
+    }
+    return el;
+}
+
 function renderCards(root) {
     root.querySelectorAll('pre > code.language-titan-card').forEach((code) => {
         const pre = code.parentElement;
@@ -506,7 +540,8 @@ function renderCards(root) {
         let d;
         try { d = JSON.parse(code.textContent); } catch (_) { return; } // leave malformed blocks as code
         let card = null;
-        if (d.type === 'memory') card = buildMemory(d);
+        if (d.type === 'review') card = buildReview(d);
+        else if (d.type === 'memory') card = buildMemory(d);
         else if (d.type === 'autoreg') card = buildAutoreg(d);
         else if (d.type === 'program' || d.type === 'mesocycle') card = buildProgram(d);
         else if (d.type === 'fitness' || d.type === 'athlete') card = buildFitness(d);

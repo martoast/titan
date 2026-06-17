@@ -15,6 +15,7 @@ class Reminders
     /** type => human label (for settings + the coach). */
     public const TYPES = [
         'briefing' => 'Daily briefing',
+        'review' => 'Weekly review',
         'meals' => 'Meal timing',
         'sleep' => 'Sleep wind-down',
         'cycle' => 'Cycle heads-up',
@@ -24,9 +25,9 @@ class Reminders
 
     /** intensity => [label, blurb, default-on types]. */
     public const INTENSITIES = [
-        'minimal' => ['label' => 'Light touch', 'blurb' => 'Just a morning briefing — I stay out of your way.', 'types' => ['briefing']],
-        'balanced' => ['label' => 'Balanced', 'blurb' => 'Morning briefing, meal timing, a nightly wind-down, and cycle heads-ups.', 'types' => ['briefing', 'meals', 'sleep', 'cycle']],
-        'intense' => ['label' => 'All-in', 'blurb' => "I'm on you all day — eat, train, move, stretch, sleep. Like a coach in your pocket.", 'types' => ['briefing', 'meals', 'sleep', 'cycle', 'move', 'training']],
+        'minimal' => ['label' => 'Light touch', 'blurb' => 'Just a morning briefing and a weekly review — I stay out of your way.', 'types' => ['briefing', 'review']],
+        'balanced' => ['label' => 'Balanced', 'blurb' => 'Daily briefing, weekly review, meal timing, a nightly wind-down, and cycle heads-ups.', 'types' => ['briefing', 'review', 'meals', 'sleep', 'cycle']],
+        'intense' => ['label' => 'All-in', 'blurb' => "I'm on you all day — eat, train, move, stretch, sleep, plus a weekly review. Like a coach in your pocket.", 'types' => ['briefing', 'review', 'meals', 'sleep', 'cycle', 'move', 'training']],
     ];
 
     public static function intensity(Profile $profile): string

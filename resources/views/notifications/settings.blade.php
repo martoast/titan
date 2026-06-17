@@ -2,6 +2,7 @@
     @php
         $typeMeta = [
             'briefing' => ['🌅', 'A grounded read on your day each morning'],
+            'review'   => ['📊', 'A full review of your week, every Sunday'],
             'meals'    => ['🍽️', "Nudges to eat when a meal's due — before you're hungry"],
             'sleep'    => ['🌙', 'A wind-down reminder before your target bedtime'],
             'cycle'    => ['🌸', 'A heads-up when your period is a day or two out'],

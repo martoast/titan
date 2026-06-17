@@ -22,6 +22,9 @@ Schedule::command('coach:evening-nudge')->dailyAt('18:30')->timezone(config('app
 // Meal-timing coach: nudge people who forget to eat when a planned meal comes due (per-slot deduped).
 Schedule::command('meals:remind')->everyFifteenMinutes()->withoutOverlapping();
 
+// Weekly coaching review — the longitudinal "is this working?" arc (Sunday evening).
+Schedule::command('coach:weekly-review')->weeklyOn(0, '18:00')->timezone(config('app.timezone'));
+
 // Proactive coach through the day — gated by each profile's coaching intensity + per-type prefs.
 Schedule::command('coach:nudge training')->dailyAt('08:30')->timezone(config('app.timezone'));
 Schedule::command('coach:nudge cycle')->dailyAt('07:30')->timezone(config('app.timezone'));

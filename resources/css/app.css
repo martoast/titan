@@ -285,6 +285,24 @@ body {
 .tcard-autoreg-adj b { color: #9ca3af; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.3rem; }
 .tcard-autoreg-note { margin-top: 0.7rem; font-size: 0.82rem; color: #9ca3af; line-height: 1.45; }
 
+/* ---- Weekly review card ---- */
+.tcard-review-eyebrow { font-family: var(--font-display); font-weight: 700; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; }
+.tcard-review-headline { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; color: #f1f5f9; line-height: 1.25; margin-top: 0.25rem; }
+.tcard-review-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.tcard-review-row:first-of-type { margin-top: 0.7rem; }
+.tcard-review-row i { width: 0.5rem; height: 0.5rem; border-radius: 999px; flex-shrink: 0; }
+.tcard-review-rl { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.tcard-review-rlabel { font-size: 0.85rem; font-weight: 600; color: #e5e7eb; }
+.tcard-review-rsub { font-size: 0.7rem; color: #6b7280; }
+.tcard-review-rval { font-size: 0.82rem; font-weight: 600; color: #f1f5f9; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tcard-review-list { margin: 0.7rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.3rem; }
+.tcard-review-list li { font-size: 0.8rem; color: #cbd5e1; line-height: 1.4; }
+.tcard-review-list li span { display: inline-block; width: 1rem; font-weight: 700; }
+.tcard-review-wins li span { color: #34d399; }
+.tcard-review-watch li span { color: #fbbf24; }
+.tcard-review-next { margin-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.7rem; font-size: 0.84rem; color: #c7d2fe; line-height: 1.45; }
+.tcard-review-nlabel { display: block; font-family: var(--font-display); font-weight: 700; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: #818cf8; margin-bottom: 0.15rem; }
+
 /* ---- Knowledge-base "brain working" animation (chat tool status) ---- */
 .tbrain { display: flex; align-items: center; gap: 0.6rem; color: #a5b4fc; }
 .tbrain--ingest { color: #6ee7b7; }      /* writing/ingesting → green */

@@ -36,6 +36,10 @@ class CoachTools
             'date' => ['type' => 'string', 'description' => "Which day: 'today' (default), 'yesterday', or an ISO date like 2026-06-16."],
         ], []);
 
+        if (class_exists(\App\Support\WeeklyReview::class)) {
+            $tools[] = $this->fn('weekly_review', "A full review of the user's last 7 days — training adherence + whether the lifts moved, nutrition, sleep, recovery and bodyweight — as a `review` card, with wins, what to watch, and what to change next week. Use for 'how was my week / weekly review / how am I progressing / how's it going'.", [], []);
+        }
+
         if (class_exists(\App\Models\KnowledgePage::class)) {
             $tools[] = $this->fn('search_knowledge', "Search the user's ENTIRE knowledge base in one fast call — both your coach memory of them (injuries, preferences, what's worked, commitments) AND their health wiki (notes, history, doctor's notes, goals). Returns source-tagged hits. Use to pull any relevant context before answering.", [
                 'query' => ['type' => 'string', 'description' => 'What to look for, in natural language.'],
@@ -311,6 +315,7 @@ class CoachTools
             'show_trend' => 'Charting your trend',
             'biological_age' => 'Calculating your biological age',
             'fitness_score' => 'Scoring your fitness',
+            'weekly_review' => 'Reviewing your week',
             'daily_checkin' => 'Pulling your check-in',
             'sleep_detail' => 'Reading last night',
             'strain_status' => 'Checking your strain',
@@ -382,6 +387,7 @@ class CoachTools
             'show_trend' => $this->showTrend($args),
             'biological_age' => $this->biologicalAge(),
             'fitness_score' => $this->fitnessScore(),
+            'weekly_review' => $this->weeklyReview(),
             'daily_checkin' => $this->dailyCheckin(),
             'sleep_detail' => $this->sleepDetail(),
             'strain_status' => $this->strainStatus(),
@@ -1407,6 +1413,22 @@ class CoachTools
         }
 
         return $out;
+    }
+
+    private function weeklyReview(): mixed
+    {
+        if (! class_exists(\App\Support\WeeklyReview::class)) {
+            return ['error' => 'Weekly review is not available.'];
+        }
+        $r = \App\Support\WeeklyReview::compile($this->profile);
+        if (! $r) {
+            return ['note' => "Not enough logged this week to review yet — get a few sessions and meals in and I'll give you a real readout: what moved, what didn't, and what we change."];
+        }
+
+        return [
+            'card' => ['type' => 'review'] + $r,
+            '_show' => 'Open with this `review` card (emit the card object inside a ```titan-card fence), then tell the progress STORY in your own voice and coach tone: 2–3 sentences naming the biggest win, the main thing to watch, and exactly what changes next week (use the `next` recommendation and tie it to their program/goal). Honest and motivating — this is the moment that makes the week feel like it went somewhere.',
+        ];
     }
 
     private function fitnessScore(): mixed

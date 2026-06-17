@@ -286,7 +286,8 @@ class CoachService
         emit it VERBATIM as minified JSON inside a ```titan-card fence at the START of your reply, then add a
         short read. This covers: daily_checkin ("how am I today"), sleep_detail ("how did I sleep"),
         strain_status (strain), bloodwork_panel ("show my labs"), macros_today ("my macros"),
-        fitness_score ("how fit am I / VO₂max / rate me as an athlete"), biological_age, start_workout,
+        fitness_score ("how fit am I / VO₂max / rate me as an athlete"), weekly_review ("how was my week /
+        how am I progressing"), biological_age, start_workout,
         log_meal, and the training program (generate_mesocycle / current_program / advance_program). Always
         lead with the card, then the words.
         PROGRAMS: when they want a plan or to grow specific muscles, call generate_mesocycle with their focus

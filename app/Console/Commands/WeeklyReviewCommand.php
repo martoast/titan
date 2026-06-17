@@ -1,0 +1,81 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\Profile;
+use App\Models\PushSubscription;
+use App\Services\Notifications\NotificationService;
+use App\Support\Reminders;
+use App\Support\WeeklyReview;
+use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+
+/**
+ * The weekly coaching review push (end of week). For each opted-in profile we compile the week and
+ * send a concise "here's your week" notification; the full `review` card + the coach's narration are
+ * one tap away in the chat (weekly_review tool). Deduped once per calendar week.
+ *
+ *   php artisan coach:weekly-review
+ *   php artisan coach:weekly-review --profile=1
+ */
+class WeeklyReviewCommand extends Command
+{
+    protected $signature = 'coach:weekly-review {--profile= : Only this profile id}';
+
+    protected $description = 'Compile and push each opted-in profile their week in review.';
+
+    public function handle(NotificationService $notifications): int
+    {
+        $sent = 0;
+        foreach ($this->resolveProfiles() as $profile) {
+            try {
+                if (! Reminders::enabled($profile, 'review')) {
+                    continue;
+                }
+                $review = WeeklyReview::compile($profile);
+                if (! $review) {
+                    continue;
+                }
+
+                $tz = $profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+                $weekKey = 'review:'.Carbon::now($tz)->startOfWeek()->toDateString();
+                if (data_get($profile->settings, 'nudge_sent.review') === $weekKey) {
+                    continue;
+                }
+
+                $bits = collect($review['metrics'])->take(3)->map(fn ($m) => $m['label'].' '.$m['value'])->implode(' · ');
+                $body = trim($review['headline'].' — '.$bits.'. Tap for your full review.');
+
+                $notifications->notify($profile, '📊 Your week in review', Str::limit($body, 180), '/coach', 'review');
+
+                $settings = $profile->settings ?? [];
+                $settings['nudge_sent']['review'] = $weekKey;
+                $profile->update(['settings' => $settings]);
+                $sent++;
+            } catch (\Throwable $e) {
+                Log::warning('[coach] weekly review failed', ['profile' => $profile->id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        $this->info("Weekly reviews sent: {$sent}");
+
+        return self::SUCCESS;
+    }
+
+    private function resolveProfiles()
+    {
+        if ($id = $this->option('profile')) {
+            return Profile::where('id', $id)->get();
+        }
+
+        return Profile::whereIn('id', PushSubscription::query()->distinct()->pluck('profile_id'))->get();
+    }
+
+    /** @return array<int,string> schedule line for routes/console.php */
+    public static function scheduleLines(): array
+    {
+        return ["Schedule::command('coach:weekly-review')->weeklyOn(0, '18:00')->timezone(config('app.timezone'));"];
+    }
+}
