@@ -35,6 +35,33 @@ class CoachScanTest extends TestCase
         $this->assertDatabaseHas('meals', ['name' => 'Chicken & rice', 'calories' => 620, 'source' => 'photo']);
         // The photo + the coach's confirmation both land in the conversation.
         $this->assertDatabaseCount('chat_messages', 2);
+        // The reply leads with the updated macros card.
+        $this->assertStringContainsString('titan-card', $response->json('reply'));
+        $this->assertStringContainsString('macros', $response->json('reply'));
+    }
+
+    public function test_a_caption_is_passed_to_the_vision_read_and_kept_on_the_turn(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $user->ensureProfile();
+
+        $vision = Mockery::mock(AiService::class);
+        $vision->shouldReceive('vision')
+            ->once()
+            ->with(Mockery::on(fn ($p) => str_contains($p, 'a 12oz steak')), Mockery::any(), Mockery::any())
+            ->andReturn(json_encode(['kind' => 'meal', 'meal' => ['name' => 'Steak', 'calories' => 700, 'protein_g' => 55, 'carbs_g' => 0, 'fat_g' => 50]]));
+        $this->app->instance(AiService::class, $vision);
+
+        $this->actingAs($user)->post('/coach/scan', [
+            'photo' => UploadedFile::fake()->image('dinner.jpg'),
+            'message' => 'this is what I ate, a 12oz steak',
+        ])->assertOk()->assertJson(['kind' => 'meal']);
+
+        // The caption is preserved on the user's turn (with the photo).
+        $this->assertDatabaseHas('chat_messages', ['role' => 'user']);
+        $userTurn = $user->profile->conversations()->latest('id')->first()->messages()->where('role', 'user')->first();
+        $this->assertStringContainsString('12oz steak', $userTurn->content);
     }
 
     public function test_a_bloodwork_photo_logs_each_marker(): void

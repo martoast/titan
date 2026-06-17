@@ -23,7 +23,7 @@ class ScanService
     /**
      * @return array{kind:string,logged:bool,image_url:string,reply:string,data:array<string,mixed>}
      */
-    public function scan(Profile $profile, UploadedFile $file): array
+    public function scan(Profile $profile, UploadedFile $file, ?string $caption = null): array
     {
         // Keep the original for the record (meal photo / audit trail).
         $path = $file->store('coach/scans', 'public');
@@ -47,6 +47,11 @@ class ScanService
         - Otherwise set kind "other" and explain in "note".
         - "note" is one friendly sentence summarising what you saw. Never diagnose or give medical advice.
         TXT;
+
+        // The user's own words ("this is what I ate", "a 12oz steak") sharpen the read.
+        if ($caption !== null && trim($caption) !== '') {
+            $prompt .= "\n\nThe user also said: \"".trim($caption)."\". Use it to identify the food and estimate the portion.";
+        }
 
         try {
             $raw = $this->ai->vision($prompt, [$dataUrl], ['json' => true, 'max_tokens' => 1400, 'temperature' => 0.2]);
@@ -117,13 +122,9 @@ class ScanService
             default => '',
         };
 
-        $reply = "**Logged — {$meal->name}**\n\n"
-            ."| | |\n|---|---|\n"
-            ."| Calories | **{$meal->calories}** kcal |\n"
-            ."| Protein | {$meal->protein_g} g |\n"
-            ."| Carbs | {$meal->carbs_g} g |\n"
-            ."| Fat | {$meal->fat_g} g |\n\n"
-            ."Added to today's nutrition.{$hedge}";
+        // Lead with the updated macros card, then a short confirmation line.
+        $reply = \App\Support\Macros::fenced($profile)
+            ."\n\nLogged **{$meal->name}** — {$meal->calories} kcal · {$meal->protein_g}g protein.{$hedge}";
 
         return ['kind' => 'meal', 'logged' => true, 'image_url' => $imageUrl, 'reply' => $reply, 'data' => $m];
     }

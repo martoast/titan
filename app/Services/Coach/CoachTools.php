@@ -839,57 +839,10 @@ class CoachTools
         ];
     }
 
-    /** Build today's macros card: consumed calories + protein/carbs/fat vs targets. */
+    /** Today's macros card (calories + protein/carbs/fat vs targets) — shared with the meal scan. */
     private function macrosCard(): array
     {
-        // Their local "today", expressed in the app/storage timezone so it matches how meals are stored.
-        $appTz = config('app.timezone', 'UTC');
-        $tz = $this->profile->settings['timezone'] ?? $appTz;
-        $start = Carbon::now($tz)->startOfDay()->setTimezone($appTz);
-        $end = $start->copy()->addDay();
-        $meals = $this->profile->meals()->where('eaten_at', '>=', $start)->where('eaten_at', '<', $end)->get();
-
-        $calT = 2800;
-        $proT = 200;
-        if (class_exists(\App\Support\MealCoach::class)) {
-            $t = rescue(fn () => \App\Support\MealCoach::targets($this->profile), null, false);
-            if ($t) {
-                $calT = (int) $t['calories'];
-                $proT = (int) $t['protein_g'];
-            }
-        }
-        // Derive sensible carb/fat targets from the calorie budget (fat ~27% of kcal, rest carbs).
-        $fatT = (int) round($calT * 0.27 / 9);
-        $carbT = (int) max(0, round(($calT - $proT * 4 - $fatT * 9) / 4));
-
-        $logged = $meals->count();
-        $next = null;
-        if (class_exists(\App\Support\MealCoach::class)) {
-            $mc = rescue(fn () => \App\Support\MealCoach::assess($this->profile), null, false);
-            $st = $mc['status'] ?? null;
-            $next = match ($st) {
-                'done' => 'all meals in',
-                'overdue' => 'eat now',
-                'soon' => 'time to eat',
-                'upcoming' => isset($mc['next_in_min']) && $mc['next_in_min'] ? 'next in '.$this->humanMin((int) $mc['next_in_min']) : null,
-                default => null,
-            };
-        }
-
-        return [
-            'type' => 'macros',
-            'title' => "Today's fuel",
-            'calories' => ['value' => (int) $meals->sum('calories'), 'target' => $calT],
-            'protein' => ['value' => (int) round((float) $meals->sum('protein_g')), 'target' => $proT],
-            'carbs' => ['value' => (int) round((float) $meals->sum('carbs_g')), 'target' => $carbT],
-            'fat' => ['value' => (int) round((float) $meals->sum('fat_g')), 'target' => $fatT],
-            'footer' => $logged.' meal'.($logged === 1 ? '' : 's').' logged'.($next ? ' · '.$next : ''),
-        ];
-    }
-
-    private function humanMin(int $m): string
-    {
-        return $m >= 60 ? (intdiv($m, 60).'h'.($m % 60 ? ' '.($m % 60).'m' : '')) : $m.'m';
+        return \App\Support\Macros::today($this->profile);
     }
 
     private function logWeight(array $a): mixed

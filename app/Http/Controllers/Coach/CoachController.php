@@ -223,16 +223,18 @@ class CoachController extends Controller
     {
         $profile = $request->user()->ensureProfile();
 
-        $request->validate([
+        $data = $request->validate([
             'photo' => ['required', 'image', 'max:12288'],   // ≤ 12 MB
+            'message' => ['nullable', 'string', 'max:1000'],   // optional caption: "this is what I ate"
         ]);
+        $caption = trim((string) ($data['message'] ?? ''));
 
         if (! $conversation || $conversation->profile_id !== $profile->id) {
             $conversation = $profile->conversations()->create();
         }
 
         try {
-            $result = $this->scans->scan($profile, $request->file('photo'));
+            $result = $this->scans->scan($profile, $request->file('photo'), $caption ?: null);
         } catch (AiException $e) {
             Log::warning('[Coach] scan AI unavailable', ['error' => $e->getMessage()]);
 
@@ -248,11 +250,11 @@ class CoachController extends Controller
             $conversation->update(['title' => $result['kind'] === 'bloodwork' ? 'Bloodwork scan' : 'Photo log']);
         }
 
-        // The photo becomes a user turn; the coach's confirmation an assistant turn — so the
-        // whole exchange survives a refresh.
+        // The photo (+ the user's caption) becomes a user turn; the coach's confirmation an
+        // assistant turn — so the whole exchange survives a refresh.
         $conversation->messages()->create([
             'role' => 'user',
-            'content' => '![photo]('.$result['image_url'].')',
+            'content' => ($caption !== '' ? $caption."\n\n" : '').'![photo]('.$result['image_url'].')',
         ]);
         $conversation->messages()->create([
             'role' => 'assistant',

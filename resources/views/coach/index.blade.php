@@ -203,13 +203,26 @@
 
             {{-- Composer — sits at the end of the flex column, above the bottom tab bar --}}
             <div class="border-t border-white/5 p-3">
+                {{-- Attached photo preview: pick a photo, add "this is what I ate", then send --}}
+                <div x-show="pendingPreview" x-cloak class="mb-2 flex items-center gap-3">
+                    <div class="relative shrink-0">
+                        <img :src="pendingPreview" alt="" class="h-16 w-16 rounded-xl object-cover border border-white/10">
+                        <button type="button" @click="clearPhoto()" aria-label="Remove photo"
+                                class="absolute -top-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-full bg-gray-800 border border-white/15 text-gray-300 active:bg-gray-700">
+                            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 leading-snug">Add a note like <span class="text-gray-400">“this is what I ate”</span> — then send and I'll log the macros.</p>
+                </div>
+
                 <form @submit.prevent="send()" class="flex items-end gap-2">
-                    {{-- Snap-to-log: photograph a meal or a bloodwork sheet --}}
+                    {{-- Snap-to-log: attach a meal / bloodwork / body photo --}}
                     <input x-ref="photo" type="file" accept="image/*" capture="environment" class="hidden"
-                           @change="if ($event.target.files[0]) { scanPhoto($event.target.files[0]); $event.target.value = ''; }">
+                           @change="if ($event.target.files[0]) { attachPhoto($event.target.files[0]); $event.target.value = ''; }">
                     <button type="button" @click="$refs.photo.click()" :disabled="loading"
-                            title="Snap a meal or bloodwork to log it"
-                            class="shrink-0 h-12 w-12 grid place-items-center rounded-xl bg-white/5 border border-white/10 text-gray-300 active:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                            title="Attach a meal, bloodwork or body photo"
+                            class="shrink-0 h-12 w-12 grid place-items-center rounded-xl bg-white/5 border border-white/10 text-gray-300 active:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                            :class="pendingPhoto ? 'ring-2 ring-indigo-400/50 text-indigo-300' : ''">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.66-.9l.82-1.2A2 2 0 0110.07 4h3.86a2 2 0 011.66.9l.82 1.2a2 2 0 001.66.9H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </button>
                     <textarea
@@ -217,10 +230,10 @@
                         x-model="draft"
                         @keydown.enter.prevent="if(!$event.shiftKey) send()"
                         rows="1"
-                        placeholder="Ask your coach…"
+                        :placeholder="pendingPhoto ? 'Add a note (optional)…' : 'Ask your coach…'"
                         class="flex-1 min-w-0 resize-none rounded-xl bg-gray-950/60 border border-white/10 focus:border-indigo-500/50 focus:ring-0 px-4 py-3 text-base text-gray-100 placeholder-gray-600 max-h-40"></textarea>
                     <button type="submit"
-                            :disabled="loading || !draft.trim()"
+                            :disabled="loading || (!draft.trim() && !pendingPhoto)"
                             class="shrink-0 h-12 w-12 grid place-items-center rounded-xl bg-indigo-500 active:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed text-white transition">
                         <span x-show="!loading">
                             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -243,6 +256,8 @@
                 streaming: false,      // true once tokens start arriving
                 toolStatus: '',        // "Reading your day", etc. while a tool runs
                 suggestions: [],       // tappable follow-up chips
+                pendingPhoto: null,    // a photo attached but not yet sent
+                pendingPreview: '',    // its object URL for the preview thumbnail
                 sendUrl: cfg.sendUrl,
                 streamUrl: cfg.streamUrl,
                 scanUrl: cfg.scanUrl,
@@ -288,11 +303,31 @@
                     history.replaceState(null, '', '/coach?c=' + id);
                 },
 
-                // Snap-to-log: upload a photo of a meal or bloodwork; the coach extracts + logs it.
-                async scanPhoto(file) {
+                // Attach a photo to the composer (preview it); it sends when they hit send.
+                attachPhoto(file) {
+                    if (!file) return;
+                    if (this.pendingPreview) URL.revokeObjectURL(this.pendingPreview);
+                    this.pendingPhoto = file;
+                    this.pendingPreview = URL.createObjectURL(file);
+                    this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
+                },
+                clearPhoto() {
+                    if (this.pendingPreview) URL.revokeObjectURL(this.pendingPreview);
+                    this.pendingPhoto = null;
+                    this.pendingPreview = '';
+                },
+
+                // Snap-to-log: send the attached photo + the typed caption; the coach reads it,
+                // logs it (meal macros / bloodwork / body photo) and replies with the result.
+                async sendPhoto() {
+                    const file = this.pendingPhoto;
                     if (!file || this.loading) return;
+                    const caption = this.draft.trim();
                     this.suggestions = [];
-                    this.messages.push({ role: 'user', content: '![photo](' + URL.createObjectURL(file) + ')' });
+                    this.messages.push({ role: 'user', content: (caption ? caption + '\n\n' : '') + '![photo](' + this.pendingPreview + ')' });
+                    this.draft = '';
+                    this.pendingPhoto = null;          // keep pendingPreview alive for the bubble image
+                    this.pendingPreview = '';
                     this.loading = true;
                     this.streaming = false;
                     this.toolStatus = 'Reading your photo';
@@ -300,6 +335,7 @@
 
                     const fd = new FormData();
                     fd.append('photo', file);
+                    if (caption) fd.append('message', caption);
                     try {
                         const res = await fetch(this.scanUrl, {
                             method: 'POST',
@@ -333,6 +369,10 @@
                 finishSend() { this.loading = false; this.streaming = false; this.toolStatus = ''; },
 
                 async send(preset) {
+                    // A photo is attached → send it (with the typed note as the caption).
+                    if (preset === undefined && this.pendingPhoto && !this.loading) {
+                        return this.sendPhoto();
+                    }
                     const text = (preset !== undefined ? preset : this.draft).trim();
                     if (!text || this.loading) return;
 
