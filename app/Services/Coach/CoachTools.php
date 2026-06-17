@@ -205,6 +205,23 @@ class CoachTools
             $tools[] = $this->fn('biological_age', "The Titan-age reveal: the user's biological age vs their actual age, from bloodwork (PhenoAge), VO₂max fitness age and wearable levers. Returns a ready-made `bioage` card. Use for any 'how old is my body / biological age / Titan age / am I aging well' question.", [], []);
         }
 
+        // --- Skill cards: ready-made designed components for the common questions ---
+        if (class_exists(\App\Support\DailyFocus::class)) {
+            $tools[] = $this->fn('daily_checkin', "The 'how am I today' card: Recovery · Strain · Sleep plus the one thing to focus on. Returns a ready-made `checkin` card — lead any daily check-in / 'how am I doing today' answer with it.", [], []);
+        }
+        if (class_exists(\App\Support\SleepCoach::class)) {
+            $tools[] = $this->fn('sleep_detail', "Last night's sleep as a ready-made `sleep` card: hours, performance, stage breakdown, debt. Lead any 'how did I sleep' answer with it.", [], []);
+        }
+        if (class_exists(\App\Support\Strain::class)) {
+            $tools[] = $this->fn('strain_status', "Today's cardiovascular strain as a ready-made `strain` gauge card (0–21 with the recovery-aware target zone). Lead any strain question with it.", [], []);
+        }
+        if (class_exists(\App\Models\BiomarkerReading::class)) {
+            $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
+        }
+        if (class_exists(\App\Models\Meal::class)) {
+            $tools[] = $this->fn('macros_today', "Today's macros — calories + protein / carbs / fat vs targets — as a ready-made `macros` card. Use whenever the user asks about their macros / calories / what's left to eat. (log_meal already shows this after logging.)", [], []);
+        }
+
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "THE marquee feature: render the user's realistic future self from their most recent uploaded body photo (they upload via the camera button). Pass an optional description of the goal (e.g. \"+10 lb lean muscle\", \"lean and shredded\"). Returns an image URL — embed it inline as markdown so they SEE their future self. Use whenever they ask to see, create, or update their dream physique.", [
                 'description' => ['type' => 'string', 'description' => 'Optional goal description for the render.'],
@@ -245,6 +262,11 @@ class CoachTools
             'update_pantry' => 'Updating your pantry',
             'show_trend' => 'Charting your trend',
             'biological_age' => 'Calculating your biological age',
+            'daily_checkin' => 'Pulling your check-in',
+            'sleep_detail' => 'Reading last night',
+            'strain_status' => 'Checking your strain',
+            'bloodwork_panel' => 'Pulling your bloodwork',
+            'macros_today' => 'Tallying your macros',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -301,6 +323,11 @@ class CoachTools
             'update_pantry' => $this->updatePantry($args),
             'show_trend' => $this->showTrend($args),
             'biological_age' => $this->biologicalAge(),
+            'daily_checkin' => $this->dailyCheckin(),
+            'sleep_detail' => $this->sleepDetail(),
+            'strain_status' => $this->strainStatus(),
+            'bloodwork_panel' => $this->bloodworkPanel(),
+            'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
@@ -522,7 +549,22 @@ class CoachTools
             'updated_via' => 'coach',
         ]);
 
-        return ['ok' => true, 'workout_id' => $workout->id, 'name' => $workout->name, 'message' => "Started \"{$workout->name}\" — call out your sets and I'll log them."];
+        // A live-session card with today's recovery-aware strain target.
+        $card = ['type' => 'workout', 'name' => $workout->name];
+        if (class_exists(\App\Support\Strain::class)) {
+            $readiness = rescue(fn () => \App\Support\Readiness::compute($this->profile)['score'] ?? null, null, false);
+            $target = \App\Support\Strain::targetFor($readiness !== null ? (float) $readiness : null);
+            $card += ['mode' => $target['label'] ?? null, 'target_low' => $target['low'] ?? null, 'target_high' => $target['high'] ?? null];
+        }
+
+        return [
+            'ok' => true,
+            'workout_id' => $workout->id,
+            'name' => $workout->name,
+            'card' => $card,
+            '_show' => 'Show this `workout` card (inside a ```titan-card fence) to confirm the session is live, then invite them to call out their sets.',
+            'message' => "Started \"{$workout->name}\" — call out your sets and I'll log them.",
+        ];
     }
 
     private function logSet(array $args): mixed
@@ -789,8 +831,65 @@ class CoachTools
             'source' => 'coach',
         ]);
 
-        return ['ok' => true, 'name' => $meal->name, 'calories' => $meal->calories, 'protein_g' => $meal->protein_g,
-            'message' => "Logged {$meal->name} — {$meal->calories} kcal, {$meal->protein_g}g protein."];
+        return [
+            'ok' => true, 'name' => $meal->name, 'calories' => $meal->calories, 'protein_g' => $meal->protein_g,
+            'card' => $this->macrosCard(),
+            '_show' => "Logged it — show the updated `macros` card (inside a ```titan-card fence), then one short line on what's left to hit their targets.",
+            'message' => "Logged {$meal->name} — {$meal->calories} kcal, {$meal->protein_g}g protein.",
+        ];
+    }
+
+    /** Build today's macros card: consumed calories + protein/carbs/fat vs targets. */
+    private function macrosCard(): array
+    {
+        // Their local "today", expressed in the app/storage timezone so it matches how meals are stored.
+        $appTz = config('app.timezone', 'UTC');
+        $tz = $this->profile->settings['timezone'] ?? $appTz;
+        $start = Carbon::now($tz)->startOfDay()->setTimezone($appTz);
+        $end = $start->copy()->addDay();
+        $meals = $this->profile->meals()->where('eaten_at', '>=', $start)->where('eaten_at', '<', $end)->get();
+
+        $calT = 2800;
+        $proT = 200;
+        if (class_exists(\App\Support\MealCoach::class)) {
+            $t = rescue(fn () => \App\Support\MealCoach::targets($this->profile), null, false);
+            if ($t) {
+                $calT = (int) $t['calories'];
+                $proT = (int) $t['protein_g'];
+            }
+        }
+        // Derive sensible carb/fat targets from the calorie budget (fat ~27% of kcal, rest carbs).
+        $fatT = (int) round($calT * 0.27 / 9);
+        $carbT = (int) max(0, round(($calT - $proT * 4 - $fatT * 9) / 4));
+
+        $logged = $meals->count();
+        $next = null;
+        if (class_exists(\App\Support\MealCoach::class)) {
+            $mc = rescue(fn () => \App\Support\MealCoach::assess($this->profile), null, false);
+            $st = $mc['status'] ?? null;
+            $next = match ($st) {
+                'done' => 'all meals in',
+                'overdue' => 'eat now',
+                'soon' => 'time to eat',
+                'upcoming' => isset($mc['next_in_min']) && $mc['next_in_min'] ? 'next in '.$this->humanMin((int) $mc['next_in_min']) : null,
+                default => null,
+            };
+        }
+
+        return [
+            'type' => 'macros',
+            'title' => "Today's fuel",
+            'calories' => ['value' => (int) $meals->sum('calories'), 'target' => $calT],
+            'protein' => ['value' => (int) round((float) $meals->sum('protein_g')), 'target' => $proT],
+            'carbs' => ['value' => (int) round((float) $meals->sum('carbs_g')), 'target' => $carbT],
+            'fat' => ['value' => (int) round((float) $meals->sum('fat_g')), 'target' => $fatT],
+            'footer' => $logged.' meal'.($logged === 1 ? '' : 's').' logged'.($next ? ' · '.$next : ''),
+        ];
+    }
+
+    private function humanMin(int $m): string
+    {
+        return $m >= 60 ? (intdiv($m, 60).'h'.($m % 60 ? ' '.($m % 60).'m' : '')) : $m.'m';
     }
 
     private function logWeight(array $a): mixed
@@ -962,6 +1061,119 @@ class CoachTools
         return $rel->whereDate($dateCol, '>=', $since)->whereNotNull($valCol)
             ->orderBy($dateCol)->pluck($valCol)
             ->map(fn ($v) => (float) $v)->filter(fn ($v) => $v > 0)->values()->all();
+    }
+
+    // ---- Skill cards: ready-made designed components --------------------------
+
+    private function dailyCheckin(): mixed
+    {
+        $r = rescue(fn () => \App\Support\Readiness::compute($this->profile), [], false);
+        $strain = rescue(fn () => \App\Support\Strain::assess($this->profile), [], false);
+        $sleep = rescue(fn () => \App\Support\SleepCoach::assess($this->profile), null, false);
+        $focus = rescue(fn () => \App\Support\DailyFocus::compute($this->profile), [], false);
+        $lastSleep = $this->profile->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
+
+        $card = [
+            'type' => 'checkin',
+            'date' => 'Today',
+            'recovery' => ['value' => $r['score'] ?? null, 'label' => $r['label'] ?? ''],
+            'strain' => [
+                'value' => isset($strain['strain']) ? round($strain['strain'], 1) : null,
+                'target' => $strain['target']['high'] ?? null,
+                'label' => $strain['target']['label'] ?? '',
+            ],
+            'sleep' => [
+                'pct' => $sleep['performance_pct'] ?? null,
+                'hours' => $lastSleep?->duration_min ? round($lastSleep->duration_min / 60, 1) : null,
+            ],
+            'focus' => ['headline' => $focus['headline'] ?? null, 'detail' => $focus['detail'] ?? null],
+        ];
+
+        return ['card' => $card, '_show' => 'Open your reply with this `checkin` card (emit it inside a ```titan-card fence), then one short line on the single thing to do today.'];
+    }
+
+    private function sleepDetail(): mixed
+    {
+        if (! class_exists(\App\Models\SleepLog::class)) {
+            return ['error' => 'Sleep is not available.'];
+        }
+        $last = $this->profile->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        if (! $last) {
+            return ['note' => 'No nights logged yet. Connect the band or tell me how you slept and I\'ll start tracking it.'];
+        }
+        $coach = rescue(fn () => \App\Support\SleepCoach::assess($this->profile), null, false);
+
+        $card = [
+            'type' => 'sleep',
+            'hours' => round($last->duration_min / 60, 1),
+            'performance' => $coach['performance_pct'] ?? null,
+            'debt' => isset($coach['debt_h']) ? round($coach['debt_h'], 1) : null,
+            'status' => $coach['label'] ?? null,
+            'stages' => array_filter([
+                'deep' => $last->deep_min, 'rem' => $last->rem_min,
+                'light' => $last->light_min, 'awake' => $last->awake_min,
+            ], fn ($v) => $v !== null),
+        ];
+
+        return ['card' => $card, '_show' => 'Open with this `sleep` card inside a ```titan-card fence, then one short read of the night.'];
+    }
+
+    private function strainStatus(): mixed
+    {
+        if (! class_exists(\App\Support\Strain::class)) {
+            return ['error' => 'Strain is not available.'];
+        }
+        $s = \App\Support\Strain::assess($this->profile);
+        $card = [
+            'type' => 'strain',
+            'value' => round($s['strain'] ?? 0, 1),
+            'band' => $s['label'] ?? '',
+            'target_low' => $s['target']['low'] ?? null,
+            'target_high' => $s['target']['high'] ?? null,
+            'advice' => $s['advice'] ?? null,
+        ];
+
+        return ['card' => $card, '_show' => 'Open with this `strain` gauge card inside a ```titan-card fence, then a one-line read vs the target.'];
+    }
+
+    private function bloodworkPanel(): mixed
+    {
+        if (! class_exists(\App\Models\BiomarkerReading::class)) {
+            return ['error' => 'Bloodwork is not available.'];
+        }
+        $readings = $this->profile->biomarkerReadings()->orderByDesc('taken_at')->orderByDesc('id')->get();
+        if ($readings->isEmpty()) {
+            return ['note' => 'No bloodwork logged yet. Snap a photo of a labs report with the camera button and I\'ll read it in.'];
+        }
+        $seen = [];
+        $items = [];
+        $flagged = 0;
+        foreach ($readings as $r) {
+            if (isset($seen[$r->marker])) {
+                continue;
+            }
+            $seen[$r->marker] = true;
+            $label = class_exists(\App\Support\Biomarkers::class)
+                ? \App\Support\Biomarkers::label($r->marker)
+                : strtoupper(str_replace('_', ' ', $r->marker));
+            $val = rtrim(rtrim(number_format((float) $r->value, 2), '0'), '.').($r->unit ? ' '.$r->unit : '');
+            $flag = $r->flag ?: 'normal';
+            if (! in_array($flag, ['normal', 'optimal'], true)) {
+                $flagged++;
+            }
+            $items[] = ['label' => $label, 'value' => $val, 'flag' => $flag];
+            if (count($items) >= 12) {
+                break;
+            }
+        }
+        $card = [
+            'type' => 'markers',
+            'title' => 'Latest bloodwork',
+            'items' => $items,
+            'caption' => $flagged === 0 ? 'All in range.' : $flagged.' marker'.($flagged === 1 ? '' : 's').' outside range — not a diagnosis; flag with your doctor.',
+        ];
+
+        return ['card' => $card, '_show' => 'Open with this `markers` card inside a ```titan-card fence, then briefly explain any flagged marker. Never diagnose; suggest a doctor for anything concerning.'];
     }
 
     // ---- Biological age — the Whoop-style "skill" card ------------------------

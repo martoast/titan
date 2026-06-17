@@ -174,6 +174,69 @@ body {
 .tcard-bioage-dval { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; }
 .tcard-bioage-caption { margin-top: 0.7rem; font-size: 0.82rem; color: #9ca3af; }
 
+/* ---- Daily check-in card ---- */
+.tcard-checkin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.tcard-checkin-cell { border-radius: 0.8rem; background: rgba(0,0,0,0.25); padding: 0.7rem 0.4rem; text-align: center; }
+.tcard-checkin-big { font-family: var(--font-display); font-weight: 800; font-size: 1.45rem; line-height: 1; color: #f1f5f9; font-variant-numeric: tabular-nums; }
+.tcard-checkin-lbl { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-top: 0.35rem; }
+.tcard-checkin-sub { font-size: 0.66rem; color: #6b7280; margin-top: 0.1rem; min-height: 0.8rem; }
+.tcard-checkin-focus { margin-top: 0.8rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.7rem; }
+.tcard-checkin-fh { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; font-size: 0.95rem; }
+.tcard-checkin-fd { font-size: 0.82rem; color: #9ca3af; margin-top: 0.15rem; line-height: 1.45; }
+
+/* ---- Sleep card ---- */
+.tcard-sleep-main { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.tcard-sleep-num { font-family: var(--font-display); font-weight: 900; font-size: 2.1rem; line-height: 1; color: #f1f5f9; font-variant-numeric: tabular-nums; }
+.tcard-sleep-sub { font-size: 0.8rem; color: #9ca3af; margin-top: 0.2rem; }
+.tcard-sleep-perf { flex-shrink: 0; border-radius: 999px; padding: 0.3rem 0.7rem; font-size: 0.78rem; font-weight: 700; font-family: var(--font-display); white-space: nowrap; }
+.tcard-sleep-bar { display: flex; height: 0.55rem; margin-top: 0.9rem; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.06); }
+.tcard-sleep-bar > div { height: 100%; }
+.tcard-sleep-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem; margin-top: 0.55rem; }
+.tcard-sleep-legend span { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: #9ca3af; }
+.tcard-sleep-legend i { width: 0.55rem; height: 0.55rem; border-radius: 2px; }
+.tcard-sleep-debt { margin-top: 0.7rem; font-size: 0.8rem; color: #fbbf24; }
+
+/* ---- Strain gauge ---- */
+.tcard-strain-main { display: flex; align-items: baseline; gap: 0.6rem; }
+.tcard-strain-num { font-family: var(--font-display); font-weight: 900; font-size: 2.1rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.tcard-strain-band { font-size: 0.85rem; font-weight: 600; color: #cbd5e1; }
+.tcard-strain-track { position: relative; height: 0.5rem; margin-top: 0.9rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.tcard-strain-zone { position: absolute; top: 0; height: 100%; background: rgba(255,255,255,0.16); }
+.tcard-strain-fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 999px; }
+.tcard-strain-scale { display: flex; justify-content: space-between; margin-top: 0.4rem; font-size: 0.66rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+.tcard-strain-advice { margin-top: 0.7rem; font-size: 0.82rem; color: #9ca3af; line-height: 1.45; }
+
+/* ---- Bloodwork panel ---- */
+.tcard-markers-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.tcard-markers-row:last-of-type { border-bottom: 0; }
+.tcard-markers-row i { width: 0.6rem; height: 0.6rem; border-radius: 999px; flex-shrink: 0; }
+.tcard-markers-l { flex: 1; min-width: 0; color: #e5e7eb; font-size: 0.86rem; }
+.tcard-markers-v { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums; font-size: 0.86rem; white-space: nowrap; }
+
+/* ---- Workout started ---- */
+.tcard-workout { background: linear-gradient(180deg, rgba(99,102,241,0.12), rgba(255,255,255,0.015)); }
+.tcard-workout-top { display: flex; align-items: center; gap: 0.55rem; }
+.tcard-workout-live { width: 0.6rem; height: 0.6rem; border-radius: 999px; background: #34d399; box-shadow: 0 0 0 0 rgba(52,211,153,0.6); animation: tcard-pulse 1.8s infinite; }
+.tcard-workout-title { font-family: var(--font-display); font-weight: 800; color: #f1f5f9; font-size: 1.05rem; }
+.tcard-workout-sub { font-size: 0.82rem; color: #9ca3af; margin-top: 0.35rem; line-height: 1.45; }
+@keyframes tcard-pulse { 0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.5); } 70% { box-shadow: 0 0 0 6px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } }
+@media (prefers-reduced-motion: reduce) { .tcard-workout-live { animation: none; } }
+
+/* ---- Macros card (the daily workhorse) ---- */
+.tcard-macros-calhead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.tcard-macros-callbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; }
+.tcard-macros-calnum { font-size: 0.95rem; color: #9ca3af; font-variant-numeric: tabular-nums; }
+.tcard-macros-calnum b { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; color: #f1f5f9; }
+.tcard-macros-calnum span { font-size: 0.72rem; }
+.tcard-macros-track { height: 0.45rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 0.5rem; }
+.tcard-macros-track > div { height: 100%; border-radius: 999px; }
+.tcard-macros-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-top: 0.9rem; }
+.tcard-macros-mtop { display: flex; align-items: baseline; justify-content: space-between; gap: 0.25rem; font-size: 0.74rem; color: #9ca3af; }
+.tcard-macros-mval { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; }
+.tcard-macros-mtrack { height: 0.35rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 0.35rem; }
+.tcard-macros-mtrack > div { height: 100%; border-radius: 999px; }
+.tcard-macros-foot { margin-top: 0.8rem; font-size: 0.78rem; color: #6b7280; }
+
 /* Horizontal scrollers (chips, day strips) without an ugly bar, with iOS momentum. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }

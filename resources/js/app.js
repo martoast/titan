@@ -203,6 +203,159 @@ function buildBioage(d) {
     return el;
 }
 
+const gradeColor = (v, mid, hi) => v >= hi ? '#34d399' : v >= mid ? '#fbbf24' : '#fb7185';
+
+// Daily check-in: the Recovery · Strain · Sleep loop + the one focus, in one card.
+function buildCheckin(d) {
+    const el = document.createElement('div'); el.className = 'tcard tcard-checkin';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = d.date || 'Today'; el.appendChild(head);
+    const grid = document.createElement('div'); grid.className = 'tcard-checkin-grid';
+    const cell = (label, big, sub, color) => {
+        const c = document.createElement('div'); c.className = 'tcard-checkin-cell';
+        const b = document.createElement('div'); b.className = 'tcard-checkin-big'; b.textContent = big; if (color) b.style.color = color;
+        const l = document.createElement('div'); l.className = 'tcard-checkin-lbl'; l.textContent = label;
+        const s = document.createElement('div'); s.className = 'tcard-checkin-sub'; s.textContent = sub || '';
+        c.append(b, l, s); return c;
+    };
+    const r = d.recovery || {}, s = d.strain || {}, sl = d.sleep || {};
+    grid.append(
+        cell('Recovery', r.value != null ? r.value + '%' : '—', r.label || '', r.value != null ? gradeColor(r.value, 34, 67) : null),
+        cell('Strain', s.value != null ? (s.value + (s.target ? '/' + s.target : '')) : '—', s.label || '', '#22d3ee'),
+        cell('Sleep', sl.pct != null ? sl.pct + '%' : '—', sl.hours != null ? sl.hours + 'h' : '', sl.pct != null ? gradeColor(sl.pct, 75, 90) : null),
+    );
+    el.appendChild(grid);
+    if (d.focus) {
+        const f = document.createElement('div'); f.className = 'tcard-checkin-focus';
+        const h = document.createElement('div'); h.className = 'tcard-checkin-fh'; h.textContent = d.focus.headline || 'Focus';
+        const p = document.createElement('div'); p.className = 'tcard-checkin-fd'; p.textContent = d.focus.detail || '';
+        f.append(h, p); el.appendChild(f);
+    }
+    return el;
+}
+
+// Sleep last night: hours + performance, a stacked stages bar, debt + verdict.
+function buildSleep(d) {
+    const el = document.createElement('div'); el.className = 'tcard tcard-sleep';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = 'Last night'; el.appendChild(head);
+    const main = document.createElement('div'); main.className = 'tcard-sleep-main';
+    const left = document.createElement('div');
+    const num = document.createElement('div'); num.className = 'tcard-sleep-num'; num.textContent = (d.hours != null ? d.hours : '–') + 'h';
+    const sub = document.createElement('div'); sub.className = 'tcard-sleep-sub'; sub.textContent = d.status || '';
+    left.append(num, sub);
+    if (d.performance != null) {
+        const pill = document.createElement('div'); pill.className = 'tcard-sleep-perf';
+        const c = gradeColor(d.performance, 75, 90); pill.style.color = c; pill.style.background = c + '22';
+        pill.textContent = d.performance + '% performance';
+        main.append(left, pill);
+    } else { main.append(left); }
+    el.appendChild(main);
+    const stages = d.stages || {};
+    const order = [['deep', 'Deep', '#6366f1'], ['rem', 'REM', '#22d3ee'], ['light', 'Light', '#818cf8'], ['awake', 'Awake', '#475569']];
+    const total = order.reduce((a, [k]) => a + (Number(stages[k]) || 0), 0);
+    if (total > 0) {
+        const bar = document.createElement('div'); bar.className = 'tcard-sleep-bar';
+        order.forEach(([k, , col]) => { const w = (Number(stages[k]) || 0) / total * 100; if (w > 0) { const seg = document.createElement('div'); seg.style.width = w + '%'; seg.style.background = col; bar.appendChild(seg); } });
+        el.appendChild(bar);
+        const leg = document.createElement('div'); leg.className = 'tcard-sleep-legend';
+        order.forEach(([k, name, col]) => { if (Number(stages[k]) > 0) { const sp = document.createElement('span'); sp.innerHTML = `<i style="background:${col}"></i>${name}`; leg.appendChild(sp); } });
+        el.appendChild(leg);
+    }
+    if (d.debt != null && d.debt > 0.2) { const dn = document.createElement('div'); dn.className = 'tcard-sleep-debt'; dn.textContent = `Carrying ~${d.debt}h of sleep debt.`; el.appendChild(dn); }
+    return el;
+}
+
+// Strain gauge: a 0–21 track with your value + the recovery-aware target zone.
+function buildStrain(d) {
+    const max = 21, v = Number(d.value) || 0;
+    const el = document.createElement('div'); el.className = 'tcard tcard-strain';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = 'Strain'; el.appendChild(head);
+    const main = document.createElement('div'); main.className = 'tcard-strain-main';
+    const color = v >= 14 ? '#fb7185' : v >= 8 ? '#fbbf24' : '#22d3ee';
+    const num = document.createElement('div'); num.className = 'tcard-strain-num'; num.style.color = color; num.textContent = v.toFixed(1);
+    const band = document.createElement('div'); band.className = 'tcard-strain-band'; band.textContent = d.band || '';
+    main.append(num, band); el.appendChild(main);
+    const track = document.createElement('div'); track.className = 'tcard-strain-track';
+    if (d.target_low != null && d.target_high != null) {
+        const zone = document.createElement('div'); zone.className = 'tcard-strain-zone';
+        zone.style.left = (d.target_low / max * 100) + '%'; zone.style.width = ((d.target_high - d.target_low) / max * 100) + '%';
+        track.appendChild(zone);
+    }
+    const fill = document.createElement('div'); fill.className = 'tcard-strain-fill'; fill.style.width = Math.min(100, v / max * 100) + '%'; fill.style.background = color; track.appendChild(fill);
+    el.appendChild(track);
+    const scale = document.createElement('div'); scale.className = 'tcard-strain-scale'; scale.innerHTML = '<span>0</span><span>target</span><span>21</span>'; el.appendChild(scale);
+    if (d.advice) { const a = document.createElement('div'); a.className = 'tcard-strain-advice'; a.textContent = d.advice; el.appendChild(a); }
+    return el;
+}
+
+// Bloodwork panel: markers with in-range / flagged dots.
+function buildMarkers(d) {
+    const el = document.createElement('div'); el.className = 'tcard tcard-markers';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = d.title || 'Bloodwork'; el.appendChild(head);
+    const flagColor = f => ({ optimal: '#34d399', normal: '#22d3ee', low: '#fbbf24', high: '#fb7185', borderline: '#fbbf24' })[String(f || '').toLowerCase()] || '#6b7280';
+    (d.items || []).slice(0, 12).forEach(it => {
+        const row = document.createElement('div'); row.className = 'tcard-markers-row';
+        const dot = document.createElement('i'); dot.style.background = flagColor(it.flag);
+        const l = document.createElement('span'); l.className = 'tcard-markers-l'; l.textContent = it.label || '';
+        const v = document.createElement('span'); v.className = 'tcard-markers-v'; v.textContent = it.value || '';
+        row.append(dot, l, v); el.appendChild(row);
+    });
+    if (d.caption) { const c = document.createElement('div'); c.className = 'tcard-bioage-caption'; c.textContent = d.caption; el.appendChild(c); }
+    return el;
+}
+
+// Workout started: a live-session banner with today's strain target.
+function buildWorkout(d) {
+    const el = document.createElement('div'); el.className = 'tcard tcard-workout';
+    const top = document.createElement('div'); top.className = 'tcard-workout-top';
+    const dot = document.createElement('span'); dot.className = 'tcard-workout-live';
+    const t = document.createElement('span'); t.className = 'tcard-workout-title'; t.textContent = d.name || 'Workout';
+    top.append(dot, t); el.appendChild(top);
+    const sub = document.createElement('div'); sub.className = 'tcard-workout-sub';
+    sub.textContent = (d.mode ? d.mode + ' · ' : '') + (d.target_low != null ? `target strain ${d.target_low}–${d.target_high}` : 'call out your sets and I’ll log them');
+    el.appendChild(sub);
+    return el;
+}
+
+// Macros: today's fuel — calories + protein/carbs/fat vs targets. The daily workhorse.
+function buildMacros(d) {
+    const el = document.createElement('div'); el.className = 'tcard tcard-macros';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = d.title || "Today's fuel"; el.appendChild(head);
+
+    const cal = d.calories || {};
+    const cv = Number(cal.value) || 0, ct = Number(cal.target) || 0;
+    const calRow = document.createElement('div'); calRow.className = 'tcard-macros-cal';
+    const cl = document.createElement('div'); cl.className = 'tcard-macros-callbl'; cl.textContent = 'Calories';
+    const cnum = document.createElement('div'); cnum.className = 'tcard-macros-calnum';
+    cnum.innerHTML = `<b>${cv.toLocaleString()}</b>${ct ? ` / ${ct.toLocaleString()}` : ''} <span>kcal</span>`;
+    const calHead = document.createElement('div'); calHead.className = 'tcard-macros-calhead'; calHead.append(cl, cnum);
+    calRow.appendChild(calHead);
+    if (ct) {
+        const pct = cv / ct * 100;
+        const bar = document.createElement('div'); bar.className = 'tcard-macros-track';
+        const fill = document.createElement('div'); fill.style.width = Math.min(100, pct) + '%';
+        fill.style.background = pct > 105 ? '#fbbf24' : '#22d3ee';
+        bar.appendChild(fill); calRow.appendChild(bar);
+    }
+    el.appendChild(calRow);
+
+    const macros = [['protein', 'Protein', '#34d399'], ['carbs', 'Carbs', '#fbbf24'], ['fat', 'Fat', '#f472b6']];
+    const grid = document.createElement('div'); grid.className = 'tcard-macros-grid';
+    macros.forEach(([k, name, col]) => {
+        const m = d[k] || {}; const v = Number(m.value) || 0, t = Number(m.target) || 0;
+        const cell = document.createElement('div'); cell.className = 'tcard-macros-cell';
+        const top = document.createElement('div'); top.className = 'tcard-macros-mtop';
+        top.innerHTML = `<span>${name}</span><span class="tcard-macros-mval" style="color:${col}">${Math.round(v)}${t ? `/${Math.round(t)}` : ''}g</span>`;
+        const bar = document.createElement('div'); bar.className = 'tcard-macros-mtrack';
+        const fill = document.createElement('div'); fill.style.width = (t ? Math.min(100, v / t * 100) : 0) + '%'; fill.style.background = col;
+        bar.appendChild(fill);
+        cell.append(top, bar); grid.appendChild(cell);
+    });
+    el.appendChild(grid);
+
+    if (d.footer) { const f = document.createElement('div'); f.className = 'tcard-macros-foot'; f.textContent = d.footer; el.appendChild(f); }
+    return el;
+}
+
 function renderCards(root) {
     root.querySelectorAll('pre > code.language-titan-card').forEach((code) => {
         const pre = code.parentElement;
@@ -216,6 +369,12 @@ function renderCards(root) {
         else if (d.type === 'sparkline' || d.type === 'trend') card = buildSparkline(d);
         else if (d.type === 'cycle') card = buildCycle(d);
         else if (d.type === 'bioage') card = buildBioage(d);
+        else if (d.type === 'checkin') card = buildCheckin(d);
+        else if (d.type === 'sleep') card = buildSleep(d);
+        else if (d.type === 'strain') card = buildStrain(d);
+        else if (d.type === 'markers' || d.type === 'bloodwork') card = buildMarkers(d);
+        else if (d.type === 'workout') card = buildWorkout(d);
+        else if (d.type === 'macros') card = buildMacros(d);
         if (card) { pre.dataset.card = '1'; pre.replaceWith(card); }
     });
 }

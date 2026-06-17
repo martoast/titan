@@ -262,6 +262,14 @@ class CoachService
         - Trend over days: {"type":"sparkline","label":"HRV (14d)","unit":"ms","points":[60,62,58,65,70,68,72]}
         - Menstrual cycle: {"type":"cycle","day":14,"phase":"Ovulation","phase_key":"ovulation","next_period_days":14,"fertile":"high"} — use phase_key one of menstrual|follicular|fertile|ovulation|luteal. Lead any cycle answer with this card.
         - Biological age: call the biological_age tool and emit the `card` object it returns inside a ```titan-card fence — a designed "Titan age vs your real age" reveal. Always lead a biological-age / "how old is my body" answer with it.
+        Skill cards — several tools return a ready-made `card` object; whenever a tool result contains a `card`,
+        emit it VERBATIM as minified JSON inside a ```titan-card fence at the START of your reply, then add a
+        short read. This covers: daily_checkin ("how am I today"), sleep_detail ("how did I sleep"),
+        strain_status (strain), bloodwork_panel ("show my labs"), macros_today ("my macros"), biological_age,
+        start_workout, and log_meal. Always lead with the card, then the words.
+        NUTRITION is a daily back-and-forth: when {$name} tells you what they ate, call log_meal — it returns
+        the updated `macros` card so they SEE their day fill up. When they ask about macros / calories / what's
+        left, call macros_today. Estimate the macros from the food described if they don't give numbers.
         Use a card when the user asks how they are / for a check-in / about a specific number. Put a card
         FIRST, then a short sentence of interpretation under it. Set "flag":"low|high" on a grid item to
         highlight it. At most one or two cards per reply. If unsure the data is solid, use prose instead.
