@@ -1,56 +1,56 @@
 <x-titan-layout title="Dashboard" subtitle="Your trajectory toward the strongest version of yourself">
     <div class="space-y-4 md:space-y-5">
 
-        {{-- ============ FUTURE SELF — the living dream-physique render ============ --}}
+        {{-- ============ FUTURE SELF — compact dream-physique panel ============ --}}
         <a href="/photos" class="block group">
-            <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-500/15 via-gray-900 to-cyan-400/10">
+            <div class="rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-500/15 via-gray-900 to-cyan-400/10 p-4">
                 @if ($futureSelf['image'])
-                    <div class="grid grid-cols-2">
-                        {{-- Now --}}
-                        <div class="relative aspect-[3/4] bg-gray-950">
-                            @if ($futureSelf['now_image'])
-                                <img src="{{ $futureSelf['now_image'] }}" alt="Now" class="absolute inset-0 h-full w-full object-cover opacity-90">
-                            @else
-                                <div class="absolute inset-0 grid place-items-center text-xs text-gray-600">Add a progress photo</div>
-                            @endif
-                            <span class="absolute top-2 left-2 rounded-full bg-black/50 backdrop-blur px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-300">Now</span>
-                        </div>
-                        {{-- Future self --}}
-                        <div class="relative aspect-[3/4] bg-gray-950">
-                            <img src="{{ $futureSelf['image'] }}" alt="Your future self" class="absolute inset-0 h-full w-full object-cover">
-                            <span class="absolute top-2 right-2 rounded-full bg-indigo-500/80 backdrop-blur px-2 py-0.5 text-[10px] uppercase tracking-wide font-semibold text-white">Future self</span>
-                        </div>
-                    </div>
-                    {{-- Progress toward the dream physique --}}
-                    <div class="p-4 md:p-5">
-                        <div class="flex items-end justify-between gap-3">
-                            <div>
-                                <div class="text-[11px] uppercase tracking-wider text-indigo-300/80 font-semibold">Toward your dream physique</div>
-                                <div class="mt-0.5 font-display text-2xl font-bold text-gray-100">
-                                    {{ $futureSelf['pct'] !== null ? $futureSelf['pct'].'%' : 'Tracking' }}
-                                    <span class="text-sm font-normal text-gray-500">there</span>
-                                </div>
+                    <div class="flex items-center gap-4">
+                        {{-- Now → Future thumbnails (fixed small height) --}}
+                        <div class="flex shrink-0 gap-1.5">
+                            <div class="relative h-24 aspect-[3/4] overflow-hidden rounded-xl bg-gray-950 sm:h-28">
+                                @if ($futureSelf['now_image'])
+                                    <img src="{{ $futureSelf['now_image'] }}" alt="Now" class="h-full w-full object-cover opacity-90">
+                                @else
+                                    <div class="grid h-full place-items-center px-1 text-center text-[10px] text-gray-600">Add a photo</div>
+                                @endif
+                                <span class="absolute top-1 left-1 rounded bg-black/55 px-1.5 py-px text-[9px] uppercase tracking-wide text-gray-300">Now</span>
                             </div>
-                            @if ($futureSelf['adherence'] !== null)
-                                <div class="text-right shrink-0">
-                                    <div class="text-[11px] text-gray-500">consistency</div>
-                                    <div class="font-display text-lg font-bold nums text-cyan-300">{{ $futureSelf['adherence'] }}%</div>
+                            <div class="relative h-24 aspect-[3/4] overflow-hidden rounded-xl bg-gray-950 ring-1 ring-indigo-400/30 sm:h-28">
+                                <img src="{{ $futureSelf['image'] }}" alt="Your future self" class="h-full w-full object-cover">
+                                <span class="absolute top-1 right-1 rounded bg-indigo-500/85 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-white">Future</span>
+                            </div>
+                        </div>
+                        {{-- Progress --}}
+                        <div class="min-w-0 flex-1">
+                            <div class="text-[11px] font-semibold uppercase tracking-wider text-indigo-300/80">Toward your dream physique</div>
+                            <div class="mt-0.5 font-display text-2xl font-bold leading-none text-gray-100">
+                                {{ $futureSelf['pct'] !== null ? $futureSelf['pct'].'%' : 'Tracking' }}<span class="ml-1 text-sm font-normal text-gray-500">there</span>
+                            </div>
+                            @if ($futureSelf['pct'] !== null)
+                                <div class="mt-2.5 h-2 rounded-full bg-white/10 overflow-hidden">
+                                    <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style="width: {{ max(3, min(100, $futureSelf['pct'])) }}%"></div>
                                 </div>
                             @endif
-                        </div>
-                        @if ($futureSelf['pct'] !== null)
-                            <div class="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
-                                <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style="width: {{ max(3, min(100, $futureSelf['pct'])) }}%"></div>
+                            <div class="mt-2 flex items-center gap-1.5 text-[11px] text-gray-500">
+                                @if ($futureSelf['adherence'] !== null)
+                                    <span class="font-semibold text-cyan-300">{{ $futureSelf['adherence'] }}%</span> consistent ·
+                                @endif
+                                <span class="text-indigo-300/70 group-active:text-indigo-200">open Physique →</span>
                             </div>
-                        @endif
-                        <p class="mt-2.5 text-[11px] text-gray-500 leading-relaxed">Your future self advances as you stay consistent. Keep showing up and the gap closes.</p>
+                        </div>
                     </div>
                 @else
-                    {{-- No goal yet → the emotional CTA --}}
-                    <div class="p-6 md:p-8 text-center">
-                        <h2 class="font-display text-xl md:text-2xl font-bold text-gray-100">Meet your future self</h2>
-                        <p class="mt-2 text-sm text-gray-400 max-w-md mx-auto leading-relaxed">Upload a photo and Titan renders your dream physique — a living image that advances toward the goal as you stay consistent. It's the whole point.</p>
-                        <span class="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-500/90 px-4 py-2 text-sm font-semibold text-white group-active:bg-indigo-400">Create your dream physique →</span>
+                    {{-- No goal yet → compact CTA --}}
+                    <div class="flex items-center gap-4">
+                        <div class="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-indigo-500/15">
+                            <svg class="h-8 w-8 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.5-4.5a2 2 0 012.8 0L16 16m-2-2l1.5-1.5a2 2 0 012.8 0L20 14M4 6h16v12H4z"/></svg>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <h2 class="font-display text-lg font-bold text-gray-100">Meet your future self</h2>
+                            <p class="mt-0.5 text-[13px] leading-snug text-gray-400">Upload a photo and Titan renders your dream physique — it advances as you stay consistent.</p>
+                        </div>
+                        <span class="hidden shrink-0 rounded-xl bg-indigo-500/90 px-3.5 py-2 text-sm font-semibold text-white group-active:bg-indigo-400 sm:inline-block">Create →</span>
                     </div>
                 @endif
             </div>
