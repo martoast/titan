@@ -62,16 +62,40 @@ class Readiness
             ->orderByDesc('id')
             ->first();
 
-        return self::fromData($history, $today, $sleep);
+        // Cycle-aware: in the luteal phase resting HR runs a few bpm higher for normal hormonal
+        // reasons. Normalise today's RHR by her own measured phase elevation so readiness doesn't
+        // false-alarm every luteal phase. Only kicks in with enough same-phase history.
+        $rhrOffset = 0.0;
+        $cycleNote = null;
+        $cyclePhase = null;
+        if (class_exists(\App\Support\Cycle::class) && \App\Support\Cycle::available($profile)) {
+            $adj = \App\Support\Cycle::readinessRhrOffset($profile, Carbon::parse($date));
+            if ($adj) {
+                $rhrOffset = $adj['offset'];
+                $cycleNote = $adj['note'];
+                $cyclePhase = $adj['phase'];
+            }
+        }
+
+        $result = self::fromData($history, $today, $sleep, $rhrOffset);
+
+        if ($rhrOffset > 0 && $cycleNote) {
+            $result['note'] = trim($result['note'].' '.$cycleNote);
+            $result['cycle_adjusted'] = true;
+            $result['cycle_phase'] = $cyclePhase;
+        }
+
+        return $result;
     }
 
     /**
      * Pure computation over already-loaded data (used by compute() and directly testable).
      *
      * @param  Collection<int,RecoveryLog>  $history  recovery logs up to & including the target date, oldest→newest
+     * @param  float  $rhrOffset  bpm to subtract from TODAY's resting HR before scoring (cycle phase normalisation; 0 = none)
      * @return array{score:int|null, label:string, note:string, components:array<string,int>, provisional:bool}
      */
-    public static function fromData(Collection $history, ?RecoveryLog $today, ?SleepLog $sleep): array
+    public static function fromData(Collection $history, ?RecoveryLog $today, ?SleepLog $sleep, float $rhrOffset = 0.0): array
     {
         $history = $history->sortBy('logged_at')->values();
         $components = [];
@@ -110,7 +134,9 @@ class Readiness
             $base = $rhrSeries->slice(0, max(0, $rhrSeries->count() - 1));
             $baseMean = $base->count() ? $base->avg() : $rhrSeries->avg();
             $baseSd = self::std($base->count() ? $base : $rhrSeries, $baseMean);
-            $zRhr = $baseSd > 1e-6 ? -((float) $today->resting_hr - $baseMean) / $baseSd : 0.0;
+            // Phase-normalise TODAY's RHR only (baseline untouched): a luteal elevation is expected.
+            $effectiveRhr = max(1.0, (float) $today->resting_hr - $rhrOffset);
+            $zRhr = $baseSd > 1e-6 ? -($effectiveRhr - $baseMean) / $baseSd : 0.0;
             $components['rhr'] = ['score' => self::logistic($zRhr), 'weight' => 0.25];
         }
 

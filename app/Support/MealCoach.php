@@ -36,11 +36,48 @@ class MealCoach
     public static function targets(Profile $profile): array
     {
         $set = $profile->settings['macro_targets'] ?? [];
+        $calories = (int) ($set['calories'] ?? self::DEFAULT_TARGETS['calories']);
+        $protein = (int) ($set['protein_g'] ?? self::DEFAULT_TARGETS['protein_g']);
 
-        return [
-            'calories' => (int) ($set['calories'] ?? self::DEFAULT_TARGETS['calories']),
-            'protein_g' => (int) ($set['protein_g'] ?? self::DEFAULT_TARGETS['protein_g']),
-        ];
+        // Cycle-aware: the luteal phase raises BMR ~5–10%, so nudge calories up (protein need is
+        // bodyweight-driven, so it holds steady). Only when she tracks her cycle.
+        $calories = (int) round($calories * self::cycleCalorieMultiplier($profile));
+
+        return ['calories' => $calories, 'protein_g' => $protein];
+    }
+
+    /** Luteal-phase energy bump (mid-range of the 5–10% literature); 1.0 otherwise. */
+    private static function cycleCalorieMultiplier(Profile $profile): float
+    {
+        $s = self::cyclePhase($profile);
+
+        return $s === 'luteal' ? 1.08 : 1.0;
+    }
+
+    /** Current cycle phase, or null when she doesn't track a cycle / has no data. */
+    private static function cyclePhase(Profile $profile): ?string
+    {
+        if (! class_exists(Cycle::class) || ! Cycle::available($profile)) {
+            return null;
+        }
+        try {
+            $s = Cycle::status($profile);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return ($s['has_data'] ?? false) ? $s['phase'] : null;
+    }
+
+    /** Phase-specific nutrition guidance (iron on the period, more fuel in luteal, etc.). */
+    public static function cycleNote(Profile $profile): ?string
+    {
+        return match (self::cyclePhase($profile)) {
+            'menstrual' => 'On your period: iron draws down with bleeding — favour iron-rich foods (red meat, lentils, spinach) with a little vitamin C to absorb it, and keep protein steady.',
+            'luteal' => "Luteal phase: your body burns a bit more now, so I've nudged your calorie target up ~8% — eating a touch more is normal. Cravings are physiological; lean into protein and complex carbs.",
+            'follicular', 'fertile', 'ovulation' => 'Follicular phase: insulin sensitivity and energy are high — a great window to fuel harder training.',
+            default => null,
+        };
     }
 
     /** Today's meal slot times (Carbon), evenly spaced across the eating window. */
@@ -81,6 +118,7 @@ class MealCoach
         $targets = self::targets($profile);
         $plan = self::plan($profile);
         $schedule = self::schedule($profile, $day);
+        $cycleNote = self::cycleNote($profile);
 
         // Per-meal share = what's LEFT of the daily target, split over the meals still to come.
         $remainingSlots = max(1, $plan['meals'] - $logged);
@@ -94,7 +132,7 @@ class MealCoach
 
         if ($nextAt === null) {
             return self::pack('done', 'All meals in', null, null, null, $logged, $plan['meals'], $consumed, $targets, $thisMeal,
-                "You've hit your meals for today — nicely fuelled. Keep this rhythm tomorrow.");
+                "You've hit your meals for today — nicely fuelled. Keep this rhythm tomorrow.", $cycleNote);
         }
 
         $diffMin = (int) round($now->diffInSeconds($nextAt, false) / 60);   // negative = past due
@@ -116,17 +154,17 @@ class MealCoach
         }
 
         return self::pack($status, $label, $nextAt->toIso8601String(), $diffMin > 0 ? $diffMin : 0,
-            $diffMin < 0 ? -$diffMin : null, $logged, $plan['meals'], $consumed, $targets, $thisMeal, $advice);
+            $diffMin < 0 ? -$diffMin : null, $logged, $plan['meals'], $consumed, $targets, $thisMeal, $advice, $cycleNote);
     }
 
-    private static function pack($status, $label, $nextAt, $inMin, $overdue, $logged, $planned, $consumed, $target, $thisMeal, $advice): array
+    private static function pack($status, $label, $nextAt, $inMin, $overdue, $logged, $planned, $consumed, $target, $thisMeal, $advice, $cycleNote = null): array
     {
         return [
             'status' => $status, 'label' => $label,
             'next_at' => $nextAt, 'next_in_min' => $inMin, 'overdue_min' => $overdue,
             'meals_logged' => $logged, 'meals_planned' => $planned,
             'consumed' => $consumed, 'target' => $target, 'this_meal' => $thisMeal,
-            'advice' => $advice,
+            'advice' => $advice, 'cycle_note' => $cycleNote,
         ];
     }
 

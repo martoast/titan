@@ -163,6 +163,9 @@
                         <div class="mt-1 font-display text-3xl font-bold nums {{ $mTone[2] }} leading-none" x-text="display"></div>
                     @endif
                     <p class="mt-1.5 text-sm text-gray-300 leading-relaxed">{{ $meal['advice'] }}</p>
+                    @if (! empty($meal['cycle_note']))
+                        <p class="mt-1.5 text-xs text-rose-200/80 leading-relaxed">🌙 {{ $meal['cycle_note'] }}</p>
+                    @endif
                 </div>
                 @if ($meal['status'] !== 'done')
                     <div class="shrink-0 text-right">

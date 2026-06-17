@@ -220,6 +220,7 @@ class Cycle
             ->get(['logged_at', 'resting_hr', 'hrv_ms']);
 
         $buckets = [];
+        $allRhr = [];
         foreach ($logs as $log) {
             $p = self::phaseOn($profile, Carbon::parse($log->logged_at));
             if (! $p) {
@@ -228,7 +229,11 @@ class Cycle
             $key = $p['phase'] === 'ovulation' || $p['phase'] === 'fertile' ? 'follicular' : $p['phase'];   // fold sparse phases
             $buckets[$key]['rhr'][] = $log->resting_hr;
             $buckets[$key]['hrv'][] = $log->hrv_ms;
+            if (is_numeric($log->resting_hr)) {
+                $allRhr[] = $log->resting_hr;
+            }
         }
+        $overallRhr = $allRhr ? round(array_sum($allRhr) / count($allRhr), 1) : null;
 
         foreach ($buckets as $phase => $vals) {
             $rhr = array_values(array_filter($vals['rhr'] ?? [], 'is_numeric'));
@@ -250,7 +255,48 @@ class Cycle
             }
         }
 
-        return ['by_phase' => $by, 'luteal_rhr_delta' => $delta, 'note' => $note];
+        return ['by_phase' => $by, 'overall_rhr' => $overallRhr, 'luteal_rhr_delta' => $delta, 'note' => $note];
+    }
+
+    /**
+     * Phase-aware readiness correction. The luteal phase raises resting HR by a few bpm for
+     * normal hormonal reasons — so without this, a woman's readiness would dip every luteal
+     * phase as a FALSE alarm. We return how much today's phase elevates her resting HR above
+     * her own all-phase average (from her own logged data), so Readiness can normalise today's
+     * RHR before scoring. We only ever NEUTRALISE an elevation (offset ≥ 0) — never inflate a
+     * naturally well-recovered phase. Returns null until there's enough same-phase history.
+     *
+     * @return array{phase:string,offset:float,note:?string}|null
+     */
+    public static function readinessRhrOffset(Profile $profile, ?Carbon $date = null): ?array
+    {
+        $status = self::status($profile, $date);
+        if (empty($status['has_data'])) {
+            return null;
+        }
+        $phase = $status['phase'];
+        $bucket = in_array($phase, ['ovulation', 'fertile'], true) ? 'follicular' : $phase;
+
+        $rec = self::recoveryByPhase($profile);
+        $overall = $rec['overall_rhr'] ?? null;
+        $phaseRhr = $rec['by_phase'][$bucket]['rhr'] ?? null;
+        $n = $rec['by_phase'][$bucket]['n'] ?? 0;
+
+        // Need a real same-phase sample before trusting the correction.
+        if ($overall === null || $phaseRhr === null || $n < 3) {
+            return null;
+        }
+
+        $offset = max(0.0, round($phaseRhr - $overall, 1));   // only neutralise elevations
+        if ($offset < 1.0) {
+            return ['phase' => $phase, 'offset' => 0.0, 'note' => null];
+        }
+
+        return [
+            'phase' => $phase,
+            'offset' => $offset,
+            'note' => "Adjusted for your {$status['phase_label']} phase, where your resting HR naturally runs about {$offset} bpm higher — so this isn't read as poor recovery.",
+        ];
     }
 
     // ---- Logging helpers (shared by web + coach + MCP) ------------------------
