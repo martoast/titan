@@ -584,6 +584,14 @@ function buildReview(d) {
     }
     if (d.headline) { const h = document.createElement('div'); h.className = 'tcard-review-headline'; h.textContent = d.headline; el.appendChild(h); }
 
+    // Toward the dream physique — the north star, shown right in the review.
+    if (d.physique) {
+        const p = document.createElement('div'); p.className = 'tcard-review-phys';
+        const dl = (d.physique.step_delta != null && d.physique.step_delta > 0) ? ` · +${d.physique.step_delta}% this week` : '';
+        p.innerHTML = `<span class="tcard-review-physpct">${d.physique.step_pct}%</span> to your dream physique<span class="tcard-review-physsub">${d.physique.verdict_label || ''}${dl}</span>`;
+        el.appendChild(p);
+    }
+
     (d.metrics || []).forEach(m => {
         const row = document.createElement('div'); row.className = 'tcard-review-row';
         const dot = document.createElement('i'); dot.style.background = sColor(m.state);

@@ -52,11 +52,27 @@ class WeeklyReviewCommand extends Command
                 $lead = $score !== null
                     ? 'Week score '.$score.($delta ? ' ('.($delta > 0 ? '+' : '').$delta.' vs last week)' : '').'. '
                     : '';
+                // Lead the physique north star — staying on track to the dream physique is the point.
+                $phys = '';
+                if (! empty($review['physique'])) {
+                    $p = $review['physique'];
+                    $phys = " You're {$p['step_pct']}% to your physique";
+                    $phys .= (! empty($p['step_delta']) && $p['step_delta'] > 0) ? " (+{$p['step_delta']}% this week)." : '.';
+                }
                 $streak = $review['streak'] >= 2 ? " · {$review['streak']}-week streak 🔥" : '';
                 $bits = collect($review['metrics'])->take(2)->map(fn ($m) => $m['label'].' '.$m['value'])->implode(' · ');
-                $body = trim($lead.$review['headline'].' — '.$bits.$streak.'. Tap for the full review.');
+                $body = trim($lead.$review['headline'].'.'.$phys.' '.$bits.$streak.' Tap for the full review.');
 
-                $notifications->notify($profile, '📊 Your week in review', Str::limit($body, 180), '/coach', 'review');
+                $notifications->notify($profile, '📊 Your week in review', Str::limit($body, 200), '/coach', 'review');
+
+                // Email the full review too (reaches you even without push enabled).
+                if ($email = $profile->user?->email) {
+                    try {
+                        \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\WeeklyReviewMail($profile, $review));
+                    } catch (\Throwable $e) {
+                        Log::warning('[coach] weekly review email failed', ['profile' => $profile->id, 'error' => $e->getMessage()]);
+                    }
+                }
 
                 $settings = $profile->settings ?? [];
                 $settings['nudge_sent']['review'] = $weekKey;
@@ -72,13 +88,14 @@ class WeeklyReviewCommand extends Command
         return self::SUCCESS;
     }
 
+    /** All profiles — the weekly review goes out by email too, so it isn't limited to push-subscribers. */
     private function resolveProfiles()
     {
         if ($id = $this->option('profile')) {
-            return Profile::where('id', $id)->get();
+            return Profile::with('user')->where('id', $id)->get();
         }
 
-        return Profile::whereIn('id', PushSubscription::query()->distinct()->pluck('profile_id'))->get();
+        return Profile::with('user')->orderBy('id')->get();
     }
 
     /** @return array<int,string> schedule line for routes/console.php */

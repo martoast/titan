@@ -92,7 +92,23 @@ class CoachNudge
             default => ['💪 Make today count', "A session today moves you toward your goal. Tell me what you're training and I'll coach you through it and log it."],
         };
 
-        return ['title' => $title, 'body' => $body, 'url' => '/coach', 'type' => 'training', 'key' => 'train:'.$now->toDateString()];
+        return ['title' => $title, 'body' => $body.self::goalHook($profile), 'url' => '/coach', 'type' => 'training', 'key' => 'train:'.$now->toDateString()];
+    }
+
+    /** A short reference to the dream physique to tie a nudge back to the north star. */
+    private static function goalHook(Profile $profile): string
+    {
+        if (! class_exists(\App\Support\PhysiqueProgress::class)) {
+            return '';
+        }
+        $a = rescue(fn () => \App\Support\PhysiqueProgress::assess($profile), null, false);
+        if (! $a) {
+            return '';
+        }
+
+        return $a['verdict'] === 'behind'
+            ? " You're {$a['step_pct']}% to your physique — let's not lose ground."
+            : " Another step toward your physique ({$a['step_pct']}% there).";
     }
 
     /** A cycle heads-up when a period is a day or two out (women who track it). */

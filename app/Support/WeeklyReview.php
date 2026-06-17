@@ -48,9 +48,24 @@ class WeeklyReview
             }
         }
 
+        // Progress toward the dream physique, with the step gained THIS week vs last week's snapshot.
+        $physique = null;
+        if ($p = $m['physique']) {
+            $prevStep = $prevM['physique']['step_pct'] ?? null;
+            $physique = [
+                'step_pct' => $p['step_pct'],
+                'step_delta' => $prevStep !== null ? $p['step_pct'] - $prevStep : null,
+                'verdict' => $p['verdict'],
+                'verdict_label' => $p['verdict_label'],
+                'eta_weeks' => $p['eta_weeks'],
+                'description' => $p['description'],
+            ];
+        }
+
         return [
             'range' => self::range($weekStart, $end),
             'headline' => self::headline($score),
+            'physique' => $physique,
             'score' => $score,
             'score_delta' => ($prev && $prev->score !== null && $score !== null) ? $score - $prev->score : null,
             'streak' => self::streak($profile, $weekStart, $score),
@@ -92,7 +107,7 @@ class WeeklyReview
     {
         $start = $end->copy()->subDays(7);
         $prevStart = $start->copy()->subDays(7);
-        $m = ['have' => false, 'training' => null, 'nutrition' => null, 'sleep' => null, 'recovery' => null, 'weight' => null, 'lifts_improving' => false];
+        $m = ['have' => false, 'training' => null, 'nutrition' => null, 'sleep' => null, 'recovery' => null, 'weight' => null, 'physique' => null, 'lifts_improving' => false];
 
         if (class_exists(\App\Models\Workout::class)) {
             $sessions = $profile->workouts()->whereBetween('performed_at', [$start, $end])->count();
@@ -154,6 +169,14 @@ class WeeklyReview
                 $m['have'] = true;
                 $kg = round((float) $latest->weight_kg, 1);
                 $m['weight'] = ['kg' => $kg, 'prior' => $prior ? round((float) $prior->weight_kg, 1) : null, 'delta' => $prior ? round($kg - (float) $prior->weight_kg, 1) : null];
+            }
+        }
+
+        // Progress toward the dream physique — the north star. Enriches the review; doesn't gate it.
+        if (class_exists(\App\Support\PhysiqueProgress::class)) {
+            $pp = rescue(fn () => \App\Support\PhysiqueProgress::assess($profile), null, false);
+            if ($pp) {
+                $m['physique'] = ['step_pct' => $pp['step_pct'], 'verdict' => $pp['verdict'], 'verdict_label' => $pp['verdict_label'], 'eta_weeks' => $pp['eta_weeks'], 'description' => $pp['description']];
             }
         }
 

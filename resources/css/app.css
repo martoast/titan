@@ -312,6 +312,9 @@ body {
 .tcard-review-spark { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
 .tcard-review-spark svg { display: block; }
 .tcard-review-sparklbl { font-size: 0.62rem; color: #6b7280; }
+.tcard-review-phys { margin-top: 0.7rem; border-radius: 0.7rem; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); padding: 0.55rem 0.75rem; font-size: 0.82rem; color: #c7d2fe; }
+.tcard-review-physpct { font-family: var(--font-display); font-weight: 800; color: #a5b4fc; }
+.tcard-review-physsub { display: block; font-size: 0.7rem; color: #818cf8; margin-top: 0.1rem; }
 .tcard-review-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .tcard-review-row:first-of-type { margin-top: 0.7rem; }
 .tcard-review-row i { width: 0.5rem; height: 0.5rem; border-radius: 999px; flex-shrink: 0; }

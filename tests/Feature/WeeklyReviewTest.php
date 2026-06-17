@@ -100,6 +100,22 @@ class WeeklyReviewTest extends TestCase
         $this->assertSame(4, $snap->metrics['training']['sessions']);
     }
 
+    public function test_review_references_the_dream_physique_and_emails_it(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $u = $this->activeWeek();
+        $p = $u->profile;
+        $goal = $p->physiqueGoals()->create(['description' => 'Lean and athletic', 'is_active' => true, 'prompt' => 'x', 'source_photo_path' => 's.png', 'goal_image_path' => 'g.png']);
+        $p->livingGoalRenders()->create(['physique_goal_id' => $goal->id, 'image_path' => 'r.png', 'step_pct' => 40, 'adherence' => 0.7, 'adherence_breakdown' => []]);
+
+        $r = \App\Support\WeeklyReview::compile($p->refresh());
+        $this->assertNotNull($r['physique']);
+        $this->assertSame(40, $r['physique']['step_pct']);
+
+        $this->artisan('coach:weekly-review')->assertSuccessful();
+        \Illuminate\Support\Facades\Mail::assertSent(\App\Mail\WeeklyReviewMail::class);
+    }
+
     public function test_week_over_week_delta_and_streak_from_prior_snapshots(): void
     {
         $p = $this->activeWeek()->profile;
