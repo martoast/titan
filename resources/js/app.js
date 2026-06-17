@@ -356,6 +356,49 @@ function buildMacros(d) {
     return el;
 }
 
+// Athlete score: one fitness number from VO₂max + recovery + strength + activity.
+function buildFitness(d) {
+    const score = Number(d.score) || 0;
+    const color = score >= 70 ? '#34d399' : score >= 40 ? '#fbbf24' : '#fb7185';
+    const el = document.createElement('div'); el.className = 'tcard tcard-fitness';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = 'Athlete score'; el.appendChild(head);
+
+    const main = document.createElement('div'); main.className = 'tcard-fitness-main';
+    const left = document.createElement('div'); left.className = 'tcard-fitness-scorewrap';
+    const num = document.createElement('div'); num.className = 'tcard-fitness-num'; num.style.color = color; num.textContent = score;
+    const outof = document.createElement('span'); outof.className = 'tcard-fitness-outof'; outof.textContent = '/100';
+    num.appendChild(outof);
+    const grade = document.createElement('div'); grade.className = 'tcard-fitness-grade'; grade.style.color = color; grade.textContent = d.grade || '';
+    left.append(num, grade);
+    main.appendChild(left);
+    if (d.vo2max != null) {
+        const vo2 = document.createElement('div'); vo2.className = 'tcard-fitness-vo2';
+        let html = `<div class="tcard-fitness-vo2num">${d.vo2max}<span> VO₂max</span></div>`;
+        if (d.fitness_age != null) html += `<div class="tcard-fitness-vo2sub">fitness age ${d.fitness_age}${d.chrono_age != null ? ` · you're ${d.chrono_age}` : ''}</div>`;
+        vo2.innerHTML = html;
+        main.appendChild(vo2);
+    }
+    el.appendChild(main);
+
+    if (Array.isArray(d.pillars) && d.pillars.length) {
+        const wrap = document.createElement('div'); wrap.className = 'tcard-fitness-pillars';
+        d.pillars.forEach(p => {
+            const ps = Number(p.score) || 0;
+            const pc = ps >= 70 ? '#34d399' : ps >= 40 ? '#fbbf24' : '#fb7185';
+            const row = document.createElement('div'); row.className = 'tcard-fitness-pillar';
+            const top = document.createElement('div'); top.className = 'tcard-fitness-ptop';
+            top.innerHTML = `<span>${p.label || ''}${p.detail ? ` <i>${p.detail}</i>` : ''}</span><span class="tcard-fitness-pscore">${ps}</span>`;
+            const bar = document.createElement('div'); bar.className = 'tcard-fitness-ptrack';
+            const fill = document.createElement('div'); fill.style.width = Math.max(2, ps) + '%'; fill.style.background = pc;
+            bar.appendChild(fill);
+            row.append(top, bar); wrap.appendChild(row);
+        });
+        el.appendChild(wrap);
+    }
+    if (d.caption) { const c = document.createElement('div'); c.className = 'tcard-bioage-caption'; c.textContent = d.caption; el.appendChild(c); }
+    return el;
+}
+
 function renderCards(root) {
     root.querySelectorAll('pre > code.language-titan-card').forEach((code) => {
         const pre = code.parentElement;
@@ -363,7 +406,8 @@ function renderCards(root) {
         let d;
         try { d = JSON.parse(code.textContent); } catch (_) { return; } // leave malformed blocks as code
         let card = null;
-        if (d.type === 'readiness' || d.type === 'ring') card = buildRing(d.score, d.label, d.caption);
+        if (d.type === 'fitness' || d.type === 'athlete') card = buildFitness(d);
+        else if (d.type === 'readiness' || d.type === 'ring') card = buildRing(d.score, d.label, d.caption);
         else if (d.type === 'stats' || d.type === 'vitals') card = buildStats(d.title, d.items);
         else if (d.type === 'stat' || d.type === 'metric') card = buildStat(d);
         else if (d.type === 'sparkline' || d.type === 'trend') card = buildSparkline(d);

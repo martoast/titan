@@ -237,6 +237,22 @@ body {
 .tcard-macros-mtrack > div { height: 100%; border-radius: 999px; }
 .tcard-macros-foot { margin-top: 0.8rem; font-size: 0.78rem; color: #6b7280; }
 
+/* ---- Athlete score card ---- */
+.tcard-fitness-main { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.tcard-fitness-num { font-family: var(--font-display); font-weight: 900; font-size: 2.9rem; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tcard-fitness-outof { font-size: 1rem; font-weight: 700; color: #6b7280; margin-left: 0.1rem; }
+.tcard-fitness-grade { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; margin-top: 0.2rem; }
+.tcard-fitness-vo2 { text-align: right; }
+.tcard-fitness-vo2num { font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; color: #f1f5f9; font-variant-numeric: tabular-nums; }
+.tcard-fitness-vo2num span { font-size: 0.7rem; font-weight: 600; color: #9ca3af; }
+.tcard-fitness-vo2sub { font-size: 0.72rem; color: #6b7280; margin-top: 0.15rem; }
+.tcard-fitness-pillars { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.6rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.85rem; }
+.tcard-fitness-ptop { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; color: #cbd5e1; }
+.tcard-fitness-ptop i { font-style: normal; color: #6b7280; font-size: 0.72rem; }
+.tcard-fitness-pscore { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums; }
+.tcard-fitness-ptrack { height: 0.35rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 0.3rem; }
+.tcard-fitness-ptrack > div { height: 100%; border-radius: 999px; }
+
 /* Horizontal scrollers (chips, day strips) without an ugly bar, with iOS momentum. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }

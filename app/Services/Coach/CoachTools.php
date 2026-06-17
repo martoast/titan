@@ -204,6 +204,9 @@ class CoachTools
         if (class_exists(\App\Support\BiologicalAge::class)) {
             $tools[] = $this->fn('biological_age', "The Titan-age reveal: the user's biological age vs their actual age, from bloodwork (PhenoAge), VO₂max fitness age and wearable levers. Returns a ready-made `bioage` card. Use for any 'how old is my body / biological age / Titan age / am I aging well' question.", [], []);
         }
+        if (class_exists(\App\Support\AthleteScore::class)) {
+            $tools[] = $this->fn('fitness_score', "The overall Athlete Score (0–100) with VO₂max as the headline, composed from cardio, recovery, strength and activity. Returns a ready-made `fitness` card. Use for any 'how fit am I / my fitness / VO₂max / rate me as an athlete' question.", [], []);
+        }
 
         // --- Skill cards: ready-made designed components for the common questions ---
         if (class_exists(\App\Support\DailyFocus::class)) {
@@ -262,6 +265,7 @@ class CoachTools
             'update_pantry' => 'Updating your pantry',
             'show_trend' => 'Charting your trend',
             'biological_age' => 'Calculating your biological age',
+            'fitness_score' => 'Scoring your fitness',
             'daily_checkin' => 'Pulling your check-in',
             'sleep_detail' => 'Reading last night',
             'strain_status' => 'Checking your strain',
@@ -323,6 +327,7 @@ class CoachTools
             'update_pantry' => $this->updatePantry($args),
             'show_trend' => $this->showTrend($args),
             'biological_age' => $this->biologicalAge(),
+            'fitness_score' => $this->fitnessScore(),
             'daily_checkin' => $this->dailyCheckin(),
             'sleep_detail' => $this->sleepDetail(),
             'strain_status' => $this->strainStatus(),
@@ -1127,6 +1132,37 @@ class CoachTools
         ];
 
         return ['card' => $card, '_show' => 'Open with this `markers` card inside a ```titan-card fence, then briefly explain any flagged marker. Never diagnose; suggest a doctor for anything concerning.'];
+    }
+
+    private function fitnessScore(): mixed
+    {
+        if (! class_exists(\App\Support\AthleteScore::class)) {
+            return ['error' => 'Fitness scoring is not available.'];
+        }
+        $a = \App\Support\AthleteScore::assess($this->profile);
+        if (! $a) {
+            return ['note' => "I can't score your fitness yet — it needs at least a VO₂max (from a wearable cardio session) or a couple of fitness signals (recovery, training, steps). Connect the band or log a run/lift and I'll have it."];
+        }
+
+        $card = [
+            'type' => 'fitness',
+            'score' => $a['score'],
+            'grade' => $a['grade'],
+            'vo2max' => $a['vo2max'],
+            'fitness_age' => $a['fitness_age'],
+            'chrono_age' => $a['chrono_age'] !== null ? (int) round($a['chrono_age']) : null,
+            'pillars' => array_map(fn ($p) => ['label' => $p['label'], 'score' => $p['score'], 'detail' => $p['detail']], $a['pillars']),
+            'caption' => $a['label'].($a['confidence'] !== 'high' ? ' · '.$a['confidence'].' confidence' : ''),
+        ];
+
+        return [
+            'score' => $a['score'],
+            'grade' => $a['grade'],
+            'vo2max' => $a['vo2max'],
+            'confidence' => $a['confidence'],
+            'card' => $card,
+            '_show' => 'Open your reply with this `fitness` card (emit the `card` object inside a ```titan-card fence), then a short read: name their strongest pillar and the one to work on. If confidence is not "high", note that a VO₂max session (or more logged data) would sharpen it.',
+        ];
     }
 
     // ---- Biological age — the Whoop-style "skill" card ------------------------
