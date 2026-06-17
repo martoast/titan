@@ -24,7 +24,7 @@ class OnboardingTest extends TestCase
         $user = User::factory()->create();   // factory onboards by default
         $this->actingAs($user)->get('/dashboard')->assertOk();
         // Visiting onboarding again bounces them home.
-        $this->actingAs($user)->get('/onboarding')->assertRedirect(route('dashboard'));
+        $this->actingAs($user)->get('/onboarding')->assertRedirect(route('coach.index'));
     }
 
     public function test_completing_the_wizard_builds_the_profile_and_targets(): void
@@ -52,7 +52,7 @@ class OnboardingTest extends TestCase
             'cycle_intent' => 'tracking',
         ]);
 
-        $resp->assertRedirect(route('dashboard'));
+        $resp->assertRedirect(route('coach.index'));
 
         $p = $user->refresh()->profile;
         $this->assertNotNull($p->onboarded_at);
@@ -92,7 +92,7 @@ class OnboardingTest extends TestCase
             'primary_goal' => 'lose_fat',
             'coach_tone' => 'balanced',
             'meals_per_day' => 3,
-        ])->assertRedirect(route('dashboard'));
+        ])->assertRedirect(route('coach.index'));
 
         $p = $user->refresh()->profile;
         $this->assertEqualsWithDelta(180.3, (float) $p->height_cm, 0.2);

@@ -6,7 +6,7 @@ use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return auth()->check() ? redirect('/dashboard') : view('welcome');
+    return auth()->check() ? redirect('/coach') : view('welcome');
 });
 
 Route::middleware(['auth'])->group(function () {

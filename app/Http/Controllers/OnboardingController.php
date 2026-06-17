@@ -29,7 +29,7 @@ class OnboardingController extends Controller
     {
         $profile = $request->user()->ensureProfile();
         if ($profile->isOnboarded()) {
-            return redirect()->route('dashboard');
+            return redirect()->route('coach.index');
         }
 
         return view('onboarding.index', [
@@ -114,7 +114,7 @@ class OnboardingController extends Controller
             Cycle::startPeriod($profile, Carbon::parse($data['last_period']));
         }
 
-        return redirect()->route('dashboard')->with('status', "Welcome to Titan, {$data['display_name']} — your profile is ready.");
+        return redirect()->route('coach.index')->with('status', "Welcome to Titan, {$data['display_name']} — your profile is ready. Ask me anything.");
     }
 
     /**

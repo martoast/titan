@@ -28,7 +28,8 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        // The chat is the centre of Titan — land there, not the dashboard.
+        return redirect()->intended(route('coach.index', absolute: false));
     }
 
     /**

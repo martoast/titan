@@ -1,4 +1,4 @@
-<x-titan-layout title="Coach" subtitle="Your AI coach, grounded in all your data">
+<x-chat-shell title="Coach">
     @php
         $coachName = $profile->display_name ?: (auth()->user()?->name ?? 'you');
         $initialMessages = $messages->map(fn ($m) => [
@@ -10,10 +10,11 @@
         $scanUrl = $conversation ? "/coach/{$conversation->id}/scan" : '/coach/scan';
     @endphp
 
-    {{-- Today's briefing: the proactive coach speaking first. Latest stored morning/evening
-         briefing, grounded in real data, with a regenerate button. Mobile-first, dark. --}}
-    <div class="mb-4 rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.07] to-cyan-400/[0.04] p-4"
-         x-data="{ briefingOpen: true }">
+    <div class="flex h-full flex-col px-3 pb-2 pt-3 sm:px-4">
+    {{-- Today's briefing: the proactive coach speaking first. Collapsed by default so the chat
+         leads; one tap expands it. Grounded in real data, with a regenerate button. --}}
+    <div class="mb-3 shrink-0 rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.07] to-cyan-400/[0.04] p-3.5"
+         x-data="{ briefingOpen: false }">
         <div class="flex items-start gap-3">
             <div class="shrink-0 h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 grid place-items-center">
                 <svg class="h-5 w-5 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
@@ -51,7 +52,7 @@
 
     {{-- Full-height chat: fills viewport minus the sticky header and bottom tab bar.
          The shell reserves bottom space (main has pb-28); we sit above it. --}}
-    <div class="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-4 h-[calc(100dvh-20rem)] md:h-[calc(100dvh-16rem)]">
+    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[16rem_1fr]">
 
         {{-- Conversations sidebar — desktop only --}}
         <aside class="hidden lg:flex lg:flex-col rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden">
@@ -230,6 +231,7 @@
                 <p class="mt-2 text-[11px] text-gray-600">Coaching, not medical advice. For clinical concerns, see a doctor.</p>
             </div>
         </section>
+    </div>
     </div>
 
     <script>
@@ -451,4 +453,4 @@
             };
         }
     </script>
-</x-titan-layout>
+</x-chat-shell>
