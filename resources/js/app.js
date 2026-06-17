@@ -399,6 +399,51 @@ function buildFitness(d) {
     return el;
 }
 
+// Training program (mesocycle): focus muscles, the volume ramp that grows them, and the week's sessions.
+function buildProgram(d) {
+    const el = document.createElement('div'); el.className = 'tcard tcard-program';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = 'Program'; el.appendChild(head);
+    const name = document.createElement('div'); name.className = 'tcard-program-name'; name.textContent = d.name || 'Mesocycle'; el.appendChild(name);
+
+    const meta = document.createElement('div'); meta.className = 'tcard-program-meta';
+    (d.focus || []).forEach(f => { const c = document.createElement('span'); c.className = 'tcard-program-chip'; c.textContent = f; meta.appendChild(c); });
+    const wk = document.createElement('span'); wk.className = 'tcard-program-wk';
+    wk.textContent = `Week ${d.week}/${d.weeks}${d.phase ? ' · ' + d.phase : ''} · ${d.days_per_week}d/wk`;
+    meta.appendChild(wk); el.appendChild(meta);
+
+    // Focus volume ramp — the specialization made visible (sets per week, building then deload).
+    (d.ramp || []).forEach(r => {
+        const sets = (r.sets || []).map(Number);
+        if (!sets.length) return;
+        const max = Math.max(...sets, 1);
+        const row = document.createElement('div'); row.className = 'tcard-program-ramp';
+        const lbl = document.createElement('div'); lbl.className = 'tcard-program-rlbl';
+        lbl.innerHTML = `<span>${r.muscle}</span><span class="tcard-program-rmax">${Math.max(...sets)} sets/wk</span>`;
+        const bars = document.createElement('div'); bars.className = 'tcard-program-bars';
+        sets.forEach((s, i) => {
+            const last = i === sets.length - 1;
+            const b = document.createElement('div'); b.title = `Week ${i + 1}: ${s} sets`;
+            const fill = document.createElement('i'); fill.style.height = Math.max(6, s / max * 100) + '%';
+            fill.style.background = last ? '#4b5563' : '#a78bfa';   // deload dimmed
+            b.appendChild(fill); bars.appendChild(b);
+        });
+        row.append(lbl, bars); el.appendChild(row);
+    });
+
+    if (Array.isArray(d.days) && d.days.length) {
+        const wrap = document.createElement('div'); wrap.className = 'tcard-program-days';
+        d.days.forEach(day => {
+            const row = document.createElement('div'); row.className = 'tcard-program-day';
+            const l = document.createElement('div');
+            l.innerHTML = `<div class="tcard-program-dn">${day.name}</div><div class="tcard-program-ds">${day.summary || ''}</div>`;
+            const s = document.createElement('div'); s.className = 'tcard-program-dsets'; s.textContent = (day.sets || 0) + ' sets';
+            row.append(l, s); wrap.appendChild(row);
+        });
+        el.appendChild(wrap);
+    }
+    return el;
+}
+
 function renderCards(root) {
     root.querySelectorAll('pre > code.language-titan-card').forEach((code) => {
         const pre = code.parentElement;
@@ -406,7 +451,8 @@ function renderCards(root) {
         let d;
         try { d = JSON.parse(code.textContent); } catch (_) { return; } // leave malformed blocks as code
         let card = null;
-        if (d.type === 'fitness' || d.type === 'athlete') card = buildFitness(d);
+        if (d.type === 'program' || d.type === 'mesocycle') card = buildProgram(d);
+        else if (d.type === 'fitness' || d.type === 'athlete') card = buildFitness(d);
         else if (d.type === 'readiness' || d.type === 'ring') card = buildRing(d.score, d.label, d.caption);
         else if (d.type === 'stats' || d.type === 'vitals') card = buildStats(d.title, d.items);
         else if (d.type === 'stat' || d.type === 'metric') card = buildStat(d);

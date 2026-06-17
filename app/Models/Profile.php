@@ -139,6 +139,11 @@ class Profile extends Model
         return $this->hasMany(CycleLog::class);
     }
 
+    public function trainingPrograms(): HasMany
+    {
+        return $this->hasMany(TrainingProgram::class);
+    }
+
     /** Convenience: the "other" profile in the duo (the brother). */
     public function duoPartner(): ?Profile
     {

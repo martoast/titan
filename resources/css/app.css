@@ -253,6 +253,25 @@ body {
 .tcard-fitness-ptrack { height: 0.35rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 0.3rem; }
 .tcard-fitness-ptrack > div { height: 100%; border-radius: 999px; }
 
+/* ---- Training program (mesocycle) card ---- */
+.tcard-program-name { font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; color: #f1f5f9; line-height: 1.2; }
+.tcard-program-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.5rem; }
+.tcard-program-chip { border-radius: 999px; background: rgba(167,139,250,0.16); color: #c4b5fd; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.55rem; }
+.tcard-program-wk { font-size: 0.72rem; color: #9ca3af; }
+.tcard-program-ramp { display: flex; align-items: center; gap: 0.7rem; margin-top: 0.8rem; }
+.tcard-program-rlbl { width: 6.5rem; flex-shrink: 0; }
+.tcard-program-rlbl span:first-child { display: block; font-size: 0.8rem; font-weight: 600; color: #e5e7eb; }
+.tcard-program-rmax { font-size: 0.66rem; color: #6b7280; }
+.tcard-program-bars { flex: 1; display: flex; align-items: flex-end; gap: 3px; height: 2rem; }
+.tcard-program-bars > div { flex: 1; display: flex; align-items: flex-end; height: 100%; }
+.tcard-program-bars i { display: block; width: 100%; border-radius: 2px 2px 0 0; }
+.tcard-program-days { margin-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.6rem; display: flex; flex-direction: column; }
+.tcard-program-day { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.tcard-program-day:last-child { border-bottom: 0; }
+.tcard-program-dn { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; font-size: 0.85rem; }
+.tcard-program-ds { font-size: 0.72rem; color: #9ca3af; margin-top: 0.05rem; }
+.tcard-program-dsets { font-size: 0.72rem; color: #a78bfa; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+
 /* Horizontal scrollers (chips, day strips) without an ugly bar, with iOS momentum. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }

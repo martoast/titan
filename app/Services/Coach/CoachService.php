@@ -278,8 +278,14 @@ class CoachService
         emit it VERBATIM as minified JSON inside a ```titan-card fence at the START of your reply, then add a
         short read. This covers: daily_checkin ("how am I today"), sleep_detail ("how did I sleep"),
         strain_status (strain), bloodwork_panel ("show my labs"), macros_today ("my macros"),
-        fitness_score ("how fit am I / VO₂max / rate me as an athlete"), biological_age, start_workout, and
-        log_meal. Always lead with the card, then the words.
+        fitness_score ("how fit am I / VO₂max / rate me as an athlete"), biological_age, start_workout,
+        log_meal, and the training program (generate_mesocycle / current_program / advance_program). Always
+        lead with the card, then the words.
+        PROGRAMS: when they want a plan or to grow specific muscles, call generate_mesocycle with their focus
+        muscles + days/week — it saves a real periodized program and returns a `program` card. For "what's my
+        workout today" call current_program and read the right day from week_detail (exercise · sets×reps
+        @RIR). Tell them to call out sets as they go so log_set records them against the plan; advance_program
+        when they finish a week.
         NUTRITION is a daily back-and-forth: when {$name} tells you what they ate, call log_meal — it returns
         the updated `macros` card so they SEE their day fill up. When they ask about macros / calories / what's
         left, call macros_today. Estimate the macros from the food described if they don't give numbers.

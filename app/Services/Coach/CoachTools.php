@@ -192,6 +192,17 @@ class CoachTools
             'topic' => ['type' => 'string', 'description' => 'What they want to go deep on, in natural language (e.g. "break a chest plateau", "program a hypertrophy block", "cut to single-digit body fat", "intensity techniques").'],
         ], ['topic']);
 
+        if (class_exists(\App\Models\TrainingProgram::class)) {
+            $tools[] = $this->fn('generate_mesocycle', "Build and SAVE a real, periodized hypertrophy mesocycle (a multi-week training program): sessions with prescribed exercises, sets, reps and RIR; volume ramps week to week then deloads; and the user's FOCUS muscles get priority — more volume, trained first/fresh, more frequency, and a lengthened-position emphasis — to bring up lagging parts. Use whenever they want a program, a plan, or to grow specific muscles.", [
+                'focus' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Muscles to prioritise / bring up, e.g. ["chest","side delts","arms"]. Optional but the whole point of specialization.'],
+                'days_per_week' => ['type' => 'integer', 'description' => 'Training days per week, 2–6 (default 4).'],
+                'weeks' => ['type' => 'integer', 'description' => 'Mesocycle length 4–8 weeks incl. a deload (default 5).'],
+                'experience' => ['type' => 'string', 'enum' => ['beginner', 'intermediate', 'advanced'], 'description' => 'Training experience (sets the volume).'],
+            ], []);
+            $tools[] = $this->fn('current_program', "The user's active training program + the current week's sessions, as a `program` card. Use for 'what's my program / what's my workout today / which week am I on'. Read a specific day's exercises from week_detail.", [], []);
+            $tools[] = $this->fn('advance_program', 'Move the active program to the next week (call when they finish a week). Returns the new week as a `program` card.', [], []);
+        }
+
         if (class_exists(\App\Support\Pantry::class)) {
             $tools[] = $this->fn('get_pantry', 'See the food the user currently has on hand. Read this before suggesting meals so you only suggest things they can make.', [], []);
             $tools[] = $this->fn('update_pantry', "Update the kitchen inventory when the user says what they have or bought. mode add appends, replace overwrites, remove deletes.", [
@@ -266,6 +277,9 @@ class CoachTools
             'log_cardio' => 'Logging your cardio',
             'set_goal' => 'Updating your goal',
             'coaching_playbook' => 'Consulting the playbook',
+            'generate_mesocycle' => 'Building your program',
+            'current_program' => 'Pulling your program',
+            'advance_program' => 'Advancing your program',
             'get_pantry' => 'Checking your pantry',
             'update_pantry' => 'Updating your pantry',
             'show_trend' => 'Charting your trend',
@@ -329,6 +343,9 @@ class CoachTools
             'log_cardio' => $this->logCardio($args),
             'set_goal' => $this->setGoal($args),
             'coaching_playbook' => \App\Support\TrainingPlaybook::lookup((string) ($args['topic'] ?? '')) + ['_show' => 'Apply these principles in YOUR voice, tailored to this user\'s data, goal and level — don\'t just paste them. Be specific and prescriptive (sets, reps, RIR, calories, weeks). Honour the natural-only rail: never prescribe or advise PEDs/SARMs/diuretics/insulin.'],
+            'generate_mesocycle' => $this->generateMesocycle($args),
+            'current_program' => $this->currentProgram(),
+            'advance_program' => $this->advanceProgram(),
             'get_pantry' => $this->getPantry(),
             'update_pantry' => $this->updatePantry($args),
             'show_trend' => $this->showTrend($args),
@@ -1138,6 +1155,143 @@ class CoachTools
         ];
 
         return ['card' => $card, '_show' => 'Open with this `markers` card inside a ```titan-card fence, then briefly explain any flagged marker. Never diagnose; suggest a doctor for anything concerning.'];
+    }
+
+    // ---- Mesocycle generator — a real, followable program --------------------
+
+    private function generateMesocycle(array $args): mixed
+    {
+        if (! class_exists(\App\Models\TrainingProgram::class)) {
+            return ['error' => 'The program builder is not available.'];
+        }
+        $exp = $args['experience'] ?? (($this->profile->settings['activity_level'] ?? null) === 'active' ? 'advanced' : 'intermediate');
+        $build = \App\Support\MesocycleGenerator::build([
+            'focus' => $args['focus'] ?? [],
+            'days_per_week' => (int) ($args['days_per_week'] ?? 4),
+            'weeks' => (int) ($args['weeks'] ?? 5),
+            'experience' => $exp,
+        ]);
+
+        $this->profile->trainingPrograms()->where('is_active', true)->update(['is_active' => false]);
+        $program = $this->profile->trainingPrograms()->create([
+            'name' => $build['name'],
+            'focus' => $build['focus'],
+            'days_per_week' => $build['days_per_week'],
+            'weeks' => $build['weeks'],
+            'split' => $build['split'],
+            'experience' => $build['experience'],
+            'plan' => $build['plan'],
+            'volume' => $build['volume'],
+            'started_on' => Carbon::now()->toDateString(),
+            'current_week' => 1,
+            'is_active' => true,
+        ]);
+
+        return [
+            'ok' => true,
+            'program_id' => $program->id,
+            'name' => $program->name,
+            'card' => $this->programCard($program),
+            'week1_detail' => $this->weekDetail($program->currentWeek()),
+            '_show' => 'Lead with the `program` card. Then explain in your voice: which muscles you prioritised and WHY (more volume, trained first/fresh, more frequency, stretch emphasis — that\'s how a lagging muscle catches up), how the volume ramps to the peak week then deloads, and the RIR targets. Offer to walk them through Day 1 right now. When they train, log sets with log_set so we track progress against the plan.',
+        ];
+    }
+
+    private function currentProgram(): mixed
+    {
+        $program = class_exists(\App\Models\TrainingProgram::class)
+            ? $this->profile->trainingPrograms()->where('is_active', true)->latest('id')->first()
+            : null;
+        if (! $program) {
+            return ['note' => "No active program yet. Want me to build you a mesocycle? Tell me which muscles to bring up and how many days a week you can train, and I'll generate a real periodized plan."];
+        }
+
+        return [
+            'ok' => true,
+            'name' => $program->name,
+            'week' => $program->current_week,
+            'of' => $program->weeks,
+            'phase' => $program->currentWeek()['phase'] ?? '',
+            'card' => $this->programCard($program),
+            'week_detail' => $this->weekDetail($program->currentWeek()),
+            '_show' => 'Lead with the `program` card. If they ask for a specific day ("what\'s my workout today / chest day"), read that day\'s exercises from week_detail as a clean list — exercise · sets×reps @RIR — and tell them to call out sets so you log them.',
+        ];
+    }
+
+    private function advanceProgram(): mixed
+    {
+        $program = class_exists(\App\Models\TrainingProgram::class)
+            ? $this->profile->trainingPrograms()->where('is_active', true)->latest('id')->first()
+            : null;
+        if (! $program) {
+            return ['error' => 'No active program to advance.'];
+        }
+        if ($program->current_week >= $program->weeks) {
+            return ['ok' => true, 'done' => true, 'message' => "That was the final (deload) week — the block is complete. Want me to build the next mesocycle? We can push the focus muscles further or rotate the emphasis."];
+        }
+        $program->update(['current_week' => $program->current_week + 1]);
+        $week = $program->currentWeek();
+
+        return [
+            'ok' => true,
+            'week' => $program->current_week,
+            'phase' => $week['phase'] ?? '',
+            'card' => $this->programCard($program),
+            'week_detail' => $this->weekDetail($week),
+            '_show' => 'Lead with the `program` card for the new week, then say what changed (more volume / tighter RIR, or — if deload — back off and recover). Read out the first session if they want it.',
+        ];
+    }
+
+    /** Build the `program` skill-card payload for a program's current week. */
+    private function programCard(\App\Models\TrainingProgram $program): array
+    {
+        $labels = \App\Support\MesocycleGenerator::muscleLabels();
+        $week = $program->currentWeek() ?? [];
+
+        $ramp = [];
+        foreach (($program->focus ?? []) as $m) {
+            if (! empty($program->volume[$m])) {
+                $ramp[] = ['muscle' => $labels[$m] ?? ucfirst($m), 'sets' => array_map('intval', $program->volume[$m])];
+            }
+        }
+
+        $days = [];
+        foreach (($week['days'] ?? []) as $d) {
+            $muscles = [];
+            $sets = 0;
+            foreach ($d['exercises'] as $e) {
+                $muscles[$e['muscle_label']] = true;
+                $sets += (int) $e['sets'];
+            }
+            $days[] = ['name' => $d['name'], 'summary' => implode(' · ', array_keys($muscles)), 'sets' => $sets];
+        }
+
+        return [
+            'type' => 'program',
+            'name' => $program->name,
+            'focus' => array_map(fn ($m) => $labels[$m] ?? ucfirst($m), $program->focus ?? []),
+            'days_per_week' => $program->days_per_week,
+            'weeks' => $program->weeks,
+            'week' => $program->current_week,
+            'phase' => $week['phase'] ?? '',
+            'ramp' => $ramp,
+            'days' => $days,
+        ];
+    }
+
+    /** A readable per-day exercise list for the current week (so the coach can read out any session). */
+    private function weekDetail(?array $week): array
+    {
+        $out = [];
+        foreach (($week['days'] ?? []) as $d) {
+            $lines = [];
+            foreach ($d['exercises'] as $e) {
+                $lines[] = "{$e['name']} — {$e['sets']}×{$e['reps']} @{$e['rir']}RIR".(isset($e['note']) ? " ({$e['note']})" : '');
+            }
+            $out[$d['name']] = $lines;
+        }
+
+        return $out;
     }
 
     private function fitnessScore(): mixed
