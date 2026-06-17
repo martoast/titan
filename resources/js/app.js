@@ -499,6 +499,40 @@ function buildMemory(d) {
     return el;
 }
 
+// Dream-physique progress: % to goal, on-track verdict, ETA — the north star.
+function buildPhysique(d) {
+    const vColor = { ahead: '#34d399', on_track: '#34d399', steady: '#fbbf24', behind: '#fb7185', just_started: '#9ca3af' };
+    const c = vColor[d.verdict] || '#818cf8';
+    const el = document.createElement('div'); el.className = 'tcard tcard-phys';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = 'Tracking to your dream physique'; el.appendChild(head);
+
+    const body = document.createElement('div'); body.className = 'tcard-phys-body';
+    const main = document.createElement('div'); main.className = 'tcard-phys-main';
+    const pctRow = document.createElement('div'); pctRow.className = 'tcard-phys-pctrow';
+    pctRow.innerHTML = `<span class="tcard-phys-pct" style="color:${c}">${d.step_pct}%</span><span class="tcard-phys-pctlbl">to your goal</span>`;
+    main.appendChild(pctRow);
+    const track = document.createElement('div'); track.className = 'tcard-phys-track';
+    const fill = document.createElement('div'); fill.style.width = Math.max(2, Math.min(100, d.step_pct)) + '%'; fill.style.background = c;
+    track.appendChild(fill); main.appendChild(track);
+    const pill = document.createElement('div'); pill.className = 'tcard-phys-verdict'; pill.style.color = c; pill.style.background = c + '22';
+    pill.textContent = d.verdict_label || ''; main.appendChild(pill);
+    if (d.eta_weeks != null) { const eta = document.createElement('div'); eta.className = 'tcard-phys-eta'; eta.textContent = `~${d.eta_weeks} week${d.eta_weeks === 1 ? '' : 's'} to goal at this pace`; main.appendChild(eta); }
+    body.appendChild(main);
+    if (d.goal_image) { const img = document.createElement('img'); img.className = 'tcard-phys-img'; img.src = d.goal_image; img.alt = 'Dream physique'; img.loading = 'lazy'; body.appendChild(img); }
+    el.appendChild(body);
+
+    const stats = [];
+    if (d.adherence_pct != null) stats.push(['Consistency', d.adherence_pct + '%']);
+    if (d.week_score != null) stats.push(['Week score', d.week_score]);
+    if (d.weight) stats.push(['Weight', d.weight.value + ' ' + d.weight.unit + (d.weight.delta != null && d.weight.delta !== 0 ? ` (${d.weight.delta > 0 ? '+' : ''}${d.weight.delta})` : '')]);
+    if (stats.length) {
+        const row = document.createElement('div'); row.className = 'tcard-phys-stats';
+        stats.forEach(([l, v]) => { const s = document.createElement('div'); s.innerHTML = `<span>${l}</span><b>${v}</b>`; row.appendChild(s); });
+        el.appendChild(row);
+    }
+    return el;
+}
+
 // Small SVG sparkline of weekly scores (0–100), last point emphasised.
 function reviewSparkline(scores, scoreColor) {
     const w = 84, h = 34, pad = 4, n = scores.length;
@@ -591,7 +625,8 @@ function renderCards(root) {
         let d;
         try { d = JSON.parse(code.textContent); } catch (_) { return; } // leave malformed blocks as code
         let card = null;
-        if (d.type === 'review') card = buildReview(d);
+        if (d.type === 'physique') card = buildPhysique(d);
+        else if (d.type === 'review') card = buildReview(d);
         else if (d.type === 'memory') card = buildMemory(d);
         else if (d.type === 'autoreg') card = buildAutoreg(d);
         else if (d.type === 'program' || d.type === 'mesocycle') card = buildProgram(d);

@@ -19,6 +19,9 @@ Route::middleware(['auth'])->group(function () {
         // Titan dashboard (home once logged in).
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
+        // Progress & trends — the visual longitudinal view around the dream physique.
+        Route::get('/progress', [\App\Http\Controllers\ProgressController::class, 'index'])->name('progress');
+
         // Breeze account settings (name / email / password) — distinct from the
         // health Profile model.
         Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

@@ -285,6 +285,22 @@ body {
 .tcard-autoreg-adj b { color: #9ca3af; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.3rem; }
 .tcard-autoreg-note { margin-top: 0.7rem; font-size: 0.82rem; color: #9ca3af; line-height: 1.45; }
 
+/* ---- Dream-physique progress card ---- */
+.tcard-phys-body { display: flex; gap: 0.9rem; align-items: stretch; margin-top: 0.7rem; }
+.tcard-phys-main { flex: 1; min-width: 0; }
+.tcard-phys-pctrow { display: flex; align-items: baseline; gap: 0.35rem; }
+.tcard-phys-pct { font-family: var(--font-display); font-weight: 900; font-size: 2.2rem; line-height: 1; letter-spacing: -0.02em; }
+.tcard-phys-pctlbl { font-size: 0.78rem; color: #9ca3af; }
+.tcard-phys-track { height: 0.45rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 0.5rem; }
+.tcard-phys-track > div { height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+.tcard-phys-verdict { display: inline-block; margin-top: 0.6rem; border-radius: 999px; padding: 0.15rem 0.6rem; font-family: var(--font-display); font-weight: 700; font-size: 0.72rem; }
+.tcard-phys-eta { font-size: 0.74rem; color: #9ca3af; margin-top: 0.4rem; }
+.tcard-phys-img { width: 74px; height: 96px; object-fit: cover; border-radius: 0.7rem; border: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
+.tcard-phys-stats { display: flex; gap: 1.2rem; margin-top: 0.85rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.7rem; }
+.tcard-phys-stats > div { display: flex; flex-direction: column; }
+.tcard-phys-stats span { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+.tcard-phys-stats b { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+
 /* ---- Weekly review card ---- */
 .tcard-review-eyebrow { font-family: var(--font-display); font-weight: 700; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; }
 .tcard-review-headline { font-family: var(--font-display); font-weight: 800; font-size: 1.05rem; color: #f1f5f9; line-height: 1.25; margin-top: 0.7rem; }

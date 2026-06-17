@@ -36,6 +36,10 @@ class CoachTools
             'date' => ['type' => 'string', 'description' => "Which day: 'today' (default), 'yesterday', or an ISO date like 2026-06-16."],
         ], []);
 
+        if (class_exists(\App\Support\PhysiqueProgress::class)) {
+            $tools[] = $this->fn('physique_progress', "How the user is tracking toward their DREAM PHYSIQUE (the north star) — % of the way there, an on-track verdict, ETA at current pace, recent consistency, bodyweight trend and week score, as a `physique` card. Use for 'how am I tracking to my dream physique / am I on track / how close am I to my goal / how's my progress', and proactively to connect advice back to the goal.", [], []);
+        }
+
         if (class_exists(\App\Support\WeeklyReview::class)) {
             $tools[] = $this->fn('weekly_review', "A full review of the user's last 7 days — training adherence + whether the lifts moved, nutrition, sleep, recovery and bodyweight — as a `review` card, with wins, what to watch, and what to change next week. Use for 'how was my week / weekly review / how am I progressing / how's it going'.", [], []);
         }
@@ -315,6 +319,7 @@ class CoachTools
             'show_trend' => 'Charting your trend',
             'biological_age' => 'Calculating your biological age',
             'fitness_score' => 'Scoring your fitness',
+            'physique_progress' => 'Checking your dream-physique progress',
             'weekly_review' => 'Reviewing your week',
             'daily_checkin' => 'Pulling your check-in',
             'sleep_detail' => 'Reading last night',
@@ -387,6 +392,7 @@ class CoachTools
             'show_trend' => $this->showTrend($args),
             'biological_age' => $this->biologicalAge(),
             'fitness_score' => $this->fitnessScore(),
+            'physique_progress' => $this->physiqueProgress(),
             'weekly_review' => $this->weeklyReview(),
             'daily_checkin' => $this->dailyCheckin(),
             'sleep_detail' => $this->sleepDetail(),
@@ -1413,6 +1419,22 @@ class CoachTools
         }
 
         return $out;
+    }
+
+    private function physiqueProgress(): mixed
+    {
+        if (! class_exists(\App\Support\PhysiqueProgress::class)) {
+            return ['error' => 'Physique progress is not available.'];
+        }
+        $a = \App\Support\PhysiqueProgress::assess($this->profile);
+        if (! $a) {
+            return ['note' => "You haven't set a dream physique yet — that's the whole point of Titan. Upload a current photo with the camera button and tell me your goal, and I'll render your realistic future self and track every week against it."];
+        }
+
+        return [
+            'card' => ['type' => 'physique'] + $a,
+            '_show' => 'Open with this `physique` card (emit it inside a ```titan-card fence), then speak to the north star in your coach tone: how close they are (%), whether they\'re on track / ahead / behind and WHY (consistency drives it), the ETA at this pace, and the ONE thing this week that moves them fastest toward it. Make them feel the goal is reachable and that you\'re steering every week toward it.',
+        ];
     }
 
     private function weeklyReview(): mixed

@@ -330,6 +330,12 @@ class CoachService
         Tone: {$tone}{$factLine}
         TXT;
 
+        $northStar = class_exists(\App\Support\PhysiqueProgress::class) ? \App\Support\PhysiqueProgress::digest($profile) : '';
+        if ($northStar !== '') {
+            $prompt .= "\n\n--- NORTH STAR: {$name}'s dream physique (what everything is working toward) ---\n".$northStar
+                ."\nKeep this goal front and centre: connect your advice back to it, frame progress against it, and when they ask how they're doing / if they're on track, call physique_progress. This is the whole point — make every week move them toward it.";
+        }
+
         $memory = class_exists(\App\Support\CoachMemoryBook::class) ? \App\Support\CoachMemoryBook::digest($profile) : '';
         if ($memory !== '') {
             $prompt .= "\n\n--- WHAT YOU REMEMBER ABOUT {$name} (your coach memory — weave it in, never re-ask) ---\n".$memory;

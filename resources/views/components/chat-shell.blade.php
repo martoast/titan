@@ -4,6 +4,7 @@
     // Tools remain reachable from the account menu, but the chat is the centre of the app.
     $tools = [
         ['label' => 'Dashboard', 'path' => 'dashboard'],
+        ['label' => 'Progress', 'path' => 'progress'],
         ['label' => 'The Brain', 'path' => 'brain'],
         ['label' => 'Bloodwork', 'path' => 'biomarkers'],
         ['label' => 'Meals', 'path' => 'meals'],
