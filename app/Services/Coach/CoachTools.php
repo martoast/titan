@@ -16,7 +16,10 @@ use Illuminate\Support\Carbon;
  */
 class CoachTools
 {
-    public function __construct(protected Profile $profile) {}
+    public function __construct(
+        protected Profile $profile,
+        protected ?\App\Models\Conversation $conversation = null,
+    ) {}
 
     /**
      * OpenAI tool schemas advertised to the model. Knowledge tools are only offered
@@ -54,6 +57,13 @@ class CoachTools
                 'content' => ['type' => 'string', 'description' => 'Markdown content of the note.'],
                 'pinned' => ['type' => 'boolean', 'description' => 'Pin as core memory (injected into every future conversation). Use sparingly.'],
             ], ['title', 'content']);
+        }
+
+        if (class_exists(\App\Jobs\ResearchTopic::class)) {
+            $tools[] = $this->fn('research_topic', "Send yourself off to DEEP-RESEARCH a topic the user wants explored — a training style or program, a nutrition approach, a supplement, a protocol, a concept. It runs in the BACKGROUND (a minute or two), writes a thorough, personalized brief, files it in their Brain wiki, and pings them + posts the summary back into this chat. Use whenever they say 'research X', 'go learn about X', 'do a deep dive on X', 'look into X for me'. Acknowledge briefly that you're on it — do NOT try to answer the topic in depth yourself.", [
+                'topic' => ['type' => 'string', 'description' => 'What to research, e.g. "the 5/3/1 strength program", "carb cycling for fat loss", "creatine for women".'],
+                'focus' => ['type' => 'string', 'description' => "Optional — the user's specific angle or why (e.g. \"for my glute goal\", \"as a vegetarian\")."],
+            ], ['topic']);
         }
 
         if (class_exists(\App\Models\BiomarkerReading::class)) {
@@ -285,6 +295,7 @@ class CoachTools
             'daily_summary' => 'Reading your day',
             'search_knowledge' => 'Searching your brain',
             'save_knowledge' => 'Saving to your brain',
+            'research_topic' => 'Sending off deep research',
             'recent_biomarkers' => 'Checking your bloodwork',
             'recent_meals' => 'Reviewing your nutrition',
             'recent_workouts' => 'Looking at your training',
@@ -358,6 +369,7 @@ class CoachTools
             'daily_summary' => $this->dailySummary((string) ($args['date'] ?? 'today')),
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
+            'research_topic' => $this->researchTopic($args),
             'recent_biomarkers' => $this->recentBiomarkers(),
             'recent_meals' => $this->recentMeals((int) ($args['days'] ?? 7)),
             'recent_workouts' => $this->recentWorkouts((int) ($args['days'] ?? 14)),
@@ -405,6 +417,31 @@ class CoachTools
     }
 
     // ---- Tool implementations -------------------------------------------------
+
+    private function researchTopic(array $a): mixed
+    {
+        if (! class_exists(\App\Jobs\ResearchTopic::class)) {
+            return ['error' => 'Deep research is not available.'];
+        }
+        $topic = trim((string) ($a['topic'] ?? ''));
+        if ($topic === '') {
+            return ['error' => 'What would you like me to research?'];
+        }
+        $focus = trim((string) ($a['focus'] ?? ''));
+
+        \App\Jobs\ResearchTopic::dispatch(
+            $this->profile->id,
+            \Illuminate\Support\Str::limit($topic, 160, ''),
+            $focus !== '' ? \Illuminate\Support\Str::limit($focus, 200, '') : null,
+            $this->conversation?->id,
+        );
+
+        return [
+            'ok' => true,
+            'queued' => $topic,
+            '_show' => "Acknowledge in ONE or two sentences that you're heading off to research \"{$topic}\" and will report back shortly with a full writeup saved to their Brain — they'll get a notification. Do NOT attempt to answer the topic in depth now; the background job does that.",
+        ];
+    }
 
     private function searchKnowledge(string $query): mixed
     {

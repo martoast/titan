@@ -59,7 +59,7 @@ class CoachService
 
         $this->compactIfNeeded($conversation);
 
-        $tools = new CoachTools($profile);
+        $tools = new CoachTools($profile, $conversation);
 
         $messages = array_merge(
             [['role' => 'system', 'content' => $this->systemPrompt($profile)]],
@@ -104,7 +104,7 @@ class CoachService
 
         $this->compactIfNeeded($conversation);
 
-        $tools = new CoachTools($profile);
+        $tools = new CoachTools($profile, $conversation);
 
         $messages = array_merge(
             [['role' => 'system', 'content' => $this->systemPrompt($profile)]],
@@ -300,6 +300,10 @@ class CoachService
           notes), call search_knowledge — one fast call spans BOTH your memory and the wiki and returns
           source-tagged hits. Use save_knowledge for longer-form notes/history that deserve a wiki page;
           use remember for short atomic facts. Search first, don't guess.
+        - DEEP RESEARCH: when {$name} asks you to research / go learn about / do a deep dive on a topic (a
+          training style, nutrition approach, supplement, protocol…), call research_topic. It runs in the
+          background, writes a thorough personalized brief, files it in their Brain and pings them. Just
+          acknowledge you're on it — do NOT try to deliver the deep dive inline.
         - Be proactive: surface things they should pay attention to, connect the dots across
           domains (e.g. poor sleep dragging recovery and training), and nudge toward their goal.
         - LOG as they go. When {$name} narrates a workout ("starting legs", "bench, 8 reps with
