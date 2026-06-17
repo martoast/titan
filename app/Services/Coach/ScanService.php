@@ -110,35 +110,35 @@ class ScanService
      */
     private function groundMeal(array $m): array
     {
-        if (! class_exists(\App\Services\Web\WebSearch::class)) {
+        if (! class_exists(\App\Support\FoodLibrary::class)) {
             return $m;
         }
-        $web = app(\App\Services\Web\WebSearch::class);
         $name = trim((string) ($m['name'] ?? ($m['items'][0] ?? '')));
-        if (! $web->configured() || $name === '') {
+        if ($name === '') {
             return $m;
         }
-        $facts = $web->facts("calories protein carbs fat in {$name}");
-        if ($facts === '') {
+
+        // Cache-first base macros (per 100g) — only researches the web the first time this food is seen.
+        $lib = app(\App\Support\FoodLibrary::class)->lookup($name);
+        if (! ($lib['ok'] ?? false)) {
             return $m;
         }
 
         try {
+            // Scale the real per-basis macros to the portion the photo actually shows.
             $g = $this->ai->json([
-                ['role' => 'system', 'content' => 'You finalise a logged meal\'s macros using REAL web nutrition data. Given the meal (name, items, the vision model\'s estimate) and web nutrition facts, return JSON {"calories":int,"protein_g":number,"carbs_g":number,"fat_g":number,"grounded":bool} for the WHOLE portion shown. Prefer the web data — scale per-100g/per-serving figures up to the portion. Only fall back to the vision estimate if the web data is irrelevant. Set grounded=true when you used the web data.'],
+                ['role' => 'system', 'content' => 'You finalise a photographed meal\'s macros. Given a food\'s REAL nutrition per a basis, the vision model\'s whole-portion estimate, and the items, return JSON {"calories":int,"protein_g":number,"carbs_g":number,"fat_g":number,"grounded":true} for the WHOLE portion shown. Scale the real per-basis figures to the estimated portion size; sanity-check against the vision estimate. Prefer the real data.'],
                 ['role' => 'user', 'content' => "Meal: {$name}\nItems: ".implode(', ', (array) ($m['items'] ?? []))
-                    ."\nVision estimate: ".json_encode(\Illuminate\Support\Arr::only($m, ['calories', 'protein_g', 'carbs_g', 'fat_g']))
-                    ."\nWeb nutrition facts:\n{$facts}"],
-            ], ['temperature' => 0.2, 'max_tokens' => 300]);
+                    ."\nReal nutrition per {$lib['basis']}: {$lib['calories']} kcal, {$lib['protein_g']}g protein, {$lib['carbs_g']}g carbs, {$lib['fat_g']}g fat"
+                    ."\nVision whole-portion estimate: ".json_encode(\Illuminate\Support\Arr::only($m, ['calories', 'protein_g', 'carbs_g', 'fat_g']))],
+            ], ['temperature' => 0.2, 'max_tokens' => 250]);
 
             foreach (['calories', 'protein_g', 'carbs_g', 'fat_g'] as $k) {
                 if (isset($g[$k]) && is_numeric($g[$k])) {
                     $m[$k] = $g[$k];
                 }
             }
-            if (! empty($g['grounded'])) {
-                $m['grounded'] = true;
-            }
+            $m['grounded'] = true;
         } catch (\Throwable) {
             // keep the vision estimate
         }

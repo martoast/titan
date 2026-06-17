@@ -70,8 +70,8 @@ class CoachTools
             $tools[] = $this->fn('web_search', "Search the LIVE web (Google) for current facts or data you shouldn't guess at — study findings, product/supplement specs, definitions, news, prices, anything factual or time-sensitive. Returns the top answer + sourced snippets. Ground your reply in these and cite the source domain.", [
                 'query' => ['type' => 'string', 'description' => 'The search query.'],
             ], ['query']);
-            $tools[] = $this->fn('lookup_food', "Look up a food's REAL calories and macros from the web BEFORE logging it or stating numbers — so you never invent nutrition data. Give the food + portion (e.g. \"1 cup cooked white rice\", \"6 oz grilled salmon\", \"a medium banana\"). Returns sourced nutrition facts to use (scaled to the portion) for an accurate log.", [
-                'food' => ['type' => 'string', 'description' => 'The food and portion to look up.'],
+            $tools[] = $this->fn('lookup_food', "Get a food's REAL per-100g macros so you NEVER invent nutrition numbers. Checks the food library first (instant, free) and only researches the web on a miss — then caches it forever. ALWAYS call this before log_meal unless the user gave exact macros. Just pass the food name (e.g. \"grilled chicken breast\", \"cooked white rice\", \"banana\"); you scale to their portion. Returns per-100g calories/protein/carbs/fat + whether it was cached.", [
+                'food' => ['type' => 'string', 'description' => 'The food to look up (portion optional — macros come back per 100g for you to scale).'],
             ], ['food']);
         }
 
@@ -455,15 +455,24 @@ class CoachTools
         if ($food === '') {
             return ['error' => 'Which food and portion?'];
         }
-        $facts = app(\App\Services\Web\WebSearch::class)->facts("calories protein carbs fat in {$food}");
-        if ($facts === '') {
-            return ['note' => "Couldn't find reliable web data for \"{$food}\" — estimate from similar foods and tell them it's approximate."];
+        if (! class_exists(\App\Support\FoodLibrary::class)) {
+            return ['error' => 'Food lookup is not available.'];
+        }
+
+        $r = app(\App\Support\FoodLibrary::class)->lookup($food);
+        if (! ($r['ok'] ?? false)) {
+            return ['note' => "Couldn't find reliable data for \"{$food}\" — estimate from similar foods and tell them it's approximate."];
         }
 
         return [
-            'food' => $food,
-            'nutrition_facts' => $facts,
-            '_show' => "Use these REAL web nutrition numbers (scaled to the portion described, from the most authoritative source) to answer or to log the meal — do NOT invent macros. If logging, call log_meal with the grounded values.",
+            'food' => $r['food'],
+            'per' => $r['basis'],
+            'calories' => $r['calories'],
+            'protein_g' => $r['protein_g'],
+            'carbs_g' => $r['carbs_g'],
+            'fat_g' => $r['fat_g'],
+            'source' => $r['cached'] ? 'food library (cached)' : $r['source'],
+            '_show' => "These macros are PER {$r['basis']}. SCALE them to the portion the user described (e.g. 8 oz ≈ 227 g → ×2.27), then use them to answer or call log_meal. Real data — do NOT invent or round wildly.",
         ];
     }
 
