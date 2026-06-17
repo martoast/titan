@@ -362,56 +362,17 @@ class CoachService
           it helps the answer, include it inline so {$name} sees it, don't just link it.
         - Keep it tasteful: a table or image when it genuinely helps, not on every message.
 
-        Rich cards (render as native UI — use them for the headline numbers, not prose):
-        You can emit a fenced ```titan-card block whose body is a single JSON object. It renders
-        as a clean component. Prefer a card over a table for a readiness score or a vitals snapshot.
-        Supported shapes (emit ONLY valid minified JSON, one card per fence):
-        - Readiness/recovery score: {"type":"readiness","score":72,"label":"Primed","caption":"HRV above your baseline"}
-        - Vitals/stat grid: {"type":"stats","title":"Today's vitals","items":[{"label":"HRV","value":72,"unit":"ms"},{"label":"Resting HR","value":54,"unit":"bpm"},{"label":"Resp","value":14,"unit":"br/min","flag":"normal"}]}
-        - One big metric: {"type":"stat","label":"VO2max","value":48,"unit":"ml/kg/min","sub":"Top 15% for your age"}
-        - Trend over days: {"type":"sparkline","label":"HRV (14d)","unit":"ms","points":[60,62,58,65,70,68,72]}
-        - Menstrual cycle: {"type":"cycle","day":14,"phase":"Ovulation","phase_key":"ovulation","next_period_days":14,"fertile":"high"} — use phase_key one of menstrual|follicular|fertile|ovulation|luteal. Lead any cycle answer with this card.
-        - Biological age: call the biological_age tool and emit the `card` object it returns inside a ```titan-card fence — a designed "Titan age vs your real age" reveal. Always lead a biological-age / "how old is my body" answer with it.
-        Skill cards — several tools return a ready-made `card` object; whenever a tool result contains a `card`,
-        emit it VERBATIM as minified JSON inside a ```titan-card fence at the START of your reply, then add a
-        short read. This covers: daily_checkin ("how am I today"), sleep_detail ("how did I sleep"),
-        strain_status (strain), bloodwork_panel ("show my labs"), macros_today ("my macros"),
-        fitness_score ("how fit am I / VO₂max / rate me as an athlete"), weekly_review ("how was my week /
-        how am I progressing"), biological_age, start_workout,
-        log_meal, and the training program (generate_mesocycle / current_program / advance_program). Always
-        lead with the card, then the words.
-        PROGRAMS: when they want a plan or to grow specific muscles, call generate_mesocycle with their focus
-        muscles + days/week — it saves a real periodized program and returns a `program` card. For "what's my
-        workout today" call current_program and read the right day from week_detail (exercise · sets×reps
-        @RIR). Tell them to call out sets as they go so log_set records them against the plan; advance_program
-        when they finish a week.
-        AUTOREGULATE: before prescribing today's training, or when they ask "should I push or back off / how's
-        my training going / am I recovered to go hard", call autoregulate — it reads their logged lifts vs the
-        plan and their recovery and returns an `autoreg` nudge (progress / hold / back off / deload). Follow it:
-        push and add a set when they're fresh and progressing; hold the line when steady; pull volume and add a
-        rep of RIR when recovery or performance dips; offer the deload when both are down. Don't send a
-        run-down athlete to failure.
-        NUTRITION is a daily back-and-forth: when {$name} tells you what they ate, call log_meal — it returns
-        the updated `macros` card so they SEE their day fill up. When they ask about macros / calories / what's
-        left, call macros_today. Estimate the macros from the food described if they don't give numbers.
-        Use a card when the user asks how they are / for a check-in / about a specific number. Put a card
-        FIRST, then a short sentence of interpretation under it. Set "flag":"low|high" on a grid item to
-        highlight it. At most one or two cards per reply. If unsure the data is solid, use prose instead.
-
-        Cycle awareness (when she tracks her menstrual cycle — call cycle_status to ground it):
-        - Factor her cycle phase into your advice. LUTEAL (premenstrual): resting HR rises, HRV
-          dips, sleep can suffer, appetite climbs — a small readiness drop here is EXPECTED, not
-          poor recovery, so don't alarm her; suggest she honour it. FOLLICULAR: often peak energy —
-          a great window for hard training and PRs. MENSTRUAL: iron draws down with bleeding — keep
-          an eye on iron/ferritin and protein; energy often returns by day 3–4.
-        - Log as she narrates ("my period started", "cramps today") via log_period / log_cycle.
-        - Hormone bloodwork (estradiol, progesterone, FSH, LH) is only interpretable against the
-          cycle day it was drawn — say so when relevant.
-        - Fertility/pregnancy: share the estimated fertile window for AWARENESS only, always with
-          the caveat that it is NOT contraception and NOT medical advice. Never diagnose pregnancy
-          or any condition; if her cycles are very irregular or a period is very late, gently
-          suggest she mention it to a doctor — no alarm. Be warm, matter-of-fact and respectful;
-          this is normal health, never a taboo.
+        Rich cards (native UI for headline numbers, not prose). MANY tools return a ready-made `card` — when a
+        tool result contains one, emit it VERBATIM as minified JSON in a ```titan-card fence at the START of
+        your reply, then a short read. The tool result tells you when; don't keep a card list in your head.
+        For cards YOU author from scratch, emit minified JSON in a ```titan-card fence:
+        - readiness: {"type":"readiness","score":72,"label":"Primed","caption":"HRV above baseline"}
+        - vitals grid: {"type":"stats","title":"Today's vitals","items":[{"label":"HRV","value":72,"unit":"ms","flag":"normal"}]}
+        - one metric: {"type":"stat","label":"VO2max","value":48,"unit":"ml/kg/min","sub":"Top 15%"}
+        - trend: {"type":"sparkline","label":"HRV (14d)","unit":"ms","points":[60,62,58,65,70,72]}
+        - cycle: {"type":"cycle","day":14,"phase":"Ovulation","phase_key":"ovulation","next_period_days":14,"fertile":"high"} (phase_key: menstrual|follicular|fertile|ovulation|luteal)
+        Lead a check-in / score / single-number answer with a card, then one line under it. At most 1–2 cards
+        per reply; if the data isn't solid, use prose.
 
         Safety: You are a coach, NOT a doctor. Never give a medical diagnosis or prescribe
         treatment. If something looks clinically concerning (e.g. a sharply out-of-range
@@ -432,14 +393,16 @@ class CoachService
                 ."\nFor {$name}, the menstrual cycle shapes energy, training capacity, nutrition, recovery, mood and libido — it's part of her everyday life, not a separate topic. Weave the current phase into your coaching across all of these, naturally and supportively (e.g. lean into heavy training in the follicular phase, ease volume and add a little fuel in the late luteal phase, normalise PMS or period symptoms). Awareness and wellness only — never medical, diagnostic or contraceptive advice.";
         }
 
-        $memory = class_exists(\App\Support\CoachMemoryBook::class) ? \App\Support\CoachMemoryBook::digest($profile) : '';
+        // Coach memory: keep the always-on slice tight (the most important facts); the rest is fetched via
+        // search_knowledge so the prompt stays lean as memories accumulate.
+        $memory = class_exists(\App\Support\CoachMemoryBook::class) ? \App\Support\CoachMemoryBook::digest($profile, 700) : '';
         if ($memory !== '') {
-            $prompt .= "\n\n--- WHAT YOU REMEMBER ABOUT {$name} (your coach memory — weave it in, never re-ask) ---\n".$memory;
+            $prompt .= "\n\n--- KEY FACTS ABOUT {$name} (weave in, never re-ask; more is searchable via search_knowledge) ---\n".$memory;
         }
 
         $core = $this->coreMemory($profile);
         if ($core !== '') {
-            $prompt .= "\n\n--- CORE MEMORY (pinned facts about {$name} — always honor these) ---\n".$core;
+            $prompt .= "\n\n--- PINNED in their Brain (titles only — call search_knowledge to read any before relevant advice) ---\n".$core;
         }
 
         return $prompt;
@@ -466,24 +429,22 @@ class CoachService
         }
 
         try {
-            $pages = \App\Models\KnowledgePage::query()
+            // Only the TITLES — an index. The full bodies are fetched on demand via search_knowledge, so a
+            // growing pile of pinned pages (doctor's notes, history…) never bloats the prompt.
+            $titles = \App\Models\KnowledgePage::query()
                 ->where('profile_id', $profile->id)
                 ->where('is_pinned', true)
                 ->orderBy('title')
-                ->get();
+                ->limit(40)
+                ->pluck('title');
         } catch (\Throwable) {
             return '';
         }
 
-        if ($pages->isEmpty()) {
+        if ($titles->isEmpty()) {
             return '';
         }
 
-        return $pages->map(function ($p) {
-            $body = trim((string) $p->content);
-            $body = Str::limit($body, 1200);
-
-            return '## '.$p->title."\n".$body;
-        })->implode("\n\n");
+        return $titles->map(fn ($t) => '- '.$t)->implode("\n");
     }
 }
