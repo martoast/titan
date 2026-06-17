@@ -83,6 +83,68 @@ class NotificationController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** Notification settings: coaching intensity + per-reminder toggles + a test button. */
+    public function settings(Request $request)
+    {
+        $profile = $request->user()->ensureProfile();
+
+        return view('notifications.settings', [
+            'profile' => $profile,
+            'summary' => \App\Support\Reminders::summary($profile),
+            'intensities' => \App\Support\Reminders::INTENSITIES,
+            'types' => \App\Support\Reminders::TYPES,
+            'hasPush' => PushSubscription::where('profile_id', $profile->id)->exists(),
+        ]);
+    }
+
+    /** Save the coaching intensity (one section) or the per-type overrides (the other). */
+    public function updateSettings(Request $request)
+    {
+        $profile = $request->user()->ensureProfile();
+        $data = $request->validate([
+            'section' => ['required', 'in:intensity,types'],
+            'intensity' => ['nullable', 'in:minimal,balanced,intense'],
+            'types' => ['nullable', 'array'],
+        ]);
+
+        if ($data['section'] === 'intensity' && ! empty($data['intensity'])) {
+            \App\Support\Reminders::setIntensity($profile, $data['intensity']);
+
+            return back()->with('status', 'Coaching intensity updated.');
+        }
+
+        if ($data['section'] === 'types') {
+            $checked = array_keys($data['types'] ?? []);
+            foreach (array_keys(\App\Support\Reminders::TYPES) as $type) {
+                \App\Support\Reminders::setType($profile, $type, in_array($type, $checked, true));
+            }
+
+            return back()->with('status', 'Reminder preferences saved.');
+        }
+
+        return back();
+    }
+
+    /** Fire a test push so the user can confirm notifications reach their device. */
+    public function test(Request $request, \App\Services\Notifications\NotificationService $notifications): JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        if (! PushSubscription::where('profile_id', $profile->id)->exists()) {
+            return response()->json(['ok' => false, 'reason' => 'no_subscription', 'message' => 'Turn on notifications first, then send a test.'], 200);
+        }
+
+        $notifications->notify(
+            $profile,
+            '🔔 Titan test',
+            "Push is working. I'll nudge you to eat, train, move and sleep — at your chosen intensity.",
+            '/coach',
+            'general',
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
     /** Store (upsert) a browser PushManager subscription for this profile. */
     public function subscribe(Request $request): JsonResponse
     {

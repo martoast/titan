@@ -23,4 +23,9 @@ Route::prefix('notifications')->name('notifications.')->group(function () {
     // Web Push subscription lifecycle.
     Route::post('/subscribe', [NotificationController::class, 'subscribe'])->name('subscribe');
     Route::delete('/subscribe', [NotificationController::class, 'unsubscribe'])->name('unsubscribe');
+
+    // Settings: coaching intensity + per-reminder toggles + a test push.
+    Route::get('/settings', [NotificationController::class, 'settings'])->name('settings');
+    Route::post('/settings', [NotificationController::class, 'updateSettings'])->name('settings.update');
+    Route::post('/test', [NotificationController::class, 'test'])->name('test');
 });
