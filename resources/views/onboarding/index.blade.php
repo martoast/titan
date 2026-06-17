@@ -55,13 +55,21 @@
                     <span x-text="String(idx + 1).padStart(2,'0')"></span><span class="text-gray-700"> / <span x-text="String(steps.length).padStart(2,'0')"></span></span>
                 </span>
             </div>
-            <div class="mt-3 h-1 rounded-full bg-white/[0.07] overflow-hidden">
-                <div class="h-full rounded-full transition-all duration-500 ease-out"
-                     :style="`width:${((idx + 1) / steps.length) * 100}%; background:linear-gradient(90deg, #6366f1, ${accent})`"></div>
+            {{-- Tappable segments — jump back to any step you've already done --}}
+            <div class="mt-3 flex gap-1">
+                <template x-for="(s, i) in steps" :key="s">
+                    <button type="button" @click="goTo(i)" :disabled="i > maxIdx"
+                            :aria-label="`Go to step ${i + 1}`"
+                            class="group flex-1 -my-2 py-2"
+                            :class="i <= maxIdx ? 'cursor-pointer' : 'cursor-default'">
+                        <span class="block h-1.5 rounded-full transition-all duration-300"
+                              :style="i <= idx ? `background:${stepAccents[s] || accent}` : 'background:rgba(255,255,255,0.1)'"></span>
+                    </button>
+                </template>
             </div>
         </header>
 
-        <form method="POST" action="/onboarding" class="relative z-10 flex flex-1 flex-col" @submit="submitting = true">
+        <form method="POST" action="/onboarding" class="relative z-10 flex flex-1 flex-col" @submit="submitting = true; clearSaved()">
             @csrf
             {{-- All submitted values live in always-present hidden inputs, so they post even when
                  their step isn't currently rendered (sections use x-if). Visible inputs only x-model. --}}
@@ -389,7 +397,9 @@
         function onboardingWizard(name, tz) {
             return {
                 idx: 0,
+                maxIdx: 0,           // furthest step reached — you can jump back to any step ≤ this
                 submitting: false,
+                STORE_KEY: 'titan_onboarding_v1',
                 form: {
                     display_name: name || '',
                     bMonth: '', bDay: '', bYear: '', sex: '', units: 'metric', height: '', weight: '',
@@ -470,6 +480,26 @@
                     if (Number(this.form.bDay) > this.daysInMonth.length) this.form.bDay = '';
                 },
                 get goalLabel() { return this.goalLabels[this.form.primary_goal] || '—'; },
+
+                // --- Persistence: survive refresh, and clear on finish ---
+                get snapshot() { return JSON.stringify({ idx: this.idx, maxIdx: this.maxIdx, form: this.form }); },
+                init() {
+                    this.load();
+                    // snapshot touches every reactive field, so this saves on ANY change.
+                    this.$watch('snapshot', (val) => { try { localStorage.setItem(this.STORE_KEY, val); } catch (e) {} });
+                },
+                load() {
+                    try {
+                        const saved = JSON.parse(localStorage.getItem(this.STORE_KEY) || 'null');
+                        if (!saved) return;
+                        if (saved.form) Object.assign(this.form, saved.form);
+                        if (typeof saved.maxIdx === 'number') this.maxIdx = saved.maxIdx;
+                        if (typeof saved.idx === 'number') this.idx = Math.min(saved.idx, this.steps.length - 1);
+                        this.maxIdx = Math.min(Math.max(this.maxIdx, this.idx), this.steps.length - 1);
+                    } catch (e) {}
+                },
+                clearSaved() { try { localStorage.removeItem(this.STORE_KEY); } catch (e) {} },
+
                 get steps() {
                     const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'goal', 'tone'];
                     if (this.form.sex === 'F') {
@@ -507,9 +537,12 @@
                 next() {
                     if (!this.valid()) return;
                     if (this.idx < this.steps.length - 1) this.idx++;
+                    this.maxIdx = Math.max(this.maxIdx, this.idx);
                     window.scrollTo({ top: 0 });
                 },
                 back() { if (this.idx > 0) this.idx--; window.scrollTo({ top: 0 }); },
+                // Jump straight to any step already reached (tap the progress segments).
+                goTo(i) { if (i <= this.maxIdx && i >= 0) { this.idx = i; window.scrollTo({ top: 0 }); } },
             };
         }
     </script>
