@@ -209,11 +209,12 @@
                                         class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-3.5 text-left"
                                         :style="form.activity_level === o.value ? `border-color:${accent}; background:${accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
                                     <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl" :style="`background:${accent}22; color:${accent}`">
-                                        {{-- intensity bars: more bars = more active --}}
+                                        {{-- intensity bars: more bars = more active (static rects — x-for can't build SVG nodes) --}}
                                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                                            <template x-for="i in 4" :key="i">
-                                                <rect :x="2.5 + (i - 1) * 5.4" :y="20 - (5 + i * 3.1)" width="3.4" :height="5 + i * 3.1" rx="1.2" :opacity="i <= o.level ? 1 : 0.22"></rect>
-                                            </template>
+                                            <rect x="2.5"  y="11.9" width="3.4" height="8.1"  rx="1.2" :opacity="o.level >= 1 ? 1 : 0.2"></rect>
+                                            <rect x="7.9"  y="8.8"  width="3.4" height="11.2" rx="1.2" :opacity="o.level >= 2 ? 1 : 0.2"></rect>
+                                            <rect x="13.3" y="5.7"  width="3.4" height="14.3" rx="1.2" :opacity="o.level >= 3 ? 1 : 0.2"></rect>
+                                            <rect x="18.7" y="2.6"  width="3.4" height="17.4" rx="1.2" :opacity="o.level >= 4 ? 1 : 0.2"></rect>
                                         </svg>
                                     </span>
                                     <span class="flex-1">
