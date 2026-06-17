@@ -37,7 +37,7 @@ class CoachTools
         ], []);
 
         if (class_exists(\App\Models\KnowledgePage::class)) {
-            $tools[] = $this->fn('search_knowledge', "Search this person's long-term-memory health wiki (the brain) for relevant notes, history, preferences, goals, doctor's notes, etc.", [
+            $tools[] = $this->fn('search_knowledge', "Search the user's ENTIRE knowledge base in one fast call — both your coach memory of them (injuries, preferences, what's worked, commitments) AND their health wiki (notes, history, doctor's notes, goals). Returns source-tagged hits. Use to pull any relevant context before answering.", [
                 'query' => ['type' => 'string', 'description' => 'What to look for, in natural language.'],
             ], ['query']);
 
@@ -396,25 +396,25 @@ class CoachTools
 
     private function searchKnowledge(string $query): mixed
     {
-        if (! class_exists(\App\Models\KnowledgePage::class) || ! class_exists(\App\Services\Brain\KnowledgeSearch::class)) {
-            return 'The brain is not available yet — no notes to search.';
+        if (! class_exists(\App\Services\Brain\KnowledgeBase::class)) {
+            return 'The knowledge base is not available yet — nothing to search.';
         }
 
         try {
-            $search = app(\App\Services\Brain\KnowledgeSearch::class);
-            $hits = $search->search($this->profile, $query, 6);
+            $hits = app(\App\Services\Brain\KnowledgeBase::class)->search($this->profile, $query, 8);
         } catch (\Throwable $e) {
             return ['error' => 'Knowledge search failed: '.$e->getMessage()];
         }
 
         if ($hits === []) {
-            return 'No matching notes found in the brain.';
+            return 'Nothing in their knowledge base matches that yet.';
         }
 
+        // Source-tagged so the coach knows whether a hit is a remembered fact or a wiki note.
         return array_map(fn ($h) => [
-            'title' => $h['page']->title ?? null,
-            'snippet' => $h['snippet'] ?? null,
-            'score' => $h['score'] ?? null,
+            'source' => $h['source'] === 'memory' ? 'memory' : 'wiki',
+            'about' => $h['title'],
+            'snippet' => $h['snippet'],
         ], $hits);
     }
 

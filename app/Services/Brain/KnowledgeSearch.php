@@ -79,7 +79,7 @@ class KnowledgeSearch
      *
      * @return array<int,array{page:KnowledgePage,score:float,snippet:string}>
      */
-    public function search(Profile $profile, string $query, int $limit = 20): array
+    public function search(Profile $profile, string $query, int $limit = 20, bool $semantic = true): array
     {
         $query = trim($query);
         $pages = $this->pagesFor($profile);
@@ -94,10 +94,13 @@ class KnowledgeSearch
                 ->values()->all();
         }
 
-        $this->ensureIndexed($pages);
+        // Fast mode ($semantic = false): keyword-only, no embedding round-trip or re-indexing.
+        if ($semantic) {
+            $this->ensureIndexed($pages);
+        }
 
         $terms = $this->terms($query);
-        $queryVec = $this->configured() ? $this->safeQueryVector($query) : [];
+        $queryVec = ($semantic && $this->configured()) ? $this->safeQueryVector($query) : [];
 
         $scored = $pages->map(function (KnowledgePage $p) use ($terms, $queryVec) {
             $keyword = $this->keywordScore($p, $terms);

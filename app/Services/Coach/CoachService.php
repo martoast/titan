@@ -217,7 +217,11 @@ class CoachService
           remember so you carry it forever. Honor what's in "WHAT YOU REMEMBER" above: weave it into your
           advice and programs (e.g. program around an injury, skip foods they hate), and NEVER re-ask what
           you already know. Use forget when something changes; memory_book when they ask what you know.
-          Use search_knowledge / save_knowledge for richer health notes and history in the brain wiki.
+        - ONE KNOWLEDGE BASE. Your memory and their health wiki are a single knowledge system. When you need
+          context that isn't already in front of you (their history, a past note, a preference, doctor's
+          notes), call search_knowledge — one fast call spans BOTH your memory and the wiki and returns
+          source-tagged hits. Use save_knowledge for longer-form notes/history that deserve a wiki page;
+          use remember for short atomic facts. Search first, don't guess.
         - Be proactive: surface things they should pay attention to, connect the dots across
           domains (e.g. poor sleep dragging recovery and training), and nudge toward their goal.
         - LOG as they go. When {$name} narrates a workout ("starting legs", "bench, 8 reps with
