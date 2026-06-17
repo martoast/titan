@@ -201,7 +201,12 @@
                                         class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-3.5 text-left"
                                         :style="form.activity_level === o.value ? `border-color:${accent}; background:${accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
                                     <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl" :style="`background:${accent}22; color:${accent}`">
-                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" :d="o.icon"/></svg>
+                                        {{-- intensity bars: more bars = more active --}}
+                                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                                            <template x-for="i in 4" :key="i">
+                                                <rect :x="2.5 + (i - 1) * 5.4" :y="20 - (5 + i * 3.1)" width="3.4" :height="5 + i * 3.1" rx="1.2" :opacity="i <= o.level ? 1 : 0.22"></rect>
+                                            </template>
+                                        </svg>
                                     </span>
                                     <span class="flex-1">
                                         <span class="block font-display text-base font-bold text-gray-100" x-text="o.label"></span>
@@ -404,10 +409,10 @@
                     { value: 'imperial', big: 'lb · in', label: 'Imperial' },
                 ],
                 activities: [
-                    { value: 'sedentary', label: 'Sedentary', desc: 'Desk job, little exercise', icon: 'M4 19h16M4 19V9m16 10V5M9 19v-6m6 6v-9' },
-                    { value: 'light', label: 'Light', desc: '1–3 workouts a week', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
-                    { value: 'moderate', label: 'Moderate', desc: '4–5 workouts a week', icon: 'M3 12h3l2-7 4 14 2-7h7' },
-                    { value: 'active', label: 'Very active', desc: '6+ a week, or a physical job', icon: 'M6.5 6.5l11 11M4 9l1.5-1.5M9 4L7.5 5.5m9 13L18 17m-1-9l2-2' },
+                    { value: 'sedentary', label: 'Sedentary', desc: 'Desk job, little exercise', level: 1 },
+                    { value: 'light', label: 'Light', desc: '1–3 workouts a week', level: 2 },
+                    { value: 'moderate', label: 'Moderate', desc: '4–5 workouts a week', level: 3 },
+                    { value: 'active', label: 'Very active', desc: '6+ a week, or a physical job', level: 4 },
                 ],
                 goals: [
                     { value: 'build_muscle', label: 'Build muscle', desc: 'Add lean mass and strength', accent: '#a78bfa', icon: 'M6.5 6.5l11 11M4 9l1.5-1.5M9 4L7.5 5.5m9 13L18 17m-1-9l2-2' },
@@ -415,7 +420,7 @@
                     { value: 'recomp', label: 'Recomposition', desc: 'Leaner and stronger at once', accent: '#818cf8', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
                     { value: 'longevity', label: 'Longevity', desc: 'Add healthy years', accent: '#34d399', icon: 'M12 21s-6-4.35-9-8.5C1 9 3 5 7 5c2 0 3 1 5 3 2-2 3-3 5-3 4 0 6 4 4 7.5C18 16.65 12 21 12 21z' },
                     { value: 'performance', label: 'Performance', desc: 'Train for output and capacity', accent: '#fbbf24', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
-                    { value: 'general', label: 'Feel good', desc: 'Energy, sleep, general health', accent: '#fb7185', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+                    { value: 'general', label: 'Feel good', desc: 'Energy, sleep, general health', accent: '#fb7185', icon: 'M12 3v1.5m0 15V21m9-9h-1.5M4.5 12H3m15.36 6.36l-1.06-1.06M6.7 6.7L5.64 5.64m12.72 0L17.3 6.7M6.7 17.3l-1.06 1.06M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
                 ],
                 tones: [
                     { value: 'tough_love', label: 'Tough love', emoji: '🔥', desc: 'Direct and demanding. Calls out excuses, pushes you hard.', accent: '#fb7185' },
