@@ -28,6 +28,14 @@
         /* big, centred number fields */
         .ob-num { font-family: 'Archivo', sans-serif; font-weight: 800; letter-spacing: -0.02em; }
         .ob-num::-webkit-outer-spin-button, .ob-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        /* DOB selects — native wheel pickers on mobile, themed dark */
+        .ob-sel {
+            -webkit-appearance: none; appearance: none; text-align: center;
+            border-radius: 1rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
+            padding: 0.95rem 0.5rem; font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 1.05rem;
+        }
+        .ob-sel:focus { outline: none; border-color: #818cf8; }
+        .ob-sel option { background: #14161b; color: #f3f4f6; }
     </style>
 </head>
 <body class="bg-[#07080a] text-gray-100">
@@ -58,7 +66,7 @@
             {{-- All submitted values live in always-present hidden inputs, so they post even when
                  their step isn't currently rendered (sections use x-if). Visible inputs only x-model. --}}
             <input type="hidden" name="display_name" :value="form.display_name">
-            <input type="hidden" name="birthdate" :value="form.birthdate">
+            <input type="hidden" name="birthdate" :value="birthdate">
             <input type="hidden" name="sex" :value="form.sex">
             <input type="hidden" name="units" :value="form.units">
             <input type="hidden" name="height" :value="form.height">
@@ -103,9 +111,22 @@
                     <section class="ob-step">
                         <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Your age shapes every score</p>
                         <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">When were you born?</h2>
-                        <input x-model="form.birthdate" type="date" max="{{ now()->subYears(13)->toDateString() }}"
-                               class="mt-7 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 font-display text-2xl font-bold tracking-tight text-gray-100 focus:border-indigo-400 focus:ring-0">
-                        <p class="mt-3 text-sm text-gray-600">Readiness, biological age and your macros all use this.</p>
+                        <div class="mt-7 grid grid-cols-[1.4fr_0.8fr_1fr] gap-2.5">
+                            <select x-model="form.bMonth" @change="clampDay()" class="ob-sel" :class="form.bMonth ? 'text-gray-100' : 'text-gray-600'">
+                                <option value="" disabled>Month</option>
+                                <template x-for="m in months" :key="m.v"><option :value="m.v" x-text="m.l"></option></template>
+                            </select>
+                            <select x-model="form.bDay" class="ob-sel" :class="form.bDay ? 'text-gray-100' : 'text-gray-600'">
+                                <option value="" disabled>Day</option>
+                                <template x-for="d in daysInMonth" :key="d"><option :value="d" x-text="d"></option></template>
+                            </select>
+                            <select x-model="form.bYear" @change="clampDay()" class="ob-sel" :class="form.bYear ? 'text-gray-100' : 'text-gray-600'">
+                                <option value="" disabled>Year</option>
+                                <template x-for="y in years" :key="y"><option :value="y" x-text="y"></option></template>
+                            </select>
+                        </div>
+                        <p class="mt-4 text-sm" :class="age !== null ? 'text-indigo-300 font-semibold' : 'text-gray-600'"
+                           x-text="age !== null ? `You're ${age} — readiness, biological age and your macros all use this.` : 'Readiness, biological age and your macros all use this.'"></p>
                     </section>
                 </template>
 
@@ -366,7 +387,7 @@
                 submitting: false,
                 form: {
                     display_name: name || '',
-                    birthdate: '', sex: '', units: 'metric', height: '', weight: '',
+                    bMonth: '', bDay: '', bYear: '', sex: '', units: 'metric', height: '', weight: '',
                     activity_level: '', timezone: tz || 'UTC',
                     primary_goal: '', coach_tone: '',
                     meals_per_day: 0, eat_start: '08:00', eat_end: '21:00',
@@ -411,6 +432,38 @@
                     cycle_enable: '#fb7185', cycle_details: '#fb7185', nutrition: '#34d399', finish: '#22d3ee',
                 },
 
+                months: [
+                    { v: 1, l: 'January' }, { v: 2, l: 'February' }, { v: 3, l: 'March' }, { v: 4, l: 'April' },
+                    { v: 5, l: 'May' }, { v: 6, l: 'June' }, { v: 7, l: 'July' }, { v: 8, l: 'August' },
+                    { v: 9, l: 'September' }, { v: 10, l: 'October' }, { v: 11, l: 'November' }, { v: 12, l: 'December' },
+                ],
+                get years() {
+                    const max = new Date().getFullYear() - 13;   // 13+ to register
+                    const out = [];
+                    for (let y = max; y >= 1920; y--) out.push(y);
+                    return out;
+                },
+                get daysInMonth() {
+                    const m = Number(this.form.bMonth);
+                    const y = Number(this.form.bYear) || 2000;
+                    const n = m ? new Date(y, m, 0).getDate() : 31;
+                    return Array.from({ length: n }, (_, i) => i + 1);
+                },
+                get birthdate() {
+                    const { bYear, bMonth, bDay } = this.form;
+                    if (!bYear || !bMonth || !bDay) return '';
+                    return `${bYear}-${String(bMonth).padStart(2, '0')}-${String(bDay).padStart(2, '0')}`;
+                },
+                get age() {
+                    if (!this.birthdate) return null;
+                    const b = new Date(this.birthdate + 'T00:00:00'), now = new Date();
+                    let a = now.getFullYear() - b.getFullYear();
+                    if (now.getMonth() < b.getMonth() || (now.getMonth() === b.getMonth() && now.getDate() < b.getDate())) a--;
+                    return a >= 13 && a < 120 ? a : null;
+                },
+                clampDay() {
+                    if (Number(this.form.bDay) > this.daysInMonth.length) this.form.bDay = '';
+                },
                 get goalLabel() { return this.goalLabels[this.form.primary_goal] || '—'; },
                 get steps() {
                     const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'goal', 'tone'];
@@ -428,7 +481,7 @@
                     const f = this.form;
                     switch (this.current) {
                         case 'name': return f.display_name.trim().length > 0;
-                        case 'birthday': return !!f.birthdate;
+                        case 'birthday': return this.age !== null;
                         case 'sex': return !!f.sex;
                         case 'units': return !!f.units;
                         case 'body': return Number(f.height) > 0 && Number(f.weight) > 0;
