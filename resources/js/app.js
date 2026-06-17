@@ -149,6 +149,60 @@ function buildCycle(d) {
     el.append(dot, body);
     return el;
 }
+// Biological-age "skill card": the Whoop-style reveal — your body's age vs the calendar.
+function buildBioage(d) {
+    const bio = Number(d.bio_age), chrono = Number(d.chrono_age);
+    if (!isFinite(bio) || !isFinite(chrono)) return null;
+    const delta = +(chrono - bio).toFixed(1);                 // positive = younger than your age
+    const color = delta > 0.5 ? '#34d399' : delta < -0.5 ? '#fb7185' : '#fbbf24';
+    const verdict = Math.abs(delta) < 0.5 ? 'On pace with your age'
+        : `${Math.abs(delta).toFixed(1)} yr${Math.abs(delta) === 1 ? '' : 's'} ${delta > 0 ? 'younger' : 'older'}`;
+    const fmt = n => (n % 1 ? n.toFixed(1) : String(n));
+
+    const el = document.createElement('div'); el.className = 'tcard tcard-bioage';
+    const head = document.createElement('div'); head.className = 'tcard-title'; head.textContent = 'Biological age'; el.appendChild(head);
+
+    const main = document.createElement('div'); main.className = 'tcard-bioage-main';
+    const left = document.createElement('div');
+    const num = document.createElement('div'); num.className = 'tcard-bioage-num'; num.style.color = color; num.textContent = fmt(bio);
+    const ref = document.createElement('div'); ref.className = 'tcard-bioage-ref'; ref.textContent = `vs ${fmt(chrono)} actual`;
+    left.append(num, ref);
+    const pill = document.createElement('div'); pill.className = 'tcard-bioage-delta';
+    pill.style.color = color; pill.style.background = color + '22'; pill.textContent = verdict;
+    main.append(left, pill); el.appendChild(main);
+
+    // Age scale with two markers (you vs your body)
+    const lo = Math.min(bio, chrono), hi = Math.max(bio, chrono), pad = Math.max(4, (hi - lo) + 1);
+    const min = Math.floor(lo - pad), max = Math.ceil(hi + pad);
+    const pos = a => Math.max(2, Math.min(98, ((a - min) / (max - min)) * 100));
+    const pB = pos(bio), pC = pos(chrono);
+    const scale = document.createElement('div'); scale.className = 'tcard-bioage-scale';
+    const track = document.createElement('div'); track.className = 'tcard-bioage-track';
+    const fill = document.createElement('div'); fill.className = 'tcard-bioage-fill';
+    fill.style.left = Math.min(pB, pC) + '%'; fill.style.width = Math.abs(pB - pC) + '%'; fill.style.background = color;
+    const dC = document.createElement('div'); dC.className = 'tcard-bioage-dot'; dC.style.left = pC + '%';
+    const dB = document.createElement('div'); dB.className = 'tcard-bioage-dot is-body'; dB.style.left = pB + '%'; dB.style.background = color; dB.style.boxShadow = `0 0 0 4px ${color}33`;
+    track.append(fill, dC, dB); scale.appendChild(track);
+    const tags = document.createElement('div'); tags.className = 'tcard-bioage-tags';
+    const tB = document.createElement('span'); tB.style.left = pB + '%'; tB.style.color = color; tB.textContent = 'body';
+    const tY = document.createElement('span'); tY.style.left = pC + '%'; tY.textContent = 'you';
+    tags.append(tB, tY); scale.appendChild(tags); el.appendChild(scale);
+
+    if (Array.isArray(d.drivers) && d.drivers.length) {
+        const dr = document.createElement('div'); dr.className = 'tcard-bioage-drivers';
+        d.drivers.slice(0, 5).forEach(x => {
+            const row = document.createElement('div'); row.className = 'tcard-bioage-driver';
+            const l = document.createElement('span'); l.textContent = x.label || '';
+            const v = document.createElement('span'); v.className = 'tcard-bioage-dval'; v.textContent = x.value || '';
+            v.style.color = x.good === false ? '#fb7185' : (x.good ? '#34d399' : '#9ca3af');
+            row.append(l, v); dr.appendChild(row);
+        });
+        el.appendChild(dr);
+    }
+    if (d.caption) { const c = document.createElement('div'); c.className = 'tcard-bioage-caption'; c.textContent = d.caption; el.appendChild(c); }
+    return el;
+}
+
 function renderCards(root) {
     root.querySelectorAll('pre > code.language-titan-card').forEach((code) => {
         const pre = code.parentElement;
@@ -161,6 +215,7 @@ function renderCards(root) {
         else if (d.type === 'stat' || d.type === 'metric') card = buildStat(d);
         else if (d.type === 'sparkline' || d.type === 'trend') card = buildSparkline(d);
         else if (d.type === 'cycle') card = buildCycle(d);
+        else if (d.type === 'bioage') card = buildBioage(d);
         if (card) { pre.dataset.card = '1'; pre.replaceWith(card); }
     });
 }

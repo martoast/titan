@@ -201,6 +201,10 @@ class CoachTools
             'days' => ['type' => 'integer', 'description' => 'Days back (default 30).'],
         ], ['metric']);
 
+        if (class_exists(\App\Support\BiologicalAge::class)) {
+            $tools[] = $this->fn('biological_age', "The Titan-age reveal: the user's biological age vs their actual age, from bloodwork (PhenoAge), VO₂max fitness age and wearable levers. Returns a ready-made `bioage` card. Use for any 'how old is my body / biological age / Titan age / am I aging well' question.", [], []);
+        }
+
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "THE marquee feature: render the user's realistic future self from their most recent uploaded body photo (they upload via the camera button). Pass an optional description of the goal (e.g. \"+10 lb lean muscle\", \"lean and shredded\"). Returns an image URL — embed it inline as markdown so they SEE their future self. Use whenever they ask to see, create, or update their dream physique.", [
                 'description' => ['type' => 'string', 'description' => 'Optional goal description for the render.'],
@@ -240,6 +244,7 @@ class CoachTools
             'get_pantry' => 'Checking your pantry',
             'update_pantry' => 'Updating your pantry',
             'show_trend' => 'Charting your trend',
+            'biological_age' => 'Calculating your biological age',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -295,6 +300,7 @@ class CoachTools
             'get_pantry' => $this->getPantry(),
             'update_pantry' => $this->updatePantry($args),
             'show_trend' => $this->showTrend($args),
+            'biological_age' => $this->biologicalAge(),
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
@@ -956,6 +962,63 @@ class CoachTools
         return $rel->whereDate($dateCol, '>=', $since)->whereNotNull($valCol)
             ->orderBy($dateCol)->pluck($valCol)
             ->map(fn ($v) => (float) $v)->filter(fn ($v) => $v > 0)->values()->all();
+    }
+
+    // ---- Biological age — the Whoop-style "skill" card ------------------------
+
+    private function biologicalAge(): mixed
+    {
+        if (! class_exists(\App\Support\BiologicalAge::class)) {
+            return ['error' => 'Biological age is not available.'];
+        }
+        $b = \App\Support\BiologicalAge::assess($this->profile);
+        if (! $b) {
+            return ['note' => "I can't compute your biological age yet — it needs an anchor: either bloodwork (the PhenoAge clock — snap a labs photo), a VO₂max estimate (from a wearable cardio session), or a couple of weeks of wearable data. Add one of those and I'll have it."];
+        }
+
+        $chrono = $b['chronological_age'];
+        $anchors = [];
+        $levers = [];
+        foreach ($b['components'] as $c) {
+            if (($c['kind'] ?? null) === 'anchor') {
+                $anchors[] = [
+                    'label' => $c['label'],
+                    'value' => round($c['value']).' yrs',
+                    'good' => $c['value'] < $chrono,
+                ];
+            } else {
+                $yr = (float) ($c['years'] ?? 0);
+                $levers[] = [
+                    'label' => $c['label'],
+                    'years' => $yr,
+                    'value' => ($yr <= 0 ? '−' : '+').number_format(abs($yr), 1).' yr',
+                    'good' => $yr <= 0,
+                ];
+            }
+        }
+        usort($levers, fn ($x, $y) => abs($y['years']) <=> abs($x['years']));
+        $drivers = array_merge(
+            $anchors,
+            array_map(fn ($l) => ['label' => $l['label'], 'value' => $l['value'], 'good' => $l['good']], array_slice($levers, 0, 3)),
+        );
+
+        $card = [
+            'type' => 'bioage',
+            'bio_age' => $b['biological_age'],
+            'chrono_age' => $chrono,
+            'drivers' => $drivers,
+            'caption' => $b['label'].($b['confidence'] !== 'high' ? ' · '.$b['confidence'].' confidence' : ''),
+        ];
+
+        return [
+            'biological_age' => $b['biological_age'],
+            'chronological_age' => $chrono,
+            'delta' => $b['delta'],
+            'confidence' => $b['confidence'],
+            'missing_for_bloodwork' => $b['missing_for_bloodwork'] ?? [],
+            'card' => $card,
+            '_show' => 'OPEN your reply with this card, emitting the `card` object as minified JSON inside a ```titan-card fence. Then one short, motivating sentence on what it means and the single biggest lever to improve it. If confidence is not "high", briefly note what would sharpen it (e.g. uploading the missing bloodwork, or a VO₂max session).',
+        ];
     }
 
     // ---- Dream physique — the marquee, rendered right in the chat --------------
