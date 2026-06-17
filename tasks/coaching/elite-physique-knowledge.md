@@ -101,6 +101,46 @@ protocols** — that needs an experienced in-person coach and medical oversight.
 
 ---
 
+## Glute growth & waistline definition (women's most-requested goal)
+
+**Glutes — train both heads.** *Gluteus maximus* = the mass/projection (hip EXTENSION): hip thrust (highest
+mean activation, the lift to progressively overload), hinges (RDL, 45° back extension, pull-through), squats,
+lunges. *Gluteus medius/minimus* = the upper-outer **"shelf"/3D roundness** (hip ABDUCTION): machine/cable/
+banded abduction, frog pumps, single-leg work — neglecting it is the #1 reason a glute is strong but flat on top.
+
+**The spectrum, every glute week** (Contreras' activator/stretcher/pumper):
+- **Heavy activators** — hip thrust ~4×6 (pause + squeeze, ribs down), deadlift. Recover ~2–3 d.
+- **Stretchers** — Bulgarian split squat, deficit lunge, deep/sumo squat, RDL ~4×8 slow eccentric (load the
+  lengthened position). Most growth per rep, most soreness; recover 3–4 d.
+- **Pumpers** — abduction, kickback, banded thrust, frog pump ~3×15–30, short rest. Low soreness, recover
+  1–2 d → can run near-daily in a specialization block.
+
+**Volume/frequency:** glutes recover fast — ~12–20+ hard sets/week, 2–4×/week (pump sessions can push higher).
+Spread volume across days; heavy/stretch when fresh, pump when fatigued. **Mistakes:** quad-dominant squatting,
+partial ROM, only heavy, skipping abduction, lower-back/anterior-tilt stealing the work.
+
+**Waistline — fat, control, and ratio (not endless ab work):**
+- Spot reduction is a **myth** — a defined waist comes from getting LEAN (energy balance). Core work shapes,
+  it doesn't strip waist fat.
+- For a tight/flat look train **control**: anti-rotation (Pallof press), anti-extension (plank, dead bug),
+  stomach **vacuums** (TVA). Keep oblique work **light/unloaded** — heavy loaded side bends / weighted twists
+  can thicken the obliques and **widen** the waist.
+- Biggest visual win is **ratio**: building the **glutes/hips** (waist-to-hip ~0.7) and **shoulders + lats**
+  makes the waist read smaller by contrast. Posture tightens it instantly.
+
+Encoded in `TrainingPlaybook` (`glutes_waist`) + the `MesocycleGenerator` glute library (full heavy→stretch→
+pump spectrum, abduction forced as the focus finisher, waist-friendly core, region-aware placement).
+
+**Glute / waist sources:**
+[Contreras — best glute exercises](https://bretcontreras.com/best-glute-exercises/) ·
+[Contreras — glute training frequency](https://bretcontreras.com/your-optimal-training-frequency-for-the-glutes-part-i-exercise-type/) ·
+[Squats vs hip thrusts EMG](https://bretcontreras.com/squats-versus-hip-thrusts-emg-activity/) ·
+[RP — glute hypertrophy guide](https://rpstrength.com/blogs/articles/glute-hypertrophy-training-tips) ·
+[E3 Rehab — training the gluteus medius](https://e3rehab.com/how-to-train-your-gluteus-medius/) ·
+[Stronger by Science — training volume](https://www.strongerbyscience.com/the-new-approach-to-training-volume/) ·
+[Does oblique training widen the waist?](https://biologyinsights.com/does-training-obliques-make-your-waist-bigger/) ·
+[V-taper & shoulder-to-waist ratio](https://outlift.com/v-taper-and-shoulder-to-waist-ratio/)
+
 ## Coaching topics (as encoded in `TrainingPlaybook`)
 `philosophies` · `hypertrophy` · `intensity_techniques` · `programming` · `nutrition_muscle` ·
 `nutrition_cutting` · `recovery` · `peak_week` · `mindset` · `natural_vs_enhanced`
