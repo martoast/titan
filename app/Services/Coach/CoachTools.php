@@ -1943,6 +1943,15 @@ class CoachTools
                         'mood_1_10' => $rec->getAttribute('mood'),
                         'energy_1_10' => $rec->getAttribute('energy'),
                     ])->filter(fn ($v) => $v !== null)->all();
+                    // How much to trust these vitals — sealed night vs spot window vs manual, and
+                    // how deep the baseline is. The coach should phrase numbers accordingly.
+                    if (($rec->getAttribute('hrv_ms') || $rec->getAttribute('resting_hr')) && class_exists(\App\Support\RecoveryConfidence::class)) {
+                        $c = \App\Support\RecoveryConfidence::assess($this->profile, $rec);
+                        $out['vitals_confidence'] = array_filter([
+                            'level' => $c['level'], 'source' => $c['source'],
+                            'nights_of_data' => $c['nights'], 'caveat' => $c['note'],
+                        ], fn ($v) => $v !== null);
+                    }
                 }
             } catch (\Throwable) {
                 // ignore

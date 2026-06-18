@@ -17,12 +17,12 @@ class RecoveryLog extends Model
 
     protected $fillable = [
         'profile_id', 'logged_at', 'hrv_ms', 'resting_hr', 'resp_rate',
-        'stress', 'soreness', 'mood', 'energy', 'notes', 'updated_via',
+        'stress', 'soreness', 'mood', 'energy', 'notes', 'updated_via', 'quality',
     ];
 
     protected function casts(): array
     {
-        return ['logged_at' => 'date', 'resp_rate' => 'float'];
+        return ['logged_at' => 'date', 'resp_rate' => 'float', 'quality' => 'array'];
     }
 
     public function profile(): BelongsTo

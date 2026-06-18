@@ -99,6 +99,12 @@ class CoachBriefingService
         Hard rules:
         - GROUND every statement in the DATA provided below. Quote their real numbers.
           Never invent a value. If a metric is missing, simply don't mention it.
+        - RESPECT DATA CONFIDENCE. A recovery read carries a `confidence` (level + caveat) and
+          the baseline carries `sufficient`. Only state a number flatly when confidence is
+          "high". When it's "building" or "low", give the number WITH its caveat in plain words
+          (e.g. "HRV's around 68 — still learning your baseline, so don't read too much into it")
+          and soften any "vs baseline" comparison when `sufficient` is false. Never present a
+          manual estimate or a single spot window as if it were a sealed night's recovery.
         - Be SPECIFIC and actionable, not generic. No filler, no "good morning champion!"
           fluff — lead with a real number that matters.
         - Keep it SHORT — this is a glanceable message, not an essay. No headings, no bullet
@@ -174,7 +180,14 @@ class CoachBriefingService
                     $parts[] = "resting HR {$rec['resting_hr']}bpm";
                 }
                 if ($parts) {
-                    $bits[] = 'Last night: '.implode(', ', $parts).'.';
+                    // Honour confidence even in the deterministic fallback — never overstate a shaky read.
+                    $caveat = $rec['confidence']['caveat'] ?? null;
+                    $level = $rec['confidence']['level'] ?? 'high';
+                    $line = 'Last night: '.implode(', ', $parts).'.';
+                    if ($caveat && $level !== 'high') {
+                        $line .= ' ('.rtrim($caveat, '.').'.)';
+                    }
+                    $bits[] = $line;
                 }
             }
             if (is_array($sleep) && isset($sleep['duration_label'])) {
@@ -233,22 +246,32 @@ class CoachBriefingService
         ];
     }
 
-    /** Most recent recovery snapshot (HRV, resting HR, stress, soreness, etc.). */
+    /** Most recent recovery snapshot (HRV, resting HR, stress, soreness, etc.) + a confidence read. */
     private function latestRecovery(Profile $profile): ?array
     {
         if (! class_exists(\App\Models\RecoveryLog::class)) {
             return null;
         }
         try {
-            $r = \App\Models\RecoveryLog::query()
-                ->where('profile_id', $profile->id)
-                ->orderByDesc('logged_at')->orderByDesc('id')->first();
+            // Prefer a real sealed overnight read (or a provider summary) from the last few days
+            // over a noisier daytime window that merely happens to be the newest row. Fall back
+            // to whatever is latest so a fresh user still gets something — with low confidence.
+            $base = \App\Models\RecoveryLog::query()->where('profile_id', $profile->id);
+            $r = (clone $base)
+                ->where(fn ($q) => $q->where('updated_via', 'like', 'biosignal:sealed%')->orWhere('updated_via', 'like', 'device:summary%'))
+                ->whereDate('logged_at', '>=', Carbon::today()->subDays(3))
+                ->orderByDesc('logged_at')->orderByDesc('id')->first()
+                ?? (clone $base)->orderByDesc('logged_at')->orderByDesc('id')->first();
         } catch (\Throwable) {
             return null;
         }
         if (! $r) {
             return null;
         }
+
+        $confidence = class_exists(\App\Support\RecoveryConfidence::class)
+            ? \App\Support\RecoveryConfidence::assess($profile, $r)
+            : null;
 
         return array_filter([
             'date' => optional($r->logged_at)->toDateString(),
@@ -258,6 +281,13 @@ class CoachBriefingService
             'soreness' => $r->soreness,
             'mood' => $r->mood,
             'energy' => $r->energy,
+            // The coach must phrase numbers according to this — see the CONFIDENCE rule in the prompt.
+            'confidence' => $confidence ? array_filter([
+                'level' => $confidence['level'],
+                'source' => $confidence['source'],
+                'nights_of_data' => $confidence['nights'],
+                'caveat' => $confidence['note'],
+            ], fn ($v) => $v !== null) : null,
         ], fn ($v) => $v !== null);
     }
 
@@ -372,6 +402,8 @@ class CoachBriefingService
             'avg_hrv_ms' => $avg('hrv_ms'),
             'avg_resting_hr' => $avg('resting_hr'),
             'nights' => $rows->count(),
+            // Below ~2 weeks the baseline is still settling — the coach should hedge "vs baseline" claims.
+            'sufficient' => $rows->count() >= (class_exists(\App\Support\RecoveryConfidence::class) ? \App\Support\RecoveryConfidence::FULL_BASELINE : 14),
         ], fn ($v) => $v !== null);
     }
 

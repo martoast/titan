@@ -168,6 +168,8 @@ class SealNightJob implements ShouldQueue
             $accel = [];
             $windowStart = null;
             $windowEnd = null;
+            $windowsUsed = 0;       // windows whose beats fed the whole-night aggregate
+            $windowsDropped = 0;    // windows rejected as artifacts (or with a missing blob)
 
             foreach ($ibiWindows as $ingestion) {
                 // Prefer the per-window IBI persisted by ProcessWindowJob — this is what makes
@@ -186,6 +188,9 @@ class SealNightJob implements ShouldQueue
                         }
                         $windowStart = $windowStart ?? ($ingestion->window_start ?? null);
                         $windowEnd = $ingestion->window_end ?? $windowEnd;
+                        $windowsUsed++;
+                    } else {
+                        $windowsDropped++;
                     }
 
                     continue;
@@ -193,6 +198,8 @@ class SealNightJob implements ShouldQueue
 
                 $window = $this->loadWindow($ingestion);
                 if ($window === null) {
+                    $windowsDropped++;
+
                     continue; // raw blob missing — skip, but still seal so we don't loop forever
                 }
                 foreach ((array) ($window['ibi_ms'] ?? []) as $v) {
@@ -205,6 +212,7 @@ class SealNightJob implements ShouldQueue
                 }
                 $windowStart = $windowStart ?? ($ingestion->window_start ?? null);
                 $windowEnd = $ingestion->window_end ?? $windowEnd;
+                $windowsUsed++;
             }
 
             if (count($allIbi) >= 10 && $biosignal->configured()) {
@@ -221,7 +229,10 @@ class SealNightJob implements ShouldQueue
                 $metrics = $result['metrics'] ?? [];
                 $algoVersion = $result['algo_version'] ?? config('services.biosignal.algo_version', 'v1');
 
-                if ($metrics['valid'] ?? true) {
+                // Fail SAFE: only write a recovery read when the service explicitly says the
+                // whole-night signal is valid. A missing flag means an unexpected/erroring
+                // response, not a clean night — don't present it as a real reading.
+                if (($metrics['valid'] ?? false) === true) {
                     // Whole-night respiratory rate = median of the per-window RR (each already
                     // Smart-Fusion gated in the biosignal service). RR needs the PPG waveform, which
                     // isn't re-sent at seal time, so we aggregate the per-window values, not recompute.
@@ -237,6 +248,13 @@ class SealNightJob implements ShouldQueue
                             'resting_hr' => isset($metrics['resting_hr']) ? (int) round($metrics['resting_hr']) : null,
                             'resp_rate' => $respRate !== null ? round((float) $respRate, 1) : null,
                             'updated_via' => 'biosignal:sealed',
+                            // Provenance for RecoveryConfidence: how clean was this night's aggregate.
+                            'quality' => [
+                                'windows_used' => $windowsUsed,
+                                'windows_dropped' => $windowsDropped,
+                                'beats' => count($allIbi),
+                                'valid' => true,
+                            ],
                         ], fn ($v) => $v !== null),
                     );
 

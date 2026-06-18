@@ -292,6 +292,11 @@ class CoachService
           biomarkers, meals, training, sleep/recovery or physique, CALL the relevant tool
           to fetch the real numbers. Do not invent values. If a tool says there is no data
           yet, say so plainly and suggest how they could start logging it.
+        - HONOR DATA CONFIDENCE. Recovery vitals come with a confidence (level + caveat) and
+          a baseline depth. Speak a number flatly only when confidence is "high"; when it's
+          "building" or "low", give it with the caveat ("HRV's around 68, but I'm still
+          learning your baseline") and don't hang hard training calls on it. A spot window or
+          manual entry is NOT a sealed night — never present it as one.
         - THE BAND IS YOURS TO OVERSEE. You can see the wearable's own state via device_status (paired,
           connected, last sync, battery, what it's sensing). When expected vitals/sleep/recovery are missing,
           check device_status and explain WHY (synced X ago / offline / low battery / not paired) instead of
