@@ -18,9 +18,10 @@ x-app: &app
   networks: [titan]
 
 services:
-  # ── Laravel web app (behind Caddy) ──────────────────────────────────────────
+  # ── Laravel web app ──────────────────────────────────────────────────────────
   app:
     <<: *app
+    ports: ["3010:8080"]
     environment:
       AUTORUN_LARAVEL_MIGRATION: "true"   # ONLY this container runs migrations on boot
     depends_on:
@@ -106,22 +107,6 @@ services:
     restart: "no"
     networks: [titan]
 
-  # ── Caddy — reverse proxy + automatic HTTPS ──────────────────────────────────
-  # Set APP_DOMAIN to your real domain for auto Let's Encrypt TLS; defaults to :80
-  # (plain HTTP) so it also works on a bare IP for testing.
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports: ["80:80", "443:443"]
-    environment:
-      APP_DOMAIN: ${APP_DOMAIN:-:80}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - titan-caddy-data:/data
-      - titan-caddy-config:/config
-    depends_on: [app]
-    networks: [titan]
-
 networks:
   titan:
 
@@ -129,5 +114,3 @@ volumes:
   titan-mysql:
   titan-redis:
   titan-minio:
-  titan-caddy-data:
-  titan-caddy-config:
