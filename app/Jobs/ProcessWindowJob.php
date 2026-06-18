@@ -170,7 +170,17 @@ class ProcessWindowJob implements ShouldQueue
         $date = CarbonImmutable::parse($ingestion->window_end ?? $ingestion->window_start ?? now())
             ->setTimezone($tz)->toDateString();
 
-        $log = RecoveryLog::updateOrCreate(
+        // The whole-night seal (SealNightJob) is authoritative. A single late-arriving window
+        // must NOT clobber a sealed recovery row back to a noisier per-window value (which would
+        // also drop its confidence from "sealed" to "window"). If the night is already sealed,
+        // reference that row instead of overwriting it; otherwise upsert the provisional value.
+        $sealed = RecoveryLog::query()
+            ->where('profile_id', $ingestion->profile_id)
+            ->whereDate('logged_at', $date)
+            ->where('updated_via', 'like', 'biosignal:sealed%')
+            ->first();
+
+        $log = $sealed ?: RecoveryLog::updateOrCreate(
             ['profile_id' => $ingestion->profile_id, 'logged_at' => $date],
             array_filter([
                 'hrv_ms' => isset($metrics['hrv_ms']) ? (int) round($metrics['hrv_ms']) : null,

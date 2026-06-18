@@ -241,22 +241,33 @@ class SealNightJob implements ShouldQueue
                         ->filter(fn ($v) => is_numeric($v))
                         ->median();
 
-                    $log = RecoveryLog::updateOrCreate(
-                        ['profile_id' => $profile->id, 'logged_at' => $date],
-                        array_filter([
-                            'hrv_ms' => isset($metrics['hrv_ms']) ? (int) round($metrics['hrv_ms']) : null,
-                            'resting_hr' => isset($metrics['resting_hr']) ? (int) round($metrics['resting_hr']) : null,
-                            'resp_rate' => $respRate !== null ? round((float) $respRate, 1) : null,
-                            'updated_via' => 'biosignal:sealed',
-                            // Provenance for RecoveryConfidence: how clean was this night's aggregate.
-                            'quality' => [
-                                'windows_used' => $windowsUsed,
-                                'windows_dropped' => $windowsDropped,
-                                'beats' => count($allIbi),
-                                'valid' => true,
-                            ],
-                        ], fn ($v) => $v !== null),
-                    );
+                    // Idempotent re-seal guard: if a MORE complete sealed read already exists
+                    // (more beats), keep it — a re-seal triggered by a lone late window must not
+                    // replace a good whole-night aggregate with a worse one.
+                    $prior = RecoveryLog::query()
+                        ->where('profile_id', $profile->id)->whereDate('logged_at', $date)
+                        ->where('updated_via', 'like', 'biosignal:sealed%')->first();
+
+                    if ($prior && (int) ($prior->quality['beats'] ?? 0) >= count($allIbi)) {
+                        $log = $prior;
+                    } else {
+                        $log = RecoveryLog::updateOrCreate(
+                            ['profile_id' => $profile->id, 'logged_at' => $date],
+                            array_filter([
+                                'hrv_ms' => isset($metrics['hrv_ms']) ? (int) round($metrics['hrv_ms']) : null,
+                                'resting_hr' => isset($metrics['resting_hr']) ? (int) round($metrics['resting_hr']) : null,
+                                'resp_rate' => $respRate !== null ? round((float) $respRate, 1) : null,
+                                'updated_via' => 'biosignal:sealed',
+                                // Provenance for RecoveryConfidence: how clean was this night's aggregate.
+                                'quality' => [
+                                    'windows_used' => $windowsUsed,
+                                    'windows_dropped' => $windowsDropped,
+                                    'beats' => count($allIbi),
+                                    'valid' => true,
+                                ],
+                            ], fn ($v) => $v !== null),
+                        );
+                    }
 
                     $ibiWindows->each(function (DeviceIngestion $i) use ($algoVersion, $log) {
                         $i->update([
