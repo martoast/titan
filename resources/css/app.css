@@ -313,6 +313,19 @@ body {
 .tcard-pairing-cta:hover { background: #4f46e5; }
 .tcard-pairing-note { margin-top: 0.55rem; font-size: 0.72rem; color: #8b91a3; }
 
+/* ---- Live spot HRV reading card ---- */
+.tcard-spot-head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; }
+.tcard-spot-ping { width: 0.55rem; height: 0.55rem; border-radius: 999px; flex-shrink: 0; animation: tcard-pulse 1.4s ease-in-out infinite; }
+.tcard-spot-main { display: flex; align-items: center; gap: 0.8rem; margin-top: 0.55rem; flex-wrap: wrap; }
+.tcard-spot-hrv { display: flex; align-items: baseline; gap: 0.35rem; }
+.tcard-spot-num { font-family: var(--font-display); font-weight: 900; font-size: 2.6rem; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tcard-spot-unit { font-size: 0.8rem; color: #9ca3af; }
+.tcard-spot-verdict { font-size: 0.78rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 999px; }
+.tcard-spot-stats { display: flex; flex-wrap: wrap; gap: 0.4rem 1.6rem; margin-top: 0.85rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.7rem; }
+.tcard-spot-stats div { display: flex; flex-direction: column; gap: 0.1rem; }
+.tcard-spot-stats span { font-size: 0.68rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }
+.tcard-spot-stats b { font-size: 0.92rem; color: #e5e7eb; font-weight: 600; font-variant-numeric: tabular-nums; }
+
 /* ---- Dream-physique progress card ---- */
 .tcard-phys-body { display: flex; gap: 0.9rem; align-items: stretch; margin-top: 0.7rem; }
 .tcard-phys-main { flex: 1; min-width: 0; }

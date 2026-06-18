@@ -257,9 +257,10 @@ Queue is capped at the last 10.
 ### 11a. Bridge side — drain + relay over NUS
 After (or alongside) the `/activity` poll, `GET /commands`; for each command write a NUS line to the watch:
 
-- `buzz`  → `CMD:buzz\n`
-- `sync`  → `CMD:sync\n` (the watch flushes its pending windows on the next bridge upload; for most builds
+- `buzz`    → `CMD:buzz\n`
+- `sync`    → `CMD:sync\n` (the watch flushes its pending windows on the next bridge upload; for most builds
   `sync` is a no-op on the watch and just signals the bridge to upload now).
+- `capture` → `CMD:capture\n` (spot HRV reading — the watch records a fresh ~60s PPG window NOW; see §11c).
 
 ### 11b. Watch side — handle `CMD:`
 Extend the inbound NUS handler (the `C1:`/`C0:` parser from §10b) with a `CMD:` case:
@@ -269,6 +270,7 @@ Extend the inbound NUS handler (the `C1:`/`C0:` parser from §10b) with a `CMD:`
 if (line.startsWith("CMD:")) {
   var cmd = line.slice(4).trim();
   if (cmd === "buzz") Bangle.buzz(400);          // find-my-band: a clear double buzz
+  if (cmd === "capture") startSpotCapture();     // §11c — on-demand 60s PPG read
   // 'sync' needs nothing on the watch — the bridge uploads on its next cycle
   return;
 }
@@ -276,3 +278,20 @@ if (line.startsWith("CMD:")) {
 
 `buzz` is safe to run any time (it just vibrates). No secrets cross the link; trust boundary is the bonded
 BLE bridge + the HMAC it uses to read the server, exactly as with priming.
+
+### 11c. Spot HRV reading (`capture`) — the on-demand read
+The coach's `spot_reading` tool queues a `capture` command. On `CMD:capture` the watch turns the PPG/HRM on
+for ~60s, buffers raw samples exactly like a normal window, and uploads it **tagged so the server knows it's
+a momentary snapshot, not overnight rest**:
+
+```jsonc
+// the uploaded window object carries one extra field:
+{ "kind": "ppg_raw", "purpose": "spot", "ppg": [ … ], "sample_rate_hz": 25, "start": "…", "end": "…" }
+```
+
+Server side is live: `ProcessWindowJob` sees `purpose:"spot"`, runs the same HRV pipeline, but **skips the
+daily `recovery_logs` upsert** (a daytime HRV is far lower than sleeping rest and would clobber the morning's
+score) and instead dispatches `ReactToSpotReading`, which posts a `spot` card (HRV + HR vs the user's 14-day
+baseline) back into chat. A motion-rejected (invalid) capture posts a friendly "couldn't lock on, hold still"
+and asks for a redo. Keep the capture short and prompt the wearer to stay still — a clean 60s beats a noisy 3
+minutes.

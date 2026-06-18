@@ -33,7 +33,7 @@ class CoachTools
         'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
-        'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device',
+        'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device', 'spot_reading' => 'device',
         // autoregulate / current_program / advance_program / device_status stay CORE.
     ];
 
@@ -45,7 +45,7 @@ class CoachTools
         'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
-        'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band'],
+        'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band', 'take a reading', 'spot reading', 'spot check', 'check my hrv', 'read my hrv', 'my hrv now', 'how recovered am i', 'recovered right now', 'live reading', 'check my heart rate', 'take a measurement'],
     ];
 
     /** @var array<int,string> tool groups currently active (beyond the always-on core) */
@@ -134,6 +134,7 @@ class CoachTools
             $tools[] = $this->fn('buzz_band', "Make the band BUZZ so they can find it (it vibrates on its next check-in). For 'find my band / where's my watch / make it buzz'.", [], []);
             $tools[] = $this->fn('request_sync', "Ask the band to sync now — it pushes fresh data on its next check-in. For 'sync now / pull my latest data'.", [], []);
             $tools[] = $this->fn('pair_band', "Start chat-guided pairing of the Titan band — issues a one-time pairing link that opens the bridge with credentials loaded. Returns a `pairing` card. Use for 'connect / pair / set up my band', or proactively when they have a band but none is paired.", [], []);
+            $tools[] = $this->fn('spot_reading', "Take a LIVE on-demand HRV reading now — the band captures ~60s, then you interpret the result (a `spot` card lands when ready). For 'take a reading / check my HRV now / how recovered am I right now'. Not daily_summary (that's the morning's recovery).", [], []);
         }
 
         if (class_exists(\App\Support\PhysiqueProgress::class)) {
@@ -408,6 +409,7 @@ class CoachTools
             'device_status' => 'Checking your band',
             'buzz_band' => 'Buzzing your band',
             'request_sync' => 'Asking your band to sync',
+            'spot_reading' => 'Taking a live reading',
             'pair_band' => 'Setting up your band',
             'search_knowledge' => 'Searching your brain',
             'save_knowledge' => 'Saving to your brain',
@@ -490,6 +492,7 @@ class CoachTools
             'device_status' => $this->deviceStatus(),
             'buzz_band' => $this->bandCommand('buzz', "Tell them their band will buzz on its next check-in (it polls about every minute) so they can find it."),
             'request_sync' => $this->bandCommand('sync', "Tell them you've asked the band to sync; it'll push fresh data on its next check-in, and you'll have the new numbers once it lands."),
+            'spot_reading' => $this->bandCommand('capture', "Tell them you're taking a live reading now — keep the band snug and sit still for about a minute; you'll share the HRV + heart-rate result the moment it lands as a `spot` card. If the band looks offline, say it'll run the moment it's back online."),
             'pair_band' => $this->pairBand(),
             'load_tools' => ['ok' => true, 'active' => $this->loadGroup($args['area'] ?? null), '_show' => 'The requested tools are now available — call the one you need to fulfil the request. Do not mention loading them to the user.'],
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),

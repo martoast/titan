@@ -112,9 +112,38 @@ class ProcessWindowJob implements ShouldQueue
             $window['accel_counts'] = $window['accel_mag_cg'];
         }
 
+        // On-demand spot reading (CMD:capture): a momentary snapshot the coach interprets
+        // live. It must NOT touch the daily recovery row — a daytime HRV is far lower than
+        // overnight rest and would clobber the morning's score.
+        $isSpot = ($window['purpose'] ?? null) === 'spot';
+
         $result = $biosignal->processHrv($window);
         $metrics = $result['metrics'] ?? [];
         $algoVersion = $result['algo_version'] ?? config('services.biosignal.algo_version', 'v1');
+
+        if ($isSpot) {
+            $valid = (bool) ($metrics['valid'] ?? true);
+            $ingestion->update([
+                'status' => DeviceIngestion::STATUS_PROCESSED,
+                'algo_version' => $algoVersion,
+                'result_refs' => array_filter([
+                    'spot' => true,
+                    'hrv_ms' => isset($metrics['hrv_ms']) ? (int) round($metrics['hrv_ms']) : null,
+                    'resting_hr' => isset($metrics['resting_hr']) ? (int) round($metrics['resting_hr']) : null,
+                    'artifact_pct' => $metrics['artifact_pct'] ?? null,
+                ], fn ($v) => $v !== null),
+            ]);
+            if (class_exists(\App\Jobs\ReactToSpotReading::class)) {
+                \App\Jobs\ReactToSpotReading::dispatch(
+                    $ingestion->profile_id,
+                    $valid && isset($metrics['hrv_ms']) ? (int) round($metrics['hrv_ms']) : null,
+                    $valid && isset($metrics['resting_hr']) ? (int) round($metrics['resting_hr']) : null,
+                    $valid,
+                );
+            }
+
+            return;
+        }
 
         if (! ($metrics['valid'] ?? true)) {
             // Invalid for HRV (no IBI persisted → excluded from the RMSSD aggregate), but its

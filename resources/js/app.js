@@ -564,6 +564,39 @@ function buildPairing(d) {
     return el;
 }
 
+// Live spot HRV reading: the on-demand "take a reading now" result vs the user's baseline.
+function buildSpot(d) {
+    const vColor = { high: '#34d399', steady: '#34d399', low: '#fbbf24', verylow: '#fb7185', neutral: '#9ca3af' };
+    const c = vColor[d.verdict] || '#818cf8';
+    const el = document.createElement('div'); el.className = 'tcard tcard-spot';
+    const head = document.createElement('div'); head.className = 'tcard-spot-head';
+    head.innerHTML = '<span class="tcard-spot-ping" style="background:' + c + '"></span><span>Live reading</span>';
+    el.appendChild(head);
+
+    const main = document.createElement('div'); main.className = 'tcard-spot-main';
+    const hrv = document.createElement('div'); hrv.className = 'tcard-spot-hrv';
+    hrv.innerHTML = '<span class="tcard-spot-num" style="color:' + c + '">' + (d.hrv_ms != null ? d.hrv_ms : '—') + '</span><span class="tcard-spot-unit">ms HRV</span>';
+    main.appendChild(hrv);
+    const pill = document.createElement('span'); pill.className = 'tcard-spot-verdict';
+    pill.style.color = c; pill.style.background = c + '22'; pill.textContent = d.verdict_label || '';
+    main.appendChild(pill);
+    el.appendChild(main);
+
+    const stats = [];
+    if (d.resting_hr != null) stats.push(['Heart rate', d.resting_hr + ' bpm']);
+    if (d.baseline_ms != null) {
+        const delta = d.hrv_ms != null ? d.hrv_ms - d.baseline_ms : null;
+        const ds = delta == null ? '' : ' (' + (delta >= 0 ? '+' : '') + delta + ')';
+        stats.push(['Baseline', d.baseline_ms + ' ms' + ds]);
+    }
+    if (stats.length) {
+        const row = document.createElement('div'); row.className = 'tcard-spot-stats';
+        stats.forEach(([l, v]) => { const s = document.createElement('div'); s.innerHTML = '<span>' + l + '</span><b>' + v + '</b>'; row.appendChild(s); });
+        el.appendChild(row);
+    }
+    return el;
+}
+
 // Dream-physique progress: % to goal, on-track verdict, ETA — the north star.
 function buildPhysique(d) {
     const vColor = { ahead: '#34d399', on_track: '#34d399', steady: '#fbbf24', behind: '#fb7185', just_started: '#9ca3af' };
@@ -700,6 +733,7 @@ function renderCards(root) {
         let card = null;
         if (d.type === 'device') card = buildDevice(d);
         else if (d.type === 'pairing') card = buildPairing(d);
+        else if (d.type === 'spot') card = buildSpot(d);
         else if (d.type === 'physique') card = buildPhysique(d);
         else if (d.type === 'review') card = buildReview(d);
         else if (d.type === 'memory') card = buildMemory(d);
