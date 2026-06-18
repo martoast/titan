@@ -534,6 +534,36 @@ function buildDevice(d) {
     return el;
 }
 
+// Chat-guided pairing: a warm hand-off card with the numbered steps and the one
+// CTA that opens the live Bluetooth bridge (credentials pre-loaded via ?pair token).
+function buildPairing(d) {
+    const el = document.createElement('div'); el.className = 'tcard tcard-pairing';
+    const head = document.createElement('div'); head.className = 'tcard-pairing-head';
+    head.innerHTML = `<span class="tcard-pairing-spark">◈</span><span>Pair your ${d.source || 'Titan Band'}</span>`;
+    el.appendChild(head);
+
+    if (Array.isArray(d.steps) && d.steps.length) {
+        const ol = document.createElement('ol'); ol.className = 'tcard-pairing-steps';
+        d.steps.forEach((s, i) => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span class="tcard-pairing-num">${i + 1}</span><span>${s}</span>`;
+            ol.appendChild(li);
+        });
+        el.appendChild(ol);
+    }
+
+    if (d.bridge_url) {
+        const a = document.createElement('a'); a.className = 'tcard-pairing-cta';
+        a.href = d.bridge_url; a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = 'Open the bridge →';
+        el.appendChild(a);
+        const note = document.createElement('div'); note.className = 'tcard-pairing-note';
+        note.textContent = 'Keep that tab open while it streams — takes about a minute.';
+        el.appendChild(note);
+    }
+    return el;
+}
+
 // Dream-physique progress: % to goal, on-track verdict, ETA — the north star.
 function buildPhysique(d) {
     const vColor = { ahead: '#34d399', on_track: '#34d399', steady: '#fbbf24', behind: '#fb7185', just_started: '#9ca3af' };
@@ -669,6 +699,7 @@ function renderCards(root) {
         try { d = JSON.parse(code.textContent); } catch (_) { return; } // leave malformed blocks as code
         let card = null;
         if (d.type === 'device') card = buildDevice(d);
+        else if (d.type === 'pairing') card = buildPairing(d);
         else if (d.type === 'physique') card = buildPhysique(d);
         else if (d.type === 'review') card = buildReview(d);
         else if (d.type === 'memory') card = buildMemory(d);

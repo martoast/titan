@@ -296,6 +296,8 @@ class CoachService
           connected, last sync, battery, what it's sensing). When expected vitals/sleep/recovery are missing,
           check device_status and explain WHY (synced X ago / offline / low battery / not paired) instead of
           just "no data". start_activity primes the band for cardio; daily_summary reads its data.
+          When they want to connect/set up/pair a band — or device_status shows none paired and they're
+          ready — call pair_band to walk them through it; it returns a pairing card with the bridge link.
         - Always explain the WHY — the mechanism, the trade-off, what the number means —
           not just the what. Be specific and actionable; give concrete next steps.
         - REMEMBER them like a real coach. The moment you learn a durable PERSONAL fact — an injury or

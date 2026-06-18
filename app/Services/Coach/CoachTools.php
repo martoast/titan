@@ -33,7 +33,7 @@ class CoachTools
         'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
-        'buzz_band' => 'device', 'request_sync' => 'device',
+        'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device',
         // autoregulate / current_program / advance_program / device_status stay CORE.
     ];
 
@@ -45,7 +45,7 @@ class CoachTools
         'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
-        'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz'],
+        'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band'],
     ];
 
     /** @var array<int,string> tool groups currently active (beyond the always-on core) */
@@ -133,6 +133,7 @@ class CoachTools
             $tools[] = $this->fn('device_status', "The wearable's own state → `device` card: paired? connected/syncing? last sync, battery, firmware, what's flowing. For 'is my band connected / synced / battery', and check it when expected data is missing.", [], []);
             $tools[] = $this->fn('buzz_band', "Make the band BUZZ so they can find it (it vibrates on its next check-in). For 'find my band / where's my watch / make it buzz'.", [], []);
             $tools[] = $this->fn('request_sync', "Ask the band to sync now — it pushes fresh data on its next check-in. For 'sync now / pull my latest data'.", [], []);
+            $tools[] = $this->fn('pair_band', "Start chat-guided pairing of the Titan band — issues a one-time pairing link that opens the bridge with credentials loaded. Returns a `pairing` card. Use for 'connect / pair / set up my band', or proactively when they have a band but none is paired.", [], []);
         }
 
         if (class_exists(\App\Support\PhysiqueProgress::class)) {
@@ -407,6 +408,7 @@ class CoachTools
             'device_status' => 'Checking your band',
             'buzz_band' => 'Buzzing your band',
             'request_sync' => 'Asking your band to sync',
+            'pair_band' => 'Setting up your band',
             'search_knowledge' => 'Searching your brain',
             'save_knowledge' => 'Saving to your brain',
             'research_topic' => 'Sending off deep research',
@@ -488,6 +490,7 @@ class CoachTools
             'device_status' => $this->deviceStatus(),
             'buzz_band' => $this->bandCommand('buzz', "Tell them their band will buzz on its next check-in (it polls about every minute) so they can find it."),
             'request_sync' => $this->bandCommand('sync', "Tell them you've asked the band to sync; it'll push fresh data on its next check-in, and you'll have the new numbers once it lands."),
+            'pair_band' => $this->pairBand(),
             'load_tools' => ['ok' => true, 'active' => $this->loadGroup($args['area'] ?? null), '_show' => 'The requested tools are now available — call the one you need to fulfil the request. Do not mention loading them to the user.'],
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
@@ -585,6 +588,47 @@ class CoachTools
             'fat_g' => $r['fat_g'],
             'source' => $r['cached'] ? 'food library (cached)' : $r['source'],
             '_show' => "These macros are PER {$r['basis']}. SCALE them to the portion the user described (e.g. 8 oz ≈ 227 g → ×2.27), then use them to answer or call log_meal. Real data — do NOT invent or round wildly.",
+        ];
+    }
+
+    /** Start chat-guided pairing: create the connection, cache the one-time secret, hand back a bridge link. */
+    private function pairBand(): mixed
+    {
+        if (! class_exists(\App\Models\WearableConnection::class)) {
+            return ['error' => 'Band pairing is not available.'];
+        }
+
+        $deviceId = 'titan_band_'.strtolower((string) \Illuminate\Support\Str::ulid());
+        $secret = bin2hex(random_bytes(32));   // shown once, in the bridge — never re-readable
+        $conn = $this->profile->wearableConnections()->create([
+            'provider' => 'TITAN_BAND',
+            'source' => 'titan_band',
+            'device_id' => $deviceId,
+            'device_token_hash' => hash('sha256', $secret),
+            'status' => 'connected',
+            'timezone' => $this->profile->settings['timezone'] ?? null,
+        ]);
+
+        // Stash the creds for a one-time, short-lived handoff to the bridge (keeps the secret out of chat).
+        $token = \Illuminate\Support\Str::random(40);
+        \Illuminate\Support\Facades\Cache::put("titan:pair:{$token}", [
+            'connection_id' => $conn->id, 'device_id' => $deviceId, 'secret' => $secret,
+        ], now()->addMinutes(15));
+
+        return [
+            'ok' => true,
+            'card' => [
+                'type' => 'pairing',
+                'source' => 'Titan Band',
+                'bridge_url' => "/devices/bridge?pair={$token}",
+                'steps' => [
+                    'Charge your band and keep it next to this phone.',
+                    'Tap “Open the bridge” below.',
+                    'In the bridge, tap Connect and pick your band over Bluetooth.',
+                    'Keep the bridge open — your vitals start streaming. I’ll confirm once the first data lands.',
+                ],
+            ],
+            '_show' => "Open with the `pairing` card and warmly walk them through it — tell them to tap “Open the bridge”, that it takes ~a minute, and that you'll confirm once the band's first data arrives (they can ask \"did my band connect?\"). Don't recite the steps verbatim; just encourage and reassure.",
         ];
     }
 

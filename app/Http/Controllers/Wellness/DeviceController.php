@@ -82,16 +82,24 @@ class DeviceController extends Controller
         $profile = $request->user()->ensureProfile();
 
         $bangles = $profile->wearableConnections()
-            ->where('source', 'bangle')
+            ->whereIn('source', ['bangle', 'titan_band'])
             ->where('status', 'connected')
             ->orderByDesc('created_at')
             ->get(['id', 'device_id', 'last_payload_type', 'last_sync_at']);
 
+        // One-time secret: from the web pairing flash, OR a chat-guided pairing token (?pair=).
+        $justPaired = session('just_paired');
+        if ($token = $request->query('pair')) {
+            $creds = \Illuminate\Support\Facades\Cache::pull("titan:pair:{$token}");   // one-time
+            if (is_array($creds) && $profile->wearableConnections()->whereKey($creds['connection_id'] ?? 0)->exists()) {
+                $justPaired = ['device_id' => $creds['device_id'], 'secret' => $creds['secret']];
+            }
+        }
+
         return view('devices.bridge', [
             'bangles' => $bangles,
             'ingestUrl' => url('/api/devices/ingest'),
-            // One-time secret if the user just paired and clicked through to the bridge.
-            'justPaired' => session('just_paired'),
+            'justPaired' => $justPaired,
         ]);
     }
 
