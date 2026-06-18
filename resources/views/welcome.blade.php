@@ -77,7 +77,7 @@
         .hero-bg { position: absolute; inset: 0; z-index: 0; background-image: url('/images/hero-bg.png'); background-size: cover; background-position: center; opacity: 0.62; }
         .hero-bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,7,10,0.55) 0%, rgba(6,7,10,0.2) 35%, rgba(6,7,10,0.85) 85%, var(--ink) 100%); }
         .hero-grid { position: relative; z-index: 2; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 2rem; align-items: center; width: 100%; padding: 4rem 0; }
-        .hero h1 { font-size: clamp(2.7rem, 6.4vw, 5rem); font-weight: 900; }
+        .hero h1 { font-size: clamp(2.2rem, 4.4vw, 3.4rem); font-weight: 900; white-space: nowrap; letter-spacing: -0.025em; }
         .hero .lead { margin-top: 1.4rem; max-width: 33ch; }
         .hero-cta { margin-top: 2.2rem; display: flex; gap: 0.9rem; flex-wrap: wrap; }
         .pillrow { margin-top: 2.4rem; display: flex; gap: 1.4rem; flex-wrap: wrap; align-items: center; }
@@ -87,7 +87,7 @@
         .band-stage { position: relative; height: clamp(360px, 52vw, 600px); }
         .band-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; }
         .band-stage canvas, .hw-stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; z-index: 2; }
-        .band-glow { position: absolute; inset: 8% 12%; z-index: 0; background: radial-gradient(circle, rgba(99,102,241,0.28), transparent 65%); filter: blur(30px); }
+        .band-glow { position: absolute; inset: 2% 4%; z-index: 0; background: radial-gradient(circle at 50% 44%, rgba(99,102,241,0.34), transparent 58%), radial-gradient(circle at 56% 64%, rgba(34,211,238,0.2), transparent 60%); filter: blur(42px); }
         .band-cap { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); font-size: 0.72rem; color: var(--faint); letter-spacing: 0.04em; }
 
         /* ---- section scaffolding ---- */
@@ -215,6 +215,9 @@
             .every { grid-template-columns: 1fr; }
             .coach-grid .chat { order: -1; }
             .hw-stage { order: -1; }
+        }
+        @media (max-width: 640px) {
+            .hero h1 { white-space: normal; }
         }
         @media (max-width: 540px) {
             body { font-size: 16px; }

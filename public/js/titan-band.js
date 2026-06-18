@@ -12,7 +12,8 @@
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 0.95;
+            renderer.toneMappingExposure = 1.12;
+            renderer.setClearColor(0x000000, 0);   // transparent canvas — the band floats on the page
 
             const scene = new THREE.Scene();
             const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
@@ -29,8 +30,8 @@
             controls.target.set(0, 0, 0);
 
             // ---- Lighting: soft studio + Titan indigo/cyan rim ----
-            scene.add(new THREE.AmbientLight(0x404a66, 0.7));
-            const key = new THREE.DirectionalLight(0xffffff, 2.2);
+            scene.add(new THREE.AmbientLight(0x4a5478, 0.95));
+            const key = new THREE.DirectionalLight(0xffffff, 2.9);
             key.position.set(4, 6, 5);
             scene.add(key);
             const rimI = new THREE.PointLight(0x6366f1, 60, 30); // indigo
@@ -83,7 +84,7 @@
 
             // ---- Watch case: tall rounded-rectangle, dark titanium ----
             const bodyMat = new THREE.MeshPhysicalMaterial({
-                color: 0x22262e, roughness: 0.38, metalness: 0.85,
+                color: 0x2c313c, roughness: 0.38, metalness: 0.85,
                 clearcoat: 0.5, clearcoatRoughness: 0.3, envMapIntensity: 1.2,
             });
             const body = new THREE.Mesh(new RoundedBox(1.85, 2.25, 0.58, 0.5, 10), bodyMat);
@@ -207,7 +208,8 @@
             bgGrad.addColorStop(0, '#121723'); bgGrad.addColorStop(0.5, '#0a0d15'); bgGrad.addColorStop(1, '#05070b');
             bx.fillStyle = bgGrad; bx.fillRect(0, 0, 4, 256);
             const bgTex = new THREE.CanvasTexture(bgC); bgTex.colorSpace = THREE.SRGBColorSpace;
-            scene.background = bgTex;
+            // scene.background intentionally NOT set — the canvas stays transparent so the band
+            // floats over the page's own gradient instead of sitting in a black box.
 
             // ---- Soft contact shadow grounding the band ----
             const shC = document.createElement('canvas'); shC.width = shC.height = 256;
@@ -220,7 +222,7 @@
                 new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shC), transparent: true, depthWrite: false })
             );
             shadow.rotation.x = -Math.PI / 2; shadow.position.y = -2.75;
-            scene.add(shadow);
+            // contact shadow omitted on the transparent hero — a dark plane would smudge the page gradient.
 
             // ---- RoundedBox helper (Three has one in addons, but keep CDN deps minimal) ----
             function RoundedBox(w, h, d, r, s) {
@@ -238,15 +240,11 @@
                 return geo;
             }
 
-            // ---- Bloom: makes the optical LEDs + polished edges glow (premium). Guarded:
-            //      falls back to a direct render if the composer can't initialise. ----
+            // Bloom is intentionally disabled here: the UnrealBloom chain composites over an
+            // opaque target and reintroduces a dark box, which breaks the floating effect. We
+            // render directly (alpha-preserving) and lean on the page's CSS glow + the indigo/
+            // cyan rim lights + emissive LEDs for the premium look.
             let composer = null;
-            try {
-                composer = new EffectComposer(renderer);
-                composer.addPass(new RenderPass(scene, camera));
-                composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.24, 0.55, 0.9));
-                composer.addPass(new OutputPass());
-            } catch (e) { composer = null; }
 
             function resize() {
                 const w = canvas.clientWidth, h = canvas.clientHeight;
