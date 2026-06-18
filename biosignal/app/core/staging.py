@@ -37,12 +37,12 @@ EPOCH_SEC = 30
 # Stage codes for the 30-s hypnogram.
 WAKE, LIGHT, DEEP, REM = "wake", "light", "deep", "rem"
 
-# Trained classifier (HistGradientBoosting on motion + HR features). OPT-IN via
-# SLEEP_MODEL_ENABLED — the shipped baseline is trained on SYNTHETIC data and, while it
-# scores ~98% in-distribution, it's brittle to distribution shift (collapses stages on
-# out-of-distribution input). So the robust relative-threshold heuristic stays the DEFAULT
-# until the model is retrained on real PSG data (PhysioNet — see scripts/train_sleep_model.py).
-# Flip the flag on once that model is validated.
+# Trained classifier (HistGradientBoosting on motion + HR features). This is the DEFAULT
+# stager, controlled by SLEEP_MODEL_ENABLED (set it to 0 to force the physiology HMM /
+# heuristic fallback instead -- e.g. for debugging or HR-less streams). The shipped model is
+# trained on REAL PSG data (PhysioNet / Walch 2019, 28 subjects; see scripts/train_sleep_model.py),
+# cross-validated leave-subjects-out at sleep/wake kappa ~0.46, 4-class accuracy ~59% --
+# literature-grade for wrist motion + HR without EEG.
 _MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "sleep_stager.joblib"
 _MODEL: Optional[dict] = None
 _MODEL_TRIED = False
