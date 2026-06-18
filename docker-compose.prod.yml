@@ -1,0 +1,133 @@
+# Titan — self-hosted production stack.
+#
+#   cp .env.production.example .env   # then fill in the REQUIRED secrets
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Everything the app needs runs here: the Laravel web app, a queue worker, the scheduler,
+# the Python biosignal service, MySQL, Redis, MinIO (raw waveform blobs), and Caddy for
+# automatic HTTPS. The wearable/bridge POSTs signed batches to https://<your-domain>.
+name: titan
+
+x-app: &app
+  image: titan/app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file: [.env]
+  restart: unless-stopped
+  networks: [titan]
+
+services:
+  # ── Laravel web app (behind Caddy) ──────────────────────────────────────────
+  app:
+    <<: *app
+    environment:
+      AUTORUN_LARAVEL_MIGRATION: "true"   # ONLY this container runs migrations on boot
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  # ── Queue worker: ProcessWindowJob (biosignal queue), SealNightJob, coach jobs ─
+  queue:
+    <<: *app
+    command: ["php", "artisan", "queue:work", "redis", "--queue=biosignal,default", "--sleep=1", "--tries=3", "--max-time=3600"]
+    depends_on:
+      app: {condition: service_started}
+      redis: {condition: service_healthy}
+
+  # ── Scheduler: nightly seals, briefings, nudges (routes/console.php) ─────────
+  scheduler:
+    <<: *app
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      app: {condition: service_started}
+
+  # ── Python biosignal service (internal only; HRV / sleep / activity / VO2max) ─
+  biosignal:
+    image: titan/biosignal
+    build:
+      context: ./biosignal
+    restart: unless-stopped
+    environment:
+      BIOSIGNAL_TOKEN: ${BIOSIGNAL_TOKEN}
+    networks: [titan]
+
+  # ── MySQL ───────────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-titan}
+      MYSQL_USER: ${DB_USERNAME:-titan}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    volumes: [titan-mysql:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [titan]
+
+  # ── Redis (queue + cache) ─────────────────────────────────────────────────────
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [titan-redis:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [titan]
+
+  # ── MinIO — S3-compatible store for raw biosignal blobs (the `raw` disk) ──────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":8900"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes: [titan-minio:/data]
+    networks: [titan]
+
+  # ── One-shot: create the raw bucket, then exit ───────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio: {condition: service_started}
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-titan-raw}
+    entrypoint: ["sh", "-c", "until mc alias set t http://minio:9000 \"$$MINIO_ACCESS_KEY\" \"$$MINIO_SECRET_KEY\"; do echo waiting-for-minio; sleep 2; done; mc mb -p \"t/$$MINIO_BUCKET\" || true; echo titan-raw-bucket-ready"]
+    restart: "no"
+    networks: [titan]
+
+  # ── Caddy — reverse proxy + automatic HTTPS ──────────────────────────────────
+  # Set APP_DOMAIN to your real domain for auto Let's Encrypt TLS; defaults to :80
+  # (plain HTTP) so it also works on a bare IP for testing.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - titan-caddy-data:/data
+      - titan-caddy-config:/config
+    depends_on: [app]
+    networks: [titan]
+
+networks:
+  titan:
+
+volumes:
+  titan-mysql:
+  titan-redis:
+  titan-minio:
+  titan-caddy-data:
+  titan-caddy-config:

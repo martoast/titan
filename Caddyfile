@@ -1,0 +1,13 @@
+# Titan reverse proxy. APP_DOMAIN comes from .env:
+#   - a real domain  (e.g. titan.example.com) → automatic HTTPS via Let's Encrypt
+#   - ":80"          (default)                → plain HTTP, works on a bare IP for testing
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# Larger raw-biosignal batches (gzipped NDJSON) can exceed the default cap.
+	request_body {
+		max_size 12MB
+	}
+
+	reverse_proxy app:8080
+}
