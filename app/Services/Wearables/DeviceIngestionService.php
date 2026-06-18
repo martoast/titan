@@ -42,6 +42,10 @@ class DeviceIngestionService
         $batchUid = (string) ($payload['batch_uid'] ?? Str::ulid());
         $tz = $connection->effectiveTimezone();
 
+        // First data EVER on this connection? last_sync_at is null until the first ingest,
+        // so this naturally flags the band's very first stream after pairing.
+        $isFirstData = $connection->last_sync_at === null;
+
         $windowsQueued = 0;
         $summariesWritten = 0;
 
@@ -88,6 +92,12 @@ class DeviceIngestionService
             }
         }
         $connection->forceFill($telemetry)->save();
+
+        // The band just came alive for the first time → fire the "you're live!" moment once
+        // (only when real data actually arrived, not an empty heartbeat batch).
+        if ($isFirstData && ($windowsQueued + $summariesWritten) > 0 && class_exists(\App\Jobs\ReactToFirstConnection::class)) {
+            \App\Jobs\ReactToFirstConnection::dispatch($connection->id);
+        }
 
         return [
             'accepted' => true,

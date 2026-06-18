@@ -69,7 +69,7 @@ class DeviceStatus
         ];
     }
 
-    private static function sourceLabel($conn): string
+    public static function sourceLabel($conn): string
     {
         $s = strtolower((string) ($conn->source ?: $conn->provider ?: ''));
 
