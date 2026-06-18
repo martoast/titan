@@ -362,9 +362,10 @@ class SealActivityJob implements ShouldQueue
 
     /**
      * Resolve the profile inputs the biosignal endpoints need. resting_hr is the OVERNIGHT RHR
-     * (the wrist's strongest VO2max signal); hr_max prefers the session's measured peak.
+     * (the wrist's strongest VO2max signal); hr_max is a STABLE ceiling (age estimate,
+     * ratcheted up by genuine near-max efforts) -- never the raw session peak.
      *
-     * @return array{age:float,sex:string,weight_kg:float,height_cm:float,resting_hr:?int,hr_max:?int}
+     * @return array{age:float,sex:string,weight_kg:float,height_cm:float,resting_hr:?int,hr_max:int}
      */
     private function profileBits(Profile $profile, ?int $sessionMaxHr): array
     {
@@ -378,8 +379,32 @@ class SealActivityJob implements ShouldQueue
             'weight_kg' => $weight,
             'height_cm' => (float) ($profile->height_cm ?? 175),
             'resting_hr' => $restingHr !== null ? (int) $restingHr : null,
-            'hr_max' => $sessionMaxHr && $sessionMaxHr > 120 ? $sessionMaxHr : null,
+            'hr_max' => $this->stableHrMax($profile, (float) $age, $sessionMaxHr),
         ];
+    }
+
+    /**
+     * A STABLE estimate of the users max HR -- NOT the session peak. HRmax is a physiological
+     * ceiling; a session peak only reaches it on near-maximal efforts, so the raw peak inflates
+     * %HRR -- and thus intensity, TRIMP, calories and VO2max -- on easy/moderate days. We floor it
+     * with an age estimate (Tanaka 208 - 0.7*age, better than 220 - age) and a remembered observed
+     * max, and let a genuine near-max effort ratchet the ceiling up (and persist it).
+     */
+    private function stableHrMax(Profile $profile, float $age, ?int $sessionMaxHr): int
+    {
+        $ageEstimate = (int) round(208 - 0.7 * $age);
+        $stored = (int) (data_get($profile->settings, "observed_hr_max") ?? 0);
+        // Ignore implausible peaks (PPG spikes); only a real effort defines a ceiling.
+        $session = ($sessionMaxHr && $sessionMaxHr > 120 && $sessionMaxHr <= 215) ? $sessionMaxHr : 0;
+
+        if ($session > $stored && $session > $ageEstimate) {
+            $settings = $profile->settings ?? [];
+            $settings["observed_hr_max"] = $session;
+            $profile->update(["settings" => $settings]);
+            $stored = $session;
+        }
+
+        return max($ageEstimate, $stored, $session);
     }
 
     /** Per-30-s actigraphy counts from raw accel magnitude (when the window omits accel_counts). */
