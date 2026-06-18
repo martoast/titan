@@ -89,6 +89,7 @@ class DeviceIngestionController extends Controller
                 $result['windows_queued'],
                 $result['summaries_written'],
                 false,
+                $result['windows_rejected'] ?? 0,
             );
         } finally {
             $lock->release();
@@ -284,12 +285,13 @@ class DeviceIngestionController extends Controller
         return is_array($decoded) ? $decoded : null;
     }
 
-    private function accepted(string $batchUid, int $windowsQueued, int $summariesWritten, bool $duplicate): JsonResponse
+    private function accepted(string $batchUid, int $windowsQueued, int $summariesWritten, bool $duplicate, int $windowsRejected = 0): JsonResponse
     {
         return response()->json([
             'accepted' => true,
             'batch_uid' => $batchUid,
             'windows_queued' => $windowsQueued,
+            'windows_rejected' => $windowsRejected,
             'summaries_written' => $summariesWritten,
             'duplicate' => $duplicate,
         ], 202);

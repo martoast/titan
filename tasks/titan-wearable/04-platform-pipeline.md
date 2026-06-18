@@ -50,9 +50,20 @@ polar|apple_health), `device_token_hash` (sha256 of per-device secret), `device_
     {"kind":"recovery","date":"2026-06-14","hrv_ms":64,"resting_hr":52},
     {"kind":"body","taken_at":"…Z","weight_kg":78.4,"body_fat_pct":14.2} ] }
 ```
-Response always **202** (async): `{accepted, batch_uid, windows_queued, duplicate}`.
+Response always **202** (async): `{accepted, batch_uid, windows_queued, windows_rejected, duplicate}`.
 - **Idempotency:** `batch_uid` UNIQUE in `device_ingestions`; dup returns 202 `duplicate:true`, queues nothing
   (Redis `Cache::lock("ingest:$uid")` for atomicity).
+- **Signal sanity gate (`WindowSanity`):** the HMAC proves WHO sent a batch, not that the signal is real. Each
+  raw window is sanity-checked BEFORE it's stored/queued; clearly-corrupt windows are dropped (counted in
+  `windows_rejected`, logged with a reason) while clean windows in the same batch still flow. Drop reasons:
+  `ppg_flatline` (sensor saturated/detached — all samples identical), `ppg_non_finite` (NaN/Inf), `ppg_too_short`
+  (<8 samples), `bad_sample_rate` (missing or outside 10–1000 Hz), `sample_rate_mismatch` (claimed rate vs
+  timestamp-implied rate off by >2×, i.e. a wrong clock that would poison beat timing), `ibi_empty`,
+  `ibi_implausible` (no interval in 250–2500 ms), `ibi_flatline` (≥6 identical intervals), `ibi_non_finite`,
+  `end_before_start`, `timestamp_in_future` (>1 day ahead), `window_too_long` (>6 h). It's deliberately
+  conservative — real-but-noisy signal passes through to the DSP's own quality gates, which remain the authority
+  on "is this HRV trustworthy". **Firmware should still self-gate** (don't stream a detached-sensor flatline), but
+  the server no longer trusts the wire blindly.
 - **Limits:** ≤5 MB gzip, ≤500 windows; raw PPG (B) tighter (60/profile/hr). **Time zones:** UTC on the wire +
   IANA tz → server computes the correct calendar date for `slept_at`/`logged_at`. **Rate:** throttle by device_id.
 - **Supporting:** `POST /api/devices/pair`, `DELETE /api/devices/{id}`, `GET /api/devices/ingestions?since=`

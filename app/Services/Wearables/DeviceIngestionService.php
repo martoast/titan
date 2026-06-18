@@ -11,6 +11,7 @@ use App\Models\RecoveryLog;
 use App\Models\SleepLog;
 use App\Models\WearableConnection;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -47,6 +48,7 @@ class DeviceIngestionService
         $isFirstData = $connection->last_sync_at === null;
 
         $windowsQueued = 0;
+        $windowsRejected = 0;
         $summariesWritten = 0;
 
         // --- Shapes A/B: raw windows → MinIO + ledger + queue ---
@@ -54,6 +56,23 @@ class DeviceIngestionService
             if (! is_array($window)) {
                 continue;
             }
+
+            // Sanity-gate the raw signal BEFORE it touches storage or the queue. The HMAC
+            // proved who sent it, not that the signal is real — drop clearly-corrupt windows
+            // (flatline, NaN, impossible rate/clock) so garbage can't masquerade as data.
+            $sanity = WindowSanity::check($window);
+            if (! $sanity['ok']) {
+                $windowsRejected++;
+                Log::warning('[Ingest] dropped a corrupt window', [
+                    'reason' => $sanity['reason'],
+                    'kind' => $window['kind'] ?? null,
+                    'profile_id' => $connection->profile_id,
+                    'source' => $connection->source,
+                ]);
+
+                continue;
+            }
+
             $windowUid = count($payload['windows'] ?? []) > 1
                 ? $batchUid.'-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT)
                 : $batchUid;
@@ -103,6 +122,7 @@ class DeviceIngestionService
             'accepted' => true,
             'batch_uid' => $batchUid,
             'windows_queued' => $windowsQueued,
+            'windows_rejected' => $windowsRejected,
             'summaries_written' => $summariesWritten,
             'duplicate' => false,
         ];
