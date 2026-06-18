@@ -10,20 +10,17 @@
     <meta property="og:title" content="Titan — Understand your body. Own your data.">
     <meta property="og:description" content="The open, subscription-free health OS. A wearable you own, an AI coach that knows you, and your data that stays yours. Forever.">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="{{ asset('images/hero-bg.png') }}">
+    <meta property="og:image" content="{{ asset('images/og-card.png') }}">
+    <meta property="og:image:width" content="1424">
+    <meta property="og:image:height" content="752">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Titan — Understand your body. Own your data.">
+    <meta name="twitter:description" content="The open, subscription-free health OS. A wearable you own, an AI coach that knows you, your data that stays yours.">
+    <meta name="twitter:image" content="{{ asset('images/og-card.png') }}">
     <meta name="theme-color" content="#06070A">
 
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=archivo:500,600,700,800,900|manrope:400,500,600,700" rel="stylesheet">
-
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-      }
-    }
-    </script>
 
     @verbatim
     <style>
@@ -114,6 +111,31 @@
         .cmp-list li { display: flex; gap: 0.7rem; font-size: 0.95rem; color: var(--muted); align-items: flex-start; }
         .cmp-list li svg { flex-shrink: 0; margin-top: 3px; }
         .cmp-us .cmp-list li { color: #cdd6e6; }
+
+        /* ---- comparison table ---- */
+        .cmp-table-wrap { margin-top: 3rem; overflow-x: auto; border-radius: 20px; border: 1px solid var(--line); -webkit-overflow-scrolling: touch; }
+        .cmp-table { width: 100%; border-collapse: collapse; min-width: 640px; background: var(--surface); }
+        .cmp-table th, .cmp-table td { padding: 1.05rem 1.1rem; text-align: center; border-bottom: 1px solid var(--line); vertical-align: middle; }
+        .cmp-table thead th { font-family: var(--font-d); font-weight: 800; font-size: 1.1rem; color: var(--faint); padding: 1.5rem 1.1rem; }
+        .cmp-table th.ft { text-align: left; font-family: var(--font-b); font-weight: 600; font-size: 0.82rem; color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em; }
+        .cmp-table td:first-child { text-align: left; color: #d4dce9; font-weight: 600; font-size: 0.96rem; }
+        .cmp-table thead .brand-us { color: #fff; font-size: 1.35rem; background: linear-gradient(180deg, rgba(34,211,238,0.12), rgba(99,102,241,0.06)); }
+        .cmp-table td.us { background: linear-gradient(180deg, rgba(34,211,238,0.07), rgba(99,102,241,0.045)); }
+        .cmp-table tbody tr:last-child td { border-bottom: none; }
+        .cmp-table .ic { width: 22px; height: 22px; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+        .cmp-table .ic.ok { stroke: var(--green); }
+        .cmp-table .ic.no { stroke: #565e6d; stroke-width: 2.3; width: 19px; height: 19px; }
+        .cmp-table .lim { color: var(--amber); font-size: 0.82rem; font-weight: 600; }
+        .cmp-table td { color: var(--faint); font-size: 0.95rem; }
+        .cmp-table .g { color: var(--green); font-family: var(--font-d); }
+        .cmp-table .cost td { font-family: var(--font-d); font-weight: 700; font-size: 1.02rem; color: var(--muted); padding-top: 1.3rem; padding-bottom: 1.3rem; }
+        .cmp-table .cost td:first-child { color: #fff; }
+        .cmp-foot { text-align: center; margin-top: 1.7rem; color: var(--muted); font-size: clamp(1rem, 1.6vw, 1.18rem); }
+
+        /* ---- floating product image (replaces the 3D canvas) ---- */
+        .band-hero-img { position: relative; z-index: 1; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 30px 60px rgba(0,0,0,0.55)); animation: floaty 6s ease-in-out infinite; }
+        @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+        @media (prefers-reduced-motion: reduce) { .band-hero-img { animation: none; } }
 
         /* ---- score cards (data viz) ---- */
         .scores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin-top: 3rem; }
@@ -280,9 +302,7 @@
             </div>
             <div class="band-stage rv">
                 <div class="band-glow"></div>
-                <img class="band-poster" src="{{ asset('images/band.png') }}" alt="The Titan band — an open, research-grade recovery wearable" fetchpriority="high">
-                <canvas id="heroBand"></canvas>
-                <div class="band-cap">drag to rotate</div>
+                <img class="band-hero-img" src="{{ asset('images/band-hero.png') }}" alt="The Titan band — an open, research-grade recovery wearable showing a 92% recovery score" fetchpriority="high">
             </div>
         </div>
     </header>
@@ -295,28 +315,27 @@
                 <h2>Everyone else rents you<br><span class="grad-text">your own body.</span></h2>
                 <p class="lead">The big wearables lock your health behind a monthly fee — and your data behind their servers. Stop paying, and the screen goes dark. We think understanding your body is a right, not a subscription.</p>
             </div>
-            <div class="cmp">
-                <div class="cmp-card cmp-them rv">
-                    <h3>The subscription wearable</h3>
-                    <div class="cmp-price" style="color:#5e6677">$239<span style="font-size:1.1rem;font-weight:600;color:var(--faint)">/yr</span></div>
-                    <div class="cmp-sub">…on top of the hardware. Forever.</div>
-                    <ul class="cmp-list">
-                        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#fb7185" stroke-width="2.2" stroke-linecap="round"/></svg> Cancel, and the band turns into a paperweight</li>
-                        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#fb7185" stroke-width="2.2" stroke-linecap="round"/></svg> Your raw data lives on their servers, not yours</li>
-                        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#fb7185" stroke-width="2.2" stroke-linecap="round"/></svg> Closed hardware, closed algorithms, closed future</li>
-                    </ul>
-                </div>
-                <div class="cmp-card cmp-us rv">
-                    <h3 class="grad-text">Titan</h3>
-                    <div class="cmp-price grad-text">$0<span style="font-size:1.1rem;font-weight:600;color:var(--muted)">/mo</span></div>
-                    <div class="cmp-sub" style="color:var(--muted)">Own the band. Pay nothing after.</div>
-                    <ul class="cmp-list">
-                        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Nothing to cancel — there's no subscription to begin with</li>
-                        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Your raw signal lives on a server you control</li>
-                        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Open hardware, open algorithms, yours to build on</li>
-                    </ul>
-                </div>
+            @verbatim
+            <div class="cmp-table-wrap rv">
+                <table class="cmp-table">
+                    <thead>
+                        <tr><th class="ft">Same science as the big names</th><th class="brand-us">Titan</th><th>Whoop</th><th>Oura</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Recovery &amp; readiness score</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
+                        <tr><td>Sleep stages &amp; quality</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
+                        <tr><td>HRV, resting HR &amp; strain</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
+                        <tr><td>AI coach that knows your body</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><span class="lim">Limited</span></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Export your raw data</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Open source</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Self-hostable — your server</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Monthly subscription</td><td class="us"><b class="g">None</b></td><td>$30 / mo</td><td>$6 / mo</td></tr>
+                        <tr class="cost"><td>Cost after the device</td><td class="us"><b class="grad-text">$0 forever</b></td><td>$239 / yr</td><td>$70 / yr</td></tr>
+                    </tbody>
+                </table>
             </div>
+            <p class="cmp-foot rv">Same science. Same insights. <span class="grad-text">None of the rent</span> — and your data never leaves your hands.</p>
+            @endverbatim
         </div>
     </section>
 
@@ -399,8 +418,7 @@
         <div class="wrap hw-grid">
             <div class="hw-stage rv">
                 <div class="band-glow" style="inset:14% 16%;"></div>
-                <img class="band-poster" src="{{ asset('images/band.png') }}" alt="The Titan band hardware" loading="lazy">
-                <canvas id="hwBand"></canvas>
+                <img class="band-hero-img" src="{{ asset('images/band.png') }}" alt="The Titan band hardware" loading="lazy">
             </div>
             <div class="rv">
                 <span class="eyebrow kicker">The band</span>
@@ -488,33 +506,9 @@
         </div>
     </footer>
 
-    <!-- ===== 3D band module + page behaviour ===== -->
-    <script type="module" src="{{ asset('js/titan-band.js') }}"></script>
+    <!-- ===== page behaviour ===== -->
     <script type="module">
         @verbatim
-        // ---- Drive a band canvas with a calm, resting heartbeat ----
-        function liveBand(canvasId) {
-            const canvas = document.getElementById(canvasId);
-            if (!canvas || !window.__titanBand) return;
-            let bpm = 58, rmssd = 66, t = 0;
-            const metrics = () => {
-                t += 0.016;
-                return { bpm: bpm + Math.sin(t * 0.25) * 2.5, rmssd: rmssd + Math.sin(t * 0.13) * 4 };
-            };
-            let api;
-            try { api = window.__titanBand(canvas, () => 'rest', null, metrics); }
-            catch (e) { canvas.style.display = 'none'; return; }
-            // heartbeat → pulse the optical LEDs in time with the bpm
-            function beat() {
-                if (api && api.beat) api.beat();
-                setTimeout(beat, 60000 / (bpm + Math.sin(t * 0.25) * 2.5));
-            }
-            beat();
-        }
-        liveBand('heroBand');
-        const hw = document.getElementById('hwBand');
-        if (hw) liveBand('hwBand');
-
         // ---- Nav scroll state ----
         const nav = document.getElementById('nav');
         const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 24);
