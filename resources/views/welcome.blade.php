@@ -287,17 +287,17 @@
         <div class="hero-bg"></div>
         <div class="wrap hero-grid">
             <div>
-                <div class="eyebrow rv">Open-source · Subscription-free</div>
+                <div class="eyebrow rv">24/7 health intelligence</div>
                 <h1 class="rv" style="margin-top:1.1rem;">Your body,<br><span class="grad-text">fully understood.</span></h1>
-                <p class="lead rv">Titan turns a wearable you own into recovery, sleep, and strain you can actually act on — guided by an AI coach that knows your body. No subscription. No data tax. Yours, forever.</p>
+                <p class="lead rv">Titan pairs round-the-clock health insights with a personal AI coach to help you improve how you sleep, train, and feel — starting day one.</p>
                 <div class="hero-cta rv">
-                    <a class="btn btn-primary" href="{{ route('register') }}">Get started — it's free</a>
+                    <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
                     <a class="btn btn-ghost" href="#data">See how it works</a>
                 </div>
                 <div class="pillrow rv">
-                    <span class="pill"><span class="dot" style="background:var(--green)"></span> Open source</span>
-                    <span class="pill"><span class="dot" style="background:var(--cyan)"></span> Self-hostable</span>
-                    <span class="pill"><span class="dot" style="background:var(--indigo)"></span> $0 / month, forever</span>
+                    <span class="pill"><span class="dot" style="background:var(--green)"></span> 24/7 monitoring</span>
+                    <span class="pill"><span class="dot" style="background:var(--cyan)"></span> Personal AI coach</span>
+                    <span class="pill"><span class="dot" style="background:var(--indigo)"></span> Open &amp; yours forever</span>
                 </div>
             </div>
             <div class="band-stage rv">
@@ -311,9 +311,9 @@
     <section class="thesis">
         <div class="wrap sec">
             <div class="sec-head center rv">
-                <span class="eyebrow kicker">The end of the data tax</span>
-                <h2>Everyone else rents you<br><span class="grad-text">your own body.</span></h2>
-                <p class="lead">The big wearables lock your health behind a monthly fee — and your data behind their servers. Stop paying, and the screen goes dark. We think understanding your body is a right, not a subscription.</p>
+                <span class="eyebrow kicker">The complete picture</span>
+                <h2>A complete view of<br><span class="grad-text">your health.</span></h2>
+                <p class="lead">24/7 monitoring across sleep, recovery, strain, and heart health — the same validated science the premium wearables run on, so you can make smarter decisions every day. With one quiet difference: it's yours to keep.</p>
             </div>
             @verbatim
             <div class="cmp-table-wrap rv">
@@ -422,12 +422,12 @@
             </div>
             <div class="rv">
                 <span class="eyebrow kicker">The band</span>
-                <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">Open hardware. Real signal. Yours to keep.</h2>
-                <p class="lead" style="margin-top:1rem;">A research-grade optical wearable you can build, buy, or self-host — streaming the raw waveform straight to a server you own.</p>
+                <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">Built to be worn 24/7.</h2>
+                <p class="lead" style="margin-top:1rem;">Always-on sensors, a multi-day battery, and a focused, screen-free design — research-grade signal, comfortable enough to forget you're wearing it.</p>
                 <div class="specs">
-                    <div class="spec"><span class="sd" style="background:var(--green)"></span><div><b>Optical PPG sensor</b><p>Continuous heart rate &amp; whole-night HRV — the same physiology the labs measure, on your wrist.</p></div></div>
-                    <div class="spec"><span class="sd" style="background:var(--cyan)"></span><div><b>3-axis accelerometer</b><p>Sleep stages, steps, strain and movement — fused with HR for honest, validated metrics.</p></div></div>
-                    <div class="spec"><span class="sd" style="background:var(--indigo)"></span><div><b>Your raw data, exported</b><p>Every sample is yours. Export it, self-host it, build on it. No walled garden, no lock-in.</p></div></div>
+                    <div class="spec"><span class="sd" style="background:var(--green)"></span><div><b>Always-on optical sensor</b><p>Continuous heart rate and whole-night HRV — the same physiology the labs measure, right on your wrist.</p></div></div>
+                    <div class="spec"><span class="sd" style="background:var(--cyan)"></span><div><b>Multi-day battery, screen-free focus</b><p>Wear it for days, charge in minutes. No pings, no distractions — just your body, measured.</p></div></div>
+                    <div class="spec"><span class="sd" style="background:var(--indigo)"></span><div><b>Open hardware, your data</b><p>Every sample is yours to export, self-host, and build on. No walled garden, no lock-in.</p></div></div>
                 </div>
             </div>
         </div>
@@ -439,7 +439,7 @@
             <div class="sec-head center rv">
                 <span class="eyebrow kicker">For every body</span>
                 <h2>Health is universal. So is Titan.</h2>
-                <p class="lead">Not just for athletes. For anyone with a body who wants to understand it better — at any age, any goal, any starting point.</p>
+                <p class="lead">Whether you're chasing a personal record or just better sleep, on day one of your journey or year ten — Titan meets you where you are and helps you get better.</p>
             </div>
             <div class="every">
                 <div class="ev rv"><div class="evi">🌙</div><h4>The exhausted parent</h4><p>See your real sleep debt and get tiny, doable ways to recover on broken nights.</p></div>
@@ -483,10 +483,10 @@
     <!-- FINAL CTA -->
     <section class="final">
         <div class="wrap rv">
-            <h2>Understand your body.<br><span class="grad-text">Starting today.</span></h2>
-            <p class="lead">Free to start. Free to run forever. Built open, for every body.</p>
+            <h2>Start understanding<br><span class="grad-text">your body today.</span></h2>
+            <p class="lead">Real insights from day one — and a coach in your corner for the long run.</p>
             <div class="hero-cta">
-                <a class="btn btn-primary" href="{{ route('register') }}">Get started — it's free</a>
+                <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
                 <a class="btn btn-ghost" href="https://github.com/martoast/titan">View the source</a>
             </div>
         </div>
