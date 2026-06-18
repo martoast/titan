@@ -57,6 +57,7 @@
             sendUrl: '{{ $sendUrl }}',
             streamUrl: '{{ $streamUrl }}',
             scanUrl: '{{ $scanUrl }}',
+            transcribeUrl: '/coach/transcribe',
             csrf: '{{ csrf_token() }}',
             initial: {{ Illuminate\Support\Js::from($initialMessages) }},
             conversationId: {{ $conversation?->id ?? 'null' }},
@@ -264,13 +265,38 @@
                             :class="pendingPhoto ? 'ring-2 ring-indigo-400/50 text-indigo-300' : ''">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.66-.9l.82-1.2A2 2 0 0110.07 4h3.86a2 2 0 011.66.9l.82 1.2a2 2 0 001.66.9H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </button>
-                    <textarea
-                        x-ref="input"
-                        x-model="draft"
-                        @keydown.enter.prevent="if(!$event.shiftKey) send()"
-                        rows="1"
-                        :placeholder="pendingPhoto ? 'Add a note (optional)…' : 'Ask your coach…'"
-                        class="flex-1 min-w-0 resize-none rounded-xl bg-gray-950/60 border border-white/10 focus:border-indigo-500/50 focus:ring-0 px-4 py-3 text-base text-gray-100 placeholder-gray-600 max-h-40"></textarea>
+                    {{-- Voice → text: record, watch the live waveform, transcribe into the input --}}
+                    <button type="button" @click="toggleMic()" :disabled="loading || transcribing"
+                            :title="recording ? 'Stop recording' : 'Record a voice message'"
+                            class="shrink-0 h-12 w-12 grid place-items-center rounded-xl border transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            :class="recording ? 'bg-rose-500/20 border-rose-400/50 text-rose-300' : 'bg-white/5 border-white/10 text-gray-300 active:bg-white/10'">
+                        <svg x-show="!recording && !transcribing" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-14 0M12 18v3"/></svg>
+                        <svg x-show="recording" x-cloak class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>
+                        <svg x-show="transcribing" x-cloak class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-opacity="0.25"/><path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+                    </button>
+                    <div class="relative flex-1 min-w-0">
+                        <textarea
+                            x-ref="input"
+                            x-model="draft"
+                            @keydown.enter.prevent="if(!$event.shiftKey) send()"
+                            rows="1"
+                            :placeholder="pendingPhoto ? 'Add a note (optional)…' : 'Ask your coach…'"
+                            class="w-full resize-none rounded-xl bg-gray-950/60 border border-white/10 focus:border-indigo-500/50 focus:ring-0 px-4 py-3 text-base text-gray-100 placeholder-gray-600 max-h-40"></textarea>
+                        {{-- live recording waveform overlay --}}
+                        <div x-show="recording" x-cloak @click="stopMic()"
+                             class="absolute inset-0 flex items-center gap-3 px-4 rounded-xl bg-gray-950/95 border border-rose-400/40 cursor-pointer select-none">
+                            <span class="shrink-0 h-2.5 w-2.5 rounded-full bg-rose-400 animate-pulse"></span>
+                            <canvas x-ref="wave" class="flex-1 h-8 min-w-0"></canvas>
+                            <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="recTime"></span>
+                            <span class="shrink-0 text-xs font-medium text-rose-300">Tap to stop</span>
+                        </div>
+                        {{-- transcribing overlay --}}
+                        <div x-show="transcribing" x-cloak
+                             class="absolute inset-0 flex items-center gap-2 px-4 rounded-xl bg-gray-950/95 border border-indigo-400/30 text-sm text-indigo-300 select-none">
+                            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-opacity="0.25"/><path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+                            Transcribing your message…
+                        </div>
+                    </div>
                     <button type="submit"
                             :disabled="loading || (!draft.trim() && !pendingPhoto)"
                             class="shrink-0 h-12 w-12 grid place-items-center rounded-xl bg-indigo-500 active:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed text-white transition">
@@ -280,7 +306,8 @@
                         <span x-show="loading" x-cloak>…</span>
                     </button>
                 </form>
-                <p class="mt-2 text-[11px] text-gray-600">Coaching, not medical advice. For clinical concerns, see a doctor.</p>
+                <p x-show="micError" x-cloak x-text="micError" @click="micError=''" class="mt-2 text-[11px] text-rose-300 cursor-pointer"></p>
+                <p x-show="!micError" class="mt-2 text-[11px] text-gray-600">Coaching, not medical advice. For clinical concerns, see a doctor.</p>
             </div>
         </section>
     </div>
@@ -303,8 +330,17 @@
                 sendUrl: cfg.sendUrl,
                 streamUrl: cfg.streamUrl,
                 scanUrl: cfg.scanUrl,
+                transcribeUrl: cfg.transcribeUrl,
                 csrf: cfg.csrf,
                 aiOffline: cfg.aiOffline,
+
+                // ---- voice → text ----
+                recording: false,      // mic is live
+                transcribing: false,   // clip is being transcribed
+                recSecs: 0,            // recording timer (seconds)
+                micError: '',
+                _mr: null, _chunks: [], _stream: null, _audioCtx: null, _raf: null, _timer: null,
+                get recTime() { const s = this.recSecs; return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); },
 
                 activeId: cfg.conversationId || null,
                 loadingChat: false,    // switching to another conversation
@@ -450,6 +486,111 @@
                         this.$nextTick(() => { this.enhance(); this.scrollDown(); });
                     } finally {
                         this.finishSend();
+                    }
+                },
+
+                // ---- Voice → text: record a clip, show a live waveform, transcribe, drop into the input ----
+                async toggleMic() {
+                    if (this.recording) { this.stopMic(); return; }
+                    if (this.transcribing || this.loading) return;
+                    this.micError = '';
+                    if (!navigator.mediaDevices || !window.MediaRecorder) { this.micError = 'Voice input isn’t supported on this browser.'; return; }
+                    try {
+                        this._stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    } catch (e) {
+                        this.micError = 'Microphone access was blocked. Allow it and try again.';
+                        return;
+                    }
+                    this._chunks = [];
+                    const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(t => window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+                    try {
+                        this._mr = new MediaRecorder(this._stream, mime ? { mimeType: mime } : {});
+                    } catch (e) { this._mr = new MediaRecorder(this._stream); }
+                    this._mr.ondataavailable = (e) => { if (e.data && e.data.size) this._chunks.push(e.data); };
+                    this._mr.onstop = () => this.onRecStop();
+                    this._mr.start();
+                    this.recording = true;
+                    this.recSecs = 0;
+                    this._timer = setInterval(() => {
+                        this.recSecs++;
+                        if (this.recSecs >= 120) this.stopMic();   // safety cap at 2 min
+                    }, 1000);
+                    this.startWave();
+                },
+
+                stopMic() {
+                    if (this._mr && this._mr.state !== 'inactive') { try { this._mr.stop(); } catch (e) {} }
+                    this.recording = false;
+                    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+                    this.stopWave();
+                },
+
+                startWave() {
+                    try {
+                        this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        const analyser = this._audioCtx.createAnalyser();
+                        analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.75;
+                        this._audioCtx.createMediaStreamSource(this._stream).connect(analyser);
+                        const data = new Uint8Array(analyser.frequencyBinCount);
+                        const BARS = 28;
+                        const draw = () => {
+                            this._raf = requestAnimationFrame(draw);
+                            const canvas = this.$refs.wave;
+                            if (!canvas) return;
+                            analyser.getByteFrequencyData(data);
+                            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                            const w = canvas.width = canvas.clientWidth * dpr;
+                            const h = canvas.height = canvas.clientHeight * dpr;
+                            const ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, w, h);
+                            const step = Math.floor(data.length / BARS), bw = w / BARS;
+                            for (let i = 0; i < BARS; i++) {
+                                const v = (data[i * step] || 0) / 255;
+                                const bh = Math.max(3 * dpr, v * h);
+                                const x = i * bw + bw * 0.25;
+                                const g = ctx.createLinearGradient(0, (h - bh) / 2, 0, (h + bh) / 2);
+                                g.addColorStop(0, 'rgba(129,140,248,' + (0.55 + v * 0.45) + ')');
+                                g.addColorStop(1, 'rgba(34,211,238,' + (0.55 + v * 0.45) + ')');
+                                ctx.fillStyle = g;
+                                ctx.fillRect(x, (h - bh) / 2, bw * 0.5, bh);
+                            }
+                        };
+                        draw();
+                    } catch (e) { /* waveform is cosmetic — recording still works */ }
+                },
+
+                stopWave() {
+                    if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+                    if (this._audioCtx) { try { this._audioCtx.close(); } catch (e) {} this._audioCtx = null; }
+                },
+
+                async onRecStop() {
+                    if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
+                    const type = (this._chunks[0] && this._chunks[0].type) || 'audio/webm';
+                    const blob = new Blob(this._chunks, { type });
+                    this._chunks = [];
+                    if (!blob.size) return;
+                    this.transcribing = true;
+                    const ext = type.includes('mp4') ? 'mp4' : type.includes('ogg') ? 'ogg' : 'webm';
+                    const fd = new FormData();
+                    fd.append('audio', blob, 'voice.' + ext);
+                    try {
+                        const res = await fetch(this.transcribeUrl, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': this.csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                            body: fd,
+                        });
+                        const data = await res.json();
+                        if (data && data.ok && data.text) {
+                            this.draft = (this.draft.trim() ? this.draft.trim() + ' ' : '') + data.text;
+                            this.$nextTick(() => { if (this.$refs.input) { this.$refs.input.focus(); this.$refs.input.setSelectionRange(this.draft.length, this.draft.length); } });
+                        } else {
+                            this.micError = (data && data.error) || 'Couldn’t transcribe that — try again.';
+                        }
+                    } catch (e) {
+                        this.micError = 'Transcription failed. Check your connection and try again.';
+                    } finally {
+                        this.transcribing = false;
                     }
                 },
 

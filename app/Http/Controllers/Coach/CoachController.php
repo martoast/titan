@@ -321,4 +321,35 @@ class CoachController extends Controller
             'reply' => $result['reply'],
         ]);
     }
+
+    /**
+     * Transcribe a recorded voice clip (OpenAI). Returns the text only — the client drops
+     * it into the input for the user to review and edit before sending. Never auto-sends.
+     */
+    public function transcribe(Request $request, \App\Services\Ai\AiService $ai): JsonResponse
+    {
+        $request->user()->ensureProfile();
+
+        // Validate manually so we ALWAYS return JSON (a redirect-back would feed the
+        // client HTML, which its res.json() can't parse).
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'audio' => [
+                'required', 'file', 'max:25600',   // ≤ 25 MB (OpenAI limit)
+                'mimetypes:audio/webm,audio/ogg,audio/mp4,audio/mpeg,audio/mpga,audio/wav,audio/x-wav,audio/m4a,audio/x-m4a,video/webm,video/mp4',
+            ],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['ok' => false, 'error' => 'That recording couldn’t be read — try again.'], 422);
+        }
+
+        $file = $request->file('audio');
+        $ext = strtolower((string) $file->getClientOriginalExtension()) ?: 'webm';
+        $text = $ai->transcribe((string) file_get_contents($file->getRealPath()), 'voice.'.$ext);
+
+        if ($text === null) {
+            return response()->json(['ok' => false, 'error' => 'Couldn’t transcribe that — try again.'], 200);
+        }
+
+        return response()->json(['ok' => true, 'text' => $text]);
+    }
 }
