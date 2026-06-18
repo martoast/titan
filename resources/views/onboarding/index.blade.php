@@ -252,6 +252,80 @@
                     </section>
                 </template>
 
+                {{-- Dream physique — the coach's north star, generated from a photo --}}
+                <template x-if="current === 'physique'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Your north star</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">See your dream physique.</h2>
+                        <p class="mt-2 text-sm text-gray-500">This is who you're becoming — and what your coach trains you toward. Add a photo and we'll render a realistic, achievable version of future you.</p>
+
+                        {{-- A · describe + upload + generate --}}
+                        <div x-show="!form.phys_goal_image && !physGenerating" class="mt-6 space-y-4">
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="c in physChips" :key="c">
+                                    <button type="button" @click="togglePhysTag(c)"
+                                            class="rounded-full border px-3.5 py-1.5 text-sm font-medium transition"
+                                            :style="physTags.includes(c) ? 'border-color:#22d3ee; background:#22d3ee22; color:#a5f3fc' : 'border-color:rgba(255,255,255,0.12); color:#cbd5e1'"
+                                            x-text="c"></button>
+                                </template>
+                            </div>
+                            <input x-model="form.phys_desc" maxlength="160" type="text" placeholder="Anything specific? (optional)"
+                                   class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-cyan-400 focus:ring-0">
+                            <input x-ref="physPhoto" type="file" accept="image/*" class="hidden" @change="onPhysPhoto($event)">
+                            <button type="button" @click="$refs.physPhoto.click()"
+                                    class="flex w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.03] py-8 transition active:bg-white/[0.06]"
+                                    :class="physPhotoPreview ? 'border-solid !border-cyan-400/40 !py-0' : ''">
+                                <template x-if="physPhotoPreview"><img :src="physPhotoPreview" alt="" class="max-h-56 w-full object-contain"></template>
+                                <template x-if="!physPhotoPreview">
+                                    <span class="flex flex-col items-center gap-2 text-gray-400">
+                                        <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5V18a2 2 0 002 2h14a2 2 0 002-2v-1.5M12 16V3m0 0L8 7m4-4l4 4"/></svg>
+                                        <span class="font-display text-sm font-bold text-gray-200">Upload a photo of yourself</span>
+                                        <span class="text-xs text-gray-600">A clear, well-lit, front-facing shot works best</span>
+                                    </span>
+                                </template>
+                            </button>
+                            <p x-show="physPhotoPreview" x-cloak class="text-center text-xs text-gray-600">Tap the photo to change it</p>
+                            <button type="button" @click="generatePhys()" :disabled="!physPhotoFile"
+                                    class="h-14 w-full rounded-2xl font-display text-base font-bold transition disabled:cursor-not-allowed"
+                                    :style="physPhotoFile ? 'background:linear-gradient(90deg,#6366f1,#22d3ee); color:#0b1220' : 'background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.4)'">
+                                Generate my dream physique ✨
+                            </button>
+                            <button type="button" @click="next()" class="block w-full py-1 text-center text-sm text-gray-500 active:text-gray-300">I'll do this later</button>
+                        </div>
+
+                        {{-- B · generating --}}
+                        <div x-show="physGenerating" x-cloak class="mt-6">
+                            <div class="relative grid aspect-[4/5] w-full place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+                                <img x-show="physPhotoPreview" :src="physPhotoPreview" alt="" class="absolute inset-0 h-full w-full object-cover opacity-20 blur-[3px]">
+                                <div class="relative flex flex-col items-center gap-3">
+                                    <svg class="h-8 w-8 animate-spin text-cyan-300" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-opacity="0.25"/><path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+                                    <p class="font-display text-base font-bold text-gray-100">Sculpting your future self…</p>
+                                    <p class="text-xs text-gray-500">This takes a few seconds</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- C · before / after --}}
+                        <div x-show="form.phys_goal_image && !physGenerating" x-cloak class="mt-6 space-y-4">
+                            <div class="grid grid-cols-2 gap-3">
+                                <figure class="space-y-1.5">
+                                    <img :src="physPhotoPreview" alt="" class="aspect-[4/5] w-full rounded-2xl border border-white/10 object-cover">
+                                    <figcaption class="text-center text-xs font-medium uppercase tracking-wider text-gray-600">You, now</figcaption>
+                                </figure>
+                                <figure class="space-y-1.5">
+                                    <img :src="form.phys_goal_image" alt="Your dream physique" class="aspect-[4/5] w-full rounded-2xl border-2 object-cover" style="border-color:rgba(34,211,238,0.4)">
+                                    <figcaption class="text-center text-xs font-bold uppercase tracking-wider" style="color:#67e8f9">Your goal</figcaption>
+                                </figure>
+                            </div>
+                            <p class="text-center text-sm text-gray-400">Your north star — your coach trains you toward this.</p>
+                            <button type="button" @click="next()" class="h-14 w-full rounded-2xl font-display text-base font-bold text-gray-900" style="background:linear-gradient(90deg,#6366f1,#22d3ee)">This is it — let's go →</button>
+                            <button type="button" @click="retryPhys()" class="block w-full py-1 text-center text-sm font-medium text-gray-400 active:text-gray-200">↻ Try again</button>
+                        </div>
+
+                        <p x-show="physError" x-cloak x-text="physError" @click="physError=''" class="mt-3 text-center text-sm text-rose-300"></p>
+                    </section>
+                </template>
+
                 {{-- Coaching tone --}}
                 <template x-if="current === 'tone'">
                     <section class="ob-step">
@@ -404,7 +478,7 @@
                         class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white/10 text-gray-400 active:bg-white/5">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
                 </button>
-                <button type="button" x-show="current !== 'finish'" @click="next()" :disabled="!valid()"
+                <button type="button" x-show="current !== 'finish' && current !== 'physique'" @click="next()" :disabled="!valid()"
                         class="h-14 flex-1 rounded-2xl font-display text-base font-bold text-white transition disabled:opacity-30 disabled:cursor-not-allowed"
                         :style="valid() ? `background:linear-gradient(90deg, #6366f1, ${accent})` : 'background:rgba(255,255,255,0.08)'"
                         x-text="idx === 0 ? 'Get started' : 'Continue'"></button>
@@ -431,7 +505,63 @@
                     primary_goal: '', coach_tone: '', coaching_intensity: 'balanced',
                     meals_per_day: 0, eat_start: '08:00', eat_end: '21:00',
                     cycle_enabled: false, last_period: '', cycle_length: 28, birth_control: 'none', cycle_intent: 'tracking',
+                    phys_desc: '', phys_goal_image: '', phys_goal_id: null,
                 },
+
+                // ---- Dream physique (generated mid-wizard) ----
+                physTags: [],
+                physPhotoFile: null,
+                physPhotoPreview: '',
+                physGenerating: false,
+                physError: '',
+                get physChips() {
+                    if (this.form.sex === 'F') return ['Toned & lean', 'Hourglass waist', 'Curvier glutes', 'Sculpted arms', 'Lower body fat', 'Strong legs'];
+                    if (this.form.sex === 'M') return ['+ Lean muscle', 'Visible abs', 'Bigger arms', 'Broader shoulders', 'Lower body fat', 'V-taper'];
+                    return ['Leaner', 'More muscle', 'Visible abs', 'Lower body fat', 'More athletic', 'Defined'];
+                },
+                togglePhysTag(t) {
+                    const i = this.physTags.indexOf(t);
+                    if (i === -1) this.physTags.push(t); else this.physTags.splice(i, 1);
+                },
+                onPhysPhoto(e) {
+                    const f = e.target.files && e.target.files[0];
+                    if (!f) return;
+                    this.physPhotoFile = f;
+                    if (this.physPhotoPreview) URL.revokeObjectURL(this.physPhotoPreview);
+                    this.physPhotoPreview = URL.createObjectURL(f);
+                    this.form.phys_goal_image = '';   // a new photo invalidates the old render
+                    this.physError = '';
+                },
+                async generatePhys() {
+                    if (!this.physPhotoFile || this.physGenerating) return;
+                    this.physError = '';
+                    this.physGenerating = true;
+                    const desc = [this.physTags.join(', '), (this.form.phys_desc || '').trim()].filter(Boolean).join('. ').slice(0, 160);
+                    const fd = new FormData();
+                    fd.append('photo', this.physPhotoFile);
+                    fd.append('sex', this.form.sex || '');
+                    if (desc) fd.append('description', desc);
+                    const token = document.querySelector('meta[name=csrf-token]')?.content || document.querySelector('input[name=_token]')?.value || '';
+                    try {
+                        const res = await fetch('/onboarding/physique', {
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                            body: fd,
+                        });
+                        const data = await res.json();
+                        if (data && data.ok && data.image_url) {
+                            this.form.phys_goal_image = data.image_url;
+                            this.form.phys_goal_id = data.goal_id;
+                        } else {
+                            this.physError = (data && data.error) || 'Couldn’t generate that — try again.';
+                        }
+                    } catch (e) {
+                        this.physError = 'Something went wrong. Check your connection and try again.';
+                    } finally {
+                        this.physGenerating = false;
+                    }
+                },
+                retryPhys() { this.form.phys_goal_image = ''; this.form.phys_goal_id = null; },
 
                 sexes: [
                     { value: 'F', label: 'Female', glyph: '♀', accent: '#fb7185' },
@@ -472,7 +602,7 @@
                 },
                 stepAccents: {
                     welcome: '#6366f1', name: '#6366f1', birthday: '#6366f1', sex: '#a78bfa', units: '#22d3ee',
-                    body: '#22d3ee', activity: '#22d3ee', goal: '#a78bfa', tone: '#818cf8', intensity: '#fb7185',
+                    body: '#22d3ee', activity: '#22d3ee', goal: '#a78bfa', physique: '#22d3ee', tone: '#818cf8', intensity: '#fb7185',
                     cycle_enable: '#fb7185', cycle_details: '#fb7185', nutrition: '#34d399', finish: '#22d3ee',
                 },
 
@@ -530,7 +660,7 @@
                 clearSaved() { try { localStorage.removeItem(this.STORE_KEY); } catch (e) {} },
 
                 get steps() {
-                    const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'goal', 'tone', 'intensity'];
+                    const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'goal', 'physique', 'tone', 'intensity'];
                     if (this.form.sex === 'F') {
                         s.push('cycle_enable');
                         if (this.form.cycle_enabled) s.push('cycle_details');

@@ -98,17 +98,11 @@ class PhysiqueController extends Controller
             return back()->with('error', 'Add a photo first, then generate your dream physique.');
         }
 
-        $description = ($data['description'] ?? null) ?: '+10 lbs lean muscle';
+        $description = trim((string) ($data['description'] ?? '')) ?: null;
 
-        $prompt = <<<PROMPT
-        Take this person's photo and render them as their realistic future self after a
-        dedicated period of training and nutrition: about 10 lbs more lean muscle, a
-        leaner and more athletic, defined physique. Keep their exact face, identity,
-        skin tone, hair, body proportions, pose, lighting, and background unchanged —
-        this must look unmistakably like the SAME person, just fitter. Photorealistic,
-        natural, believable — not an exaggerated bodybuilder, not a fantasy filter.
-        Goal framing: {$description}.
-        PROMPT;
+        // Gender-aware render (men → muscle/lean; women → toned/waist/glutes), steered by
+        // the user's own description. Shared with the onboarding flow.
+        $prompt = \App\Support\PhysiquePrompt::build($profile->sex, $description);
 
         try {
             $input = $this->nano->imageFromDisk($sourcePath);

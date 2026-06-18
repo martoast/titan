@@ -120,6 +120,51 @@ class OnboardingController extends Controller
     }
 
     /**
+     * Generate a dream-physique goal image DURING onboarding (AJAX). Gender-aware: the
+     * `sex` chosen in the wizard (not yet saved to the profile) steers the render, plus the
+     * user's own description. The freshly generated render becomes the active goal so the
+     * coach has a north star from day one; "try again" just replaces it. Always JSON.
+     */
+    public function generatePhysique(Request $request, \App\Services\Ai\NanoBananaClient $nano): \Illuminate\Http\JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'photo' => ['required', 'image', 'max:12288'],
+            'description' => ['nullable', 'string', 'max:160'],
+            'sex' => ['nullable', 'in:F,M,other'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['ok' => false, 'error' => 'Add a clear, well-lit photo of yourself, then generate.'], 422);
+        }
+
+        $sourcePath = $request->file('photo')->store('physique/source', 'public');
+        $sex = $request->input('sex') ?: $profile->sex;
+        $description = trim((string) $request->input('description')) ?: null;
+        $prompt = \App\Support\PhysiquePrompt::build($sex, $description);
+
+        try {
+            $input = $nano->imageFromDisk($sourcePath);
+            $generated = $nano->generateToDisk($prompt, 'physique/goal', [$input]);
+        } catch (\App\Exceptions\AiException $e) {
+            \Illuminate\Support\Facades\Log::warning('[Onboarding] physique generation failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'error' => 'Couldn’t generate that just now — give it another try in a moment.'], 200);
+        }
+
+        $profile->physiqueGoals()->update(['is_active' => false]);
+        $goal = $profile->physiqueGoals()->create([
+            'source_photo_path' => $sourcePath,
+            'goal_image_path' => $generated['path'],
+            'prompt' => $prompt,
+            'description' => $description,
+            'is_active' => true,
+        ]);
+
+        return response()->json(['ok' => true, 'goal_id' => $goal->id, 'image_url' => $goal->goalUrl()]);
+    }
+
+    /**
      * Personalized daily macro targets — Mifflin-St Jeor BMR × activity × goal, protein from
      * bodyweight. A sensible starting point the coach can refine later, not a prescription.
      *
