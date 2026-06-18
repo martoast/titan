@@ -33,7 +33,8 @@ class CoachTools
         'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
-        // autoregulate / current_program / advance_program stay CORE — asked often with ambiguous phrasing.
+        'buzz_band' => 'device', 'request_sync' => 'device',
+        // autoregulate / current_program / advance_program / device_status stay CORE.
     ];
 
     /** Keywords that pre-load a group from the user's message (load_tools is the fallback for the rest). */
@@ -44,6 +45,7 @@ class CoachTools
         'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
+        'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz'],
     ];
 
     /** @var array<int,string> tool groups currently active (beyond the always-on core) */
@@ -129,6 +131,8 @@ class CoachTools
 
         if (class_exists(\App\Support\DeviceStatus::class)) {
             $tools[] = $this->fn('device_status', "The wearable's own state → `device` card: paired? connected/syncing? last sync, battery, firmware, what's flowing. For 'is my band connected / synced / battery', and check it when expected data is missing.", [], []);
+            $tools[] = $this->fn('buzz_band', "Make the band BUZZ so they can find it (it vibrates on its next check-in). For 'find my band / where's my watch / make it buzz'.", [], []);
+            $tools[] = $this->fn('request_sync', "Ask the band to sync now — it pushes fresh data on its next check-in. For 'sync now / pull my latest data'.", [], []);
         }
 
         if (class_exists(\App\Support\PhysiqueProgress::class)) {
@@ -401,6 +405,8 @@ class CoachTools
             'tool_docs' => 'Checking how to use that',
             'load_tools' => 'Getting the right tools',
             'device_status' => 'Checking your band',
+            'buzz_band' => 'Buzzing your band',
+            'request_sync' => 'Asking your band to sync',
             'search_knowledge' => 'Searching your brain',
             'save_knowledge' => 'Saving to your brain',
             'research_topic' => 'Sending off deep research',
@@ -480,6 +486,8 @@ class CoachTools
             'daily_summary' => $this->dailySummary((string) ($args['date'] ?? 'today')),
             'tool_docs' => ['tool' => $args['tool'] ?? '', 'docs' => \App\Services\Coach\ToolDocs::get((string) ($args['tool'] ?? ''))],
             'device_status' => $this->deviceStatus(),
+            'buzz_band' => $this->bandCommand('buzz', "Tell them their band will buzz on its next check-in (it polls about every minute) so they can find it."),
+            'request_sync' => $this->bandCommand('sync', "Tell them you've asked the band to sync; it'll push fresh data on its next check-in, and you'll have the new numbers once it lands."),
             'load_tools' => ['ok' => true, 'active' => $this->loadGroup($args['area'] ?? null), '_show' => 'The requested tools are now available — call the one you need to fulfil the request. Do not mention loading them to the user.'],
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
@@ -578,6 +586,21 @@ class CoachTools
             'source' => $r['cached'] ? 'food library (cached)' : $r['source'],
             '_show' => "These macros are PER {$r['basis']}. SCALE them to the portion the user described (e.g. 8 oz ≈ 227 g → ×2.27), then use them to answer or call log_meal. Real data — do NOT invent or round wildly.",
         ];
+    }
+
+    /** Queue a coach → band command (buzz / sync) onto the user's most-recent band connection. */
+    private function bandCommand(string $type, string $show): mixed
+    {
+        if (! class_exists(\App\Models\WearableConnection::class)) {
+            return ['error' => 'Band control is not available.'];
+        }
+        $conn = $this->profile->wearableConnections()->orderByDesc('last_sync_at')->orderByDesc('id')->first();
+        if (! $conn) {
+            return ['note' => "No band is paired yet — connect one from Devices first, then I can control it."];
+        }
+        $conn->queueCommand($type);
+
+        return ['ok' => true, 'queued' => $type, '_show' => $show];
     }
 
     private function deviceStatus(): mixed

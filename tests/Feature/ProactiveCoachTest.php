@@ -44,8 +44,9 @@ class ProactiveCoachTest extends TestCase
         $p = User::factory()->create()->ensureProfile();
         $p->update(['settings' => ['timezone' => 'UTC']]);
 
-        // Plenty of steps → no nudge.
-        $row = $p->dailyActivity()->create(['date' => Carbon::today()->toDateString(), 'steps' => 9000, 'source' => 'manual']);
+        // Plenty of steps → no nudge. Use the profile-tz date that move() will query (avoids a
+        // date-boundary flake when the app tz differs from the settings tz).
+        $row = $p->dailyActivity()->create(['date' => Carbon::now('UTC')->toDateString(), 'steps' => 9000, 'source' => 'manual']);
         $this->assertNull(CoachNudge::move($p->refresh()));
 
         // Sedentary → a move/stretch nudge.

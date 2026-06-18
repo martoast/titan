@@ -30,6 +30,9 @@ Route::prefix('devices')->group(function () {
     // on connection so the coach's "starting a run" can switch it into the right mode.
     Route::get('/activity', [DeviceIngestionController::class, 'activity']);
 
+    // Server → device: pending coach commands (buzz to find it, sync now). Drained on read.
+    Route::get('/commands', [DeviceIngestionController::class, 'commands']);
+
     // Owner-operated management (web/session auth).
     Route::middleware('auth')->group(function () {
         Route::post('/pair', [DeviceIngestionController::class, 'pair']);

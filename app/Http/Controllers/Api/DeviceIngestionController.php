@@ -101,6 +101,20 @@ class DeviceIngestionController extends Controller
      * GPS + faster HR for a run, low-power for everyday. Same HMAC auth as /ingest (the GET
      * has an empty body, which the device signs). Returns {active:false} when nothing is set.
      */
+    /**
+     * Server → device: pending coach commands (buzz, sync…). The band polls this on each check-in;
+     * commands are drained on read so each is executed once. HMAC auth, no session.
+     */
+    public function commands(Request $request): JsonResponse
+    {
+        $connection = $this->authenticate($request);
+        if (! $connection) {
+            return response()->json(['error' => 'unauthorized'], 401);
+        }
+
+        return response()->json(['commands' => $connection->drainCommands()]);
+    }
+
     public function activity(Request $request): JsonResponse
     {
         $connection = $this->authenticate($request);

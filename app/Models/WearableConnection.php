@@ -20,7 +20,7 @@ class WearableConnection extends Model
     protected $fillable = [
         'profile_id', 'provider', 'source', 'device_token_hash', 'device_id',
         'timezone', 'terra_user_id', 'scopes', 'status',
-        'last_webhook_at', 'last_sync_at', 'last_payload_type', 'battery_pct', 'firmware',
+        'last_webhook_at', 'last_sync_at', 'last_payload_type', 'battery_pct', 'firmware', 'pending_commands',
     ];
 
     protected $hidden = ['device_token_hash'];
@@ -29,9 +29,29 @@ class WearableConnection extends Model
     {
         return [
             'scopes' => 'array',
+            'pending_commands' => 'array',
             'last_webhook_at' => 'datetime',
             'last_sync_at' => 'datetime',
         ];
+    }
+
+    /** Queue a coach → band command (buzz, sync…) for the band to pick up on its next check-in. */
+    public function queueCommand(string $type, array $args = []): void
+    {
+        $cmds = $this->pending_commands ?? [];
+        $cmds[] = array_filter(['type' => $type, 'args' => $args ?: null, 'at' => now()->toIso8601String()], fn ($v) => $v !== null);
+        $this->forceFill(['pending_commands' => array_slice($cmds, -10)])->save();   // cap the backlog
+    }
+
+    /** Hand the band its pending commands and clear the queue. */
+    public function drainCommands(): array
+    {
+        $cmds = $this->pending_commands ?? [];
+        if ($cmds !== []) {
+            $this->forceFill(['pending_commands' => []])->save();
+        }
+
+        return $cmds;
     }
 
     public function profile(): BelongsTo

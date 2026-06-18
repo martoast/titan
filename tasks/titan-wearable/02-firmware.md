@@ -237,3 +237,42 @@ function applyPriming(p) {
 - *Security* — the command carries no secrets and the watch only acts on `C1:`/`C0:`; the trust boundary is the
   bonded BLE link + the HMAC the bridge uses to read the server. The watch never authenticates the command
   itself (it can't), so treat the bonded bridge as trusted, as the rest of the NUS protocol already does.
+
+## 11. Coach → band commands (buzz / sync) — `GET /api/devices/commands`
+
+The same coach→bridge→watch path as activity priming (§10), but for one-shot commands the coach
+issues from chat ("find my band", "sync now"). Server side is live (`DeviceIngestionController@commands`,
+`WearableConnection::queueCommand/drainCommands`, coach tools `buzz_band` / `request_sync`).
+
+**Contract.** The bridge polls, on each connection check-in:
+
+```
+GET /api/devices/commands        (HMAC auth, same as /activity)
+→ { "commands": [ { "type": "buzz", "args": null, "at": "2026-06-17T13:00:00Z" }, … ] }
+```
+
+Commands are **drained on read** — each is returned exactly once, so the bridge must relay them all.
+Queue is capped at the last 10.
+
+### 11a. Bridge side — drain + relay over NUS
+After (or alongside) the `/activity` poll, `GET /commands`; for each command write a NUS line to the watch:
+
+- `buzz`  → `CMD:buzz\n`
+- `sync`  → `CMD:sync\n` (the watch flushes its pending windows on the next bridge upload; for most builds
+  `sync` is a no-op on the watch and just signals the bridge to upload now).
+
+### 11b. Watch side — handle `CMD:`
+Extend the inbound NUS handler (the `C1:`/`C0:` parser from §10b) with a `CMD:` case:
+
+```js
+// in the NUS line handler
+if (line.startsWith("CMD:")) {
+  var cmd = line.slice(4).trim();
+  if (cmd === "buzz") Bangle.buzz(400);          // find-my-band: a clear double buzz
+  // 'sync' needs nothing on the watch — the bridge uploads on its next cycle
+  return;
+}
+```
+
+`buzz` is safe to run any time (it just vibrates). No secrets cross the link; trust boundary is the bonded
+BLE bridge + the HMAC it uses to read the server, exactly as with priming.
