@@ -12,6 +12,10 @@
         $pct = $latestPctAnalysis->pct_to_goal ?? null;
         $adherencePct = (int) round(($adherence ?? 0) * 100);
         $hasDream = ! empty($dreamShots);
+        // A dream is "complete" only with all three angles — otherwise we keep the capture open so
+        // the user is clearly invited to add the missing back / side (where glutes & legs show).
+        $dreamAngles = collect($dreamShots)->pluck('angle')->all();
+        $dreamComplete = $hasDream && count(array_intersect(['front', 'back', 'side'], $dreamAngles)) === 3;
         $hasLivingFoundation = $goal && $goal->goalUrl() && $photos->isNotEmpty();
 
         // Progress photos → JS for the compare reveal + gallery (newest first as passed).
@@ -106,9 +110,13 @@
                                 </span>
                             </template>
                         </div>
+                        {{-- Front-only dreams get a loud nudge to add the angles that actually show glutes/legs --}}
+                        <p x-show="!hasAllAngles()" class="mt-3 text-center text-xs text-cyan-300/80">Front only — add your back & side so glute, leg and back goals show.</p>
                         <button type="button" @click="openBuild()"
-                                class="mt-4 w-full h-12 rounded-xl bg-white/[0.06] border border-white/10 text-sm font-semibold text-gray-200 active:bg-white/10 transition"
-                                x-text="hasAllAngles() ? 'Refine my dream physique' : 'Add the missing angles ✨'"></button>
+                                class="mt-3 w-full h-12 rounded-xl text-sm font-bold transition"
+                                :class="hasAllAngles() ? 'bg-white/[0.06] border border-white/10 text-gray-200 active:bg-white/10' : 'text-gray-950 active:brightness-110'"
+                                :style="hasAllAngles() ? '' : 'background:linear-gradient(90deg,#6366f1,#22d3ee)'"
+                                x-text="hasAllAngles() ? 'Refine my dream physique' : 'Add your back & side angles ✨'"></button>
                     </div>
                 </div>
             </template>
@@ -136,7 +144,7 @@
         <section x-show="buildOpen" x-collapse x-cloak x-ref="build" class="scroll-mt-20 rounded-2xl border border-cyan-500/20 bg-cyan-950/10 p-4 md:p-5">
             <div class="flex items-center justify-between gap-3">
                 <div>
-                    <h3 class="font-display text-lg font-bold text-gray-100">Build your dream physique</h3>
+                    <h3 class="font-display text-lg font-bold text-gray-100" x-text="anyBuilt() ? 'Complete your dream physique' : 'Build your dream physique'"></h3>
                     <p class="text-xs text-gray-500 mt-0.5">Front is required. Add back & side — that's where glute, leg and back goals show.</p>
                 </div>
                 <button @click="buildOpen = false" class="shrink-0 grid h-9 w-9 place-items-center rounded-lg text-gray-500 active:bg-white/5">
@@ -555,7 +563,7 @@
                     back:  { file: null, preview: '', source: '', goal: '', status: '' },
                     side:  { file: null, preview: '', source: '', goal: '', status: '' },
                 },
-                buildOpen: {{ $hasDream ? 'false' : 'true' }},
+                buildOpen: {{ $dreamComplete ? 'false' : 'true' }},
                 buildDesc: '',
                 buildGen: false,
                 buildErr: '',
