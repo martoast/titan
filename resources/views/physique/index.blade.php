@@ -51,7 +51,7 @@
                     <div class="flex items-start justify-between gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
                         <div>
                             <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300/70">Your dream physique</p>
-                            <h2 class="mt-0.5 font-display text-xl font-extrabold text-gray-100">This is who you're becoming.</h2>
+                            <h2 class="mt-0.5 font-display text-lg sm:text-xl font-extrabold leading-tight text-gray-100">This is who you're becoming.</h2>
                         </div>
                         @if ($pct !== null)
                             <div class="shrink-0 text-right">
@@ -120,7 +120,7 @@
                         <div class="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-cyan-400 shadow-lg shadow-indigo-500/20">
                             <svg class="h-8 w-8 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                         </div>
-                        <h2 class="font-display text-2xl font-extrabold text-gray-100">See your dream physique.</h2>
+                        <h2 class="font-display text-xl sm:text-2xl font-extrabold text-gray-100">See your dream physique.</h2>
                         <p class="mt-2 text-sm text-gray-400">Add a front, back and side photo and I'll render a realistic, aspirational version of future you — so your glute, leg and back goals actually show.</p>
                         <button @click="openBuild()"
                                 class="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 h-12 px-6 text-sm font-bold text-gray-950 active:brightness-110">
@@ -456,6 +456,46 @@
             </section>
         @endif
 
+        {{-- ════════════════ DREAM-PHYSIQUE GENERATION OVERLAY ════════════════ --}}
+        {{-- The "we're sculpting YOUR photo" moment: the source image with a scanning sweep,
+             per-angle progress, and rotating copy — so it's unmistakably building. --}}
+        <div x-show="buildGen" x-cloak x-transition.opacity.duration.300ms
+             class="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/95 backdrop-blur-xl px-6">
+            <div class="flex w-full max-w-xs flex-col items-center text-center">
+                {{-- the photo being sculpted --}}
+                <div class="relative w-40 sm:w-44 overflow-hidden rounded-2xl border border-cyan-400/40 shadow-2xl shadow-cyan-500/25" style="aspect-ratio:3/4">
+                    <img :src="genSrc" alt="" class="absolute inset-0 h-full w-full object-cover">
+                    <div class="absolute inset-0 bg-indigo-950/35"></div>
+                    {{-- corner brackets --}}
+                    <span class="absolute top-2 left-2 h-4 w-4 border-t-2 border-l-2 border-cyan-300/80 rounded-tl"></span>
+                    <span class="absolute top-2 right-2 h-4 w-4 border-t-2 border-r-2 border-cyan-300/80 rounded-tr"></span>
+                    <span class="absolute bottom-2 left-2 h-4 w-4 border-b-2 border-l-2 border-cyan-300/80 rounded-bl"></span>
+                    <span class="absolute bottom-2 right-2 h-4 w-4 border-b-2 border-r-2 border-cyan-300/80 rounded-br"></span>
+                    {{-- scanning sweep --}}
+                    <div class="absolute inset-x-0 h-2/5" style="top:-40%; background:linear-gradient(to bottom, transparent, rgba(34,211,238,0.30)); animation: titanScanBand 2.2s linear infinite;"></div>
+                    <div class="absolute inset-x-0 h-[2px] bg-cyan-300 shadow-[0_0_14px_3px_rgba(34,211,238,0.85)]" style="top:0; animation: titanScanLine 2.2s linear infinite;"></div>
+                    {{-- soft pulsing ring --}}
+                    <div class="absolute inset-0 rounded-2xl ring-1 ring-cyan-400/30 animate-pulse"></div>
+                </div>
+
+                <h3 class="mt-7 font-display text-xl font-bold text-gray-100">Sculpting your dream physique</h3>
+                <p class="mt-1.5 text-sm text-cyan-300/90 min-h-[1.25rem]" x-text="genMsg"></p>
+
+                {{-- per-angle progress dots --}}
+                <div class="mt-4 flex items-center gap-1.5">
+                    <template x-for="i in genTotal" :key="i">
+                        <span class="h-1.5 rounded-full transition-all duration-300"
+                              :class="i < genStep ? 'w-5 bg-cyan-400' : (i === genStep ? 'w-8 bg-gradient-to-r from-indigo-400 to-cyan-300' : 'w-5 bg-white/15')"></span>
+                    </template>
+                </div>
+                <p class="mt-2 text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                    <span x-text="genAngleLabel"></span> · <span x-text="genStep"></span> of <span x-text="genTotal"></span>
+                </p>
+
+                <p class="mt-6 text-xs text-gray-500">About 10–20 seconds per angle. Hang tight — don't refresh.</p>
+            </div>
+        </div>
+
         {{-- ════════════════ BLOCKING-WORK OVERLAY (living render / compare / analyze) ════════════════ --}}
         <div x-show="working" x-cloak x-transition.opacity.duration.300ms
              class="fixed inset-0 z-[120] flex items-center justify-center bg-gray-950/92 backdrop-blur-xl">
@@ -484,6 +524,9 @@
         @keyframes titanRing { 0% { transform: scale(.55); opacity: .85 } 100% { transform: scale(1.35); opacity: 0 } }
         @keyframes titanFloat { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }
         @keyframes titanSlide { 0% { transform: translateX(-120%) } 100% { transform: translateX(430%) } }
+        /* dream-physique generation "scanner" sweep over the source photo */
+        @keyframes titanScanLine { 0% { top: 0 } 50% { top: calc(100% - 2px) } 100% { top: 0 } }
+        @keyframes titanScanBand { 0% { top: -40% } 50% { top: 100% } 100% { top: -40% } }
     </style>
 
     <script>
@@ -517,6 +560,22 @@
                 buildGen: false,
                 buildErr: '',
                 goalId: cfg.goalId,
+                // Rich generation overlay state — the "we're sculpting your photo" moment.
+                genStep: 0, genTotal: 0, genAngleLabel: '', genSrc: '', genMsg: '', _genTimer: null,
+                _startGenMsgs(angle) {
+                    const back = angle === 'back';
+                    const msgs = [
+                        'Reading your ' + angle + ' photo…',
+                        back ? 'Mapping your frame…' : 'Keeping your face & identity…',
+                        'Sculpting your dream physique…',
+                        'Matching your lighting and pose…',
+                        'Rendering future you…',
+                    ];
+                    let i = 0; this.genMsg = msgs[0];
+                    clearInterval(this._genTimer);
+                    this._genTimer = setInterval(() => { i = (i + 1) % msgs.length; this.genMsg = msgs[i]; }, 2200);
+                },
+                _stopGenMsgs() { clearInterval(this._genTimer); this._genTimer = null; },
                 init() {
                     // Seed the build cards from any angles already rendered, so they show as done.
                     for (const s of this.dShots) {
@@ -544,13 +603,20 @@
                 async generateBuild() {
                     if (this.buildGen) return;
                     if (!this.buildFrontReady) { this.buildErr = 'Add your front photo to start.'; return; }
+                    const pending = this.BUILD_ANGLES.filter(a => this.build[a].file && this.build[a].status !== 'done');
+                    if (!pending.length) return;
                     this.buildGen = true; this.buildErr = '';
+                    this.genTotal = pending.length; this.genStep = 0;
                     const token = document.querySelector('meta[name=csrf-token]')?.content || document.querySelector('input[name=_token]')?.value || '';
                     const desc = (this.buildDesc || '').trim().slice(0, 160);
                     try {
-                        for (const angle of this.BUILD_ANGLES) {
+                        for (const angle of pending) {
                             const s = this.build[angle];
-                            if (!s.file || s.status === 'done') continue;
+                            // Drive the overlay: which photo, which angle, progress + rotating copy.
+                            this.genStep += 1;
+                            this.genAngleLabel = this.buildMeta[angle].label;
+                            this.genSrc = s.preview;
+                            this._startGenMsgs(angle);
                             s.status = 'generating';
                             const file = await this.compressPhoto(s.file);
                             const fd = new FormData();
@@ -581,6 +647,7 @@
                         }
                     } finally {
                         this.buildGen = false;
+                        this._stopGenMsgs();
                     }
                 },
                 upsertDream(angle, sourceUrl, goalUrl) {
