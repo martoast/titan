@@ -53,6 +53,8 @@ function openLightbox(src, alt) {
     document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { o.remove(); document.removeEventListener('keydown', esc); } });
     document.body.appendChild(o);
 }
+// Exposed so natively-rendered images (e.g. the user's attached chat photo) can open it too.
+window.openLightbox = openLightbox;
 // Generative UI: the coach can emit a ```titan-card {json}``` block that we render as a
 // native component (readiness ring, vitals grid, single stat, sparkline) instead of a table.
 function buildRing(score, label, caption) {

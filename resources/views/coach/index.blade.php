@@ -182,7 +182,14 @@
                         <div :class="m.role === 'user'
                                 ? 'max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-500/20 border border-indigo-500/30 px-4 py-2.5 text-sm text-gray-100'
                                 : 'max-w-[85%] rounded-2xl rounded-bl-sm bg-gray-800/60 border border-white/5 px-4 py-2.5 text-sm text-gray-200'">
-                            <div class="coach-prose leading-relaxed break-words" x-html="render(m.content)"></div>
+                            {{-- Attached image (rendered natively — the markdown sanitizer strips blob: URLs) --}}
+                            <template x-if="m.image">
+                                <img :src="m.image" alt="Attached photo" loading="lazy"
+                                     @click="window.openLightbox && window.openLightbox(m.image)"
+                                     :class="m.content ? 'mb-2' : ''"
+                                     class="max-h-72 w-full cursor-zoom-in rounded-xl border border-white/10 object-cover">
+                            </template>
+                            <div class="coach-prose leading-relaxed break-words" x-html="render(m.content)" x-show="m.content"></div>
                         </div>
                     </div>
                 </template>
@@ -256,8 +263,9 @@
                 </div>
 
                 <form @submit.prevent="send()" class="flex items-end gap-2">
-                    {{-- Snap-to-log: attach a meal / bloodwork / body photo --}}
-                    <input x-ref="photo" type="file" accept="image/*" capture="environment" class="hidden"
+                    {{-- Snap-to-log: attach a meal / bloodwork / body photo. No `capture` → the OS lets
+                         you choose Photo Library *or* camera (capture forced the camera and hid the library). --}}
+                    <input x-ref="photo" type="file" accept="image/*" class="hidden"
                            @change="if ($event.target.files[0]) { attachPhoto($event.target.files[0]); $event.target.value = ''; }">
                     <button type="button" @click="$refs.photo.click()" :disabled="loading"
                             title="Attach a meal, bloodwork or body photo"
@@ -438,6 +446,45 @@
                     history.replaceState(null, '', '/coach?c=' + id);
                 },
 
+                // Downscale + re-encode to JPEG before upload. iPhones shoot 12MP HEIC/JPEG (3–8 MB);
+                // vision models only need ~1600px, so this cuts the file to a few hundred KB AND converts
+                // HEIC → JPEG (the backend's `image` rule + the vision API reject HEIC). Falls back to the
+                // original file if anything in the canvas path fails (e.g. desktop browser can't decode HEIC).
+                async compressImage(file, maxDim = 1600, quality = 0.82) {
+                    if (!file || !file.type || !file.type.startsWith('image/')) return file;
+                    try {
+                        let src = null, w = 0, h = 0;
+                        // Prefer createImageBitmap (fast, off-thread); fall back to <img> for broader format support.
+                        try {
+                            src = await createImageBitmap(file);
+                            w = src.width; h = src.height;
+                        } catch (_) {
+                            const url = URL.createObjectURL(file);
+                            try {
+                                src = await new Promise((res, rej) => {
+                                    const im = new Image();
+                                    im.onload = () => res(im); im.onerror = rej; im.src = url;
+                                });
+                                w = src.naturalWidth; h = src.naturalHeight;
+                            } finally { URL.revokeObjectURL(url); }
+                        }
+                        if (!w || !h) return file;
+                        const scale = Math.min(1, maxDim / Math.max(w, h));
+                        const cw = Math.round(w * scale), ch = Math.round(h * scale);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = cw; canvas.height = ch;
+                        canvas.getContext('2d').drawImage(src, 0, 0, cw, ch);
+                        if (src.close) src.close();
+                        const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality));
+                        if (!blob) return file;
+                        // Don't upsize a small original — keep whichever is smaller.
+                        if (blob.size >= file.size && /jpe?g/i.test(file.type)) return file;
+                        return new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+                    } catch (_) {
+                        return file;
+                    }
+                },
+
                 // Attach a photo to the composer (preview it); it sends when they hit send.
                 attachPhoto(file) {
                     if (!file) return;
@@ -455,19 +502,23 @@
                 // Snap-to-log: send the attached photo + the typed caption; the coach reads it,
                 // logs it (meal macros / bloodwork / body photo) and replies with the result.
                 async sendPhoto() {
-                    const file = this.pendingPhoto;
-                    if (!file || this.loading) return;
+                    const original = this.pendingPhoto;
+                    if (!original || this.loading) return;
                     const caption = this.draft.trim();
+                    const preview = this.pendingPreview;   // the bubble keeps this object URL
                     this.suggestions = [];
-                    this.messages.push({ role: 'user', content: (caption ? caption + '\n\n' : '') + '![photo](' + this.pendingPreview + ')' });
+                    // Render the photo natively in the bubble via `image` — markdown's sanitizer drops blob: URLs.
+                    this.messages.push({ role: 'user', content: caption, image: preview });
                     this.draft = '';
-                    this.pendingPhoto = null;          // keep pendingPreview alive for the bubble image
-                    this.pendingPreview = '';
+                    this.pendingPhoto = null;
+                    this.pendingPreview = '';          // ownership passed to the bubble; don't revoke it
                     this.loading = true;
                     this.streaming = false;
                     this.toolStatus = 'Reading your photo';
                     this.$nextTick(() => { this.enhance(); this.scrollDown(); });
 
+                    // Shrink + convert to JPEG so it goes over the wire fast and the vision API can read it.
+                    const file = await this.compressImage(original);
                     const fd = new FormData();
                     fd.append('photo', file);
                     if (caption) fd.append('message', caption);

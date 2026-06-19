@@ -107,11 +107,15 @@ class CoachScanTest extends TestCase
         $this->assertDatabaseHas('progress_photos', ['profile_id' => $user->profile->id]);
     }
 
-    public function test_a_photo_requires_an_image(): void
+    public function test_a_missing_or_invalid_photo_gets_a_friendly_reply(): void
     {
         $user = User::factory()->create();
         $user->ensureProfile();
 
-        $this->actingAs($user)->post('/coach/scan', [])->assertSessionHasErrors('photo');
+        // No raw 422 / redirect — a clear, in-chat message the composer can show.
+        $this->actingAs($user)->postJson('/coach/scan', [])
+            ->assertOk()
+            ->assertJson(['ok' => false])
+            ->assertJsonStructure(['reply']);
     }
 }

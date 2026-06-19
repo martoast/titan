@@ -274,11 +274,23 @@ class CoachController extends Controller
     {
         $profile = $request->user()->ensureProfile();
 
-        $data = $request->validate([
+        // The client downscales + converts to JPEG before upload, so this should always pass; the
+        // friendly JSON reply (vs a raw 422) covers the rare case it doesn't — e.g. an un-converted HEIC.
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'photo' => ['required', 'image', 'max:12288'],   // ≤ 12 MB
             'message' => ['nullable', 'string', 'max:1000'],   // optional caption: "this is what I ate"
         ]);
-        $caption = trim((string) ($data['message'] ?? ''));
+        if ($validator->fails()) {
+            $tooBig = $request->hasFile('photo') && ! $request->file('photo')->isValid();
+
+            return response()->json([
+                'ok' => false,
+                'reply' => $tooBig
+                    ? "That image was too large to upload. Try again — it should compress automatically."
+                    : "I couldn't read that file — please attach a photo (JPEG, PNG or HEIC) and try again.",
+            ], 200);
+        }
+        $caption = trim((string) ($validator->validated()['message'] ?? ''));
 
         if (! $conversation || $conversation->profile_id !== $profile->id) {
             $conversation = $profile->conversations()->create();
