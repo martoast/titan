@@ -112,8 +112,9 @@ class PhysiqueController extends Controller
         $prompt = \App\Support\PhysiquePrompt::build($profile->sex, $description, $angle);
 
         try {
-            $input = $this->nano->imageFromDisk($sourcePath);
-            $generated = $this->nano->generateToDisk($prompt, 'physique/goal', [$input]);
+            // Text-only generation — Gemini IMAGE_SAFETY blocks person-photo transformation.
+            // Source photo is stored for the before/after display; dream render is text-only.
+            $generated = $this->nano->generateToDisk($prompt, 'physique/goal');
         } catch (AiException $e) {
             return response()->json(['ok' => false, 'error' => 'Could not generate your dream physique right now: '.$e->getMessage()], 200);
         }

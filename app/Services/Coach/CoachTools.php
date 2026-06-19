@@ -1886,17 +1886,12 @@ class CoachTools
         }
 
         $description = trim((string) ($a['description'] ?? '')) ?: '+10 lb of lean muscle, leaner and more athletic';
-        $prompt = <<<PROMPT
-        Take this person's photo and render them as their realistic future self after a dedicated period of
-        training and nutrition: {$description}. Keep their exact face, identity, skin tone, hair, body
-        proportions, pose, lighting and background unchanged — this must look unmistakably like the SAME
-        person, just fitter. Photorealistic, natural and believable — not an exaggerated bodybuilder, not a
-        fantasy filter.
-        PROMPT;
+        $sex = $this->profile->sex;
+        $prompt = \App\Support\PhysiquePrompt::build($sex, $description, 'front');
 
         try {
-            $input = $nano->imageFromDisk($photo->photo_path);
-            $generated = $nano->generateToDisk($prompt, 'physique/goal', [$input]);
+            // Text-only — Gemini IMAGE_SAFETY blocks person-photo body-transformation.
+            $generated = $nano->generateToDisk($prompt, 'physique/goal');
         } catch (\Throwable $e) {
             return ['error' => 'Could not render the image right now: '.$e->getMessage()];
         }
