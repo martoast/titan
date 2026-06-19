@@ -37,7 +37,12 @@ class MealCoach
     {
         $set = $profile->settings['macro_targets'] ?? [];
         $calories = (int) ($set['calories'] ?? self::DEFAULT_TARGETS['calories']);
-        $protein = (int) ($set['protein_g'] ?? self::DEFAULT_TARGETS['protein_g']);
+
+        // Protein is recomputed from CURRENT bodyweight + goal every time (evidence-based: ~1 g/lb
+        // for muscle building) so it's never a stale onboarding number and always hits the real
+        // target. Falls back to the stored/default value only when we have no bodyweight on file.
+        $protein = MacroTargets::proteinTarget($profile)
+            ?? (int) ($set['protein_g'] ?? self::DEFAULT_TARGETS['protein_g']);
 
         // Cycle-aware: the luteal phase raises BMR ~5–10%, so nudge calories up (protein need is
         // bodyweight-driven, so it holds steady). Only when she tracks her cycle.

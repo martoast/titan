@@ -334,9 +334,9 @@ class OnboardingController extends Controller
         };
         $calories = (int) (round($tdee * $goalMult / 10) * 10);
 
-        // Higher protein for muscle/lean goals; solid baseline otherwise.
-        $perKg = in_array($goal, ['build_muscle', 'lose_fat', 'recomp'], true) ? 2.1 : 1.8;
-        $protein = (int) round($kg * $perKg);
+        // Protein from bodyweight, evidence-based (~1 g/lb for muscle building). Single source of
+        // truth so the seed matches what MealCoach recomputes later. @see App\Support\MacroTargets
+        $protein = (int) round($kg * \App\Support\MacroTargets::proteinPerKg($goal));
 
         return ['calories' => max(1200, $calories), 'protein_g' => $protein];
     }

@@ -133,7 +133,10 @@ class WeeklyReview
                 $avgCal = (int) round($meals->sum('calories') / $days);
                 $avgPro = (int) round((float) $meals->sum('protein_g') / $days);
                 $calT = (int) data_get($profile->settings, 'macro_targets.calories', 0);
-                $proT = (int) data_get($profile->settings, 'macro_targets.protein_g', 0);
+                // Protein target from current bodyweight (same evidence-based ~1 g/lb the meal card uses),
+                // not the frozen onboarding value. @see App\Support\MacroTargets
+                $proT = \App\Support\MacroTargets::proteinTarget($profile)
+                    ?? (int) data_get($profile->settings, 'macro_targets.protein_g', 0);
                 $state = 'ok';
                 if ($days >= 5 && (! $proT || $avgPro >= $proT * 0.9) && (! $calT || abs($avgCal - $calT) <= $calT * 0.12)) {
                     $state = 'good';
