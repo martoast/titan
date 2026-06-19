@@ -351,7 +351,7 @@ class CoachController extends Controller
             ],
         ]);
         if ($validator->fails()) {
-            return response()->json(['ok' => false, 'error' => 'That recording couldn’t be read — try again.'], 422);
+            return response()->json(['ok' => false, 'error' => 'That recording couldn't be read — try again.'], 422);
         }
 
         $file = $request->file('audio');
@@ -359,7 +359,7 @@ class CoachController extends Controller
         $text = $ai->transcribe((string) file_get_contents($file->getRealPath()), 'voice.'.$ext);
 
         if ($text === null) {
-            return response()->json(['ok' => false, 'error' => 'Couldn’t transcribe that — try again.'], 200);
+            return response()->json(['ok' => false, 'error' => 'Couldn't transcribe that — try again.'], 200);
         }
 
         return response()->json(['ok' => true, 'text' => $text]);

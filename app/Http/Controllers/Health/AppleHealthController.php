@@ -32,7 +32,7 @@ class AppleHealthController extends Controller
         // and no validation error fires, so guard explicitly with a friendly message.
         if ($this->exceededPostMax($request)) {
             return back()->with('apple_health_error',
-                'That export is larger than this server accepts. Ask your admin to raise PHP’s upload_max_filesize / post_max_size.');
+                'That export is larger than this server accepts. Ask your admin to raise PHP's upload_max_filesize / post_max_size.');
         }
 
         try {
@@ -40,7 +40,7 @@ class AppleHealthController extends Controller
                 'export' => ['required', 'file', 'max:'.self::MAX_KB],
             ], [
                 'export.required' => 'Choose your Apple Health export.zip first.',
-                'export.max' => 'That file is too large for this server’s upload limit.',
+                'export.max' => 'That file is too large for this server's upload limit.',
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return back()->with('apple_health_error', $e->validator->errors()->first('export'));
@@ -50,7 +50,7 @@ class AppleHealthController extends Controller
 
         if (! $file || ! $file->isValid()) {
             return back()->with('apple_health_error',
-                'The upload did not complete. The file may exceed the server’s size limit (php.ini upload_max_filesize).');
+                'The upload did not complete. The file may exceed the server's size limit (php.ini upload_max_filesize).');
         }
 
         // Accept .zip by extension/mime; Apple's export is always a zip.

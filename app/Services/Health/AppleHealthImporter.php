@@ -68,7 +68,7 @@ class AppleHealthImporter
         try {
             $xmlPath = $this->extractExportXml($zipPath, $tmpDir);
             if ($xmlPath === null) {
-                return $this->summary(error: 'Could not find export.xml inside the zip. Make sure you uploaded the file from “Export All Health Data”.');
+                return $this->summary(error: 'Could not find export.xml inside the zip. Make sure you uploaded the file from "Export All Health Data".');
             }
 
             return $this->importXml($profile, $xmlPath);

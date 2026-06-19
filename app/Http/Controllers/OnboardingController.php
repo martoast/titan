@@ -200,14 +200,14 @@ class OnboardingController extends Controller
         $prompt = \App\Support\PhysiquePrompt::build($sex, $description, $angle);
 
         try {
-            // Generate from text only — Gemini’s IMAGE_SAFETY policy blocks person-photo
+            // Generate from text only — Gemini's IMAGE_SAFETY policy blocks person-photo
             // transformation requests. The source photo is stored for the before/after display;
             // the dream render is built purely from the sex + angle + goal description.
-            $generated = $nano->generateToDisk($prompt, ‘physique/goal’);
+            $generated = $nano->generateToDisk($prompt, 'physique/goal');
         } catch (\App\Exceptions\AiException $e) {
-            \Illuminate\Support\Facades\Log::warning(‘[Onboarding] physique generation failed’, [‘error’ => $e->getMessage(), ‘angle’ => $angle]);
+            \Illuminate\Support\Facades\Log::warning('[Onboarding] physique generation failed', ['error' => $e->getMessage(), 'angle' => $angle]);
 
-            return response()->json([‘ok’ => false, ‘error’ => ‘Couldn\’t generate that just now — give it another try in a moment.’], 200);
+            return response()->json(['ok' => false, 'error' => 'Couldn\'t generate that just now — give it another try in a moment.'], 200);
         }
 
         // Reuse the goal the front shot created (passed back as goal_id); otherwise start a fresh one.
