@@ -9,8 +9,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 /**
- * First-run onboarding — the wizard that turns a fresh account into a real Titan profile.
- * Collects the vitals (who they are, their goal, coaching style, nutrition, and — for women —
+ * First-run onboarding -- the wizard that turns a fresh account into a real Titan profile.
+ * Collects the vitals (who they are, their goal, coaching style, nutrition, and -- for women --
  * their cycle), seeds personalized macro targets, logs a starting weight, and marks the
  * profile onboarded so the `onboarded` gate lets them into the rest of the app.
  */
@@ -64,7 +64,7 @@ class OnboardingController extends Controller
             'cycle_length' => ['nullable', 'integer', 'min:21', 'max:45'],
             'birth_control' => ['nullable', 'in:none,pill,patch,ring,hormonal_iud,copper_iud,implant,injection,other'],
             'cycle_intent' => ['nullable', 'in:tracking,conceiving,avoiding'],
-            // Deep intake — so the coach truly knows the user from message one. Arrays arrive '|'-joined.
+            // Deep intake -- so the coach truly knows the user from message one. Arrays arrive '|'-joined.
             'injuries' => ['nullable', 'string', 'max:400'],
             'health_notes' => ['nullable', 'string', 'max:400'],
             'experience' => ['nullable', 'in:beginner,intermediate,advanced'],
@@ -101,7 +101,7 @@ class OnboardingController extends Controller
         ];
         $settings['macro_targets'] = $this->macros($weightKg, $heightCm, Carbon::parse($data['birthdate'])->age, $female, $data['activity_level'], $data['primary_goal']);
 
-        // Deep intake — feeds the mesocycle generator (experience/days), meal logic (diet/allergies),
+        // Deep intake -- feeds the mesocycle generator (experience/days), meal logic (diet/allergies),
         // and the coach's first-message context. Empty fields are simply omitted later.
         $settings['intake'] = [
             'experience' => $data['experience'] ?? null,
@@ -145,7 +145,7 @@ class OnboardingController extends Controller
             $profile->bodyMetrics()->create(['taken_at' => Carbon::today(), 'weight_kg' => $weightKg]);
         }
 
-        // Seed the coach's core memory — pinned wiki pages it sees from message one.
+        // Seed the coach's core memory -- pinned wiki pages it sees from message one.
         $this->seedCoreMemory($request->user(), $profile, [
             'name' => $data['display_name'],
             'goal' => self::GOALS[$data['primary_goal']],
@@ -159,18 +159,18 @@ class OnboardingController extends Controller
             Cycle::startPeriod($profile, Carbon::parse($data['last_period']));
         }
 
-        // If their band is already in hand, the perfect moment to connect it is right now —
+        // If their band is already in hand, the perfect moment to connect it is right now --
         // drop them on the devices page (pair + live bridge) instead of the coach.
         if ($request->boolean('has_wearable')) {
-            return redirect()->route('devices.index')->with('status', "Welcome to Titan, {$data['display_name']} — your profile's ready. Let's connect your band so your coach reads recovery from night one.");
+            return redirect()->route('devices.index')->with('status', "Welcome to Titan, {$data['display_name']} -- your profile's ready. Let's connect your band so your coach reads recovery from night one.");
         }
 
-        return redirect()->route('coach.index')->with('status', "Welcome to Titan, {$data['display_name']} — your profile is ready. Ask me anything.");
+        return redirect()->route('coach.index')->with('status', "Welcome to Titan, {$data['display_name']} -- your profile is ready. Ask me anything.");
     }
 
     /**
      * Generate ONE angle of the dream physique DURING onboarding (AJAX). The wizard captures up to
-     * three shots — front / back / side — and calls this once per angle, because a single front photo
+     * three shots -- front / back / side -- and calls this once per angle, because a single front photo
      * can't show a glute or leg goal. Gender- AND angle-aware: the `sex` chosen in the wizard plus the
      * angle steer the render (the back shot pushes glutes/back, the side pushes waist taper + glute
      * profile), and the user's free-text layers on top.
@@ -178,7 +178,7 @@ class OnboardingController extends Controller
      * The FIRST call (front) creates the active goal; later calls pass its `goal_id` and just append
      * their angle's render to the same goal. "Try again" re-posts an angle and replaces it. Always JSON.
      */
-    public function generatePhysique(Request $request, \App\Services\Ai\ImageGenerator $nano): \Illuminate\Http\JsonResponse
+    public function generatePhysique(Request $request): \Illuminate\Http\JsonResponse
     {
         $profile = $request->user()->ensureProfile();
 
@@ -197,16 +197,11 @@ class OnboardingController extends Controller
         $sourcePath = $request->file('photo')->store('physique/source', 'public');
         $sex = $request->input('sex') ?: $profile->sex;
         $description = trim((string) $request->input('description')) ?: null;
-        $prompt = \App\Support\PhysiquePrompt::build($sex, $description, $angle);
 
-        try {
-            $input = $nano->imageFromDisk($sourcePath);
-            $generated = $nano->generateToDisk($prompt, 'physique/goal', [$input]);
-        } catch (\App\Exceptions\AiException $e) {
-            \Illuminate\Support\Facades\Log::warning('[Onboarding] physique generation failed', ['error' => $e->getMessage(), 'angle' => $angle]);
-
-            return response()->json(['ok' => false, 'error' => 'Couldn’t generate that just now — give it another try in a moment.'], 200);
-        }
+        // Use the pre-generated model image for this sex + angle instead of AI generation.
+        // The user's uploaded photo is stored as the "before" for progress comparison and
+        // coach analysis -- we just don't feed it to an image model anymore.
+        $modelPath = \App\Support\PhysiqueModelImage::path($sex, $angle);
 
         // Reuse the goal the front shot created (passed back as goal_id); otherwise start a fresh one.
         $goal = $request->filled('goal_id')
@@ -215,26 +210,25 @@ class OnboardingController extends Controller
         if (! $goal) {
             $profile->physiqueGoals()->update(['is_active' => false]);
             $goal = $profile->physiqueGoals()->create([
-                'source_photo_path' => $sourcePath,    // primary; putShot() corrects it to the front shot
-                'goal_image_path' => $generated['path'],
-                'prompt' => $prompt,
+                'source_photo_path' => $sourcePath,
+                'goal_image_path' => $modelPath,
                 'description' => $description,
                 'is_active' => true,
                 'shots' => [],
             ]);
         }
-        $goal->putShot($angle, $sourcePath, $generated['path']);
+        $goal->putShot($angle, $sourcePath, $modelPath);
 
         return response()->json([
             'ok' => true,
             'goal_id' => $goal->id,
             'angle' => $angle,
-            'image_url' => \Illuminate\Support\Facades\Storage::disk('public')->url($generated['path']),
+            'image_url' => \App\Support\PhysiqueModelImage::url($sex, $angle),
         ]);
     }
 
     /**
-     * Seed the coach's "core memory" from the onboarding intake — a handful of pinned
+     * Seed the coach's "core memory" from the onboarding intake -- a handful of pinned
      * KnowledgePages. Pinned pages have their TITLES injected into every coach turn (the index);
      * the coach pulls a body on demand via search_knowledge. So we keep one page per theme with a
      * descriptive title. Idempotent: re-onboarding updates the same pages (keyed by slug).
@@ -262,7 +256,7 @@ class OnboardingController extends Controller
             $overview .= '- **Target date:** '.$d['event_date']."\n";
         }
         $overview .= '- **Coaching:** '.str_replace('_', ' ', $d['coach_tone']).' tone, '.($d['coaching_intensity'] ?? 'balanced')." intensity\n";
-        $pages[] = ['title' => "{$name} — goals & focus", 'type' => 'overview', 'content' => trim($overview)];
+        $pages[] = ['title' => "{$name} -- goals & focus", 'type' => 'overview', 'content' => trim($overview)];
 
         // 2 · Training profile → mesocycle generator reads experience/days/equipment.
         if (! empty($d['experience']) || ! empty($d['train_at']) || (int) ($d['train_days'] ?? 0) > 0) {
@@ -276,7 +270,7 @@ class OnboardingController extends Controller
             if ((int) ($d['train_days'] ?? 0) > 0) {
                 $training .= '- **Days per week:** '.(int) $d['train_days']."\n";
             }
-            $pages[] = ['title' => "{$name} — training profile", 'type' => 'note', 'content' => trim($training)];
+            $pages[] = ['title' => "{$name} -- training profile", 'type' => 'note', 'content' => trim($training)];
         }
 
         // 3 · Nutrition profile → meal suggestions must fit this.
@@ -291,7 +285,7 @@ class OnboardingController extends Controller
             if (! empty($d['avoid_foods'])) {
                 $nutrition .= '- **Won\'t eat:** '.trim($d['avoid_foods'])."\n";
             }
-            $pages[] = ['title' => "{$name} — nutrition profile", 'type' => 'note', 'content' => trim($nutrition)];
+            $pages[] = ['title' => "{$name} -- nutrition profile", 'type' => 'note', 'content' => trim($nutrition)];
         }
 
         // 4 · Health & limitations → never program around a painful joint.
@@ -303,7 +297,7 @@ class OnboardingController extends Controller
             if (! empty($d['health_notes'])) {
                 $health .= '- **Notes:** '.trim($d['health_notes'])."\n";
             }
-            $pages[] = ['title' => "{$name} — health & limitations", 'type' => 'note', 'content' => trim($health)];
+            $pages[] = ['title' => "{$name} -- health & limitations", 'type' => 'note', 'content' => trim($health)];
         }
 
         foreach ($pages as $p) {
@@ -315,7 +309,7 @@ class OnboardingController extends Controller
                     'content' => $p['content'],
                     'is_pinned' => true,
                     'updated_by_user_id' => $user->id,
-                    // Force a re-embed on next pass — content changed.
+                    // Force a re-embed on next pass -- content changed.
                     'embed_hash' => null,
                 ],
             );
@@ -323,7 +317,7 @@ class OnboardingController extends Controller
     }
 
     /**
-     * Personalized daily macro targets — Mifflin-St Jeor BMR × activity × goal, protein from
+     * Personalized daily macro targets -- Mifflin-St Jeor BMR × activity × goal, protein from
      * bodyweight. A sensible starting point the coach can refine later, not a prescription.
      *
      * @return array{calories:int,protein_g:int}

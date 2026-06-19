@@ -44,10 +44,10 @@ class PhysiqueGoal extends Model
         return $this->source_photo_path ? Storage::disk('public')->url($this->source_photo_path) : null;
     }
 
-    /** Public URL of the AI-generated dream physique. */
+    /** Public URL of the dream physique goal image (static model or storage). */
     public function goalUrl(): ?string
     {
-        return $this->goal_image_path ? Storage::disk('public')->url($this->goal_image_path) : null;
+        return $this->goal_image_path ? $this->resolveImageUrl($this->goal_image_path) : null;
     }
 
     /**
@@ -66,7 +66,7 @@ class PhysiqueGoal extends Model
             $byAngle[$angle] = [
                 'angle' => $angle,
                 'source_url' => ! empty($s['source']) ? $disk->url($s['source']) : null,
-                'goal_url' => ! empty($s['goal']) ? $disk->url($s['goal']) : null,
+                'goal_url' => ! empty($s['goal']) ? $this->resolveImageUrl($s['goal']) : null,
             ];
         }
 
@@ -83,6 +83,20 @@ class PhysiqueGoal extends Model
         }
 
         return $out;
+    }
+
+    /**
+     * Resolve a stored image path to a public URL. Pre-generated model images live in
+     * public/images/physique/models/ (served via asset()), while user-uploaded images
+     * live in the public storage disk (served via Storage::url()).
+     */
+    private function resolveImageUrl(string $path): string
+    {
+        if (str_starts_with($path, 'images/physique/models/')) {
+            return asset($path);
+        }
+
+        return Storage::disk('public')->url($path);
     }
 
     /** Upsert one angle's {source,goal} into the shots set, keeping ANGLES order. */
