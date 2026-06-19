@@ -342,10 +342,10 @@ class CoachTools
 
         if (class_exists(\App\Models\TrainingProgram::class)) {
             $tools[] = $this->fn('generate_mesocycle', "Build + SAVE a periodized program (sets/reps/RIR, volume ramp + deload, FOCUS muscles prioritised) → `program` card. For 'make me a program / a plan / grow my X'.", [
-                'focus' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Muscles to prioritise / bring up, e.g. ["chest","side delts","arms"]. Optional but the whole point of specialization.'],
-                'days_per_week' => ['type' => 'integer', 'description' => 'Training days per week, 2–6 (default 4).'],
+                'focus' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Muscles to prioritise / bring up, e.g. ["chest","side delts","arms"]. Omit to inherit the focus areas from their onboarding (their dream-physique goals); pass it to override.'],
+                'days_per_week' => ['type' => 'integer', 'description' => 'Training days per week, 2–6. Omit to use the value from onboarding (defaults to 4).'],
                 'weeks' => ['type' => 'integer', 'description' => 'Mesocycle length 4–8 weeks incl. a deload (default 5).'],
-                'experience' => ['type' => 'string', 'enum' => ['beginner', 'intermediate', 'advanced'], 'description' => 'Training experience (sets the volume).'],
+                'experience' => ['type' => 'string', 'enum' => ['beginner', 'intermediate', 'advanced'], 'description' => 'Training experience (sets the volume). Omit to use the value from onboarding.'],
             ], []);
             $tools[] = $this->fn('current_program', "The user's active training program + the current week's sessions, as a `program` card. Use for 'what's my program / what's my workout today / which week am I on'. Read a specific day's exercises from week_detail.", [], []);
             $tools[] = $this->fn('advance_program', 'Move the active program to the next week (call when they finish a week). Returns the new week as a `program` card.', [], []);
@@ -1578,10 +1578,27 @@ class CoachTools
         if (! class_exists(\App\Models\TrainingProgram::class)) {
             return ['error' => 'The program builder is not available.'];
         }
-        $exp = $args['experience'] ?? (($this->profile->settings['activity_level'] ?? null) === 'active' ? 'advanced' : 'intermediate');
+        // Fall back to the onboarding intake when the coach doesn't pass an explicit value —
+        // the user already told us their experience, training days and what they want to bring up.
+        $intake = $this->profile->settings['intake'] ?? [];
+
+        $exp = $args['experience']
+            ?? ($intake['experience'] ?? null)
+            ?? (($this->profile->settings['activity_level'] ?? null) === 'active' ? 'advanced' : 'intermediate');
+
+        $intakeDays = (int) ($intake['train_days'] ?? 0);
+        $days = (int) ($args['days_per_week'] ?? ($intakeDays >= 2 ? $intakeDays : 4));
+
+        // Explicit focus wins; otherwise derive it from the dream-physique focus areas (top 3, so the
+        // block stays a real specialization rather than spreading priority across every muscle).
+        $focus = $args['focus'] ?? [];
+        if (empty($focus) && ! empty($intake['focus_areas'])) {
+            $focus = array_slice(\App\Support\MesocycleGenerator::focusFromGoals($intake['focus_areas']), 0, 3);
+        }
+
         $build = \App\Support\MesocycleGenerator::build([
-            'focus' => $args['focus'] ?? [],
-            'days_per_week' => (int) ($args['days_per_week'] ?? 4),
+            'focus' => $focus,
+            'days_per_week' => $days,
             'weeks' => (int) ($args['weeks'] ?? 5),
             'experience' => $exp,
         ]);

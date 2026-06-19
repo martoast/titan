@@ -60,6 +60,59 @@ class MesocycleGeneratorTest extends TestCase
         $this->assertContains('shoulders', $focus);
     }
 
+    public function test_focus_areas_from_onboarding_translate_to_muscles(): void
+    {
+        // The plain-language dream-physique chips map to training-focus muscles, most-implied first.
+        $f = MesocycleGenerator::focusFromGoals(['Rounder glutes', 'Flat tummy', 'Hourglass waist', 'Strong core', 'Toned arms']);
+        $this->assertSame('abs', $f[0]);                 // implied 3× (tummy + waist + core)
+        $this->assertContains('glutes', $f);
+        $this->assertContains('biceps', $f);             // "arms" → biceps + triceps
+
+        $m = MesocycleGenerator::focusFromGoals(['V-taper back', 'Visible abs', 'Bigger shoulders']);
+        $this->assertContains('back', $m);
+        $this->assertContains('abs', $m);
+        $this->assertContains('shoulders', $m);
+    }
+
+    public function test_mesocycle_inherits_experience_days_and_focus_from_onboarding_intake(): void
+    {
+        $p = User::factory()->create()->ensureProfile();
+        $p->update(['settings' => array_merge($p->settings ?? [], [
+            'intake' => [
+                'experience' => 'beginner',
+                'train_days' => 3,
+                'focus_areas' => ['Rounder glutes', 'Lean legs', 'Flat tummy'],
+            ],
+        ])]);
+
+        // No explicit args → everything comes from the intake.
+        $gen = (new CoachTools($p->refresh()))->dispatch('generate_mesocycle', []);
+
+        $this->assertTrue($gen['ok']);
+        $program = $p->trainingPrograms()->where('is_active', true)->first();
+        $this->assertSame('beginner', $program->experience);
+        $this->assertSame(3, $program->days_per_week);
+        $this->assertContains('glutes', $program->focus);   // derived from "Rounder glutes" + "Lean legs"
+    }
+
+    public function test_explicit_args_override_the_onboarding_intake(): void
+    {
+        $p = User::factory()->create()->ensureProfile();
+        $p->update(['settings' => array_merge($p->settings ?? [], [
+            'intake' => ['experience' => 'beginner', 'train_days' => 3, 'focus_areas' => ['Rounder glutes']],
+        ])]);
+
+        $gen = (new CoachTools($p->refresh()))->dispatch('generate_mesocycle', [
+            'focus' => ['chest'], 'days_per_week' => 5, 'experience' => 'advanced',
+        ]);
+
+        $this->assertTrue($gen['ok']);
+        $program = $p->trainingPrograms()->where('is_active', true)->first();
+        $this->assertSame('advanced', $program->experience);
+        $this->assertSame(5, $program->days_per_week);
+        $this->assertSame(['chest'], $program->focus);      // intake glutes ignored
+    }
+
     public function test_the_coach_generates_saves_and_reads_a_program(): void
     {
         $p = User::factory()->create()->ensureProfile();

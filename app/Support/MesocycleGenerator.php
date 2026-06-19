@@ -288,4 +288,51 @@ class MesocycleGenerator
     {
         return self::LABELS;
     }
+
+    /**
+     * Translate the user's plain-language onboarding "focus areas" (e.g. "Rounder glutes",
+     * "V-taper back", "Flat tummy", "Toned arms") into canonical training-focus muscles,
+     * ordered by how often each is implied so the caller can keep the top few. This is what
+     * lets the dream-physique intake actually steer the program: a woman who picked glutes +
+     * waist + legs gets a glute/ab/leg specialization without ever naming a muscle.
+     *
+     * @param  array<int,string>|string  $phrases
+     * @return array<int,string> canonical muscles, most-emphasised first
+     */
+    public static function focusFromGoals(array|string $phrases): array
+    {
+        $items = is_string($phrases) ? preg_split('/[,\n;|]+/', $phrases) : $phrases;
+        // substring keyword => muscle token(s); 'legs'/'arms' expand the usual way.
+        $map = [
+            'glute' => ['glutes'], 'butt' => ['glutes'], 'booty' => ['glutes'],
+            'tummy' => ['abs'], 'belly' => ['abs'], 'waist' => ['abs'], 'core' => ['abs'],
+            'stomach' => ['abs'], 'ab' => ['abs'], 'midsection' => ['abs'],
+            'arm' => ['biceps', 'triceps'], 'bicep' => ['biceps'], 'tricep' => ['triceps'],
+            'chest' => ['chest'], 'pec' => ['chest'],
+            'shoulder' => ['shoulders'], 'delt' => ['shoulders'],
+            'back' => ['back'], 'taper' => ['back'], 'lat' => ['back'], 'posture' => ['back'],
+            'calf' => ['calves'], 'calv' => ['calves'],
+            'quad' => ['quads'], 'ham' => ['hamstrings'],
+            'leg' => ['quads', 'hamstrings', 'glutes'], 'lower body' => ['quads', 'hamstrings', 'glutes'],
+        ];
+
+        $counts = [];
+        foreach ((array) $items as $raw) {
+            $t = strtolower(trim((string) $raw));
+            if ($t === '') {
+                continue;
+            }
+            foreach ($map as $needle => $muscles) {
+                if (str_contains($t, $needle)) {
+                    foreach ($muscles as $m) {
+                        $counts[$m] = ($counts[$m] ?? 0) + 1;
+                    }
+                }
+            }
+        }
+
+        arsort($counts);   // most-implied first; PHP 8 keeps insertion order on ties
+
+        return array_values(array_filter(array_keys($counts), fn ($m) => isset(self::LIBRARY[$m])));
+    }
 }
