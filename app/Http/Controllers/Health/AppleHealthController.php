@@ -40,7 +40,7 @@ class AppleHealthController extends Controller
                 'export' => ['required', 'file', 'max:'.self::MAX_KB],
             ], [
                 'export.required' => 'Choose your Apple Health export.zip first.',
-                'export.max' => 'That file is too large for this server's upload limit.',
+                'export.max' => "That file is too large for this server's upload limit.",
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return back()->with('apple_health_error', $e->validator->errors()->first('export'));
