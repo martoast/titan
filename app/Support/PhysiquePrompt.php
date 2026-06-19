@@ -29,26 +29,26 @@ class PhysiquePrompt
 
         $body = self::bodyFor($female, $male, $angle);
 
-        // The face only needs preserving when it's actually in frame.
-        $identity = $angle === 'back'
-            ? 'keep the SAME person — same hair, skin tone, body frame, pose, camera framing, lighting, clothing style and background'
-            : 'keep their EXACT face, identity, skin tone, hair and bone structure, plus the same pose, camera framing, lighting, clothing style and background — this must be unmistakably the SAME person, just at their physical peak';
+        // Back shots don't show the face — only the body frame needs anchoring.
+        $styleAnchor = $angle === 'back'
+            ? 'same hair colour, skin tone, body frame, pose, camera framing, lighting, clothing style and background'
+            : 'same skin tone, hair colour, body frame, pose, camera framing, lighting, clothing style and background';
 
         $desc = trim((string) $description);
-        $wants = $desc !== '' ? " The person specifically wants: {$desc} — make sure this clearly comes through." : '';
+        $wants = $desc !== '' ? " The user specifically wants: {$desc} — make sure this clearly comes through." : '';
 
         return <<<PROMPT
-        Take this exact person from the photo (a {$angle} view) and render their DREAM PHYSIQUE — the
-        aspirational, peak version of themselves after YEARS of dedicated training and disciplined
-        nutrition: {$body}.{$wants}
+        This is a fitness visualisation. Using the reference photo ({$angle} view), create a
+        photorealistic image showing what this person's body could look like at their absolute
+        athletic peak after years of dedicated training and disciplined nutrition: {$body}.{$wants}
 
-        Make the transformation BOLD and clearly visible — this is a dream to inspire them, not a small
-        change, so push it well beyond their current shape. Still fully photorealistic.
+        Make the transformation BOLD and clearly visible — this should inspire, not a subtle change,
+        so push the physique well beyond the current shape. Fully photorealistic.
 
-        Constraints: {$identity}. Keep them fully clothed in tasteful, well-fitted athletic wear (the
-        same style they're wearing). Natural, believable skin and muscle — defined and athletic, NOT a
-        grotesque or cartoonish over-muscled bodybuilder, no objectification, no filters, no facial
-        distortion. The result should look like a real, elite, in-shape version of this exact person.
+        Style constraints: {$styleAnchor}. Keep the person fully clothed in tasteful, well-fitted
+        athletic wear (same style as in the photo). Natural, believable muscle and skin — defined
+        and athletic, NOT a grotesque or cartoonish over-muscled bodybuilder, no objectification,
+        no filters, no distortion. The result should look like a real, elite, in-shape athlete.
         PROMPT;
     }
 

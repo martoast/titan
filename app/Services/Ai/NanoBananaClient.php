@@ -75,7 +75,7 @@ class NanoBananaClient
                 ->withQueryParameters(['key' => config('services.gemini.key')])
                 ->post($url, [
                     'contents' => [['parts' => $parts]],
-                    'generationConfig' => ['responseModalities' => ['IMAGE']],
+                    'generationConfig' => ['responseModalities' => ['IMAGE', 'TEXT']],
                 ]);
         } catch (\Throwable $e) {
             throw new AiException('Could not reach Gemini: '.$e->getMessage(), previous: $e);
@@ -96,6 +96,22 @@ class NanoBananaClient
                 ];
             }
         }
+
+        // Log the full response structure (minus raw image bytes) so we can diagnose
+        // safety blocks or unexpected response shapes.
+        $finish = $response->json('candidates.0.finishReason');
+        $blockReason = $response->json('promptFeedback.blockReason');
+        $textParts = collect($response->json('candidates.0.content.parts', []))
+            ->filter(fn ($p) => isset($p['text']))
+            ->pluck('text')
+            ->implode(' | ');
+        Log::warning('[NanoBanana] no image in response', [
+            'finishReason' => $finish,
+            'blockReason' => $blockReason,
+            'textParts' => mb_substr($textParts, 0, 500),
+            'partCount' => count($response->json('candidates.0.content.parts', [])),
+            'candidateCount' => count($response->json('candidates', [])),
+        ]);
 
         throw new AiException('Gemini did not return an image. Try rephrasing the prompt.');
     }
