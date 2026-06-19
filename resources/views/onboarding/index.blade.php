@@ -419,6 +419,13 @@
                                         <template x-if="physShots[a].preview">
                                             <div class="relative w-full">
                                                 <img :src="physShots[a].preview" alt="" class="max-h-44 w-full object-contain">
+                                                {{-- remove the chosen photo (.prevent.stop so the label doesn't reopen the picker) --}}
+                                                <button type="button" x-show="physShots[a].status !== 'generating'"
+                                                        @click.prevent.stop="clearPhysPhoto(a)" aria-label="Remove photo"
+                                                        class="absolute top-1.5 right-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white active:bg-rose-600/80">
+                                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                </button>
+                                                <p class="absolute bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white/80" x-show="physShots[a].status !== 'generating'">Tap photo to change · ✕ to remove</p>
                                                 <div x-show="physShots[a].status === 'generating'" x-cloak class="absolute inset-0 grid place-items-center bg-black/55 backdrop-blur-[2px]">
                                                     <span class="font-display text-xs font-bold text-cyan-200">Sculpting…</span>
                                                 </div>
@@ -718,6 +725,17 @@
                     s.preview = URL.createObjectURL(f);
                     s.goal = '';
                     s.status = '';        // a new photo invalidates this angle's render
+                    this.physError = '';
+                },
+                // Discard a chosen photo so the angle goes back to its empty "add a photo" state.
+                clearPhysPhoto(angle) {
+                    if (this.physGenerating) return;
+                    const s = this.physShots[angle];
+                    if (s.preview) URL.revokeObjectURL(s.preview);
+                    s.file = null;
+                    s.preview = '';
+                    s.goal = '';
+                    s.status = '';
                     this.physError = '';
                 },
 
