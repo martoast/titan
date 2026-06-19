@@ -31,7 +31,9 @@ Route::middleware(['auth'])->group(function () {
     // Onboarding wizard — runs OUTSIDE the `onboarded` gate (it's where the gate sends you).
     Route::get('/onboarding', [OnboardingController::class, 'show'])->name('onboarding');
     Route::post('/onboarding', [OnboardingController::class, 'store'])->name('onboarding.store');
-    // Dream-physique render generated mid-wizard (AJAX) — needs to run before the profile is finalized.
+    // Progress-photo baseline captured mid-wizard (AJAX).
+    Route::post('/onboarding/progress-photo', [OnboardingController::class, 'storeProgressPhoto'])->name('onboarding.progress-photo');
+    // Dream-physique goal confirmed mid-wizard (AJAX) -- uses static model images, no AI.
     Route::post('/onboarding/physique', [OnboardingController::class, 'generatePhysique'])->name('onboarding.physique');
 
     // Everything else requires a completed Titan profile first.

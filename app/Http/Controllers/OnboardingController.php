@@ -169,61 +169,82 @@ class OnboardingController extends Controller
     }
 
     /**
-     * Generate ONE angle of the dream physique DURING onboarding (AJAX). The wizard captures up to
-     * three shots -- front / back / side -- and calls this once per angle, because a single front photo
-     * can't show a glute or leg goal. Gender- AND angle-aware: the `sex` chosen in the wizard plus the
-     * angle steer the render (the back shot pushes glutes/back, the side pushes waist taper + glute
-     * profile), and the user's free-text layers on top.
-     *
-     * The FIRST call (front) creates the active goal; later calls pass its `goal_id` and just append
-     * their angle's render to the same goal. "Try again" re-posts an angle and replaces it. Always JSON.
+     * Store one progress photo during onboarding (AJAX). Called once per angle from the
+     * "Your starting point" wizard step. Photos become ProgressPhoto records so the coach
+     * and physique analysis have a before baseline from day one.
      */
-    public function generatePhysique(Request $request): \Illuminate\Http\JsonResponse
+    public function storeProgressPhoto(Request $request): \Illuminate\Http\JsonResponse
     {
         $profile = $request->user()->ensureProfile();
 
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'photo' => ['required', 'image', 'max:12288'],
             'angle' => ['nullable', 'in:front,back,side'],
-            'description' => ['nullable', 'string', 'max:255'],
-            'sex' => ['nullable', 'in:F,M,other'],
-            'goal_id' => ['nullable', 'integer'],
         ]);
         if ($validator->fails()) {
-            return response()->json(['ok' => false, 'error' => 'Add a clear, well-lit photo of yourself, then generate.'], 422);
+            return response()->json(['ok' => false, 'error' => 'Upload a clear photo to continue.'], 422);
         }
 
         $angle = $request->input('angle') ?: 'front';
-        $sourcePath = $request->file('photo')->store('physique/source', 'public');
+        $path = $request->file('photo')->store('physique/progress', 'public');
+
+        $photo = $profile->progressPhotos()->create([
+            'photo_path' => $path,
+            'taken_at' => now()->toDateString(),
+            'pose' => $angle,
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'photo_id' => $photo->id,
+            'photo_url' => \Illuminate\Support\Facades\Storage::disk('public')->url($path),
+        ]);
+    }
+
+    /**
+     * Confirm the dream physique goal during onboarding (AJAX). Uses the pre-generated
+     * static model images for the user's sex -- no AI generation needed. Creates all three
+     * angle shots in one go, sourced from the user's latest progress photo. Always JSON.
+     */
+    public function generatePhysique(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'description' => ['nullable', 'string', 'max:255'],
+            'sex' => ['nullable', 'in:F,M,other'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['ok' => false, 'error' => 'Invalid input.'], 422);
+        }
+
         $sex = $request->input('sex') ?: $profile->sex;
         $description = trim((string) $request->input('description')) ?: null;
 
-        // Use the pre-generated model image for this sex + angle instead of AI generation.
-        // The user's uploaded photo is stored as the "before" for progress comparison and
-        // coach analysis -- we just don't feed it to an image model anymore.
-        $modelPath = \App\Support\PhysiqueModelImage::path($sex, $angle);
+        // Source = their latest progress photo (uploaded in the previous wizard step).
+        $sourcePath = $profile->progressPhotos()->latest('id')->value('photo_path');
 
-        // Reuse the goal the front shot created (passed back as goal_id); otherwise start a fresh one.
-        $goal = $request->filled('goal_id')
-            ? $profile->physiqueGoals()->where('id', $request->integer('goal_id'))->where('is_active', true)->first()
-            : null;
-        if (! $goal) {
-            $profile->physiqueGoals()->update(['is_active' => false]);
-            $goal = $profile->physiqueGoals()->create([
-                'source_photo_path' => $sourcePath,
-                'goal_image_path' => $modelPath,
-                'description' => $description,
-                'is_active' => true,
-                'shots' => [],
-            ]);
+        $profile->physiqueGoals()->update(['is_active' => false]);
+        $goal = $profile->physiqueGoals()->create([
+            'source_photo_path' => $sourcePath,
+            'goal_image_path' => \App\Support\PhysiqueModelImage::path($sex, 'front'),
+            'description' => $description,
+            'is_active' => true,
+            'shots' => [],
+        ]);
+
+        // Register all three angles at once -- the model images are already ready.
+        foreach (['front', 'back', 'side'] as $angle) {
+            $goal->putShot($angle, (string) $sourcePath, \App\Support\PhysiqueModelImage::path($sex, $angle));
         }
-        $goal->putShot($angle, $sourcePath, $modelPath);
 
         return response()->json([
             'ok' => true,
             'goal_id' => $goal->id,
-            'angle' => $angle,
-            'image_url' => \App\Support\PhysiqueModelImage::url($sex, $angle),
+            'shots' => array_map(
+                fn ($a) => ['angle' => $a, 'image_url' => \App\Support\PhysiqueModelImage::url($sex, $a)],
+                ['front', 'back', 'side']
+            ),
         ]);
     }
 
