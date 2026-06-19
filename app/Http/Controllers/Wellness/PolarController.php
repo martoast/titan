@@ -26,7 +26,7 @@ class PolarController extends Controller
 
         if (! $polar->configured()) {
             return redirect('/devices')->with('apple_health_error',
-                'Polar isn't configured on this server. Add free dev credentials from admin.polaraccesslink.com to POLAR_CLIENT_ID / POLAR_CLIENT_SECRET.');
+                "Polar isn't configured on this server. Add free dev credentials from admin.polaraccesslink.com to POLAR_CLIENT_ID / POLAR_CLIENT_SECRET.");
         }
 
         $url = $polar->authorizeUrl($profile);

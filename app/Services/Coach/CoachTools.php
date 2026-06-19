@@ -628,7 +628,7 @@ class CoachTools
                     'Charge your band and keep it next to this phone.',
                     'Tap "Open the bridge" below.',
                     'In the bridge, tap Connect and pick your band over Bluetooth.',
-                    'Keep the bridge open -- your vitals start streaming. I'll confirm once the first data lands.',
+                    "Keep the bridge open -- your vitals start streaming. I'll confirm once the first data lands.",
                 ],
             ],
             '_show' => "Open with the `pairing` card and warmly walk them through it -- tell them to tap "Open the bridge", that it takes ~a minute, and that you'll confirm once the band's first data arrives (they can ask \"did my band connect?\"). Don't recite the steps verbatim; just encourage and reassure.",
@@ -2302,3 +2302,4 @@ class CoachTools
         return null;
     }
 }
+'

@@ -32,7 +32,7 @@ class AppleHealthController extends Controller
         // and no validation error fires, so guard explicitly with a friendly message.
         if ($this->exceededPostMax($request)) {
             return back()->with('apple_health_error',
-                'That export is larger than this server accepts. Ask your admin to raise PHP's upload_max_filesize / post_max_size.');
+                "That export is larger than this server accepts. Ask your admin to raise PHP's upload_max_filesize / post_max_size.");
         }
 
         try {
@@ -114,3 +114,4 @@ class AppleHealthController extends Controller
         };
     }
 }
+'

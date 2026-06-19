@@ -351,7 +351,7 @@ class CoachController extends Controller
             ],
         ]);
         if ($validator->fails()) {
-            return response()->json(['ok' => false, 'error' => 'That recording couldn't be read -- try again.'], 422);
+            return response()->json(['ok' => false, 'error' => "That recording couldn't be read -- try again."], 422);
         }
 
         $file = $request->file('audio');
@@ -365,3 +365,4 @@ class CoachController extends Controller
         return response()->json(['ok' => true, 'text' => $text]);
     }
 }
+'
