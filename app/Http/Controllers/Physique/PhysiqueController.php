@@ -58,6 +58,8 @@ class PhysiqueController extends Controller
         return view('physique.index', [
             'profile' => $profile,
             'goal' => $goal,
+            // Every dream-physique angle (front/back/side) ready for the showcase + the live build state.
+            'dreamShots' => $goal?->shotUrls() ?? [],
             'photos' => $photos,
             'latestAnalysis' => $latestAnalysis,
             'livingImageUrl' => $livingImageUrl,
@@ -71,59 +73,74 @@ class PhysiqueController extends Controller
     }
 
     /**
-     * Feature 1 — Dream-physique generation. Upload a current photo, render the same
-     * person with ~10 lbs more lean muscle (identity/face/lighting/background preserved).
+     * Feature 1 — Dream-physique generation, ONE angle per call (front / back / side), because a
+     * single front photo can't show a glute, leg or back goal. The front call creates the active
+     * goal; back/side calls pass its `goal_id` and append their render. Gender- AND angle-aware,
+     * steered by the user's description. Shared concept with the onboarding flow. Always JSON.
      */
-    public function generateGoal(Request $request): RedirectResponse
+    public function generateGoal(Request $request): \Illuminate\Http\JsonResponse
     {
         $profile = auth()->user()->ensureProfile();
 
-        $data = $request->validate([
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'photo' => ['nullable', 'image', 'max:12288'],
             'source_photo_id' => ['nullable', 'integer'],
-            'description' => ['nullable', 'string', 'max:120'],
+            'angle' => ['nullable', 'in:front,back,side'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'goal_id' => ['nullable', 'integer'],
         ]);
+        if ($validator->fails()) {
+            return response()->json(['ok' => false, 'error' => 'Add a clear, well-lit photo, then generate.'], 422);
+        }
 
-        // Resolve the source image: a freshly uploaded photo, OR a progress photo the
-        // user already has (so onboarding never asks for the same photo twice).
+        $angle = $request->input('angle') ?: 'front';
+
+        // Resolve the source image: a freshly uploaded photo, OR a progress photo they already have.
         if ($request->hasFile('photo')) {
             $sourcePath = $request->file('photo')->store('physique/source', 'public');
-        } elseif (! empty($data['source_photo_id'])) {
-            $existing = $profile->progressPhotos()->find($data['source_photo_id']);
+        } elseif ($request->filled('source_photo_id')) {
+            $existing = $profile->progressPhotos()->find($request->integer('source_photo_id'));
             if (! $existing || ! $existing->photo_path) {
-                return back()->with('error', "Couldn't find that photo — upload one and try again.");
+                return response()->json(['ok' => false, 'error' => "Couldn't find that photo — upload one and try again."], 200);
             }
             $sourcePath = $existing->photo_path;
         } else {
-            return back()->with('error', 'Add a photo first, then generate your dream physique.');
+            return response()->json(['ok' => false, 'error' => 'Add a photo first, then generate your dream physique.'], 422);
         }
 
-        $description = trim((string) ($data['description'] ?? '')) ?: null;
-
-        // Gender-aware render (men → muscle/lean; women → toned/waist/glutes), steered by
-        // the user's own description. Shared with the onboarding flow.
-        $prompt = \App\Support\PhysiquePrompt::build($profile->sex, $description);
+        $description = trim((string) $request->input('description')) ?: null;
+        $prompt = \App\Support\PhysiquePrompt::build($profile->sex, $description, $angle);
 
         try {
             $input = $this->nano->imageFromDisk($sourcePath);
             $generated = $this->nano->generateToDisk($prompt, 'physique/goal', [$input]);
         } catch (AiException $e) {
-            // Keep the source upload — let the user retry the render later.
-            return back()->with('error', 'Could not generate your dream physique right now: '.$e->getMessage());
+            return response()->json(['ok' => false, 'error' => 'Could not generate your dream physique right now: '.$e->getMessage()], 200);
         }
 
-        // New goal becomes the active one; retire previous goals.
-        $profile->physiqueGoals()->update(['is_active' => false]);
+        // Reuse the goal the front shot created (passed as goal_id), else start a fresh active goal.
+        $goal = $request->filled('goal_id')
+            ? $profile->physiqueGoals()->where('id', $request->integer('goal_id'))->where('is_active', true)->first()
+            : null;
+        if (! $goal) {
+            $profile->physiqueGoals()->update(['is_active' => false]);
+            $goal = $profile->physiqueGoals()->create([
+                'source_photo_path' => $sourcePath,
+                'goal_image_path' => $generated['path'],
+                'prompt' => $prompt,
+                'description' => $description,
+                'is_active' => true,
+                'shots' => [],
+            ]);
+        }
+        $goal->putShot($angle, $sourcePath, $generated['path']);
 
-        $profile->physiqueGoals()->create([
-            'source_photo_path' => $sourcePath,
-            'goal_image_path' => $generated['path'],
-            'prompt' => $prompt,
-            'description' => $description,
-            'is_active' => true,
+        return response()->json([
+            'ok' => true,
+            'goal_id' => $goal->id,
+            'angle' => $angle,
+            'image_url' => Storage::disk('public')->url($generated['path']),
         ]);
-
-        return back()->with('status', 'Your dream physique is ready. This is who you are becoming.');
     }
 
     /** Make a different goal the active one (e.g. revert to an earlier render). */
