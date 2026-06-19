@@ -9,18 +9,18 @@ use App\Models\PhysiqueGoal;
 use App\Models\Profile;
 use App\Models\ProgressPhoto;
 use App\Services\Ai\AiService;
-use App\Services\Ai\NanoBananaClient;
+use App\Services\Ai\ImageGenerator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * The living goal-physique loop -- Titan's founding wedge.
+ * The living goal-physique loop — Titan's founding wedge.
  *
  * A believable dream-physique image that ADVANCES toward the goal as the user stays
  * consistent. Each weekly "step" re-renders the user's latest progress photo a calibrated,
  * identity-preserving increment toward their PhysiqueGoal image. The increment size is
  * driven by an adherence score (0..1) computed from how consistent their workouts, meals,
- * and recovery logging were over the prior ~2 weeks -- slack, and the step is tiny; stay
+ * and recovery logging were over the prior ~2 weeks — slack, and the step is tiny; stay
  * the course, and the rendered "you" visibly gains ground. We keep a full history of renders
  * (LivingGoalRender) so the UI can show week-by-week progression.
  *
@@ -45,7 +45,7 @@ class LivingGoalService
 
     public function __construct(
         private readonly AiService $ai,
-        private readonly NanoBananaClient $nano,
+        private readonly ImageGenerator $nano,
     ) {}
 
     /**
@@ -94,11 +94,11 @@ class LivingGoalService
         $prompt = <<<PROMPT
         IMAGE 1 is this person's CURRENT progress photo. IMAGE 2 is their target "dream physique"
         goal image (the same person, fitter). Render a NEW photo of IMAGE 1's person taking ONE
-        believable step toward IMAGE 2 -- {$intensity}. They should look clearly a little closer to
+        believable step toward IMAGE 2 — {$intensity}. They should look clearly a little closer to
         the goal than IMAGE 1 today, but this is a SINGLE realistic week-or-two of progress, never
         the full transformation. Keep their exact face, identity, skin tone, hair, pose, framing,
-        lighting, and background from IMAGE 1 unchanged -- unmistakably the SAME person, just a step
-        further along. Photorealistic, natural, believable -- not an exaggerated bodybuilder, not a
+        lighting, and background from IMAGE 1 unchanged — unmistakably the SAME person, just a step
+        further along. Photorealistic, natural, believable — not an exaggerated bodybuilder, not a
         fantasy filter. Currently about {$stepPct}% of the way from their starting point to the goal.
         PROMPT;
 
@@ -170,7 +170,7 @@ class LivingGoalService
           "lagging": ["<short phrase>", "<short phrase>"],
           "summary": "<2-3 encouraging, realistic sentences narrating the progress and the next focus>"
         }
-        Rules: be supportive and honest about uncertainty -- this is a motivating physique read, not a
+        Rules: be supportive and honest about uncertainty — this is a motivating physique read, not a
         measurement. Make NO medical claims or diagnoses, give NO health warnings. `improved` and
         `lagging` are 1-3 short phrases each (e.g. "shoulders", "leaner midsection"). Return ONLY the
         JSON object.
@@ -235,7 +235,7 @@ class LivingGoalService
 
         $workouts = $profile->workouts()->where('performed_at', '>=', $since)->count();
 
-        // Distinct calendar days with at least one logged meal -- credits the habit, not volume.
+        // Distinct calendar days with at least one logged meal — credits the habit, not volume.
         $mealDays = $profile->meals()->where('eaten_at', '>=', $since)->get(['eaten_at'])
             ->map(fn ($m) => $m->eaten_at?->toDateString())->filter()->unique()->count();
 

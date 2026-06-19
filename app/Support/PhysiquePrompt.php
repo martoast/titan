@@ -3,14 +3,9 @@
 namespace App\Support;
 
 /**
- * Builds the Nano-Banana prompt for a dream-physique render -- gender-aware AND angle-aware.
- *
- * This is a DREAM physique: a bold, inspirational image of an elite athlete that represents
- * what the user is working toward. Generated from text only (no input photo) because Gemini's
- * IMAGE_SAFETY policy blocks person-photo body-transformation requests.
- *
- * Gender and angle steer the physique description so each render shows exactly what matters:
- * front = overall silhouette, back = glutes/lats/V-taper, side = waist taper + glute projection.
+ * Dream-physique prompt for gpt-image-1. Deliberately TINY — the model overshoots when you
+ * over-describe, so we say one short thing ("add ~10 lb of lean muscle and show abs") plus a single
+ * line to keep their face. Gender-aware, lightly angle-aware. The user's own text layers on.
  */
 class PhysiquePrompt
 {
@@ -20,53 +15,32 @@ class PhysiquePrompt
         $male = $sex === 'M';
         $angle = in_array($angle, ['front', 'back', 'side'], true) ? $angle : 'front';
 
-        $body = self::bodyFor($female, $male, $angle);
-        $sexLabel = $female ? 'woman' : ($male ? 'man' : 'person');
-        $angleLabel = match ($angle) {
-            'back' => 'rear-facing',
-            'side' => 'side-profile',
-            default => 'front-facing',
-        };
-
+        $change = self::changeFor($female, $male, $angle);
         $desc = trim((string) $description);
-        $wants = $desc !== '' ? " Specific goals: {$desc}." : '';
+        $extra = $desc !== '' ? ' '.$desc.'.' : '';
 
-        return <<<PROMPT
-        Create a photorealistic fitness inspiration photo of an elite athletic {$sexLabel} in a
-        {$angleLabel} pose, fully clothed in tasteful well-fitted athletic wear (shorts/leggings
-        and a fitted top), in a clean gym or neutral studio setting with good natural lighting.
-
-        Physique: {$body}.{$wants}
-
-        Style: cinematic, high-resolution, motivational -- the kind of photo you'd see on a premium
-        fitness app. The physique should be STRIKING and clearly defined -- bold enough to genuinely
-        inspire. Natural, believable muscle and skin tone. NOT a bodybuilder, NOT objectifying, NO
-        excessive vascularity or cartoonish proportions. Just an elite, peak-condition athlete.
-        PROMPT;
+        return "Edit this photo of this person ({$angle} view): {$change}.{$extra} "
+            ."Keep their exact same face and identity so it still clearly looks like the same person.";
     }
 
-    /** The dream-physique clause for a given sex + camera angle. */
-    private static function bodyFor(bool $female, bool $male, string $angle): string
+    /** One short phrase for the change — by sex and angle. */
+    private static function changeFor(bool $female, bool $male, string $angle): string
     {
         if ($female) {
             return match ($angle) {
-                'back' => 'full, round, lifted glutes with a clear shelf and filled-out side glutes, strong defined hamstrings and quads, a tight snatched waist flaring into the hips, a toned V-shaped back and capped shoulders, low body fat with healthy feminine curves',
-                'side' => 'flat toned stomach, dramatically slim snatched waist, full projected round glutes with a strong upward shelf, lean toned legs, upright confident posture, low body fat with healthy feminine curves',
-                default => 'lean sculpted fitness-model physique -- sharply defined waist creating a strong natural hourglass, toned sculpted arms and shoulders, full round lifted glutes, lean defined legs, flat toned midsection with subtle ab definition, low body fat with healthy feminine curves',
+                'back' => 'make her more toned with firmer, rounder, lifted glutes and toned legs',
+                'side' => 'make her more toned and lean with a flatter stomach and firmer, lifted glutes',
+                default => 'make her leaner and more toned with a flatter, defined stomach, toned arms and a firmer figure',
             };
         }
         if ($male) {
             return match ($angle) {
-                'back' => 'wide flaring lats with a dramatic V-taper down to a tight waist, thick defined upper back and capped rear delts, full glutes and strong hamstrings, very low body fat and shredded conditioning',
-                'side' => 'flat tight midsection with visible abs, full thick chest, capped 3D shoulders and arms, upright confident posture, very low body fat and shredded conditioning',
-                default => 'broad capped shoulders, full defined chest, clearly visible six-pack abs, sculpted muscular arms, wide V-taper down to a tight waist, very low body fat and shredded conditioning',
+                'back' => 'add about 10 lbs of lean muscle — a fuller, more defined back, shoulders and glutes',
+                'side' => 'add about 10 lbs of lean muscle and show defined abs, with a flatter waist',
+                default => 'add about 10 lbs of lean muscle and show defined abs',
             };
         }
 
-        return match ($angle) {
-            'back' => 'defined muscular back and shoulders, firm shapely glutes and toned legs, low body fat and athletic conditioning',
-            'side' => 'flat defined midsection, upright posture, lean athletic build with low body fat',
-            default => 'visibly sculpted muscle, defined athletic tone, low body fat and peak conditioning',
-        };
+        return 'add a bit of lean muscle and tone, leaner and more defined';
     }
 }

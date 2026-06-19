@@ -34,6 +34,8 @@ class PhysiqueOnboardingTest extends TestCase
                 return ['path' => "physique/goal/test-{$n}.png", 'url' => "/storage/physique/goal/test-{$n}.png", 'mime' => 'image/png'];
             }
         };
+        // The physique flow resolves the ImageGenerator contract (bound to OpenAI by default).
+        $this->app->instance(\App\Services\Ai\ImageGenerator::class, $fake);
         $this->app->instance(NanoBananaClient::class, $fake);
 
         return [$fake, $calls];

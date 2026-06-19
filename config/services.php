@@ -94,7 +94,19 @@ return [
         'vision_model' => env('OPENAI_VISION_MODEL', 'gpt-4o'),
         'embed_model' => env('OPENAI_EMBED_MODEL', 'text-embedding-3-small'),
         'transcribe_model' => env('OPENAI_TRANSCRIBE_MODEL', 'whisper-1'),
+        // gpt-image-1 — used for the dream physique (real photo → fitter you). It preserves the
+        // person's face with input_fidelity=high and handles self-transformations Gemini refuses.
+        'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-2'),
+        'image_timeout' => (int) env('OPENAI_IMAGE_TIMEOUT', 180),
         'timeout' => (int) env('OPENAI_TIMEOUT', 60),
+    ],
+
+    // Which provider renders the dream physique / living-goal morph (real-person edits):
+    //   'openai' → gpt-image-1 (keeps the face, permits self-transformations)
+    //   'gemini' → Nano Banana (cheaper, but refuses real-person muscle edits on TOS grounds)
+    // Meal-photo generation always stays on Gemini (it's not a real person).
+    'image' => [
+        'provider' => env('PHYSIQUE_IMAGE_PROVIDER', 'openai'),
     ],
 
     // Google Gemini — "Nano Banana 2" (Gemini Flash Image) for image generation:
