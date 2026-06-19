@@ -92,6 +92,18 @@
             <input type="hidden" name="cycle_length" :value="form.cycle_length">
             <input type="hidden" name="birth_control" :value="form.birth_control">
             <input type="hidden" name="cycle_intent" :value="form.cycle_intent">
+            {{-- Deep intake — so the coach truly knows the user from message one --}}
+            <input type="hidden" name="injuries" :value="form.injuries.join('|')">
+            <input type="hidden" name="health_notes" :value="form.health_notes">
+            <input type="hidden" name="experience" :value="form.experience">
+            <input type="hidden" name="train_at" :value="form.train_at">
+            <input type="hidden" name="train_days" :value="form.train_days">
+            <input type="hidden" name="diet" :value="form.diet">
+            <input type="hidden" name="allergies" :value="form.allergies">
+            <input type="hidden" name="avoid_foods" :value="form.avoid_foods">
+            <input type="hidden" name="motivation" :value="form.motivation">
+            <input type="hidden" name="event_date" :value="form.event_date">
+            <input type="hidden" name="focus_areas" :value="form.focus_areas.join('|')">
 
             <main class="flex flex-1 flex-col overflow-y-auto py-5">
                 <template x-if="current === 'welcome'">
@@ -252,24 +264,133 @@
                     </section>
                 </template>
 
+                {{-- Health & limitations --}}
+                <template x-if="current === 'health'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Train around it</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Anything I should work around?</h2>
+                        <p class="mt-2 text-sm text-gray-500">Injuries, niggles or conditions. I'll never program around a joint that hurts. Tap any that apply — or skip.</p>
+                        <div class="mt-6 flex flex-wrap gap-2">
+                            <template x-for="c in healthChips" :key="c">
+                                <button type="button" @click="toggleArr('injuries', c)"
+                                        class="rounded-full border px-3.5 py-2 text-sm font-medium transition"
+                                        :style="form.injuries.includes(c) ? 'border-color:#fb7185; background:#fb718522; color:#fda4af' : 'border-color:rgba(255,255,255,0.12); color:#cbd5e1'"
+                                        x-text="c"></button>
+                            </template>
+                        </div>
+                        <textarea x-model="form.health_notes" rows="2" maxlength="280" placeholder="Anything else? (e.g. recovering ACL, shift worker, bad sleep) — optional"
+                                  class="mt-4 w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-rose-400 focus:ring-0"></textarea>
+                    </section>
+                </template>
+
+                {{-- Training & equipment --}}
+                <template x-if="current === 'training'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Where you're starting</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Your training profile.</h2>
+
+                        <p class="mt-6 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Experience</p>
+                        <div class="space-y-2.5">
+                            <template x-for="o in experiences" :key="o.value">
+                                <button type="button" @click="form.experience = o.value"
+                                        class="ob-opt flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left"
+                                        :style="form.experience === o.value ? `border-color:${accent}; background:${accent}1f` : 'border-color:rgba(255,255,255,0.08)'">
+                                    <span class="flex-1">
+                                        <span class="block font-display text-base font-bold text-gray-100" x-text="o.label"></span>
+                                        <span class="block text-xs text-gray-500" x-text="o.desc"></span>
+                                    </span>
+                                    <svg x-show="form.experience === o.value" class="h-5 w-5 shrink-0" :style="`color:${accent}`" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                </button>
+                            </template>
+                        </div>
+
+                        <p class="mt-6 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Where you'll train</p>
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <template x-for="o in trainAtList" :key="o.value">
+                                <button type="button" @click="form.train_at = o.value"
+                                        class="ob-opt rounded-2xl border-2 px-3 py-3 text-center font-display text-sm font-bold"
+                                        :style="form.train_at === o.value ? `border-color:${accent}; background:${accent}1f; color:#e5e7eb` : 'border-color:rgba(255,255,255,0.08); color:#d1d5db'"
+                                        x-text="o.label"></button>
+                            </template>
+                        </div>
+
+                        <p class="mt-6 mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Days per week</p>
+                        <div class="grid grid-cols-6 gap-2">
+                            <template x-for="n in [2,3,4,5,6,7]" :key="n">
+                                <button type="button" @click="form.train_days = n"
+                                        class="ob-opt grid aspect-square place-items-center rounded-xl border-2 font-display text-lg font-extrabold"
+                                        :style="form.train_days === n ? `border-color:${accent}; background:${accent}1f; color:${accent}` : 'border-color:rgba(255,255,255,0.08); color:#d1d5db'"
+                                        x-text="n"></button>
+                            </template>
+                        </div>
+                    </section>
+                </template>
+
+                {{-- Nutrition profile --}}
+                <template x-if="current === 'diet'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">How you eat</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Your nutrition style.</h2>
+                        <p class="mt-2 text-sm text-gray-500">So every meal I suggest actually fits your plate.</p>
+                        <div class="mt-6 grid grid-cols-2 gap-2.5">
+                            <template x-for="o in diets" :key="o.value">
+                                <button type="button" @click="pick('diet', o.value)"
+                                        class="ob-opt rounded-2xl border-2 px-3 py-3.5 text-center font-display text-sm font-bold"
+                                        :style="form.diet === o.value ? `border-color:${accent}; background:${accent}1f; color:#e5e7eb` : 'border-color:rgba(255,255,255,0.08); color:#d1d5db'"
+                                        x-text="o.label"></button>
+                            </template>
+                        </div>
+                        <input x-model="form.allergies" maxlength="160" type="text" placeholder="Allergies or intolerances? (optional)"
+                               class="mt-4 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-emerald-400 focus:ring-0">
+                        <input x-model="form.avoid_foods" maxlength="160" type="text" placeholder="Foods you just won't eat? (optional)"
+                               class="mt-3 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-emerald-400 focus:ring-0">
+                    </section>
+                </template>
+
+                {{-- Your why & focus — gender-aware focus areas feed the dream physique --}}
+                <template x-if="current === 'focus'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">What you really want</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Where do you want to see change?</h2>
+                        <p class="mt-2 text-sm text-gray-500">Pick what matters most to you. This is what we'll build your dream physique around.</p>
+                        <div class="mt-6 flex flex-wrap gap-2">
+                            <template x-for="c in focusChips" :key="c">
+                                <button type="button" @click="toggleArr('focus_areas', c)"
+                                        class="rounded-full border px-3.5 py-2 text-sm font-medium transition"
+                                        :style="form.focus_areas.includes(c) ? 'border-color:#22d3ee; background:#22d3ee22; color:#a5f3fc' : 'border-color:rgba(255,255,255,0.12); color:#cbd5e1'"
+                                        x-text="c"></button>
+                            </template>
+                        </div>
+                        <label class="mb-1.5 mt-6 block text-xs font-medium text-gray-500">Your why — what's driving this? (optional)</label>
+                        <textarea x-model="form.motivation" rows="2" maxlength="280" placeholder="e.g. feel confident at the beach, keep up with my kids, get strong again"
+                                  class="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-cyan-400 focus:ring-0"></textarea>
+                        <label class="mb-1.5 mt-4 block text-xs font-medium text-gray-500">Working toward a date? (optional)</label>
+                        <input x-model="form.event_date" type="date" min="{{ now()->toDateString() }}"
+                               class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 focus:border-cyan-400 focus:ring-0">
+                    </section>
+                </template>
+
                 {{-- Dream physique — the coach's north star, generated from a photo --}}
                 <template x-if="current === 'physique'">
                     <section class="ob-step">
-                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Your north star</p>
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">The moment of truth</p>
                         <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">See your dream physique.</h2>
-                        <p class="mt-2 text-sm text-gray-500">This is who you're becoming — and what your coach trains you toward. Add a photo and we'll render a realistic, achievable version of future you.</p>
+                        <p class="mt-2 text-sm text-gray-500">Built from everything you just told me. Add a photo and I'll render a realistic, achievable version of future you.</p>
 
-                        {{-- A · describe + upload + generate --}}
+                        {{-- A · recap + upload + generate --}}
                         <div x-show="!form.phys_goal_image && !physGenerating" class="mt-6 space-y-4">
-                            <div class="flex flex-wrap gap-2">
-                                <template x-for="c in physChips" :key="c">
-                                    <button type="button" @click="togglePhysTag(c)"
-                                            class="rounded-full border px-3.5 py-1.5 text-sm font-medium transition"
-                                            :style="physTags.includes(c) ? 'border-color:#22d3ee; background:#22d3ee22; color:#a5f3fc' : 'border-color:rgba(255,255,255,0.12); color:#cbd5e1'"
-                                            x-text="c"></button>
-                                </template>
+                            {{-- What we're building from — pulled live from the intake above --}}
+                            <div class="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.04] p-4">
+                                <p class="text-xs font-bold uppercase tracking-wider text-cyan-300/80">Building around</p>
+                                <p class="mt-1.5 text-sm font-medium text-gray-200" x-text="goalLabel"></p>
+                                <div x-show="form.focus_areas.length" class="mt-2 flex flex-wrap gap-1.5">
+                                    <template x-for="c in form.focus_areas" :key="c">
+                                        <span class="rounded-full bg-white/[0.06] px-2.5 py-1 text-xs text-gray-300" x-text="c"></span>
+                                    </template>
+                                </div>
+                                <button type="button" @click="goToStep('focus')" class="mt-2.5 text-xs font-semibold text-cyan-400 active:text-cyan-200">Change focus areas →</button>
                             </div>
-                            <input x-model="form.phys_desc" maxlength="160" type="text" placeholder="Anything specific? (optional)"
+                            <input x-model="form.phys_desc" maxlength="160" type="text" placeholder="Any last detail to nail? (optional)"
                                    class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-cyan-400 focus:ring-0">
                             <input x-ref="physPhoto" type="file" accept="image/*" class="hidden" @change="onPhysPhoto($event)">
                             <button type="button" @click="$refs.physPhoto.click()"
@@ -505,24 +626,49 @@
                     primary_goal: '', coach_tone: '', coaching_intensity: 'balanced',
                     meals_per_day: 0, eat_start: '08:00', eat_end: '21:00',
                     cycle_enabled: false, last_period: '', cycle_length: 28, birth_control: 'none', cycle_intent: 'tracking',
+                    // Deep intake — the coach's working knowledge of the user
+                    injuries: [], health_notes: '',
+                    experience: '', train_at: '', train_days: 0,
+                    diet: '', allergies: '', avoid_foods: '',
+                    motivation: '', event_date: '', focus_areas: [],
                     phys_desc: '', phys_goal_image: '', phys_goal_id: null,
                 },
 
+                // ---- Deep-intake chip lists ----
+                healthChips: ['Knee', 'Lower back', 'Shoulder', 'Neck', 'Wrist / elbow', 'Hip', 'Ankle / foot', 'High blood pressure', 'Asthma', 'Diabetes', 'Pregnant / postpartum'],
+                experiences: [
+                    { value: 'beginner', label: 'New to this', desc: 'Just starting, or back after a long break' },
+                    { value: 'intermediate', label: 'Some experience', desc: "Trained on and off — I know the basics" },
+                    { value: 'advanced', label: 'Experienced', desc: 'Consistent for years, know my way around' },
+                ],
+                trainAtList: [
+                    { value: 'full_gym', label: 'Full gym' },
+                    { value: 'home_weights', label: 'Home — weights' },
+                    { value: 'bodyweight', label: 'Bodyweight only' },
+                    { value: 'mix', label: 'A mix' },
+                ],
+                diets: [
+                    { value: 'omnivore', label: 'Omnivore' }, { value: 'vegetarian', label: 'Vegetarian' },
+                    { value: 'vegan', label: 'Vegan' }, { value: 'pescatarian', label: 'Pescatarian' },
+                    { value: 'keto', label: 'Keto / low-carb' }, { value: 'halal', label: 'Halal' },
+                ],
+                // Gender-aware: women and men want different things from their physique.
+                get focusChips() {
+                    if (this.form.sex === 'F') return ['Rounder glutes', 'Toned arms', 'Flat tummy', 'Hourglass waist', 'Lean legs', 'Strong core', 'Better posture', 'Overall toned'];
+                    if (this.form.sex === 'M') return ['Bigger arms', 'Visible abs', 'Broader chest', 'V-taper back', 'Bigger shoulders', 'Stronger legs', 'Less belly', 'Overall muscle'];
+                    return ['More muscle', 'Visible abs', 'Toned arms', 'Stronger legs', 'Less belly', 'Better posture', 'Strong core', 'Overall athletic'];
+                },
+                toggleArr(field, val) {
+                    const a = this.form[field];
+                    const i = a.indexOf(val);
+                    if (i === -1) a.push(val); else a.splice(i, 1);
+                },
+
                 // ---- Dream physique (generated mid-wizard) ----
-                physTags: [],
                 physPhotoFile: null,
                 physPhotoPreview: '',
                 physGenerating: false,
                 physError: '',
-                get physChips() {
-                    if (this.form.sex === 'F') return ['Toned & lean', 'Hourglass waist', 'Curvier glutes', 'Sculpted arms', 'Lower body fat', 'Strong legs'];
-                    if (this.form.sex === 'M') return ['+ Lean muscle', 'Visible abs', 'Bigger arms', 'Broader shoulders', 'Lower body fat', 'V-taper'];
-                    return ['Leaner', 'More muscle', 'Visible abs', 'Lower body fat', 'More athletic', 'Defined'];
-                },
-                togglePhysTag(t) {
-                    const i = this.physTags.indexOf(t);
-                    if (i === -1) this.physTags.push(t); else this.physTags.splice(i, 1);
-                },
                 onPhysPhoto(e) {
                     const f = e.target.files && e.target.files[0];
                     if (!f) return;
@@ -536,7 +682,12 @@
                     if (!this.physPhotoFile || this.physGenerating) return;
                     this.physError = '';
                     this.physGenerating = true;
-                    const desc = [this.physTags.join(', '), (this.form.phys_desc || '').trim()].filter(Boolean).join('. ').slice(0, 160);
+                    // Description = everything we collected: their goal, the focus areas they chose, plus any last detail.
+                    const desc = [
+                        this.goalLabel && this.goalLabel !== '—' ? 'Goal: ' + this.goalLabel : '',
+                        this.form.focus_areas.length ? 'Focus: ' + this.form.focus_areas.join(', ') : '',
+                        (this.form.phys_desc || '').trim(),
+                    ].filter(Boolean).join('. ').slice(0, 255);
                     const fd = new FormData();
                     fd.append('photo', this.physPhotoFile);
                     fd.append('sex', this.form.sex || '');
@@ -602,7 +753,8 @@
                 },
                 stepAccents: {
                     welcome: '#6366f1', name: '#6366f1', birthday: '#6366f1', sex: '#a78bfa', units: '#22d3ee',
-                    body: '#22d3ee', activity: '#22d3ee', goal: '#a78bfa', physique: '#22d3ee', tone: '#818cf8', intensity: '#fb7185',
+                    body: '#22d3ee', activity: '#22d3ee', health: '#fb7185', training: '#fbbf24', goal: '#a78bfa',
+                    diet: '#34d399', focus: '#22d3ee', physique: '#22d3ee', tone: '#818cf8', intensity: '#fb7185',
                     cycle_enable: '#fb7185', cycle_details: '#fb7185', nutrition: '#34d399', finish: '#22d3ee',
                 },
 
@@ -660,12 +812,13 @@
                 clearSaved() { try { localStorage.removeItem(this.STORE_KEY); } catch (e) {} },
 
                 get steps() {
-                    const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'goal', 'physique', 'tone', 'intensity'];
+                    const s = ['welcome', 'name', 'birthday', 'sex', 'units', 'body', 'activity', 'health', 'training', 'goal', 'diet', 'focus', 'tone', 'intensity'];
                     if (this.form.sex === 'F') {
                         s.push('cycle_enable');
                         if (this.form.cycle_enabled) s.push('cycle_details');
                     }
-                    s.push('nutrition', 'finish');
+                    // Dream physique LAST — built from everything above, the first "wow".
+                    s.push('nutrition', 'physique', 'finish');
                     return s;
                 },
                 get current() { return this.steps[Math.min(this.idx, this.steps.length - 1)]; },
@@ -680,7 +833,9 @@
                         case 'units': return !!f.units;
                         case 'body': return Number(f.height) > 0 && Number(f.weight) > 0;
                         case 'activity': return !!f.activity_level;
+                        case 'training': return !!f.experience;
                         case 'goal': return !!f.primary_goal;
+                        case 'diet': return !!f.diet;
                         case 'tone': return !!f.coach_tone;
                         case 'nutrition': return Number(f.meals_per_day) >= 2;
                         default: return true;
@@ -702,6 +857,8 @@
                 back() { if (this.idx > 0) this.idx--; window.scrollTo({ top: 0 }); },
                 // Jump straight to any step already reached (tap the progress segments).
                 goTo(i) { if (i <= this.maxIdx && i >= 0) { this.idx = i; window.scrollTo({ top: 0 }); } },
+                // Jump to a step by name (e.g. "Change focus areas" from the physique recap).
+                goToStep(name) { const i = this.steps.indexOf(name); if (i !== -1) this.goTo(i); },
             };
         }
     </script>

@@ -64,7 +64,23 @@ class OnboardingController extends Controller
             'cycle_length' => ['nullable', 'integer', 'min:21', 'max:45'],
             'birth_control' => ['nullable', 'in:none,pill,patch,ring,hormonal_iud,copper_iud,implant,injection,other'],
             'cycle_intent' => ['nullable', 'in:tracking,conceiving,avoiding'],
+            // Deep intake — so the coach truly knows the user from message one. Arrays arrive '|'-joined.
+            'injuries' => ['nullable', 'string', 'max:400'],
+            'health_notes' => ['nullable', 'string', 'max:400'],
+            'experience' => ['nullable', 'in:beginner,intermediate,advanced'],
+            'train_at' => ['nullable', 'in:full_gym,home_weights,bodyweight,mix'],
+            'train_days' => ['nullable', 'integer', 'min:0', 'max:7'],
+            'diet' => ['nullable', 'in:omnivore,vegetarian,vegan,pescatarian,keto,halal'],
+            'allergies' => ['nullable', 'string', 'max:200'],
+            'avoid_foods' => ['nullable', 'string', 'max:200'],
+            'motivation' => ['nullable', 'string', 'max:400'],
+            'event_date' => ['nullable', 'date', 'after_or_equal:today'],
+            'focus_areas' => ['nullable', 'string', 'max:400'],
         ]);
+
+        // Parse the '|'-joined chip arrays into clean lists.
+        $injuries = array_values(array_filter(array_map('trim', explode('|', $data['injuries'] ?? ''))));
+        $focusAreas = array_values(array_filter(array_map('trim', explode('|', $data['focus_areas'] ?? ''))));
 
         $imperial = $data['units'] === 'imperial';
         $heightCm = $imperial ? round($data['height'] * 2.54, 1) : (float) $data['height'];
@@ -82,6 +98,22 @@ class OnboardingController extends Controller
             'end' => ($data['eat_end'] ?? null) ?: '21:00',
         ];
         $settings['macro_targets'] = $this->macros($weightKg, $heightCm, Carbon::parse($data['birthdate'])->age, $female, $data['activity_level'], $data['primary_goal']);
+
+        // Deep intake — feeds the mesocycle generator (experience/days), meal logic (diet/allergies),
+        // and the coach's first-message context. Empty fields are simply omitted later.
+        $settings['intake'] = [
+            'experience' => $data['experience'] ?? null,
+            'train_at' => $data['train_at'] ?? null,
+            'train_days' => (int) ($data['train_days'] ?? 0),
+            'diet' => $data['diet'] ?? null,
+            'allergies' => trim((string) ($data['allergies'] ?? '')) ?: null,
+            'avoid_foods' => trim((string) ($data['avoid_foods'] ?? '')) ?: null,
+            'injuries' => $injuries,
+            'health_notes' => trim((string) ($data['health_notes'] ?? '')) ?: null,
+            'focus_areas' => $focusAreas,
+            'motivation' => trim((string) ($data['motivation'] ?? '')) ?: null,
+            'event_date' => $data['event_date'] ?? null,
+        ];
 
         // Cycle config for women who opted in.
         if ($female && $request->boolean('cycle_enabled')) {
@@ -111,6 +143,15 @@ class OnboardingController extends Controller
             $profile->bodyMetrics()->create(['taken_at' => Carbon::today(), 'weight_kg' => $weightKg]);
         }
 
+        // Seed the coach's core memory — pinned wiki pages it sees from message one.
+        $this->seedCoreMemory($request->user(), $profile, [
+            'name' => $data['display_name'],
+            'goal' => self::GOALS[$data['primary_goal']],
+            'focus_areas' => $focusAreas,
+            'injuries' => $injuries,
+            'data' => $data,
+        ]);
+
         // First period → anchors the cycle engine immediately.
         if ($female && $request->boolean('cycle_enabled') && ! empty($data['last_period'])) {
             Cycle::startPeriod($profile, Carbon::parse($data['last_period']));
@@ -131,7 +172,7 @@ class OnboardingController extends Controller
 
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'photo' => ['required', 'image', 'max:12288'],
-            'description' => ['nullable', 'string', 'max:160'],
+            'description' => ['nullable', 'string', 'max:255'],
             'sex' => ['nullable', 'in:F,M,other'],
         ]);
         if ($validator->fails()) {
@@ -162,6 +203,95 @@ class OnboardingController extends Controller
         ]);
 
         return response()->json(['ok' => true, 'goal_id' => $goal->id, 'image_url' => $goal->goalUrl()]);
+    }
+
+    /**
+     * Seed the coach's "core memory" from the onboarding intake — a handful of pinned
+     * KnowledgePages. Pinned pages have their TITLES injected into every coach turn (the index);
+     * the coach pulls a body on demand via search_knowledge. So we keep one page per theme with a
+     * descriptive title. Idempotent: re-onboarding updates the same pages (keyed by slug).
+     *
+     * @param  array{name:string,goal:string,focus_areas:array<int,string>,injuries:array<int,string>,data:array<string,mixed>}  $ctx
+     */
+    private function seedCoreMemory(\App\Models\User $user, \App\Models\Profile $profile, array $ctx): void
+    {
+        $d = $ctx['data'];
+        $name = $ctx['name'];
+        $expLabels = ['beginner' => 'New / returning', 'intermediate' => 'Intermediate', 'advanced' => 'Advanced'];
+        $gymLabels = ['full_gym' => 'Full gym', 'home_weights' => 'Home with weights', 'bodyweight' => 'Bodyweight only', 'mix' => 'A mix'];
+
+        $pages = [];
+
+        // 1 · Who they are + the headline goal.
+        $overview = "- **Goal:** {$ctx['goal']}\n";
+        if (! empty($ctx['focus_areas'])) {
+            $overview .= '- **Focus areas:** '.implode(', ', $ctx['focus_areas'])."\n";
+        }
+        if (! empty($d['motivation'])) {
+            $overview .= '- **Why / motivation:** '.trim($d['motivation'])."\n";
+        }
+        if (! empty($d['event_date'])) {
+            $overview .= '- **Target date:** '.$d['event_date']."\n";
+        }
+        $overview .= '- **Coaching:** '.str_replace('_', ' ', $d['coach_tone']).' tone, '.($d['coaching_intensity'] ?? 'balanced')." intensity\n";
+        $pages[] = ['title' => "{$name} — goals & focus", 'type' => 'overview', 'content' => trim($overview)];
+
+        // 2 · Training profile → mesocycle generator reads experience/days/equipment.
+        if (! empty($d['experience']) || ! empty($d['train_at']) || (int) ($d['train_days'] ?? 0) > 0) {
+            $training = '';
+            if (! empty($d['experience'])) {
+                $training .= '- **Experience:** '.($expLabels[$d['experience']] ?? $d['experience'])."\n";
+            }
+            if (! empty($d['train_at'])) {
+                $training .= '- **Trains at:** '.($gymLabels[$d['train_at']] ?? $d['train_at'])."\n";
+            }
+            if ((int) ($d['train_days'] ?? 0) > 0) {
+                $training .= '- **Days per week:** '.(int) $d['train_days']."\n";
+            }
+            $pages[] = ['title' => "{$name} — training profile", 'type' => 'note', 'content' => trim($training)];
+        }
+
+        // 3 · Nutrition profile → meal suggestions must fit this.
+        if (! empty($d['diet']) || ! empty($d['allergies']) || ! empty($d['avoid_foods'])) {
+            $nutrition = '';
+            if (! empty($d['diet'])) {
+                $nutrition .= '- **Diet:** '.ucfirst($d['diet'])."\n";
+            }
+            if (! empty($d['allergies'])) {
+                $nutrition .= '- **Allergies / intolerances:** '.trim($d['allergies'])."\n";
+            }
+            if (! empty($d['avoid_foods'])) {
+                $nutrition .= '- **Won\'t eat:** '.trim($d['avoid_foods'])."\n";
+            }
+            $pages[] = ['title' => "{$name} — nutrition profile", 'type' => 'note', 'content' => trim($nutrition)];
+        }
+
+        // 4 · Health & limitations → never program around a painful joint.
+        if (! empty($ctx['injuries']) || ! empty($d['health_notes'])) {
+            $health = '';
+            if (! empty($ctx['injuries'])) {
+                $health .= '- **Injuries / areas to respect:** '.implode(', ', $ctx['injuries'])."\n";
+            }
+            if (! empty($d['health_notes'])) {
+                $health .= '- **Notes:** '.trim($d['health_notes'])."\n";
+            }
+            $pages[] = ['title' => "{$name} — health & limitations", 'type' => 'note', 'content' => trim($health)];
+        }
+
+        foreach ($pages as $p) {
+            $profile->knowledgePages()->updateOrCreate(
+                ['slug' => \App\Models\KnowledgePage::slugFor($p['title'])],
+                [
+                    'title' => $p['title'],
+                    'type' => $p['type'],
+                    'content' => $p['content'],
+                    'is_pinned' => true,
+                    'updated_by_user_id' => $user->id,
+                    // Force a re-embed on next pass — content changed.
+                    'embed_hash' => null,
+                ],
+            );
+        }
     }
 
     /**

@@ -77,6 +77,61 @@ class OnboardingTest extends TestCase
         $this->actingAs($user)->get('/dashboard')->assertOk();
     }
 
+    public function test_deep_intake_is_stored_and_seeds_coach_core_memory(): void
+    {
+        $user = User::factory()->notOnboarded()->create();
+
+        $this->actingAs($user)->post('/onboarding', [
+            'display_name' => 'Nadia',
+            'birthdate' => '1996-09-12',
+            'sex' => 'F',
+            'units' => 'metric',
+            'height' => 165,
+            'weight' => 60,
+            'activity_level' => 'light',
+            'primary_goal' => 'recomp',
+            'coach_tone' => 'balanced',
+            'coaching_intensity' => 'balanced',
+            'meals_per_day' => 3,
+            // Deep intake — chip arrays arrive '|'-joined from the wizard.
+            'injuries' => 'Lower back|Knee',
+            'health_notes' => 'Recovering from a sprained ankle',
+            'experience' => 'intermediate',
+            'train_at' => 'home_weights',
+            'train_days' => 4,
+            'diet' => 'vegetarian',
+            'allergies' => 'Peanuts',
+            'avoid_foods' => 'Mushrooms',
+            'motivation' => 'Feel strong at my sister\'s wedding',
+            'event_date' => now()->addMonths(3)->toDateString(),
+            'focus_areas' => 'Rounder glutes|Toned arms|Flat tummy',
+        ])->assertRedirect(route('coach.index'));
+
+        $p = $user->refresh()->profile;
+
+        // Structured intake landed in settings (feeds mesocycle generator + meal logic).
+        $intake = $p->settings['intake'];
+        $this->assertSame('intermediate', $intake['experience']);
+        $this->assertSame('home_weights', $intake['train_at']);
+        $this->assertSame(4, $intake['train_days']);
+        $this->assertSame('vegetarian', $intake['diet']);
+        $this->assertSame(['Lower back', 'Knee'], $intake['injuries']);
+        $this->assertSame(['Rounder glutes', 'Toned arms', 'Flat tummy'], $intake['focus_areas']);
+        $this->assertSame('Peanuts', $intake['allergies']);
+
+        // Coach core memory was seeded as pinned wiki pages it sees from message one.
+        $pinned = $p->knowledgePages()->pinned()->pluck('title');
+        $this->assertTrue($pinned->contains('Nadia — goals & focus'));
+        $this->assertTrue($pinned->contains('Nadia — training profile'));
+        $this->assertTrue($pinned->contains('Nadia — nutrition profile'));
+        $this->assertTrue($pinned->contains('Nadia — health & limitations'));
+
+        // The goals page actually carries the focus areas in its body.
+        $goals = $p->knowledgePages()->where('title', 'Nadia — goals & focus')->first();
+        $this->assertStringContainsString('Rounder glutes', $goals->content);
+        $this->assertStringContainsString('wedding', $goals->content);
+    }
+
     public function test_imperial_units_convert_to_metric(): void
     {
         $user = User::factory()->notOnboarded()->create();
