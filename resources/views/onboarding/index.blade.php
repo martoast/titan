@@ -420,15 +420,6 @@
                             </template>
                         </div>
 
-                        <div class="mt-5 space-y-2">
-                            <button type="button" x-show="progressFrontDone" @click="next()"
-                                    class="h-14 w-full rounded-2xl font-display text-base font-bold text-gray-900" style="background:linear-gradient(90deg,#6366f1,#22d3ee)">
-                                Next →
-                            </button>
-                            <button type="button" @click="next()" class="block w-full py-1 text-center text-sm text-gray-500 active:text-gray-300">
-                                Skip for now
-                            </button>
-                        </div>
                         <p x-show="progressError" x-cloak x-text="progressError" @click="progressError=''" class="mt-3 text-center text-sm text-rose-300"></p>
                     </section>
                 </template>
@@ -622,7 +613,7 @@
                         class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white/10 text-gray-400 active:bg-white/5">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
                 </button>
-                <button type="button" x-show="current !== 'finish' && current !== 'physique'" @click="next()" :disabled="!valid()"
+                <button type="button" x-show="current !== 'finish'" @click="next()" :disabled="!valid()"
                         class="h-14 flex-1 rounded-2xl font-display text-base font-bold text-white transition disabled:opacity-30 disabled:cursor-not-allowed"
                         :style="valid() ? `background:linear-gradient(90deg, #6366f1, ${accent})` : 'background:rgba(255,255,255,0.08)'"
                         x-text="idx === 0 ? 'Get started' : 'Continue'"></button>
