@@ -423,45 +423,13 @@
                         <div class="mt-5 space-y-2">
                             <button type="button" x-show="progressFrontDone" @click="next()"
                                     class="h-14 w-full rounded-2xl font-display text-base font-bold text-gray-900" style="background:linear-gradient(90deg,#6366f1,#22d3ee)">
-                                Next — choose my goal physique →
+                                Next →
                             </button>
                             <button type="button" @click="next()" class="block w-full py-1 text-center text-sm text-gray-500 active:text-gray-300">
                                 Skip for now
                             </button>
                         </div>
                         <p x-show="progressError" x-cloak x-text="progressError" @click="progressError=''" class="mt-3 text-center text-sm text-rose-300"></p>
-                    </section>
-                </template>
-
-                {{-- Step: Dream physique — pick the model body that matches their goal --}}
-                <template x-if="current === 'physique'">
-                    <section class="ob-step">
-                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Your north star</p>
-                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Your dream physique.</h2>
-                        <p class="mt-2 text-sm text-gray-500">This is what you're building toward. Every workout, meal and recovery night moves you closer to this.</p>
-
-                        {{-- Model images — three angles for the user's sex --}}
-                        <div class="mt-5 grid grid-cols-3 gap-2.5">
-                            <template x-for="a in PHYS_ANGLES" :key="a">
-                                <figure class="space-y-1.5">
-                                    <img :src="modelImageUrl(a)" :alt="physMeta[a].label + ' goal'" class="aspect-[3/4] w-full rounded-xl border-2 object-cover" style="border-color:rgba(34,211,238,0.35)">
-                                    <figcaption class="text-center text-[11px] font-bold uppercase tracking-wider" style="color:#67e8f9" x-text="physMeta[a].label"></figcaption>
-                                </figure>
-                            </template>
-                        </div>
-
-                        <input x-model="form.phys_desc" maxlength="160" type="text" placeholder="Any specific goal? e.g. bigger glutes, leaner arms (optional)"
-                               class="mt-5 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-cyan-400 focus:ring-0">
-
-                        <div class="mt-5 space-y-2">
-                            <button type="button" @click="confirmPhysique()" :disabled="physConfirming"
-                                    class="h-14 w-full rounded-2xl font-display text-base font-bold text-gray-900 disabled:opacity-60" style="background:linear-gradient(90deg,#6366f1,#22d3ee)">
-                                <span x-show="!physConfirming">This is my goal — let's go →</span>
-                                <span x-show="physConfirming" x-cloak>Setting your goal…</span>
-                            </button>
-                            <button type="button" @click="next()" class="block w-full py-1 text-center text-sm text-gray-500 active:text-gray-300">Skip for now</button>
-                        </div>
-                        <p x-show="physError" x-cloak x-text="physError" @click="physError=''" class="mt-3 text-center text-sm text-rose-300"></p>
                     </section>
                 </template>
 
@@ -686,7 +654,6 @@
                     experience: '', train_at: '', train_days: 0,
                     diet: '', allergies: '', avoid_foods: '',
                     motivation: '', event_date: '', focus_areas: [],
-                    phys_desc: '', phys_goal_id: null,
                 },
 
                 // ---- Deep-intake chip lists ----
@@ -769,54 +736,6 @@
                     this.progressError = '';
                 },
 
-                // ---- Dream physique selection (step: 'physique') ----
-                physConfirming: false,
-                physError: '',
-
-                // Returns the pre-generated model image URL for a given angle + the current sex.
-                modelImageUrl(angle) {
-                    const sex = (this.form.sex || 'M').toUpperCase();
-                    const prefix = sex === 'F' ? 'female' : 'male';
-                    return '/images/physique/models/' + prefix + '-' + angle + '.jpg';
-                },
-
-                async confirmPhysique() {
-                    if (this.physConfirming) return;
-                    this.physConfirming = true;
-                    this.physError = '';
-                    const token = document.querySelector('meta[name=csrf-token]')?.content || document.querySelector('input[name=_token]')?.value || '';
-                    const desc = [
-                        this.goalLabel && this.goalLabel !== '—' ? 'Goal: ' + this.goalLabel : '',
-                        this.form.focus_areas.length ? 'Focus: ' + this.form.focus_areas.join(', ') : '',
-                        (this.form.phys_desc || '').trim(),
-                    ].filter(Boolean).join('. ').slice(0, 255);
-                    try {
-                        const fd = new FormData();
-                        if (desc) fd.append('description', desc);
-                        fd.append('sex', this.form.sex || '');
-                        const res = await fetch('/onboarding/physique', {
-                            method: 'POST',
-                            headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-                            body: fd,
-                        });
-                        const data = await res.json().catch(() => null);
-                        if (data && data.ok) {
-                            this.form.phys_goal_id = data.goal_id;
-                            this.next();
-                        } else {
-                            this.physError = (data && data.error) || 'Something went wrong — try again.';
-                        }
-                    } catch (_) {
-                        this.physError = 'Something went wrong — try again.';
-                    } finally {
-                        this.physConfirming = false;
-                    }
-                },
-
-                // Legacy — kept so compressPhoto reference below doesn't break, remove old phys logic.
-                async generatePhys() {
-                    // replaced by confirmPhysique() — no-op
-                },
 
                 // Downscale + re-encode to JPEG before upload (small payload + HEIC → JPEG, which the
                 // `image` rule and the vision model both need). Falls back to the original on any failure.
@@ -886,7 +805,7 @@
                 stepAccents: {
                     welcome: '#6366f1', name: '#6366f1', birthday: '#6366f1', sex: '#a78bfa', units: '#22d3ee',
                     body: '#22d3ee', activity: '#22d3ee', health: '#fb7185', training: '#fbbf24', goal: '#a78bfa',
-                    diet: '#34d399', focus: '#22d3ee', progress: '#22d3ee', physique: '#22d3ee', tone: '#818cf8', intensity: '#fb7185',
+                    diet: '#34d399', focus: '#22d3ee', progress: '#22d3ee', tone: '#818cf8', intensity: '#fb7185',
                     cycle_enable: '#fb7185', cycle_details: '#fb7185', nutrition: '#34d399', wearable: '#22d3ee', finish: '#22d3ee',
                 },
 
@@ -949,8 +868,8 @@
                         s.push('cycle_enable');
                         if (this.form.cycle_enabled) s.push('cycle_details');
                     }
-                    // Progress photos first (baseline), then dream physique selection, then band + finish.
-                    s.push('nutrition', 'progress', 'physique', 'wearable', 'finish');
+                    // Progress photos (baseline), then band + finish.
+                    s.push('nutrition', 'progress', 'wearable', 'finish');
                     return s;
                 },
                 get current() { return this.steps[Math.min(this.idx, this.steps.length - 1)]; },

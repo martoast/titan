@@ -201,52 +201,6 @@ class OnboardingController extends Controller
         ]);
     }
 
-    /**
-     * Confirm the dream physique goal during onboarding (AJAX). Uses the pre-generated
-     * static model images for the user's sex -- no AI generation needed. Creates all three
-     * angle shots in one go, sourced from the user's latest progress photo. Always JSON.
-     */
-    public function generatePhysique(Request $request): \Illuminate\Http\JsonResponse
-    {
-        $profile = $request->user()->ensureProfile();
-
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-            'description' => ['nullable', 'string', 'max:255'],
-            'sex' => ['nullable', 'in:F,M,other'],
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['ok' => false, 'error' => 'Invalid input.'], 422);
-        }
-
-        $sex = $request->input('sex') ?: $profile->sex;
-        $description = trim((string) $request->input('description')) ?: null;
-
-        // Source = their latest progress photo (uploaded in the previous wizard step).
-        $sourcePath = $profile->progressPhotos()->latest('id')->value('photo_path');
-
-        $profile->physiqueGoals()->update(['is_active' => false]);
-        $goal = $profile->physiqueGoals()->create([
-            'source_photo_path' => $sourcePath,
-            'goal_image_path' => \App\Support\PhysiqueModelImage::path($sex, 'front'),
-            'description' => $description,
-            'is_active' => true,
-            'shots' => [],
-        ]);
-
-        // Register all three angles at once -- the model images are already ready.
-        foreach (['front', 'back', 'side'] as $angle) {
-            $goal->putShot($angle, (string) $sourcePath, \App\Support\PhysiqueModelImage::path($sex, $angle));
-        }
-
-        return response()->json([
-            'ok' => true,
-            'goal_id' => $goal->id,
-            'shots' => array_map(
-                fn ($a) => ['angle' => $a, 'image_url' => \App\Support\PhysiqueModelImage::url($sex, $a)],
-                ['front', 'back', 'side']
-            ),
-        ]);
-    }
 
     /**
      * Seed the coach's "core memory" from the onboarding intake -- a handful of pinned

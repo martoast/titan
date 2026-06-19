@@ -33,8 +33,6 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/onboarding', [OnboardingController::class, 'store'])->name('onboarding.store');
     // Progress-photo baseline captured mid-wizard (AJAX).
     Route::post('/onboarding/progress-photo', [OnboardingController::class, 'storeProgressPhoto'])->name('onboarding.progress-photo');
-    // Dream-physique goal confirmed mid-wizard (AJAX) -- uses static model images, no AI.
-    Route::post('/onboarding/physique', [OnboardingController::class, 'generatePhysique'])->name('onboarding.physique');
 
     // Everything else requires a completed Titan profile first.
     Route::middleware('onboarded')->group(function () {
