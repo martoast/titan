@@ -94,7 +94,7 @@ class DuoService
         $winner = ($top && $top['points'] > 0 && ! $tie) ? $top : null;
 
         return [
-            'week_label' => $weekStart->isoFormat('MMM D') . ' – ' . $weekEnd->copy()->subDay()->isoFormat('MMM D'),
+            'week_label' => $weekStart->isoFormat('MMM D') . ' - ' . $weekEnd->copy()->subDay()->isoFormat('MMM D'),
             'scores' => $scores->all(),
             'winner' => $winner,
             'tie' => $tie,
@@ -132,7 +132,7 @@ class DuoService
     }
 
     // ---------------------------------------------------------------------
-    // Cross-domain getters — every one guarded
+    // Cross-domain getters -- every one guarded
     // ---------------------------------------------------------------------
 
     private function workoutCount(int $profileId, Carbon $start, Carbon $end): int
@@ -208,7 +208,7 @@ class DuoService
         }
     }
 
-    /** Latest "% to goal physique" for a profile (0–100), or null if unavailable. */
+    /** Latest "% to goal physique" for a profile (0-100), or null if unavailable. */
     private function pctToGoal(int $profileId): ?float
     {
         if (! class_exists(\App\Models\PhysiqueAnalysis::class)) {
@@ -231,7 +231,7 @@ class DuoService
         }
     }
 
-    /** All streak rows for a profile (your own model — safe to query directly). */
+    /** All streak rows for a profile (your own model -- safe to query directly). */
     private function streaks(int $profileId): Collection
     {
         try {

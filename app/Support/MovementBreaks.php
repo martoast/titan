@@ -6,8 +6,8 @@ namespace App\Support;
  * Movement-breaks / "don't sit too long" assessment from a day's hourly activity profile.
  *
  * The science is unusually strong and acutely actionable: interrupting prolonged sitting with a
- * 2-minute walk every 20–30 min cut postprandial glucose and insulin ~24–30% (Dunstan et al.,
- * Diabetes Care 2012) — a benefit that's about WHEN you move, not just how much. A worn device
+ * 2-minute walk every 20-30 min cut postprandial glucose and insulin ~24-30% (Dunstan et al.,
+ * Diabetes Care 2012) -- a benefit that's about WHEN you move, not just how much. A worn device
  * knows the "when", so we surface how many waking hours had real movement, the longest unbroken
  * sit, and nudge toward breaking it up (the highest-leverage, lowest-effort anti-obesity lever).
  *

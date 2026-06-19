@@ -101,13 +101,13 @@ class Readiness
         $components = [];
         $provisional = false;
 
-        // ln(RMSSD) series in chronological order (uses hrv_ms as RMSSD proxy — §2 primary).
+        // ln(RMSSD) series in chronological order (uses hrv_ms as RMSSD proxy -- §2 primary).
         $lnSeries = $history
             ->filter(fn (RecoveryLog $r) => ($r->hrv_ms ?? 0) > 0)
             ->map(fn (RecoveryLog $r) => log((float) $r->hrv_ms))
             ->values();
 
-        // --- HRV term (50%) — the dominant contributor ---
+        // --- HRV term (50%) -- the dominant contributor ---
         if ($today && ($today->hrv_ms ?? 0) > 0 && $lnSeries->count() >= 2) {
             $ln7d = $lnSeries->slice(-7)->avg();                 // 7-day smoothed ln-RMSSD
             $baseline = $lnSeries->slice(0, max(0, $lnSeries->count() - 1)); // exclude today
@@ -128,7 +128,7 @@ class Readiness
             $components['hrv'] = ['score' => $hrvScore, 'weight' => 0.50];
         }
 
-        // --- RHR term (25%) — inverted: lower resting HR vs baseline = better ---
+        // --- RHR term (25%) -- inverted: lower resting HR vs baseline = better ---
         $rhrSeries = $history->filter(fn (RecoveryLog $r) => ($r->resting_hr ?? 0) > 0)->map(fn (RecoveryLog $r) => (float) $r->resting_hr)->values();
         if ($today && ($today->resting_hr ?? 0) > 0 && $rhrSeries->count() >= 2) {
             $base = $rhrSeries->slice(0, max(0, $rhrSeries->count() - 1));
@@ -140,7 +140,7 @@ class Readiness
             $components['rhr'] = ['score' => self::logistic($zRhr), 'weight' => 0.25];
         }
 
-        // --- Sleep term (25%) — duration-quality blend, peak at ~8h ---
+        // --- Sleep term (25%) -- duration-quality blend, peak at ~8h ---
         if ($sleep && $sleep->duration_min) {
             $hours = $sleep->duration_min / 60;
             $durScore = max(0.0, 100 - abs($hours - 8) * 12.5);    // 8h ≈ 100, ±1h ≈ −12.5
@@ -228,7 +228,7 @@ class Readiness
     private static function interpret(int $score, bool $provisional): array
     {
         [$label, $note] = match (true) {
-            $score >= 80 => ['Primed', 'Your body is well recovered — a good day to push hard training.'],
+            $score >= 80 => ['Primed', 'Your body is well recovered -- a good day to push hard training.'],
             $score >= 60 => ['Ready', 'Solid recovery. Train as planned and stay on top of sleep.'],
             $score >= 40 => ['Moderate', 'Partial recovery. Keep intensity in check or favour technique work.'],
             $score >= 20 => ['Strained', 'Recovery is low. Prioritise sleep, nutrition and a lighter session.'],
@@ -236,7 +236,7 @@ class Readiness
         };
 
         if ($provisional) {
-            $note .= ' Still building your baseline — readiness sharpens after ~2 weeks of nights.';
+            $note .= ' Still building your baseline -- readiness sharpens after ~2 weeks of nights.';
         }
 
         return [$label, $note];

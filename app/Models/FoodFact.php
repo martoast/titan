@@ -19,7 +19,7 @@ class FoodFact extends Model
         ];
     }
 
-    /** Find a cached food by normalized name — exact first, then a loose contains-match. */
+    /** Find a cached food by normalized name -- exact first, then a loose contains-match. */
     public static function findFuzzy(string $name): ?self
     {
         if ($name === '') {

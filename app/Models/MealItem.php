@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * One line of a meal's ingredient breakdown — the unit the user edits to correct the
+ * One line of a meal's ingredient breakdown -- the unit the user edits to correct the
  * AI estimate. A meal's macros are the sum of these.
  */
 class MealItem extends Model

@@ -6,7 +6,7 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * The coach's window into the WEARABLE itself — is the band paired, connected, and syncing; how long
+ * The coach's window into the WEARABLE itself -- is the band paired, connected, and syncing; how long
  * since it last phoned home; its battery and firmware; what it's primed to sense; and which data
  * streams are currently flowing. This is what lets the AI oversee the device, not just its numbers:
  * "is my band synced?", "why don't I have sleep today?", "what's my battery?".
@@ -42,7 +42,7 @@ class DeviceStatus
             default => 'offline',
         };
         $label = [
-            'live' => 'Live — syncing', 'today' => 'Synced today', 'stale' => "Hasn't synced in a while",
+            'live' => 'Live -- syncing', 'today' => 'Synced today', 'stale' => "Hasn't synced in a while",
             'offline' => 'Offline', 'never' => 'Paired, not synced yet',
         ][$verdict];
 

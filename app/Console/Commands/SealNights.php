@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  *   php artisan biosignal:seal-nights              # every profile with unsealed windows
  *   php artisan biosignal:seal-nights --profile=1  # one profile
  *   php artisan biosignal:seal-nights --night=2026-06-14 --profile=1
- *   php artisan biosignal:seal-nights --sync       # run inline (don't queue) — handy in dev/tests
+ *   php artisan biosignal:seal-nights --sync       # run inline (don't queue) -- handy in dev/tests
  *
  * Per-window Shape-A ingestion writes recovery_logs once per IBI window (last write
  * wins), so daily hrv_ms reflects only the final window. This command finds each profile
@@ -65,7 +65,7 @@ class SealNights extends Command
     }
 
     /**
-     * Profiles that actually have unsealed IBI/sleep windows — so we never queue empty work.
+     * Profiles that actually have unsealed IBI/sleep windows -- so we never queue empty work.
      *
      * @return array<int,int>
      */

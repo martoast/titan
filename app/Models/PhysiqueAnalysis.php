@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * An AI physique read on a progress photo. Body-fat is a confidence-aware RANGE
- * (low/high) — never fake precision — with per-muscle-group ratings (1-10) and a
+ * (low/high) -- never fake precision -- with per-muscle-group ratings (1-10) and a
  * supportive, non-medical summary. `pct_to_goal` is set when an active dream-physique
  * goal exists and the latest photo is compared against the goal image.
  */
@@ -43,14 +43,14 @@ class PhysiqueAnalysis extends Model
         return $this->belongsTo(ProgressPhoto::class);
     }
 
-    /** Human-friendly body-fat range, e.g. "14–17%" — or null if not estimated. */
+    /** Human-friendly body-fat range, e.g. "14-17%" -- or null if not estimated. */
     public function bodyFatRange(): ?string
     {
         if ($this->body_fat_pct_low === null || $this->body_fat_pct_high === null) {
             return null;
         }
 
-        return rtrim(rtrim((string) $this->body_fat_pct_low, '0'), '.').'–'
+        return rtrim(rtrim((string) $this->body_fat_pct_low, '0'), '.').'-'
             .rtrim(rtrim((string) $this->body_fat_pct_high, '0'), '.').'%';
     }
 }

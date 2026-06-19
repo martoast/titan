@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 /**
- * The Physique vertical — the product's signature "wow" loop:
+ * The Physique vertical -- the product's signature "wow" loop:
  *   1. Dream-physique generation: upload a photo -> Nano Banana renders the goal.
  *   2. Progress photos: dated gallery + side-by-side compare.
  *   3. AI physique analysis: vision -> BF% range + muscle ratings + summary.
@@ -73,7 +73,7 @@ class PhysiqueController extends Controller
     }
 
     /**
-     * Feature 1 — Dream-physique generation, ONE angle per call (front / back / side), because a
+     * Feature 1 -- Dream-physique generation, ONE angle per call (front / back / side), because a
      * single front photo can't show a glute, leg or back goal. The front call creates the active
      * goal; back/side calls pass its `goal_id` and append their render. Gender- AND angle-aware,
      * steered by the user's description. Shared concept with the onboarding flow. Always JSON.
@@ -101,7 +101,7 @@ class PhysiqueController extends Controller
         } elseif ($request->filled('source_photo_id')) {
             $existing = $profile->progressPhotos()->find($request->integer('source_photo_id'));
             if (! $existing || ! $existing->photo_path) {
-                return response()->json(['ok' => false, 'error' => "Couldn't find that photo — upload one and try again."], 200);
+                return response()->json(['ok' => false, 'error' => "Couldn't find that photo -- upload one and try again."], 200);
             }
             $sourcePath = $existing->photo_path;
         } else {
@@ -112,7 +112,7 @@ class PhysiqueController extends Controller
         $prompt = \App\Support\PhysiquePrompt::build($profile->sex, $description, $angle);
 
         try {
-            // Text-only generation — Gemini IMAGE_SAFETY blocks person-photo transformation.
+            // Text-only generation -- Gemini IMAGE_SAFETY blocks person-photo transformation.
             // Source photo is stored for the before/after display; dream render is text-only.
             $generated = $this->nano->generateToDisk($prompt, 'physique/goal');
         } catch (AiException $e) {
@@ -156,7 +156,7 @@ class PhysiqueController extends Controller
         return back()->with('status', 'Goal image updated.');
     }
 
-    /** Feature 2 — log a dated progress photo with pose + optional weight. */
+    /** Feature 2 -- log a dated progress photo with pose + optional weight. */
     public function storePhoto(Request $request): RedirectResponse
     {
         $profile = auth()->user()->ensureProfile();
@@ -196,7 +196,7 @@ class PhysiqueController extends Controller
     }
 
     /**
-     * Feature 3 — AI physique analysis on a progress photo. Returns a strict-JSON read:
+     * Feature 3 -- AI physique analysis on a progress photo. Returns a strict-JSON read:
      * body-fat RANGE, per-muscle ratings (1-10), supportive non-medical summary.
      */
     public function analyze(ProgressPhoto $photo): RedirectResponse
@@ -218,10 +218,10 @@ class PhysiqueController extends Controller
           "muscle_ratings": {"chest":<1-10>,"back":<1-10>,"shoulders":<1-10>,"arms":<1-10>,"legs":<1-10>,"core":<1-10>},
           "summary": "<2-4 supportive sentences: strengths first, then the single highest-leverage focus area>"
         }
-        Rules: body-fat MUST be a plausible RANGE (e.g. low 13, high 16) — never a single
+        Rules: body-fat MUST be a plausible RANGE (e.g. low 13, high 16) -- never a single
         fake-precise number; keep the spread honest about uncertainty. Ratings are relative
         development, 1-10. Be encouraging and specific. Make NO medical claims or diagnoses,
-        give NO health warnings — purely a motivating physique read. If a body part isn't
+        give NO health warnings -- purely a motivating physique read. If a body part isn't
         visible, estimate conservatively. Return ONLY the JSON object.
         PROMPT;
 
@@ -262,7 +262,7 @@ class PhysiqueController extends Controller
     }
 
     /**
-     * Feature 4 — % to goal. Compare the latest progress photo to the active goal image
+     * Feature 4 -- % to goal. Compare the latest progress photo to the active goal image
      * and record how far along the journey is, plus what's improved / what's lagging.
      */
     public function compareToGoal(): RedirectResponse
@@ -285,7 +285,7 @@ class PhysiqueController extends Controller
     }
 
     /**
-     * Feature 5 — the living goal image (the wedge). Re-render the user's latest progress
+     * Feature 5 -- the living goal image (the wedge). Re-render the user's latest progress
      * photo a calibrated single step toward the goal physique, and store it for display.
      */
     public function livingImage(): RedirectResponse

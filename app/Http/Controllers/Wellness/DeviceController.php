@@ -56,7 +56,7 @@ class DeviceController extends Controller
     /**
      * The live Bluetooth bridge: a Web Bluetooth page that connects directly to a
      * Bangle.js running titan-stream.js, reassembles its raw-PPG windows, signs each
-     * batch with the device's HMAC secret, and POSTs to /api/devices/ingest — the
+     * batch with the device's HMAC secret, and POSTs to /api/devices/ingest -- the
      * desktop/Android "prove the loop" path (iOS needs a native companion later).
      *
      * The device_id + one-time secret are held client-side (localStorage), seeded from
@@ -64,7 +64,7 @@ class DeviceController extends Controller
      */
     /**
      * Serve the Bangle.js watch firmware (titan.app.js) for install via the Espruino Web IDE.
-     * One-time, from a computer — iOS browsers can't flash a BLE device.
+     * One-time, from a computer -- iOS browsers can't flash a BLE device.
      */
     public function firmware()
     {
@@ -119,7 +119,7 @@ class DeviceController extends Controller
     /**
      * Synchronous HRV compute for the validation lab: a logged-in user POSTs one raw
      * window ({ppg, sample_rate_hz}) and gets the REAL biosignal-service metrics straight
-     * back (no queue, no HMAC — session-auth'd). Only used for live validation/preview,
+     * back (no queue, no HMAC -- session-auth'd). Only used for live validation/preview,
      * never the ingestion path.
      */
     public function hrvPreview(Request $request, \App\Services\Wearables\BiosignalClient $biosignal)

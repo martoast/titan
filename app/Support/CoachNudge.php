@@ -6,7 +6,7 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * Builds the proactive nudges the coach pushes through the day — move/stretch, sleep wind-down, training
+ * Builds the proactive nudges the coach pushes through the day -- move/stretch, sleep wind-down, training
  * (recovery-aware), and cycle heads-ups. Each builder returns a {title, body, url, type, key} array or
  * null when there's nothing worth pinging about. `key` dedupes so a nudge fires at most once per window.
  */
@@ -24,7 +24,7 @@ class CoachNudge
         };
     }
 
-    /** Mid-day move + stretch nudge — only if they've been sedentary so far. */
+    /** Mid-day move + stretch nudge -- only if they've been sedentary so far. */
     public static function move(Profile $profile, ?Carbon $now = null): ?array
     {
         if (! class_exists(\App\Models\DailyActivity::class)) {
@@ -35,19 +35,19 @@ class CoachNudge
         $target = class_exists(\App\Support\StepGoal::class) ? \App\Support\StepGoal::targetFor($profile) : 8000;
 
         if ($steps >= (int) ($target * 0.45)) {
-            return null;   // already moving enough — no nag
+            return null;   // already moving enough -- no nag
         }
 
         return [
             'title' => '🚶 Time to move',
-            'body' => 'Been heads-down? '.number_format($steps).' steps so far. Take 5: a brisk walk + loosen the hips, shoulders and t-spine. Sitting is the tax — pay it down.',
+            'body' => 'Been heads-down? '.number_format($steps).' steps so far. Take 5: a brisk walk + loosen the hips, shoulders and t-spine. Sitting is the tax -- pay it down.',
             'url' => '/coach',
             'type' => 'move',
             'key' => 'move:'.$now->toDateString(),
         ];
     }
 
-    /** Evening wind-down — fires in the ~hour before their target bedtime. */
+    /** Evening wind-down -- fires in the ~hour before their target bedtime. */
     public static function sleep(Profile $profile, ?Carbon $now = null): ?array
     {
         if (! class_exists(\App\Support\SleepCoach::class)) {
@@ -68,14 +68,14 @@ class CoachNudge
 
         return [
             'title' => '🌙 Wind down',
-            'body' => "Aim for lights out by {$bed->format('g:i A')} to hit your ~{$needTxt}h. Screens down, lights low — sleep is where the gains land.",
+            'body' => "Aim for lights out by {$bed->format('g:i A')} to hit your ~{$needTxt}h. Screens down, lights low -- sleep is where the gains land.",
             'url' => '/coach',
             'type' => 'sleep',
             'key' => 'sleep:'.$now->toDateString(),
         ];
     }
 
-    /** Recovery-aware training nudge — push hard when primed, back off when run-down. */
+    /** Recovery-aware training nudge -- push hard when primed, back off when run-down. */
     public static function training(Profile $profile, ?Carbon $now = null): ?array
     {
         $now = self::now($profile, $now);
@@ -84,11 +84,11 @@ class CoachNudge
             : 'insufficient';
 
         [$title, $body] = match ($verdict) {
-            'deload' => ['🧘 Recovery day', 'Your data says back off today — light movement, great food, early night. Deloading now is how you come back stronger.'],
-            'back_off' => ['💪 Train smart today', "Recovery's a touch down — train, but keep 2–3 reps in reserve and skip the failure work. Quality over grind."],
-            'progress' => ['🔥 Primed — go hard', "Green light: recovered and progressing. Add a set on your focus muscles and chase 1 RIR. Make today count."],
-            'hold' => ['💪 Time to train', "Solid and steady — hit today's session and beat last week's logbook somewhere."],
-            'adhere' => ['💪 Get the session in', "You're a bit behind your plan this week — the fix is showing up. Let's get today's session logged."],
+            'deload' => ['🧘 Recovery day', 'Your data says back off today -- light movement, great food, early night. Deloading now is how you come back stronger.'],
+            'back_off' => ['💪 Train smart today', "Recovery's a touch down -- train, but keep 2-3 reps in reserve and skip the failure work. Quality over grind."],
+            'progress' => ['🔥 Primed -- go hard', "Green light: recovered and progressing. Add a set on your focus muscles and chase 1 RIR. Make today count."],
+            'hold' => ['💪 Time to train', "Solid and steady -- hit today's session and beat last week's logbook somewhere."],
+            'adhere' => ['💪 Get the session in', "You're a bit behind your plan this week -- the fix is showing up. Let's get today's session logged."],
             default => ['💪 Make today count', "A session today moves you toward your goal. Tell me what you're training and I'll coach you through it and log it."],
         };
 
@@ -107,7 +107,7 @@ class CoachNudge
         }
 
         return $a['verdict'] === 'behind'
-            ? " You're {$a['step_pct']}% to your physique — let's not lose ground."
+            ? " You're {$a['step_pct']}% to your physique -- let's not lose ground."
             : " Another step toward your physique ({$a['step_pct']}% there).";
     }
 
@@ -126,7 +126,7 @@ class CoachNudge
             return null;
         }
         $body = $in === 0
-            ? 'Your period may start today. Be kind to yourself — iron-rich food, and ease off if energy dips.'
+            ? 'Your period may start today. Be kind to yourself -- iron-rich food, and ease off if energy dips.'
             : "Your period's likely in ~{$in} day".($in === 1 ? '' : 's').". A good time to top up iron and plan lighter sessions if you need them.";
 
         return ['title' => '🌸 Cycle heads-up', 'body' => $body, 'url' => '/cycle', 'type' => 'cycle', 'key' => 'cycle:'.($s['next_period']['date'] ?? $in)];

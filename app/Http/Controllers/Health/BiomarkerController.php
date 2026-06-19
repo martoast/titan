@@ -21,7 +21,7 @@ class BiomarkerController extends Controller
 {
     public function __construct(private readonly AiService $ai) {}
 
-    /** /biomarkers — latest value per marker, trends, and the add/upload forms. */
+    /** /biomarkers -- latest value per marker, trends, and the add/upload forms. */
     public function index(Request $request)
     {
         $profile = $request->user()->ensureProfile();
@@ -64,7 +64,7 @@ class BiomarkerController extends Controller
         });
 
         // PhenoAge "biological-age clock" panel: which of the 9 markers are in, what's missing,
-        // and the computed biological age — the thing that turns a blood upload into a real clock.
+        // and the computed biological age -- the thing that turns a blood upload into a real clock.
         $phenoMarkers = \App\Support\PhenoAge::requiredMarkers();
         $phenoStatus = array_map(function ($key) use ($readings) {
             $latest = $readings->get($key)?->last();
@@ -195,7 +195,7 @@ class BiomarkerController extends Controller
 
     /**
      * Coach assessment of the imported labs: a prioritised, plain-English read of
-     * what's off and what to do about it, plus the wins. Best-effort — returns null
+     * what's off and what to do about it, plus the wins. Best-effort -- returns null
      * if the AI is unavailable so the import itself still succeeds.
      *
      * @param  array<int,BiomarkerReading>  $saved
@@ -217,10 +217,10 @@ class BiomarkerController extends Controller
         }, $saved);
 
         $system = <<<SYS
-        You are Titan — a sharp, encouraging longevity & performance coach reading a
+        You are Titan -- a sharp, encouraging longevity & performance coach reading a
         man's bloodwork. You are NOT a doctor and never prescribe drugs or doses; you
         speak in training, nutrition, sleep, lifestyle and "ask your doctor about X"
-        terms. Be specific, prioritised, and motivating — no vague hedging.
+        terms. Be specific, prioritised, and motivating -- no vague hedging.
 
         Return STRICT JSON:
         {

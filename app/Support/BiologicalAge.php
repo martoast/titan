@@ -6,24 +6,24 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * Biological Age — Titan's synthesis of everything we measure into "how old your body looks".
+ * Biological Age -- Titan's synthesis of everything we measure into "how old your body looks".
  *
  * Built on the literature's two strongest, independent anchors (see tasks/titan-wearable/
  * 10-biological-age.md):
  *   - BLOOD: PhenoAge (Levine/Liu 2018), a mortality-validated clock from routine CBC+CMP+CRP.
- *   - FITNESS: a VO2max "Fitness Age" (Nes 2011) — cardiorespiratory fitness is the single steepest
+ *   - FITNESS: a VO2max "Fitness Age" (Nes 2011) -- cardiorespiratory fitness is the single steepest
  *     mortality gradient known (low-vs-elite aHR ~5.0, Mandsager 2018).
  * These two are orthogonal (one chemical, one functional), so we BLEND them as the anchor. The
- * wearable daily signals — resting HR, HRV, sleep regularity, steps — are layered on as BOUNDED,
+ * wearable daily signals -- resting HR, HRV, sleep regularity, steps -- are layered on as BOUNDED,
  * modifiable LEVERS, not independent age axes: the research is clear they add real but modest,
  * partly-redundant signal, so each is capped and the total wearable nudge is capped (and steps is
- * down-weighted when fitness is present, since activity feeds VO2max — no double counting).
+ * down-weighted when fitness is present, since activity feeds VO2max -- no double counting).
  *
  * HONESTY: this composes individually-validated signals transparently; it is NOT itself calibrated
- * against mortality outcomes (we have no follow-up data — a true clock needs an NHANES-style cohort).
+ * against mortality outcomes (we have no follow-up data -- a true clock needs an NHANES-style cohort).
  * PhenoAge IS mortality-validated; the blend and levers are evidence-weighted heuristics. We surface
  * confidence (blood+fitness = high), show every component, and frame it as a wellness trend with a
- * range — never a clinical biological-age test or a mortality prediction.
+ * range -- never a clinical biological-age test or a mortality prediction.
  */
 class BiologicalAge
 {
@@ -67,7 +67,7 @@ class BiologicalAge
         $fitnessAge = $vo2 ? self::fitnessAge((float) $vo2, $female) : null;
         if ($fitnessAge !== null) {
             $components[] = self::comp('fitness', 'Cardio fitness (VO₂max)', 'anchor', $fitnessAge,
-                round($fitnessAge - $age, 1), 'How your VO₂max compares to age norms — the strongest single signal.');
+                round($fitnessAge - $age, 1), 'How your VO₂max compares to age norms -- the strongest single signal.');
         }
 
         // Blend the available anchors; fall back to chronological age if we have neither (low confidence).
@@ -213,7 +213,7 @@ class BiologicalAge
             $delta <= -2 => ['younger', 'Younger than your age'],
             $delta < 2 => ['on_par', 'On par with your age'],
             $delta < 7 => ['older', 'Older than your age'],
-            default => ['much_older', 'Older than your age — room to turn it around'],
+            default => ['much_older', 'Older than your age -- room to turn it around'],
         };
     }
 }

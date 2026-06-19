@@ -3,11 +3,11 @@
 namespace App\Support;
 
 /**
- * The biomarker catalog — the single source of truth for which bloodwork markers
+ * The biomarker catalog -- the single source of truth for which bloodwork markers
  * Titan understands, their units, and the optimal range we flag against.
  *
  * Ranges are pragmatic adult-male targets (optimisation-leaning, not just the wide
- * lab "normal" reference). They are NOT medical advice — they exist to colour a card
+ * lab "normal" reference). They are NOT medical advice -- they exist to colour a card
  * and prompt a conversation with the coach / a doctor.
  *
  * Each entry:
@@ -253,7 +253,7 @@ class Biomarkers
         return 'optimal';
     }
 
-    /** Tailwind classes for a flag badge — keeps the colour logic in one place. */
+    /** Tailwind classes for a flag badge -- keeps the colour logic in one place. */
     public static function flagClasses(?string $flag): string
     {
         return match ($flag) {
@@ -265,7 +265,7 @@ class Biomarkers
         };
     }
 
-    /** Human label for the optimal band, e.g. "600–900 ng/dL", "≤ 80 mg/dL", "≥ 50 mg/dL". */
+    /** Human label for the optimal band, e.g. "600-900 ng/dL", "≤ 80 mg/dL", "≥ 50 mg/dL". */
     public static function rangeLabel(string $key): string
     {
         $def = self::get($key);
@@ -278,7 +278,7 @@ class Biomarkers
             'lower' => $def['high'] !== null ? '≤ '.self::num($def['high']).$unit : '',
             'higher' => $def['low'] !== null ? '≥ '.self::num($def['low']).$unit : '',
             default => $def['low'] !== null && $def['high'] !== null
-                ? self::num($def['low']).'–'.self::num($def['high']).$unit
+                ? self::num($def['low']).'-'.self::num($def['high']).$unit
                 : '',
         };
     }

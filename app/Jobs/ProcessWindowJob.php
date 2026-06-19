@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Storage;
  *
  * Phase 0/1 scope: HRV (kind=ibi or ppg_raw) → recovery_logs. Sleep + activity batches
  * are persisted to the ledger by the controller; their sealing/processing jobs arrive
- * in P2 — here we no-op for them so the pipeline degrades gracefully.
+ * in P2 -- here we no-op for them so the pipeline degrades gracefully.
  */
 class ProcessWindowJob implements ShouldQueue
 {
@@ -60,7 +60,7 @@ class ProcessWindowJob implements ShouldQueue
 
             match ($ingestion->kind) {
                 'ibi', 'ppg_raw' => $this->processHrv($ingestion, $biosignal, $window),
-                // Sleep/activity sealing is P2 — leave queued for the seal jobs.
+                // Sleep/activity sealing is P2 -- leave queued for the seal jobs.
                 default => $ingestion->update(['status' => DeviceIngestion::STATUS_QUEUED]),
             };
         } catch (\Throwable $e) {
@@ -113,7 +113,7 @@ class ProcessWindowJob implements ShouldQueue
         }
 
         // On-demand spot reading (CMD:capture): a momentary snapshot the coach interprets
-        // live. It must NOT touch the daily recovery row — a daytime HRV is far lower than
+        // live. It must NOT touch the daily recovery row -- a daytime HRV is far lower than
         // overnight rest and would clobber the morning's score.
         $isSpot = ($window['purpose'] ?? null) === 'spot';
 

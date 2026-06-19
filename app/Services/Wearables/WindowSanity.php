@@ -7,7 +7,7 @@ use Carbon\CarbonImmutable;
 /**
  * A cheap signal-sanity gate at the ingestion boundary.
  *
- * The HMAC proves WHO sent a batch — not that the SIGNAL is real. A misconfigured or buggy
+ * The HMAC proves WHO sent a batch -- not that the SIGNAL is real. A misconfigured or buggy
  * band can stream flatlined PPG, an impossible sample rate, NaNs, or a window whose clock is
  * wrong, and (before this gate) all of it flowed straight to MinIO and the processing queue,
  * where a garbage window could masquerade as data or misfile a night.
@@ -20,12 +20,12 @@ use Carbon\CarbonImmutable;
  */
 class WindowSanity
 {
-    public const SR_MIN = 10;            // Hz — below this, PPG can't resolve beats at all
-    public const SR_MAX = 1000;          // Hz — above this is a misreport, not a wrist sensor
-    public const IBI_MIN_MS = 250;       // ~240 bpm ceiling — tighter is the DSP's job
+    public const SR_MIN = 10;            // Hz -- below this, PPG can't resolve beats at all
+    public const SR_MAX = 1000;          // Hz -- above this is a misreport, not a wrist sensor
+    public const IBI_MIN_MS = 250;       // ~240 bpm ceiling -- tighter is the DSP's job
     public const IBI_MAX_MS = 2500;      // ~24 bpm floor
     public const MIN_PPG_SAMPLES = 8;    // a window with fewer samples carries no usable beat
-    public const MAX_WINDOW_SEC = 21600; // 6h — a raw "window" longer than this is nonsense
+    public const MAX_WINDOW_SEC = 21600; // 6h -- a raw "window" longer than this is nonsense
     public const FUTURE_TOLERANCE_SEC = 86400; // 1 day of clock-drift grace before we call it impossible
 
     /**
@@ -77,7 +77,7 @@ class WindowSanity
             $max = $max === null ? $f : max($max, $f);
         }
         if ($min === $max) {
-            return self::bad('ppg_flatline');   // sensor saturated / detached — no pulse at all
+            return self::bad('ppg_flatline');   // sensor saturated / detached -- no pulse at all
         }
 
         $rate = $window['sample_rate_hz'] ?? null;
@@ -87,7 +87,7 @@ class WindowSanity
 
         // Cross-check the claimed rate against what the timestamps imply. Only when the
         // window is long enough for the ratio to be meaningful (short live frames have too
-        // little duration). Generous 2× tolerance — we catch gross misreports (a 5× wrong
+        // little duration). Generous 2× tolerance -- we catch gross misreports (a 5× wrong
         // clock that poisons beat timing), not fine calibration the DSP can ride out.
         if ($start && $end) {
             $sec = $start->diffInSeconds($end);

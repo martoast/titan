@@ -6,7 +6,7 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * The kitchen — what food the user actually has on hand. So the meal coach suggests things they can
+ * The kitchen -- what food the user actually has on hand. So the meal coach suggests things they can
  * make right now ("you bought ground beef, eggs, tuna → here's what to cook"), not stuff they'd have
  * to shop for. Stored on the profile settings as a simple item list; editable from the Meals page and,
  * crucially, conversationally through the agent ("I just bought X, Y, Z" → update_pantry).

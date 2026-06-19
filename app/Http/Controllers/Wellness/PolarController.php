@@ -43,7 +43,7 @@ class PolarController extends Controller
             return redirect('/devices')->with('apple_health_error', 'Polar authorization was cancelled.');
         }
 
-        // `state` carries the profile id we set in authorizeUrl — defend against mismatch.
+        // `state` carries the profile id we set in authorizeUrl -- defend against mismatch.
         if ((string) $request->query('state') !== (string) $profile->id) {
             return redirect('/devices')->with('apple_health_error', 'Polar authorization could not be verified. Please try again.');
         }

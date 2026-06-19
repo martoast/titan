@@ -7,11 +7,11 @@ use Illuminate\Support\Carbon;
 
 /**
  * Progress-aware autoregulation: reads the athlete's LOGGED training (are the lifts going up?) against
- * their plan and their RECOVERY, and nudges volume / proximity-to-failure accordingly — push when fresh
+ * their plan and their RECOVERY, and nudges volume / proximity-to-failure accordingly -- push when fresh
  * and progressing, hold when steady, back off (or deload) when performance slips or recovery tanks.
  *
  * This is the playbook's "manage fatigue toward MRV, progress when you've earned it" turned into a read on
- * the actual data. Natural, evidence-based — no pharmacology assumed.
+ * the actual data. Natural, evidence-based -- no pharmacology assumed.
  */
 class Autoregulator
 {
@@ -32,7 +32,7 @@ class Autoregulator
                 'verdict' => 'insufficient',
                 'headline' => "Let's get some data flowing",
                 'signals' => [],
-                'adjustment' => ['note' => 'Log a few training sessions (call out your sets) and connect recovery, and I can autoregulate — push you when you\'re fresh and progressing, ease off when you\'re not. Want me to build you a program to follow?'],
+                'adjustment' => ['note' => 'Log a few training sessions (call out your sets) and connect recovery, and I can autoregulate -- push you when you\'re fresh and progressing, ease off when you\'re not. Want me to build you a program to follow?'],
                 'program' => null,
             ];
         }
@@ -43,25 +43,25 @@ class Autoregulator
         if ($poorRecovery && $declining) {
             $verdict = 'deload';
             $headline = 'Time to deload';
-            $adj = ['volume' => 'cut ~40–50% this week', 'rir' => '3–4 RIR, no failure', 'note' => 'Recovery and performance are both down — that\'s your body at its ceiling (MRV). Take the deload; you\'ll come back stronger.'];
+            $adj = ['volume' => 'cut ~40-50% this week', 'rir' => '3-4 RIR, no failure', 'note' => 'Recovery and performance are both down -- that\'s your body at its ceiling (MRV). Take the deload; you\'ll come back stronger.'];
         } elseif ($poorRecovery || $declining) {
             $verdict = 'back_off';
             $headline = 'Ease off a touch';
-            $adj = ['volume' => 'hold — don\'t add sets', 'rir' => '+1 RIR, skip the intensity techniques today', 'note' => $poorRecovery
-                ? 'Recovery is low — protect sleep, keep effort 2–3 reps shy of failure, and we\'ll push again once you bounce back.'
-                : 'Reps are slipping at the same loads — hold volume, sharpen recovery, then attack it again next week.'];
+            $adj = ['volume' => 'hold -- don\'t add sets', 'rir' => '+1 RIR, skip the intensity techniques today', 'note' => $poorRecovery
+                ? 'Recovery is low -- protect sleep, keep effort 2-3 reps shy of failure, and we\'ll push again once you bounce back.'
+                : 'Reps are slipping at the same loads -- hold volume, sharpen recovery, then attack it again next week.'];
         } elseif ($adhState === 'behind') {
             $verdict = 'adhere';
             $headline = 'Just keep showing up';
-            $adj = ['volume' => 'hit the planned sets', 'rir' => 'as prescribed', 'note' => 'You\'re under your planned volume this week — the fix is consistency, not changing the plan. Let\'s log the sessions.'];
+            $adj = ['volume' => 'hit the planned sets', 'rir' => 'as prescribed', 'note' => 'You\'re under your planned volume this week -- the fix is consistency, not changing the plan. Let\'s log the sessions.'];
         } elseif ($recState === 'good' && $perfState === 'improving') {
             $verdict = 'progress';
-            $headline = 'Green light — push';
-            $adj = ['volume' => 'add ~1 set to your focus muscles', 'rir' => 'chase 1 RIR (0 on isolations)', 'note' => 'You\'re recovered and beating the logbook — earn another set and a little more intensity. This is how the focus muscles grow.'];
+            $headline = 'Green light -- push';
+            $adj = ['volume' => 'add ~1 set to your focus muscles', 'rir' => 'chase 1 RIR (0 on isolations)', 'note' => 'You\'re recovered and beating the logbook -- earn another set and a little more intensity. This is how the focus muscles grow.'];
         } else {
             $verdict = 'hold';
             $headline = 'Stay the course';
-            $adj = ['volume' => 'keep volume', 'rir' => 'as prescribed', 'note' => 'Solid and steady — just beat last week\'s reps or load somewhere today and let the volume accumulate.'];
+            $adj = ['volume' => 'keep volume', 'rir' => 'as prescribed', 'note' => 'Solid and steady -- just beat last week\'s reps or load somewhere today and let the volume accumulate.'];
         }
 
         return [

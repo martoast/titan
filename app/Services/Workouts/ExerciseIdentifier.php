@@ -7,8 +7,8 @@ use App\Services\Ai\AiService;
 use Illuminate\Support\Str;
 
 /**
- * Identifies a gym exercise from a photo — the machine itself, its instruction
- * placard/label, or free-weight setup — using OpenAI vision, then matches it to
+ * Identifies a gym exercise from a photo -- the machine itself, its instruction
+ * placard/label, or free-weight setup -- using OpenAI vision, then matches it to
  * the shared Exercise library (or creates a new entry). Powers the real-time
  * "snap the machine" workout-logging flow: the user photographs what they're on
  * instead of having to know the exact exercise name.
@@ -73,7 +73,7 @@ class ExerciseIdentifier
     {
         $name = trim($identified['name']);
         if ($name === '') {
-            // Nothing recognized — a generic placeholder the user will rename.
+            // Nothing recognized -- a generic placeholder the user will rename.
             $name = 'Unidentified exercise';
         }
 

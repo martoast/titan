@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Meals vertical — AI photo-based meal & macro logging.
+ * Meals vertical -- AI photo-based meal & macro logging.
  *
  * Flows:
  *  - index()    daily meals list + totals vs targets + 7-day calorie trend
@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Storage;
  *  - targets()  update the profile's macro targets
  *
  * AI is best-effort: any AiException degrades to a manual confirmation screen so the
- * user is never blocked — they can always type the numbers in.
+ * user is never blocked -- they can always type the numbers in.
  */
 class MealController extends Controller
 {
@@ -78,7 +78,7 @@ class MealController extends Controller
 
         $profile = $request->user()->ensureProfile();
 
-        // Persist the photo to the public disk first — we keep it regardless of AI outcome.
+        // Persist the photo to the public disk first -- we keep it regardless of AI outcome.
         $path = $request->file('photo')->store('meals', 'public');
 
         $draft = $this->blankDraft();
@@ -96,9 +96,9 @@ class MealController extends Controller
             $parsed = $this->parseMealJson($raw);
             $draft = array_merge($draft, $parsed);
         } catch (AiException $e) {
-            $error = 'AI vision is unavailable right now — enter the items manually below.';
+            $error = 'AI vision is unavailable right now -- enter the items manually below.';
         } catch (\Throwable $e) {
-            $error = "Couldn't read that photo automatically — enter the items manually below.";
+            $error = "Couldn't read that photo automatically -- enter the items manually below.";
         }
 
         return view('meals.confirm', [
@@ -129,9 +129,9 @@ class MealController extends Controller
             ], ['temperature' => 0.2, 'max_tokens' => 1000]);
             $draft = array_merge($draft, $this->normalizeParsed($parsed));
         } catch (AiException $e) {
-            $error = 'AI is unavailable right now — enter the items manually below.';
+            $error = 'AI is unavailable right now -- enter the items manually below.';
         } catch (\Throwable $e) {
-            $error = "Couldn't parse that — enter the items manually below.";
+            $error = "Couldn't parse that -- enter the items manually below.";
         }
 
         return view('meals.confirm', [
@@ -176,7 +176,7 @@ class MealController extends Controller
 
         $profile = $request->user()->ensureProfile();
 
-        // Only keep items that actually have a name — drop blank rows.
+        // Only keep items that actually have a name -- drop blank rows.
         $items = collect($data['items'] ?? [])
             ->filter(fn ($i) => trim((string) ($i['name'] ?? '')) !== '')
             ->values();
@@ -207,7 +207,7 @@ class MealController extends Controller
         $meal->recalcFromItems();
 
         return redirect('/meals?day='.$meal->eaten_at->format('Y-m-d'))
-            ->with('status', 'Meal logged — '.$meal->calories.' kcal.');
+            ->with('status', 'Meal logged -- '.$meal->calories.' kcal.');
     }
 
     public function destroy(Request $request, Meal $meal)
@@ -250,7 +250,7 @@ class MealController extends Controller
 
     // --- helpers -----------------------------------------------------------
 
-    /** Macro targets for a profile — overrides in settings['macro_targets'] win. */
+    /** Macro targets for a profile -- overrides in settings['macro_targets'] win. */
     private function targetsFor(Profile $profile): array
     {
         $set = $profile->settings['macro_targets'] ?? [];
@@ -338,7 +338,7 @@ ingredients and macros. Return STRICT JSON ONLY (no prose, no markdown fences) o
   "assumptions": "one sentence on portion-size assumptions and uncertainty"
 }
 Estimate sensible portion sizes. Use grams for protein/carbs/fat as numbers (no units in
-the numbers). Calories are whole numbers. Be realistic — meal estimates are inherently
+the numbers). Calories are whole numbers. Be realistic -- meal estimates are inherently
 ~10-25% off, so state your main assumptions. If the photo is not food, return an empty items array.
 PROMPT;
     }

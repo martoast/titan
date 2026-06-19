@@ -12,7 +12,7 @@ use App\Support\Pantry;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Suggests what to eat next — meals tailored to the user's next-meal macro target — and generates a
+ * Suggests what to eat next -- meals tailored to the user's next-meal macro target -- and generates a
  * photo of each so the dashboard's "you need ~50g protein now" becomes "here's a teriyaki salmon
  * bowl, tap for the recipe." LLM writes the meals (fast, one call); the image model paints each
  * (best-effort, never blocks the suggestion). Degrades to a clear message when AI isn't configured.
@@ -59,7 +59,7 @@ class MealSuggestionService
                 'steps' => array_values(array_filter((array) ($r['steps'] ?? []), 'is_string')),
                 'context' => $ctx,
             ]);
-            $this->paint($s);   // best-effort image — failure leaves a clean text card
+            $this->paint($s);   // best-effort image -- failure leaves a clean text card
             $saved->push($s);
         }
 
@@ -78,13 +78,13 @@ class MealSuggestionService
             ? "The user hasn't listed their kitchen, so suggest common, accessible meals."
             : 'The user has THESE foods on hand: '.implode(', ', $pantry).". Suggest meals they can make MOSTLY "
                 ."from these (assume basic staples: salt, pepper, oil, common spices, water). It's fine to need "
-                .'1-2 cheap extras — if so, list them in an "extras" array. Do NOT invent ingredients they likely '
+                .'1-2 cheap extras -- if so, list them in an "extras" array. Do NOT invent ingredients they likely '
                 ."don't have. Prioritise using their highest-protein items.";
 
         $system = <<<SYS
         You are Titan's nutrition coach. Suggest {$count} realistic, quick-to-make meal ideas that hit
         roughly {$protein} g protein and {$calories} kcal EACH. They should suit someone whose goal is:
-        {$goal}. Protein-forward, whole-food-leaning, genuinely appetising — not bland "diet food".
+        {$goal}. Protein-forward, whole-food-leaning, genuinely appetising -- not bland "diet food".
 
         {$pantryRule}
 

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Reset an account back to a pre-onboarding clean slate — wipes all of a user's Titan data
+ * Reset an account back to a pre-onboarding clean slate -- wipes all of a user's Titan data
  * (meals, dream physique, progress photos, coach memory, conversations, programs, biomarkers, …)
  * and clears their profile so the `onboarded` gate sends them through onboarding again. The User
  * row itself (email + password) is kept, so they can just log in and start fresh.
@@ -47,7 +47,7 @@ class ResetAccount extends Command
 
         $profile = $user->profile;
         if (! $profile) {
-            $this->warn('No profile on this account — nothing to reset.');
+            $this->warn('No profile on this account -- nothing to reset.');
 
             return self::SUCCESS;
         }
@@ -56,7 +56,7 @@ class ResetAccount extends Command
             'This DELETES all of this account\'s Titan data (meals, dream physique, progress photos, '
             .'coach memory, conversations, programs, biomarkers, cycle…) and re-runs onboarding. Continue?'
         )) {
-            $this->line('Aborted — nothing changed.');
+            $this->line('Aborted -- nothing changed.');
 
             return self::SUCCESS;
         }

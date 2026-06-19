@@ -3,7 +3,7 @@
 namespace App\Support;
 
 /**
- * Builds the Nano-Banana prompt for a dream-physique render — gender-aware AND angle-aware.
+ * Builds the Nano-Banana prompt for a dream-physique render -- gender-aware AND angle-aware.
  *
  * This is a DREAM physique: a bold, inspirational image of an elite athlete that represents
  * what the user is working toward. Generated from text only (no input photo) because Gemini's
@@ -38,8 +38,8 @@ class PhysiquePrompt
 
         Physique: {$body}.{$wants}
 
-        Style: cinematic, high-resolution, motivational — the kind of photo you'd see on a premium
-        fitness app. The physique should be STRIKING and clearly defined — bold enough to genuinely
+        Style: cinematic, high-resolution, motivational -- the kind of photo you'd see on a premium
+        fitness app. The physique should be STRIKING and clearly defined -- bold enough to genuinely
         inspire. Natural, believable muscle and skin tone. NOT a bodybuilder, NOT objectifying, NO
         excessive vascularity or cartoonish proportions. Just an elite, peak-condition athlete.
         PROMPT;
@@ -52,7 +52,7 @@ class PhysiquePrompt
             return match ($angle) {
                 'back' => 'full, round, lifted glutes with a clear shelf and filled-out side glutes, strong defined hamstrings and quads, a tight snatched waist flaring into the hips, a toned V-shaped back and capped shoulders, low body fat with healthy feminine curves',
                 'side' => 'flat toned stomach, dramatically slim snatched waist, full projected round glutes with a strong upward shelf, lean toned legs, upright confident posture, low body fat with healthy feminine curves',
-                default => 'lean sculpted fitness-model physique — sharply defined waist creating a strong natural hourglass, toned sculpted arms and shoulders, full round lifted glutes, lean defined legs, flat toned midsection with subtle ab definition, low body fat with healthy feminine curves',
+                default => 'lean sculpted fitness-model physique -- sharply defined waist creating a strong natural hourglass, toned sculpted arms and shoulders, full round lifted glutes, lean defined legs, flat toned midsection with subtle ab definition, low body fat with healthy feminine curves',
             };
         }
         if ($male) {

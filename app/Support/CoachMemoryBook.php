@@ -80,7 +80,7 @@ class CoachMemoryBook
             ->get();
     }
 
-    /** Always-on digest for the system prompt — grouped by category, capped so it never bloats. */
+    /** Always-on digest for the system prompt -- grouped by category, capped so it never bloats. */
     public static function digest(Profile $profile, int $maxChars = 1600): string
     {
         $memories = self::active($profile);

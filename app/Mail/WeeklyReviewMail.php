@@ -10,7 +10,7 @@ use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * The weekly review as an email — week score + momentum, progress toward the dream physique (the north
+ * The weekly review as an email -- week score + momentum, progress toward the dream physique (the north
  * star), wins, and what to change next week. Composed from the structured WeeklyReview::compile() array
  * (no AI call), framed in Titan branding. Mail failures are caught by the calling command.
  */

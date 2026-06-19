@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * One weekly "step" of the living goal image. The user's latest progress photo, re-rendered
- * a calibrated increment toward their dream physique — the increment scaled by how consistent
+ * a calibrated increment toward their dream physique -- the increment scaled by how consistent
  * they were (`adherence`). A chronological run of these rows IS the week-by-week progression
  * strip: the visible proof that the rendered "you" advances as you stay the course.
  */

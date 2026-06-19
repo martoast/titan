@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Log;
  *   php artisan coach:nudge cycle       # period heads-up (women who track it)
  *
  * For each push-enabled profile that has the nudge type ON (per their coaching intensity), we build the
- * nudge and — if it has something to say and we haven't already sent it this window — push it. The
+ * nudge and -- if it has something to say and we haven't already sent it this window -- push it. The
  * scheduler runs these at sensible times (see scheduleLines()).
  */
 class CoachNudgeCommand extends Command

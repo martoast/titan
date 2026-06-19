@@ -7,7 +7,7 @@ use App\Models\RecoveryLog;
 use Illuminate\Support\Carbon;
 
 /**
- * How much should we trust a recovery read — and say so out loud.
+ * How much should we trust a recovery read -- and say so out loud.
  *
  * The biosignal service already knows when it's unsure (valid flags, artifact drops) and
  * Readiness knows when the baseline is too thin (provisional). Historically that honesty
@@ -15,10 +15,10 @@ use Illuminate\Support\Carbon;
  * windows was spoken with the same authority as one from 60 sealed nights. This collapses
  * those signals into a single confidence verdict the coach can phrase honestly:
  *
- *   source  — where the number came from (sealed whole-night > provider > single window > manual)
- *   nights  — how many nights of HRV history back the personal baseline
- *   level   — high | building | low | none
- *   note    — a short plain-language caveat to speak (null when confidence is high)
+ *   source  -- where the number came from (sealed whole-night > provider > single window > manual)
+ *   nights  -- how many nights of HRV history back the personal baseline
+ *   level   -- high | building | low | none
+ *   note    -- a short plain-language caveat to speak (null when confidence is high)
  */
 class RecoveryConfidence
 {
@@ -31,7 +31,7 @@ class RecoveryConfidence
         $v = strtolower((string) $updatedVia);
 
         return match (true) {
-            str_starts_with($v, 'biosignal:sealed') => 'sealed',   // whole-night aggregate — our gold path
+            str_starts_with($v, 'biosignal:sealed') => 'sealed',   // whole-night aggregate -- our gold path
             str_starts_with($v, 'biosignal') => 'window',          // a single processed window, much noisier
             str_starts_with($v, 'device:summary') => 'provider',   // Apple Health / Polar provider summary
             str_starts_with($v, 'manual') => 'manual',             // self-entered estimate
@@ -74,7 +74,7 @@ class RecoveryConfidence
         ];
     }
 
-    /** A short caveat to speak alongside the number — null when the read is solid. */
+    /** A short caveat to speak alongside the number -- null when the read is solid. */
     private static function note(string $level, string $source, int $nights, ?int $used, ?int $dropped): ?string
     {
         $drop = ($dropped && $used !== null && $dropped > 0)
@@ -82,11 +82,11 @@ class RecoveryConfidence
             : '';
 
         return match (true) {
-            $level === 'none' => 'No recovery read yet — nothing to interpret.',
-            $source === 'manual' => 'This is a self-entered estimate, not a sensor read — treat it loosely.'.$drop,
-            $source === 'window' => 'This is a single spot window, not a full night — a sealed overnight read is far steadier.'.$drop,
-            $nights < 4 => "Only {$nights} night".($nights === 1 ? '' : 's')." of data so far — a rough first read; it sharpens fast.".$drop,
-            $level === 'building' => "Still learning your baseline ({$nights} nights) — a sharp read takes ~2 weeks.".$drop,
+            $level === 'none' => 'No recovery read yet -- nothing to interpret.',
+            $source === 'manual' => 'This is a self-entered estimate, not a sensor read -- treat it loosely.'.$drop,
+            $source === 'window' => 'This is a single spot window, not a full night -- a sealed overnight read is far steadier.'.$drop,
+            $nights < 4 => "Only {$nights} night".($nights === 1 ? '' : 's')." of data so far -- a rough first read; it sharpens fast.".$drop,
+            $level === 'building' => "Still learning your baseline ({$nights} nights) -- a sharp read takes ~2 weeks.".$drop,
             default => $drop !== '' ? trim($drop) : null,   // high confidence: only flag if windows were dropped
         };
     }

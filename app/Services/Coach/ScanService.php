@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 /**
  * Snap-to-log: turn a photo into logged data. The user points their camera at a plate
  * of food or a bloodwork printout; vision identifies it, extracts the numbers, and we
- * log them — a meal with macros, or biomarker readings. Returns a markdown reply the
+ * log them -- a meal with macros, or biomarker readings. Returns a markdown reply the
  * coach shows in the chat, plus the stored image URL.
  *
  * Wellness-only by design: we read what's printed on a lab sheet, we never diagnose.
@@ -43,7 +43,7 @@ class ScanService
         Rules:
         - If it's food/a meal/a drink: fill "meal" with your best estimate of the macros for the WHOLE portion shown, plus a short name and the visible items. Leave "bloodwork" as [].
         - If it's a lab/bloodwork report, printout, or screenshot of results: fill "bloodwork" with EVERY marker you can read. Use canonical snake_case marker keys (e.g. ldl, hdl, total_cholesterol, triglycerides, glucose, hba1c, vitamin_d, crp, alt, ast, tsh, ferritin, creatinine). Keep the printed unit. Leave "meal" empty.
-        - If it's a photo of a PERSON'S BODY/PHYSIQUE — a progress photo, gym selfie, or a full or upper-body shot of themselves — set kind "physique". (Leave "meal" and "bloodwork" empty.)
+        - If it's a photo of a PERSON'S BODY/PHYSIQUE -- a progress photo, gym selfie, or a full or upper-body shot of themselves -- set kind "physique". (Leave "meal" and "bloodwork" empty.)
         - Otherwise set kind "other" and explain in "note".
         - "note" is one friendly sentence summarising what you saw. Never diagnose or give medical advice.
         TXT;
@@ -104,7 +104,7 @@ class ScanService
 
     /** @param  array<string,mixed>  $m */
     /**
-     * Replace the vision model's macro GUESS with real web nutrition data where we can find it — so a
+     * Replace the vision model's macro GUESS with real web nutrition data where we can find it -- so a
      * snapped meal logs true calories/macros, not invented ones. Best-effort: keeps the vision estimate
      * if the web has nothing useful.
      */
@@ -118,7 +118,7 @@ class ScanService
             return $m;
         }
 
-        // Cache-first base macros (per 100g) — only researches the web the first time this food is seen.
+        // Cache-first base macros (per 100g) -- only researches the web the first time this food is seen.
         $lib = app(\App\Support\FoodLibrary::class)->lookup($name);
         if (! ($lib['ok'] ?? false)) {
             return $m;
@@ -163,14 +163,14 @@ class ScanService
         $hedge = ! empty($m['grounded'])
             ? ' Macros grounded in real nutrition data for this dish.'
             : match ($conf) {
-                'low' => ' These are rough estimates from the photo — tweak them if you know better.',
+                'low' => ' These are rough estimates from the photo -- tweak them if you know better.',
                 'medium' => ' Macros are estimated from the photo.',
                 default => '',
             };
 
         // Lead with the updated macros card, then a short confirmation line.
         $reply = \App\Support\Macros::fenced($profile)
-            ."\n\nLogged **{$meal->name}** — {$meal->calories} kcal · {$meal->protein_g}g protein.{$hedge}";
+            ."\n\nLogged **{$meal->name}** -- {$meal->calories} kcal · {$meal->protein_g}g protein.{$hedge}";
 
         return ['kind' => 'meal', 'logged' => true, 'image_url' => $imageUrl, 'reply' => $reply, 'data' => $m];
     }
@@ -214,7 +214,7 @@ class ScanService
         $reply = "**Logged {$count} marker".($count === 1 ? '' : 's')." from your bloodwork**\n\n".$table;
         if ($flagged->isNotEmpty()) {
             $reply .= "\n".$flagged->count()." marker".($flagged->count() === 1 ? ' is' : 's are')
-                ." outside the typical range. I'm a coach, not a doctor — if anything here concerns you, take it to your physician.";
+                ." outside the typical range. I'm a coach, not a doctor -- if anything here concerns you, take it to your physician.";
         } else {
             $reply .= "\nEverything reads within typical ranges. Ask me about any marker and I'll explain what it means for you.";
         }

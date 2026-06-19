@@ -7,7 +7,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Are we on track to the DREAM PHYSIQUE? This is Titan's north star — the goal everything is working
+ * Are we on track to the DREAM PHYSIQUE? This is Titan's north star -- the goal everything is working
  * toward. It reads the active physique goal + the living-render progression (step_pct = % of the way
  * there, driven by adherence), the bodyweight trajectory and the week score, and produces an honest
  * "on track / behind / ahead" read with a rough ETA. Surfaced as a card AND injected into the coach's
@@ -36,7 +36,7 @@ class PhysiqueProgress
         $stepPct = (int) ($latest->step_pct ?? 0);
         $adherence = $latest && $latest->adherence !== null ? (float) $latest->adherence : null;
 
-        // On-track verdict — adherence is what actually moves the picture toward the goal.
+        // On-track verdict -- adherence is what actually moves the picture toward the goal.
         [$verdict, $verdictLabel] = match (true) {
             $adherence === null => ['just_started', 'Just getting started'],
             $adherence >= 0.8 => ['ahead', 'Ahead of pace'],

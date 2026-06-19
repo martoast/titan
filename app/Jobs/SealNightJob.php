@@ -17,12 +17,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Seal a completed night for ONE profile — the authoritative whole-night pass.
+ * Seal a completed night for ONE profile -- the authoritative whole-night pass.
  *
  * Per-window Shape-A ingestion (ProcessWindowJob) upserts the daily recovery_logs row
  * once per ~7-min IBI window with last-write-wins, so `hrv_ms` ends up reflecting only
  * the final window rather than the whole night. RMSSD from a 7-min window is noisy
- * (03-algorithms §2: 5-min windows r²≈0.77 vs whole-night r²≈0.98) — recovery HRV must
+ * (03-algorithms §2: 5-min windows r²≈0.77 vs whole-night r²≈0.98) -- recovery HRV must
  * be computed over the WHOLE night.
  *
  * This job gathers every unsealed IBI window from the night, concatenates the IBI series,
@@ -45,11 +45,11 @@ class SealNightJob implements ShouldQueue
     /**
      * Per-window RMSSD ceiling (ms). A 2-minute window above this is almost certainly a
      * peak-detection artifact (a missed/extra beat creates a huge successive difference),
-     * not real overnight HRV — excluded from the whole-night aggregate so a handful of
+     * not real overnight HRV -- excluded from the whole-night aggregate so a handful of
      * bad windows can't inflate the sealed number. (Observed in dogfooding: a few windows
      * came back at 200-380 ms and dragged a true ~66 ms night up to ~99 ms.)
      *
-     * Set conservatively at 200 ms — physiologically, even elite resting HRV tops out
+     * Set conservatively at 200 ms -- physiologically, even elite resting HRV tops out
      * around there for an ultra-short window, so this only removes clear artifacts without
      * cutting genuine deep-sleep HRV. Exact calibration is a real-data (Polar H10) job, not
      * a threshold to tune against synthetic signals.
@@ -81,7 +81,7 @@ class SealNightJob implements ShouldQueue
 
             // All unsealed raw windows that still need whole-night aggregation. A window is
             // "unsealed" when its status is not yet 'sealed'. We accept processed/queued/
-            // received/failed per-window rows — the night seal supersedes them either way.
+            // received/failed per-window rows -- the night seal supersedes them either way.
             $unsealed = DeviceIngestion::query()
                 ->where('profile_id', $profile->id)
                 ->whereIn('kind', ['ibi', 'ppg_raw', 'sleep'])
@@ -106,7 +106,7 @@ class SealNightJob implements ShouldQueue
                 }
 
                 if (! $this->nightIsComplete($windows, $date, $tz)) {
-                    continue; // still streaming — let it finish
+                    continue; // still streaming -- let it finish
                 }
 
                 $this->sealNight($profile, $biosignal, (string) $date, $tz, $windows);
@@ -126,14 +126,14 @@ class SealNightJob implements ShouldQueue
     /**
      * A night is sealable once it is quiescent: the most recent window ended more than
      * QUIET_MINUTES ago (the device finished streaming), OR the night is in the past
-     * relative to the device-owner's local "today" (a morning cutoff — yesterday is done).
+     * relative to the device-owner's local "today" (a morning cutoff -- yesterday is done).
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
      */
     private function nightIsComplete(\Illuminate\Support\Collection $windows, string $date, string $tz): bool
     {
         if ($date < now($tz)->toDateString()) {
-            return true; // a past night — morning cutoff
+            return true; // a past night -- morning cutoff
         }
 
         $lastEnd = $windows
@@ -172,7 +172,7 @@ class SealNightJob implements ShouldQueue
             $windowsDropped = 0;    // windows rejected as artifacts (or with a missing blob)
 
             foreach ($ibiWindows as $ingestion) {
-                // Prefer the per-window IBI persisted by ProcessWindowJob — this is what makes
+                // Prefer the per-window IBI persisted by ProcessWindowJob -- this is what makes
                 // ppg_raw (the Bangle) sealable, since its raw blob holds samples, not IBI. Fall
                 // back to the blob's ibi_ms for Shape-A `ibi` windows (Polar / Apple Health).
                 $persistedIbi = $ingestion->result_refs['ibi_ms'] ?? null;
@@ -200,7 +200,7 @@ class SealNightJob implements ShouldQueue
                 if ($window === null) {
                     $windowsDropped++;
 
-                    continue; // raw blob missing — skip, but still seal so we don't loop forever
+                    continue; // raw blob missing -- skip, but still seal so we don't loop forever
                 }
                 foreach ((array) ($window['ibi_ms'] ?? []) as $v) {
                     if (is_numeric($v)) {
@@ -231,7 +231,7 @@ class SealNightJob implements ShouldQueue
 
                 // Fail SAFE: only write a recovery read when the service explicitly says the
                 // whole-night signal is valid. A missing flag means an unexpected/erroring
-                // response, not a clean night — don't present it as a real reading.
+                // response, not a clean night -- don't present it as a real reading.
                 if (($metrics['valid'] ?? false) === true) {
                     // Whole-night respiratory rate = median of the per-window RR (each already
                     // Smart-Fusion gated in the biosignal service). RR needs the PPG waveform, which
@@ -242,7 +242,7 @@ class SealNightJob implements ShouldQueue
                         ->median();
 
                     // Idempotent re-seal guard: if a MORE complete sealed read already exists
-                    // (more beats), keep it — a re-seal triggered by a lone late window must not
+                    // (more beats), keep it -- a re-seal triggered by a lone late window must not
                     // replace a good whole-night aggregate with a worse one.
                     $prior = RecoveryLog::query()
                         ->where('profile_id', $profile->id)->whereDate('logged_at', $date)
@@ -277,15 +277,15 @@ class SealNightJob implements ShouldQueue
                         ]);
                     });
 
-                    // Recovery is in — let the COACH react: morning read + a note in the chat,
+                    // Recovery is in -- let the COACH react: morning read + a note in the chat,
                     // deduped to once a day (see ReactToDeviceSync). Best-effort, off the seal path.
                     \App\Jobs\ReactToDeviceSync::dispatch($profile->id);
                 } else {
-                    // Invalid whole-night signal — still seal so we don't reprocess endlessly.
+                    // Invalid whole-night signal -- still seal so we don't reprocess endlessly.
                     $ibiWindows->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
                 }
             } else {
-                // Too little data or service unconfigured — seal to release the night.
+                // Too little data or service unconfigured -- seal to release the night.
                 $ibiWindows->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
             }
 
@@ -296,7 +296,7 @@ class SealNightJob implements ShouldQueue
         if ($sleepWindows->isNotEmpty()) {
             $this->sealSleep($profile, $biosignal, $date, $sleepWindows);
         } elseif ($ibiWindows->isNotEmpty()) {
-            // The wearable sends raw PPG, not sleep windows — stage sleep from the per-window
+            // The wearable sends raw PPG, not sleep windows -- stage sleep from the per-window
             // epoch features (HR + motion proxy) the HRV pass persisted.
             $this->sealSleepFromPpg($profile, $biosignal, $date, $ibiWindows);
         }
@@ -312,8 +312,8 @@ class SealNightJob implements ShouldQueue
 
     /**
      * Stage sleep from a raw-PPG (wearable) night: concatenate the per-window 30-s epoch
-     * features (HR + motion proxy) persisted by ProcessWindowJob — across both valid and
-     * motion-rejected windows, in time order — and run the whole night through the stager
+     * features (HR + motion proxy) persisted by ProcessWindowJob -- across both valid and
+     * motion-rejected windows, in time order -- and run the whole night through the stager
      * once → one sleep_logs row. This is what gives the Bangle deep/REM/light without an
      * accelerometer (motion is inferred from PPG signal quality).
      *

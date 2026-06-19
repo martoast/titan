@@ -7,13 +7,13 @@ use App\Models\WeeklySnapshot;
 use Illuminate\Support\Carbon;
 
 /**
- * The week in review — the longitudinal coaching arc. Synthesizes the last 7 days across training
+ * The week in review -- the longitudinal coaching arc. Synthesizes the last 7 days across training
  * (adherence vs the program + whether the lifts moved), nutrition, recovery/sleep and body comp into
  * one scorecard with an overall week score, week-over-week deltas, a multi-week trend and a streak of
  * consistent weeks, plus what to change next week.
  *
  * measure() = the raw numbers (also what gets frozen into a WeeklySnapshot); compile() = the display
- * review built on top, comparing against the previous stored snapshot. Pure synthesis — the coach
+ * review built on top, comparing against the previous stored snapshot. Pure synthesis -- the coach
  * narrates. Degrades gracefully; a blank week yields null.
  */
 class WeeklyReview
@@ -175,7 +175,7 @@ class WeeklyReview
             }
         }
 
-        // Progress toward the dream physique — the north star. Enriches the review; doesn't gate it.
+        // Progress toward the dream physique -- the north star. Enriches the review; doesn't gate it.
         if (class_exists(\App\Support\PhysiqueProgress::class)) {
             $pp = rescue(fn () => \App\Support\PhysiqueProgress::assess($profile), null, false);
             if ($pp) {
@@ -186,7 +186,7 @@ class WeeklyReview
         return $m;
     }
 
-    /** Overall 0–100 week score from the domain states (weight is goal-dependent, so excluded). */
+    /** Overall 0-100 week score from the domain states (weight is goal-dependent, so excluded). */
     public static function score(array $m): ?int
     {
         $map = ['good' => 100, 'ok' => 60, 'low' => 20];
@@ -278,7 +278,7 @@ class WeeklyReview
                 $watch[] = "Only {$t['sessions']} of {$t['target']} planned sessions";
             }
             if ($m['lifts_improving']) {
-                $wins[] = 'Lifts trending up — real progressive overload';
+                $wins[] = 'Lifts trending up -- real progressive overload';
             }
         }
         if ($n = $m['nutrition']) {
@@ -295,7 +295,7 @@ class WeeklyReview
             if ($s['state'] === 'good') {
                 $wins[] = 'Sleep held strong all week';
             } elseif ($s['state'] === 'low') {
-                $watch[] = 'Sleep ran short — it drags everything';
+                $watch[] = 'Sleep ran short -- it drags everything';
             }
         }
 
@@ -350,9 +350,9 @@ class WeeklyReview
     {
         return match (true) {
             $score === null => 'Your week so far',
-            $score >= 75 => "Strong week — momentum's with you",
+            $score >= 75 => "Strong week -- momentum's with you",
             $score >= 50 => 'Solid week, with room to sharpen',
-            default => "A tougher week — let's reset and rebuild",
+            default => "A tougher week -- let's reset and rebuild",
         };
     }
 
@@ -363,7 +363,7 @@ class WeeklyReview
 
     private static function range(Carbon $start, Carbon $end): string
     {
-        return $start->format('M j').'–'.($start->month === $end->month ? $end->format('j') : $end->format('M j'));
+        return $start->format('M j').'-'.($start->month === $end->month ? $end->format('j') : $end->format('M j'));
     }
 
     private static function setsBetween(Profile $profile, Carbon $start, Carbon $end): int

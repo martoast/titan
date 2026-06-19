@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * An in-app notification for a profile — surfaced in the header bell + notification
+ * An in-app notification for a profile -- surfaced in the header bell + notification
  * center. Created alongside (and independently of) a Web Push by NotificationService,
  * so the user sees it whether or not push is granted. `read_at` null = unread.
  *

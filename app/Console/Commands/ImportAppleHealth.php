@@ -7,7 +7,7 @@ use App\Services\Health\AppleHealthImporter;
 use Illuminate\Console\Command;
 
 /**
- * Import an Apple Health export from the CLI — handy for testing the importer without
+ * Import an Apple Health export from the CLI -- handy for testing the importer without
  * going through the upload form, and for re-importing a saved export.
  *
  *   php artisan apple-health:import --fixture            # use the bundled sample XML
@@ -64,7 +64,7 @@ class ImportAppleHealth extends Command
             ['recovery', 'sleep', 'body', 'workouts', 'samples', 'from', 'to'],
             [[
                 $summary['recovery'], $summary['sleep'], $summary['body'], $summary['workouts'],
-                $summary['samples'], $summary['date_from'] ?? '—', $summary['date_to'] ?? '—',
+                $summary['samples'], $summary['date_from'] ?? '--', $summary['date_to'] ?? '--',
             ]],
         );
 

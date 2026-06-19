@@ -3,14 +3,14 @@
 namespace App\Support;
 
 /**
- * PhenoAge — the mortality-validated blood biological-age clock (Levine/Liu 2018).
+ * PhenoAge -- the mortality-validated blood biological-age clock (Levine/Liu 2018).
  *
  * Liu Z et al., "A new aging measure captures morbidity and mortality risk across diverse
  * subpopulations from NHANES IV", PLoS Med 2018;15(12):e1002718; popularised by Levine ME et al.,
  * "An epigenetic biomarker of aging…", Aging 2018;10(4):573. Trained against 10-year mortality in
  * NHANES III via a Gompertz model: nine routine CBC + CMP + CRP markers and chronological age →
  * "phenotypic age", the age whose population mortality risk matches yours. PhenoAge minus your real
- * age (the ACCELERATION) is the meaningful quantity — a risk score wearing an age label.
+ * age (the ACCELERATION) is the meaningful quantity -- a risk score wearing an age label.
  *
  * UNITS ARE THE #1 IMPLEMENTATION BUG. The published coefficients are for SI units; our catalog
  * stores US units, so we convert: albumin g/dL→g/L (×10), creatinine mg/dL→µmol/L (×88.42), glucose
@@ -19,7 +19,7 @@ namespace App\Support;
  *
  * Honest scope: a wellness estimate from a single blood draw. CRP/glucose/WBC spike with acute
  * illness, recent meals (glucose must be FASTING) or hard exercise, so one draw can mislabel a
- * healthy person — we gate implausible values and frame the number as a trend, never a diagnosis.
+ * healthy person -- we gate implausible values and frame the number as a trend, never a diagnosis.
  */
 class PhenoAge
 {

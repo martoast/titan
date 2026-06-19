@@ -46,8 +46,8 @@ class ResearchTopic implements ShouldQueue
             $result = $research->run($profile, $this->topic, $this->focus);
         } catch (\Throwable $e) {
             Log::warning('[coach] research failed', ['topic' => $this->topic, 'error' => $e->getMessage()]);
-            $notifications->notify($profile, '📚 Research hit a snag', "I couldn't finish researching \"{$this->topic}\" — ask me to try again.", '/coach', 'research');
-            $this->appendToChat("I tried to research **{$this->topic}** but ran into a problem — ask me to try again in a moment.");
+            $notifications->notify($profile, '📚 Research hit a snag', "I couldn't finish researching \"{$this->topic}\" -- ask me to try again.", '/coach', 'research');
+            $this->appendToChat("I tried to research **{$this->topic}** but ran into a problem -- ask me to try again in a moment.");
 
             return;
         }
@@ -64,7 +64,7 @@ class ResearchTopic implements ShouldQueue
         }
 
         $notifications->notify($profile, '📚 Research ready: '.$this->topic, $result['summary'], '/coach', 'research');
-        $this->appendToChat("📚 I finished researching **{$this->topic}**.\n\n{$result['summary']}\n\nI've saved the full writeup to your Brain as *\"{$result['title']}\"* — ask me anything about it.");
+        $this->appendToChat("📚 I finished researching **{$this->topic}**.\n\n{$result['summary']}\n\nI've saved the full writeup to your Brain as *\"{$result['title']}\"* -- ask me anything about it.");
     }
 
     /** Drop the result into the originating chat thread so it's there when they return. */

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * A user's health profile — the hub of their Titan record. Relationships to every
+ * A user's health profile -- the hub of their Titan record. Relationships to every
  * domain are declared here so feature code never has to touch User. Each domain's
  * models are created by their respective build; the hasMany strings resolve lazily,
  * so declaring them ahead of the models existing is safe.

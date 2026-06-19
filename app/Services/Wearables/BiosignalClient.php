@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 /**
  * Thin client for the self-hosted Python biosignal service (FastAPI). Mirrors the
  * dependency-free Http style of TerraClient. The boundary is a pure HTTP contract:
- * we hand it a window of raw signal (the §5 window JSON) and it returns metrics —
+ * we hand it a window of raw signal (the §5 window JSON) and it returns metrics --
  * it holds no state and never touches our DB.
  *
  *   POST /process/hrv      → {algo_version, metrics:{hrv_ms,resting_hr,rmssd,sdnn,pnn50,lf_hf,resp_rate,artifact_pct,valid}}

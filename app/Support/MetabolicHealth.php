@@ -6,7 +6,7 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * Metabolic-health forecast — a transparent composite of the wearable signals that independently
+ * Metabolic-health forecast -- a transparent composite of the wearable signals that independently
  * predict incident type-2 diabetes / metabolic disease in large cohorts. This is our strongest
  * PREVENTION play: it flags risk while it's still modifiable, not after diagnosis.
  *
@@ -14,11 +14,11 @@ use Illuminate\Support\Carbon;
  *   - Resting HR ↑      → T2D RR 1.20 per +10 bpm (meta-analysis, 119,915 people)
  *   - Cardiorespiratory fitness (VO2max) ↑ → T2D HR 0.72 per +1 SD (UK Biobank)
  *   - HRV ↓             → higher incident T2D (younger adults esp.; JCEM 2023)
- *   - Sleep duration    → U-shaped, nadir 7–8 h; short sleep HR up to 1.45 (Diabetes Care 2015)
+ *   - Sleep duration    → U-shaped, nadir 7-8 h; short sleep HR up to 1.45 (Diabetes Care 2015)
  *   - Daily steps ↑     → strong inverse activity dose-response (Paluch/Saint-Maurice)
  *
  * HONESTY: this is a wellness ESTIMATE, never a diagnosis or a risk percentage. Each component is
- * scored against coarse population-healthy ranges (HRV/VO2max are age/sex-confounded — surfaced as
+ * scored against coarse population-healthy ranges (HRV/VO2max are age/sex-confounded -- surfaced as
  * a caveat), evidence-weighted, and renormalised over whatever inputs are present. The combined
  * score is NOT validated against outcomes; it composes individually-validated signals transparently.
  */

@@ -11,7 +11,7 @@ use Illuminate\Queue\SerializesModels;
 
 /**
  * The proactive coach briefing as an email (Mailgun SMTP is wired). Used for both the
- * morning briefing and the evening nudge — `$kind` switches the subject + heading.
+ * morning briefing and the evening nudge -- `$kind` switches the subject + heading.
  *
  * The body text is already composed + grounded by CoachBriefingService; this Mailable
  * only frames it in Titan branding. Mail failures are caught by the calling command so a

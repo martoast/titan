@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
  * knowledge save, and live workout logging (start_workout / log_set / finish_workout).
  *
  * Every cross-domain model is guarded with class_exists so the coach keeps working
- * before those verticals are integrated — a missing domain returns a friendly
+ * before those verticals are integrated -- a missing domain returns a friendly
  * "no data yet" note instead of fatally erroring the tool loop. Each tool returns a
  * compact array/string suitable for feeding straight back into the model.
  */
@@ -21,9 +21,9 @@ class CoachTools
         protected ?\App\Models\Conversation $conversation = null,
     ) {}
 
-    /** Specialized tools, grouped — gated out of the default toolset until the turn needs them. */
+    /** Specialized tools, grouped -- gated out of the default toolset until the turn needs them. */
     private const TOOL_GROUPS = [
-        // Live training logging (writes) — distinctive triggers, only mid-session.
+        // Live training logging (writes) -- distinctive triggers, only mid-session.
         'start_workout' => 'logging', 'log_set' => 'logging', 'finish_workout' => 'logging',
         'start_activity' => 'logging', 'finish_activity' => 'logging', 'log_cardio' => 'logging',
         // Heavy program-building + advanced knowledge.
@@ -68,7 +68,7 @@ class CoachTools
         return $this;
     }
 
-    /** Expose every tool (ungated) — for callers/tests that need the full registry. */
+    /** Expose every tool (ungated) -- for callers/tests that need the full registry. */
     public function withAllTools(): static
     {
         $this->loadGroup(null);
@@ -76,7 +76,7 @@ class CoachTools
         return $this;
     }
 
-    /** Activate a specialized group (or all) — called by the load_tools tool mid-loop. */
+    /** Activate a specialized group (or all) -- called by the load_tools tool mid-loop. */
     public function loadGroup(?string $area): array
     {
         $groups = array_values(array_unique(self::TOOL_GROUPS));
@@ -112,29 +112,29 @@ class CoachTools
     {
         $tools = [];
 
-        // The "how was my day" tool — one call pulls everything for a single day: wearable vitals
+        // The "how was my day" tool -- one call pulls everything for a single day: wearable vitals
         // (HRV, resting HR, respiratory rate), readiness, last night's sleep, today's strain,
         // activity (steps/floors/movement), nutrition and any workouts, plus the day's focus.
-        $tools[] = $this->fn('daily_summary', "A full day's snapshot — vitals, readiness, sleep, strain, activity, nutrition, workouts, the day's focus. For 'how was my day / vitals / recovery' or a daily check-in.", [
+        $tools[] = $this->fn('daily_summary', "A full day's snapshot -- vitals, readiness, sleep, strain, activity, nutrition, workouts, the day's focus. For 'how was my day / vitals / recovery' or a daily check-in.", [
             'date' => ['type' => 'string', 'description' => "Which day: 'today' (default), 'yesterday', or an ISO date like 2026-06-16."],
         ], []);
 
-        // Tool descriptions are terse to keep context lean — this fetches the full manual for any tool.
+        // Tool descriptions are terse to keep context lean -- this fetches the full manual for any tool.
         $tools[] = $this->fn('tool_docs', "Get the FULL usage notes for a tool (caveats, when-to-use, parameter details) when its short description isn't enough. Call before using a tool you're unsure how to drive.", [
             'tool' => ['type' => 'string', 'description' => 'The tool name to look up, e.g. "log_set", "research_topic".'],
         ], ['tool']);
 
         // Only a focused toolset is exposed each turn. If you need a capability you don't see, load it.
-        $tools[] = $this->fn('load_tools', 'Unlock the specialized tools — live workout/cardio logging, program-building + the advanced playbook, the cycle tools, the pantry, deep research, or reminder settings — when the current toolset lacks what a request needs. They become available immediately.', [
+        $tools[] = $this->fn('load_tools', 'Unlock the specialized tools -- live workout/cardio logging, program-building + the advanced playbook, the cycle tools, the pantry, deep research, or reminder settings -- when the current toolset lacks what a request needs. They become available immediately.', [
             'area' => ['type' => 'string', 'description' => 'Optional hint: logging | mesocycle | cycle | pantry | research | reminders. Omit to load all.'],
         ], []);
 
         if (class_exists(\App\Support\DeviceStatus::class)) {
             $tools[] = $this->fn('device_status', "The wearable's own state → `device` card: paired? connected/syncing? last sync, battery, firmware, what's flowing. For 'is my band connected / synced / battery', and check it when expected data is missing.", [], []);
             $tools[] = $this->fn('buzz_band', "Make the band BUZZ so they can find it (it vibrates on its next check-in). For 'find my band / where's my watch / make it buzz'.", [], []);
-            $tools[] = $this->fn('request_sync', "Ask the band to sync now — it pushes fresh data on its next check-in. For 'sync now / pull my latest data'.", [], []);
-            $tools[] = $this->fn('pair_band', "Start chat-guided pairing of the Titan band — issues a one-time pairing link that opens the bridge with credentials loaded. Returns a `pairing` card. Use for 'connect / pair / set up my band', or proactively when they have a band but none is paired.", [], []);
-            $tools[] = $this->fn('spot_reading', "Take a LIVE on-demand HRV reading now — the band captures ~60s, then you interpret the result (a `spot` card lands when ready). For 'take a reading / check my HRV now / how recovered am I right now'. Not daily_summary (that's the morning's recovery).", [], []);
+            $tools[] = $this->fn('request_sync', "Ask the band to sync now -- it pushes fresh data on its next check-in. For 'sync now / pull my latest data'.", [], []);
+            $tools[] = $this->fn('pair_band', "Start chat-guided pairing of the Titan band -- issues a one-time pairing link that opens the bridge with credentials loaded. Returns a `pairing` card. Use for 'connect / pair / set up my band', or proactively when they have a band but none is paired.", [], []);
+            $tools[] = $this->fn('spot_reading', "Take a LIVE on-demand HRV reading now -- the band captures ~60s, then you interpret the result (a `spot` card lands when ready). For 'take a reading / check my HRV now / how recovered am I right now'. Not daily_summary (that's the morning's recovery).", [], []);
         }
 
         if (class_exists(\App\Support\PhysiqueProgress::class)) {
@@ -146,7 +146,7 @@ class CoachTools
         }
 
         if (class_exists(\App\Models\KnowledgePage::class)) {
-            $tools[] = $this->fn('search_knowledge', "Search their whole knowledge base — your coach memory + their health wiki (notes, history, doctor's notes). Search before guessing; read pinned-page bodies here.", [
+            $tools[] = $this->fn('search_knowledge', "Search their whole knowledge base -- your coach memory + their health wiki (notes, history, doctor's notes). Search before guessing; read pinned-page bodies here.", [
                 'query' => ['type' => 'string', 'description' => 'What to look for, in natural language.'],
             ], ['query']);
 
@@ -158,9 +158,9 @@ class CoachTools
         }
 
         if (class_exists(\App\Jobs\ResearchTopic::class)) {
-            $tools[] = $this->fn('research_topic', "ASYNC deep dive (runs in the background ~1–2 min → brief filed in the Brain + pinged + summary posted to chat). For 'research X / go learn about X'. Acknowledge only; do NOT answer the topic inline.", [
+            $tools[] = $this->fn('research_topic', "ASYNC deep dive (runs in the background ~1-2 min → brief filed in the Brain + pinged + summary posted to chat). For 'research X / go learn about X'. Acknowledge only; do NOT answer the topic inline.", [
                 'topic' => ['type' => 'string', 'description' => 'What to research, e.g. "the 5/3/1 strength program", "carb cycling for fat loss", "creatine for women".'],
-                'focus' => ['type' => 'string', 'description' => "Optional — the user's specific angle or why (e.g. \"for my glute goal\", \"as a vegetarian\")."],
+                'focus' => ['type' => 'string', 'description' => "Optional -- the user's specific angle or why (e.g. \"for my glute goal\", \"as a vegetarian\")."],
             ], ['topic']);
         }
 
@@ -169,7 +169,7 @@ class CoachTools
                 'query' => ['type' => 'string', 'description' => 'The search query.'],
             ], ['query']);
             $tools[] = $this->fn('lookup_food', "Real per-100g macros (cache-first, web on a miss, then cached). ALWAYS call before log_meal unless exact macros given. Pass the food name; you scale to the portion.", [
-                'food' => ['type' => 'string', 'description' => 'The food (portion optional — macros come back per 100g).'],
+                'food' => ['type' => 'string', 'description' => 'The food (portion optional -- macros come back per 100g).'],
             ], ['food']);
         }
 
@@ -201,9 +201,9 @@ class CoachTools
             $tools[] = $this->fn('physique_status', "Get the active physique goal and the latest physique analysis (body-fat range, % of the way to the goal image).", [], []);
         }
 
-        // --- Live workout logging (write) — log sets as the user calls them out during a session ---
+        // --- Live workout logging (write) -- log sets as the user calls them out during a session ---
         if (class_exists(\App\Models\Workout::class)) {
-            $tools[] = $this->fn('start_workout', 'Begin a new workout session when the user says they are starting/about to train. Optional — log_set will start one automatically if none is open. Returns the session id.', [
+            $tools[] = $this->fn('start_workout', 'Begin a new workout session when the user says they are starting/about to train. Optional -- log_set will start one automatically if none is open. Returns the session id.', [
                 'name' => ['type' => 'string', 'description' => 'Optional session name, e.g. "Push day", "Legs".'],
             ], []);
 
@@ -212,7 +212,7 @@ class CoachTools
                 'reps' => ['type' => 'integer', 'description' => 'Reps completed in this set.'],
                 'weight' => ['type' => 'number', 'description' => 'TOTAL weight lifted including the bar, in the given unit. Omit/0 for bodyweight.'],
                 'unit' => ['type' => 'string', 'enum' => ['lb', 'kg'], 'description' => 'Unit of weight (default lb).'],
-                'rpe' => ['type' => 'number', 'description' => 'Optional rate of perceived exertion, 1–10.'],
+                'rpe' => ['type' => 'number', 'description' => 'Optional rate of perceived exertion, 1-10.'],
                 'is_warmup' => ['type' => 'boolean', 'description' => 'True if this was a warm-up set.'],
             ], ['exercise', 'reps']);
 
@@ -221,10 +221,10 @@ class CoachTools
             ], []);
         }
 
-        // --- Cardio / activity sessions (write) — start an activity and PRIME the wearable for it ---
+        // --- Cardio / activity sessions (write) -- start an activity and PRIME the wearable for it ---
         if (class_exists(\App\Models\ActivitySession::class)) {
             $tools[] = $this->fn('start_activity', "Start cardio (run/walk/hike/bike/swim/row/HIIT) AND prime the wearable for it (e.g. GPS + faster HR for a run). Cardio only; use start_workout/log_set for lifting.", [
-                'type' => ['type' => 'string', 'description' => 'Activity, e.g. run, walk, hike, cycle, swim, row, hiit. Free text is fine — it gets normalized.'],
+                'type' => ['type' => 'string', 'description' => 'Activity, e.g. run, walk, hike, cycle, swim, row, hiit. Free text is fine -- it gets normalized.'],
                 'note' => ['type' => 'string', 'description' => 'Optional note, e.g. "easy zone 2", "tempo".'],
             ], ['type']);
 
@@ -236,16 +236,16 @@ class CoachTools
             ], []);
         }
 
-        // --- Menstrual cycle (read + write) — only offered when she tracks it ---
+        // --- Menstrual cycle (read + write) -- only offered when she tracks it ---
         if (\App\Support\Cycle::available($this->profile)) {
-            $tools[] = $this->fn('cycle_status', "Her cycle now — day, phase, next period/ovulation, fertile window, regularity, today's symptoms, phase×recovery. For any cycle/period/fertility/PMS question. Awareness only, never contraception or diagnosis.", [], []);
+            $tools[] = $this->fn('cycle_status', "Her cycle now -- day, phase, next period/ovulation, fertile window, regularity, today's symptoms, phase×recovery. For any cycle/period/fertility/PMS question. Awareness only, never contraception or diagnosis.", [], []);
 
             $tools[] = $this->fn('log_period', "Log a period event. event='start' records day 1 of a new period (the anchor for all cycle math); event='end' marks the last day of bleeding. Use when she says her period started/ended.", [
                 'event' => ['type' => 'string', 'enum' => ['start', 'end'], 'description' => 'start = first day of bleeding; end = last day.'],
                 'date' => ['type' => 'string', 'description' => "Date (YYYY-MM-DD, 'today', 'yesterday'); default today."],
             ], ['event']);
 
-            $tools[] = $this->fn('log_cycle', 'Log how she feels today within her cycle — flow, symptoms, mood/energy, basal body temperature. Use when she mentions cramps, PMS, flow, etc.', [
+            $tools[] = $this->fn('log_cycle', 'Log how she feels today within her cycle -- flow, symptoms, mood/energy, basal body temperature. Use when she mentions cramps, PMS, flow, etc.', [
                 'flow' => ['type' => 'string', 'enum' => ['none', 'spotting', 'light', 'medium', 'heavy'], 'description' => 'Menstrual flow level.'],
                 'symptoms' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'e.g. cramps, headache, bloating, fatigue, mood_swings, tender_breasts, cravings, acne, nausea, insomnia.'],
                 'mood' => ['type' => 'integer', 'description' => 'Mood 1 (low) to 5 (great).'],
@@ -256,7 +256,7 @@ class CoachTools
             ], []);
         }
 
-        // --- Logging & data entry (write) — so the chat can run the whole platform ---
+        // --- Logging & data entry (write) -- so the chat can run the whole platform ---
         if (class_exists(\App\Models\Meal::class)) {
             $tools[] = $this->fn('log_meal', 'Log a meal with its macros when the user tells you what they ate. (For a photo of food they use the camera button.)', [
                 'name' => ['type' => 'string', 'description' => 'Short meal name.'],
@@ -278,10 +278,10 @@ class CoachTools
             $tools[] = $this->fn('log_recovery', 'Log resting HR / HRV / subjective recovery (stress, mood, energy, soreness) for a day. Use when the wearable is not connected and the user reports these.', [
                 'resting_hr' => ['type' => 'integer', 'description' => 'Resting heart rate (bpm).'],
                 'hrv_ms' => ['type' => 'integer', 'description' => 'HRV / RMSSD (ms).'],
-                'stress' => ['type' => 'integer', 'description' => 'Stress 1–10.'],
-                'mood' => ['type' => 'integer', 'description' => 'Mood 1–10.'],
-                'energy' => ['type' => 'integer', 'description' => 'Energy 1–10.'],
-                'soreness' => ['type' => 'integer', 'description' => 'Soreness 1–10.'],
+                'stress' => ['type' => 'integer', 'description' => 'Stress 1-10.'],
+                'mood' => ['type' => 'integer', 'description' => 'Mood 1-10.'],
+                'energy' => ['type' => 'integer', 'description' => 'Energy 1-10.'],
+                'soreness' => ['type' => 'integer', 'description' => 'Soreness 1-10.'],
                 'date' => ['type' => 'string', 'description' => 'Date; default today.'],
             ], []);
         }
@@ -290,7 +290,7 @@ class CoachTools
                 'hours' => ['type' => 'number', 'description' => 'Hours slept.'],
                 'bedtime' => ['type' => 'string', 'description' => 'HH:MM (optional).'],
                 'wake_time' => ['type' => 'string', 'description' => 'HH:MM (optional).'],
-                'quality' => ['type' => 'integer', 'description' => 'Quality 1–100 (optional).'],
+                'quality' => ['type' => 'integer', 'description' => 'Quality 1-100 (optional).'],
                 'date' => ['type' => 'string', 'description' => 'The morning date; default today.'],
             ], ['hours']);
         }
@@ -321,7 +321,7 @@ class CoachTools
             $cats = implode(', ', array_keys(\App\Models\CoachMemory::CATEGORIES));
             $tools[] = $this->fn('remember', "Save a durable PERSONAL fact (injury/limitation, equipment, schedule, food likes/dislikes/allergies, loved/hated exercises, what's worked, life context, commitments). Short + specific; importance 3 = critical. Not for one-off numbers.", [
                 'category' => ['type' => 'string', 'enum' => array_keys(\App\Models\CoachMemory::CATEGORIES), 'description' => "One of: {$cats}."],
-                'content' => ['type' => 'string', 'description' => 'The fact in a short sentence (e.g. "Tweaked left shoulder on heavy bench — avoid flat barbell press for now").'],
+                'content' => ['type' => 'string', 'description' => 'The fact in a short sentence (e.g. "Tweaked left shoulder on heavy bench -- avoid flat barbell press for now").'],
                 'importance' => ['type' => 'integer', 'description' => '2 normal, 3 critical (injuries, allergies). Default 2.'],
             ], ['category', 'content']);
             $tools[] = $this->fn('forget', 'Remove a stored memory that is no longer true, or that the user asks you to drop. Describe the memory to forget.', [
@@ -343,8 +343,8 @@ class CoachTools
         if (class_exists(\App\Models\TrainingProgram::class)) {
             $tools[] = $this->fn('generate_mesocycle', "Build + SAVE a periodized program (sets/reps/RIR, volume ramp + deload, FOCUS muscles prioritised) → `program` card. For 'make me a program / a plan / grow my X'.", [
                 'focus' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Muscles to prioritise / bring up, e.g. ["chest","side delts","arms"]. Omit to inherit the focus areas from their onboarding (their dream-physique goals); pass it to override.'],
-                'days_per_week' => ['type' => 'integer', 'description' => 'Training days per week, 2–6. Omit to use the value from onboarding (defaults to 4).'],
-                'weeks' => ['type' => 'integer', 'description' => 'Mesocycle length 4–8 weeks incl. a deload (default 5).'],
+                'days_per_week' => ['type' => 'integer', 'description' => 'Training days per week, 2-6. Omit to use the value from onboarding (defaults to 4).'],
+                'weeks' => ['type' => 'integer', 'description' => 'Mesocycle length 4-8 weeks incl. a deload (default 5).'],
                 'experience' => ['type' => 'string', 'enum' => ['beginner', 'intermediate', 'advanced'], 'description' => 'Training experience (sets the volume). Omit to use the value from onboarding.'],
             ], []);
             $tools[] = $this->fn('current_program', "The user's active training program + the current week's sessions, as a `program` card. Use for 'what's my program / what's my workout today / which week am I on'. Read a specific day's exercises from week_detail.", [], []);
@@ -370,28 +370,28 @@ class CoachTools
             $tools[] = $this->fn('biological_age', "Bio age vs real age → `bioage` card. For 'how old is my body / biological age / am I aging well'.", [], []);
         }
         if (class_exists(\App\Support\AthleteScore::class)) {
-            $tools[] = $this->fn('fitness_score', "Athlete Score 0–100 (VO₂max headline) → `fitness` card. For 'how fit am I / rate me as an athlete'.", [], []);
+            $tools[] = $this->fn('fitness_score', "Athlete Score 0-100 (VO₂max headline) → `fitness` card. For 'how fit am I / rate me as an athlete'.", [], []);
         }
 
         // --- Skill cards: ready-made designed components for the common questions ---
         if (class_exists(\App\Support\DailyFocus::class)) {
-            $tools[] = $this->fn('daily_checkin', "The 'how am I today' card: Recovery · Strain · Sleep plus the one thing to focus on. Returns a ready-made `checkin` card — lead any daily check-in / 'how am I doing today' answer with it.", [], []);
+            $tools[] = $this->fn('daily_checkin', "The 'how am I today' card: Recovery · Strain · Sleep plus the one thing to focus on. Returns a ready-made `checkin` card -- lead any daily check-in / 'how am I doing today' answer with it.", [], []);
         }
         if (class_exists(\App\Support\SleepCoach::class)) {
             $tools[] = $this->fn('sleep_detail', "Last night's sleep as a ready-made `sleep` card: hours, performance, stage breakdown, debt. Lead any 'how did I sleep' answer with it.", [], []);
         }
         if (class_exists(\App\Support\Strain::class)) {
-            $tools[] = $this->fn('strain_status', "Today's cardiovascular strain as a ready-made `strain` gauge card (0–21 with the recovery-aware target zone). Lead any strain question with it.", [], []);
+            $tools[] = $this->fn('strain_status', "Today's cardiovascular strain as a ready-made `strain` gauge card (0-21 with the recovery-aware target zone). Lead any strain question with it.", [], []);
         }
         if (class_exists(\App\Models\BiomarkerReading::class)) {
             $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
         }
         if (class_exists(\App\Models\Meal::class)) {
-            $tools[] = $this->fn('macros_today', "Today's macros — calories + protein / carbs / fat vs targets — as a ready-made `macros` card. Use whenever the user asks about their macros / calories / what's left to eat. (log_meal already shows this after logging.)", [], []);
+            $tools[] = $this->fn('macros_today', "Today's macros -- calories + protein / carbs / fat vs targets -- as a ready-made `macros` card. Use whenever the user asks about their macros / calories / what's left to eat. (log_meal already shows this after logging.)", [], []);
         }
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
-            $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
+            $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL -- embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
                 'description' => ['type' => 'string', 'description' => 'Optional goal description for the render.'],
             ], []);
         }
@@ -492,9 +492,9 @@ class CoachTools
             'device_status' => $this->deviceStatus(),
             'buzz_band' => $this->bandCommand('buzz', "Tell them their band will buzz on its next check-in (it polls about every minute) so they can find it."),
             'request_sync' => $this->bandCommand('sync', "Tell them you've asked the band to sync; it'll push fresh data on its next check-in, and you'll have the new numbers once it lands."),
-            'spot_reading' => $this->bandCommand('capture', "Tell them you're taking a live reading now — keep the band snug and sit still for about a minute; you'll share the HRV + heart-rate result the moment it lands as a `spot` card. If the band looks offline, say it'll run the moment it's back online."),
+            'spot_reading' => $this->bandCommand('capture', "Tell them you're taking a live reading now -- keep the band snug and sit still for about a minute; you'll share the HRV + heart-rate result the moment it lands as a `spot` card. If the band looks offline, say it'll run the moment it's back online."),
             'pair_band' => $this->pairBand(),
-            'load_tools' => ['ok' => true, 'active' => $this->loadGroup($args['area'] ?? null), '_show' => 'The requested tools are now available — call the one you need to fulfil the request. Do not mention loading them to the user.'],
+            'load_tools' => ['ok' => true, 'active' => $this->loadGroup($args['area'] ?? null), '_show' => 'The requested tools are now available -- call the one you need to fulfil the request. Do not mention loading them to the user.'],
             'search_knowledge' => $this->searchKnowledge((string) ($args['query'] ?? '')),
             'save_knowledge' => $this->saveKnowledge($args),
             'research_topic' => $this->researchTopic($args),
@@ -525,7 +525,7 @@ class CoachTools
             'forget' => $this->forget($args),
             'memory_book' => $this->memoryBook(),
             'set_reminders' => $this->setReminders($args),
-            'coaching_playbook' =>\App\Support\TrainingPlaybook::lookup((string) ($args['topic'] ?? '')) + ['_show' => 'Apply these principles in YOUR voice, tailored to this user\'s data, goal and level — don\'t just paste them. Be specific and prescriptive (sets, reps, RIR, calories, weeks). Honour the natural-only rail: never prescribe or advise PEDs/SARMs/diuretics/insulin.'],
+            'coaching_playbook' =>\App\Support\TrainingPlaybook::lookup((string) ($args['topic'] ?? '')) + ['_show' => 'Apply these principles in YOUR voice, tailored to this user\'s data, goal and level -- don\'t just paste them. Be specific and prescriptive (sets, reps, RIR, calories, weeks). Honour the natural-only rail: never prescribe or advise PEDs/SARMs/diuretics/insulin.'],
             'generate_mesocycle' => $this->generateMesocycle($args),
             'current_program' => $this->currentProgram(),
             'advance_program' => $this->advanceProgram(),
@@ -557,7 +557,7 @@ class CoachTools
         }
         $r = app(\App\Services\Web\WebSearch::class)->search($q, 5);
         if (! $r['answer'] && $r['results'] === []) {
-            return ['note' => "No live results for that — answer from what you know and flag it as approximate."];
+            return ['note' => "No live results for that -- answer from what you know and flag it as approximate."];
         }
 
         return [
@@ -579,7 +579,7 @@ class CoachTools
 
         $r = app(\App\Support\FoodLibrary::class)->lookup($food);
         if (! ($r['ok'] ?? false)) {
-            return ['note' => "Couldn't find reliable data for \"{$food}\" — estimate from similar foods and tell them it's approximate."];
+            return ['note' => "Couldn't find reliable data for \"{$food}\" -- estimate from similar foods and tell them it's approximate."];
         }
 
         return [
@@ -590,7 +590,7 @@ class CoachTools
             'carbs_g' => $r['carbs_g'],
             'fat_g' => $r['fat_g'],
             'source' => $r['cached'] ? 'food library (cached)' : $r['source'],
-            '_show' => "These macros are PER {$r['basis']}. SCALE them to the portion the user described (e.g. 8 oz ≈ 227 g → ×2.27), then use them to answer or call log_meal. Real data — do NOT invent or round wildly.",
+            '_show' => "These macros are PER {$r['basis']}. SCALE them to the portion the user described (e.g. 8 oz ≈ 227 g → ×2.27), then use them to answer or call log_meal. Real data -- do NOT invent or round wildly.",
         ];
     }
 
@@ -602,7 +602,7 @@ class CoachTools
         }
 
         $deviceId = 'titan_band_'.strtolower((string) \Illuminate\Support\Str::ulid());
-        $secret = bin2hex(random_bytes(32));   // shown once, in the bridge — never re-readable
+        $secret = bin2hex(random_bytes(32));   // shown once, in the bridge -- never re-readable
         $conn = $this->profile->wearableConnections()->create([
             'provider' => 'TITAN_BAND',
             'source' => 'titan_band',
@@ -628,10 +628,10 @@ class CoachTools
                     'Charge your band and keep it next to this phone.',
                     'Tap "Open the bridge" below.',
                     'In the bridge, tap Connect and pick your band over Bluetooth.',
-                    'Keep the bridge open — your vitals start streaming. I'll confirm once the first data lands.',
+                    'Keep the bridge open -- your vitals start streaming. I'll confirm once the first data lands.',
                 ],
             ],
-            '_show' => "Open with the `pairing` card and warmly walk them through it — tell them to tap "Open the bridge", that it takes ~a minute, and that you'll confirm once the band's first data arrives (they can ask \"did my band connect?\"). Don't recite the steps verbatim; just encourage and reassure.",
+            '_show' => "Open with the `pairing` card and warmly walk them through it -- tell them to tap "Open the bridge", that it takes ~a minute, and that you'll confirm once the band's first data arrives (they can ask \"did my band connect?\"). Don't recite the steps verbatim; just encourage and reassure.",
         ];
     }
 
@@ -643,7 +643,7 @@ class CoachTools
         }
         $conn = $this->profile->wearableConnections()->orderByDesc('last_sync_at')->orderByDesc('id')->first();
         if (! $conn) {
-            return ['note' => "No band is paired yet — connect one from Devices first, then I can control it."];
+            return ['note' => "No band is paired yet -- connect one from Devices first, then I can control it."];
         }
         $conn->queueCommand($type);
 
@@ -694,14 +694,14 @@ class CoachTools
         return [
             'ok' => true,
             'queued' => $topic,
-            '_show' => "Acknowledge in ONE or two sentences that you're heading off to research \"{$topic}\" and will report back shortly with a full writeup saved to their Brain — they'll get a notification. Do NOT attempt to answer the topic in depth now; the background job does that.",
+            '_show' => "Acknowledge in ONE or two sentences that you're heading off to research \"{$topic}\" and will report back shortly with a full writeup saved to their Brain -- they'll get a notification. Do NOT attempt to answer the topic in depth now; the background job does that.",
         ];
     }
 
     private function searchKnowledge(string $query): mixed
     {
         if (! class_exists(\App\Services\Brain\KnowledgeBase::class)) {
-            return 'The knowledge base is not available yet — nothing to search.';
+            return 'The knowledge base is not available yet -- nothing to search.';
         }
 
         try {
@@ -725,7 +725,7 @@ class CoachTools
     private function saveKnowledge(array $args): mixed
     {
         if (! class_exists(\App\Models\KnowledgePage::class)) {
-            return 'The brain is not available yet — cannot save notes.';
+            return 'The brain is not available yet -- cannot save notes.';
         }
 
         $title = trim((string) ($args['title'] ?? ''));
@@ -814,7 +814,7 @@ class CoachTools
 
         return [
             'top_foods' => $foods,
-            '_show' => 'These are their most-eaten foods (frequency + typical macros + when last eaten). Use them for meal planning, suggestions, and "what do I usually eat" — reference them, don\'t re-ask.',
+            '_show' => 'These are their most-eaten foods (frequency + typical macros + when last eaten). Use them for meal planning, suggestions, and "what do I usually eat" -- reference them, don\'t re-ask.',
         ];
     }
 
@@ -893,7 +893,7 @@ class CoachTools
                     'performed_at' => optional($w->performed_at)->toDateTimeString(),
                     'duration_min' => $w->duration_min,
                 ];
-                // Volume/top sets are derived from set rows — guard in case relations are absent.
+                // Volume/top sets are derived from set rows -- guard in case relations are absent.
                 try {
                     $row['total_volume_kg'] = round($w->totalVolume(), 1);
                     $row['working_sets'] = $w->workingSetCount();
@@ -939,7 +939,7 @@ class CoachTools
             'name' => $workout->name,
             'card' => $card,
             '_show' => 'Show this `workout` card (inside a ```titan-card fence) to confirm the session is live, then invite them to call out their sets.',
-            'message' => "Started \"{$workout->name}\" — call out your sets and I'll log them.",
+            'message' => "Started \"{$workout->name}\" -- call out your sets and I'll log them.",
         ];
     }
 
@@ -1000,7 +1000,7 @@ class CoachTools
             'reps' => $reps,
             'weight' => $shown,
             'weight_kg' => round($weightKg, 2),
-            'message' => "Logged {$exercise->name} — set {$setNumber}: {$reps} × {$shown}.",
+            'message' => "Logged {$exercise->name} -- set {$setNumber}: {$reps} × {$shown}.",
         ];
     }
 
@@ -1028,7 +1028,7 @@ class CoachTools
             'duration_min' => $minutes,
             'exercises' => $workout->exercises()->count(),
             'sets' => $totalSets,
-            'message' => "Nice work — {$totalSets} sets logged over {$minutes} min. Saved to your training log.",
+            'message' => "Nice work -- {$totalSets} sets logged over {$minutes} min. Saved to your training log.",
         ];
     }
 
@@ -1076,7 +1076,7 @@ class CoachTools
             'activity' => $sensing['label'],
             'wearable_primed' => true,
             'sampling' => $sensing,
-            'message' => "{$sensing['label']} started — I've primed your band for it ({$gps}, HR {$sensing['hr_hz']}Hz). It'll switch modes on its next sync. Have a good one.",
+            'message' => "{$sensing['label']} started -- I've primed your band for it ({$gps}, HR {$sensing['hr_hz']}Hz). It'll switch modes on its next sync. Have a good one.",
         ];
     }
 
@@ -1120,7 +1120,7 @@ class CoachTools
             'session_id' => $session->id,
             'wearable_primed' => false,
             'duration_min' => $minutes,
-            'message' => "{$label} done — ".implode(' · ', $bits).'. Band is back on everyday sensing; full stats land when it syncs.',
+            'message' => "{$label} done -- ".implode(' · ', $bits).'. Band is back on everyday sensing; full stats land when it syncs.',
         ];
     }
 
@@ -1133,7 +1133,7 @@ class CoachTools
         if (! empty($insight['note'])) {
             $s['recovery_insight'] = $insight['note'];
         }
-        $s['_guidance'] = 'Be warm, matter-of-fact and supportive — this is normal health. Lead with the phase + day and what it means for how she likely feels, her training and her nutrition (e.g. luteal: a small readiness dip is expected; menstrual: watch iron; follicular: often peak energy). For any fertility/pregnancy question, give the estimate AND the disclaimer — never present it as contraception or a diagnosis. If she has hormone bloodwork, remember those values only make sense against the cycle day they were drawn.';
+        $s['_guidance'] = 'Be warm, matter-of-fact and supportive -- this is normal health. Lead with the phase + day and what it means for how she likely feels, her training and her nutrition (e.g. luteal: a small readiness dip is expected; menstrual: watch iron; follicular: often peak energy). For any fertility/pregnancy question, give the estimate AND the disclaimer -- never present it as contraception or a diagnosis. If she has hormone bloodwork, remember those values only make sense against the cycle day they were drawn.';
 
         return $s;
     }
@@ -1148,7 +1148,7 @@ class CoachTools
 
             return $cycle
                 ? ['ok' => true, 'message' => 'Logged your period ending '.$date->toDateString().'.']
-                : ['error' => 'No cycle to end yet — log a period start first.'];
+                : ['error' => 'No cycle to end yet -- log a period start first.'];
         }
 
         \App\Support\Cycle::startPeriod($this->profile, $date, 'coach');
@@ -1210,12 +1210,12 @@ class CoachTools
         return [
             'ok' => true, 'name' => $meal->name, 'calories' => $meal->calories, 'protein_g' => $meal->protein_g,
             'card' => $this->macrosCard(),
-            '_show' => "Logged it — show the updated `macros` card (inside a ```titan-card fence), then one short line on what's left to hit their targets.",
-            'message' => "Logged {$meal->name} — {$meal->calories} kcal, {$meal->protein_g}g protein.",
+            '_show' => "Logged it -- show the updated `macros` card (inside a ```titan-card fence), then one short line on what's left to hit their targets.",
+            'message' => "Logged {$meal->name} -- {$meal->calories} kcal, {$meal->protein_g}g protein.",
         ];
     }
 
-    /** Today's macros card (calories + protein/carbs/fat vs targets) — shared with the meal scan. */
+    /** Today's macros card (calories + protein/carbs/fat vs targets) -- shared with the meal scan. */
     private function macrosCard(): array
     {
         return \App\Support\Macros::today($this->profile);
@@ -1331,10 +1331,10 @@ class CoachTools
             (int) ($a['importance'] ?? 2),
         );
         if (! $m) {
-            return ['ok' => false, 'note' => 'Nothing to remember — content was empty.'];
+            return ['ok' => false, 'note' => 'Nothing to remember -- content was empty.'];
         }
 
-        return ['ok' => true, 'remembered' => $m->content, 'category' => $m->label(), '_show' => 'Acknowledge briefly and naturally that you\'ll remember it — no card needed. Then carry on.'];
+        return ['ok' => true, 'remembered' => $m->content, 'category' => $m->label(), '_show' => 'Acknowledge briefly and naturally that you\'ll remember it -- no card needed. Then carry on.'];
     }
 
     private function forget(array $a): mixed
@@ -1354,7 +1354,7 @@ class CoachTools
         }
         $card = \App\Support\CoachMemoryBook::card($this->profile);
         if ($card['count'] === 0) {
-            return ['note' => "I don't have anything saved about you yet — as we talk I'll remember your injuries, preferences, what works, and your goals. Tell me anything you want me to hold onto."];
+            return ['note' => "I don't have anything saved about you yet -- as we talk I'll remember your injuries, preferences, what works, and your goals. Tell me anything you want me to hold onto."];
         }
 
         return ['card' => $card, '_show' => 'Open with the `memory` card (emit it inside a ```titan-card fence), then one warm line inviting them to correct anything or add more.'];
@@ -1397,7 +1397,7 @@ class CoachTools
         return [
             'items' => $items,
             'count' => count($items),
-            'note' => $items === [] ? 'Empty — ask what they have, then update_pantry.' : 'Only suggest meals they can make from these.',
+            'note' => $items === [] ? 'Empty -- ask what they have, then update_pantry.' : 'Only suggest meals they can make from these.',
         ];
     }
 
@@ -1434,7 +1434,7 @@ class CoachTools
         };
 
         if (count($points) < 2) {
-            return ['note' => "Not enough {$label} data yet to chart — needs at least 2 points. Keep logging and it'll fill in."];
+            return ['note' => "Not enough {$label} data yet to chart -- needs at least 2 points. Keep logging and it'll fill in."];
         }
 
         return [
@@ -1478,13 +1478,13 @@ class CoachTools
             'focus' => ['headline' => $focus['headline'] ?? null, 'detail' => $focus['detail'] ?? null],
         ];
 
-        // For women tracking their cycle, the phase belongs on the daily check-in — it shapes the day.
+        // For women tracking their cycle, the phase belongs on the daily check-in -- it shapes the day.
         $cycleLine = rescue(fn () => \App\Support\Cycle::shortLine($this->profile), null, false);
         if ($cycleLine) {
             $card['cycle'] = $cycleLine;
         }
 
-        return ['card' => $card, '_show' => 'Open your reply with this `checkin` card (emit it inside a ```titan-card fence), then one short line on the single thing to do today.'.($cycleLine ? ' Her cycle phase is on the card — factor it into that one thing.' : '')];
+        return ['card' => $card, '_show' => 'Open your reply with this `checkin` card (emit it inside a ```titan-card fence), then one short line on the single thing to do today.'.($cycleLine ? ' Her cycle phase is on the card -- factor it into that one thing.' : '')];
     }
 
     private function sleepDetail(): mixed
@@ -1565,20 +1565,20 @@ class CoachTools
             'type' => 'markers',
             'title' => 'Latest bloodwork',
             'items' => $items,
-            'caption' => $flagged === 0 ? 'All in range.' : $flagged.' marker'.($flagged === 1 ? '' : 's').' outside range — not a diagnosis; flag with your doctor.',
+            'caption' => $flagged === 0 ? 'All in range.' : $flagged.' marker'.($flagged === 1 ? '' : 's').' outside range -- not a diagnosis; flag with your doctor.',
         ];
 
         return ['card' => $card, '_show' => 'Open with this `markers` card inside a ```titan-card fence, then briefly explain any flagged marker. Never diagnose; suggest a doctor for anything concerning.'];
     }
 
-    // ---- Mesocycle generator — a real, followable program --------------------
+    // ---- Mesocycle generator -- a real, followable program --------------------
 
     private function generateMesocycle(array $args): mixed
     {
         if (! class_exists(\App\Models\TrainingProgram::class)) {
             return ['error' => 'The program builder is not available.'];
         }
-        // Fall back to the onboarding intake when the coach doesn't pass an explicit value —
+        // Fall back to the onboarding intake when the coach doesn't pass an explicit value --
         // the user already told us their experience, training days and what they want to bring up.
         $intake = $this->profile->settings['intake'] ?? [];
 
@@ -1624,7 +1624,7 @@ class CoachTools
             'name' => $program->name,
             'card' => $this->programCard($program),
             'week1_detail' => $this->weekDetail($program->currentWeek()),
-            '_show' => 'Lead with the `program` card. Then explain in your voice: which muscles you prioritised and WHY (more volume, trained first/fresh, more frequency, stretch emphasis — that\'s how a lagging muscle catches up), how the volume ramps to the peak week then deloads, and the RIR targets. Offer to walk them through Day 1 right now. When they train, log sets with log_set so we track progress against the plan.',
+            '_show' => 'Lead with the `program` card. Then explain in your voice: which muscles you prioritised and WHY (more volume, trained first/fresh, more frequency, stretch emphasis -- that\'s how a lagging muscle catches up), how the volume ramps to the peak week then deloads, and the RIR targets. Offer to walk them through Day 1 right now. When they train, log sets with log_set so we track progress against the plan.',
         ];
     }
 
@@ -1645,7 +1645,7 @@ class CoachTools
             'phase' => $program->currentWeek()['phase'] ?? '',
             'card' => $this->programCard($program),
             'week_detail' => $this->weekDetail($program->currentWeek()),
-            '_show' => 'Lead with the `program` card. If they ask for a specific day ("what\'s my workout today / chest day"), read that day\'s exercises from week_detail as a clean list — exercise · sets×reps @RIR — and tell them to call out sets so you log them.',
+            '_show' => 'Lead with the `program` card. If they ask for a specific day ("what\'s my workout today / chest day"), read that day\'s exercises from week_detail as a clean list -- exercise · sets×reps @RIR -- and tell them to call out sets so you log them.',
         ];
     }
 
@@ -1658,7 +1658,7 @@ class CoachTools
             return ['error' => 'No active program to advance.'];
         }
         if ($program->current_week >= $program->weeks) {
-            return ['ok' => true, 'done' => true, 'message' => "That was the final (deload) week — the block is complete. Want me to build the next mesocycle? We can push the focus muscles further or rotate the emphasis."];
+            return ['ok' => true, 'done' => true, 'message' => "That was the final (deload) week -- the block is complete. Want me to build the next mesocycle? We can push the focus muscles further or rotate the emphasis."];
         }
         $program->update(['current_week' => $program->current_week + 1]);
         $week = $program->currentWeek();
@@ -1669,7 +1669,7 @@ class CoachTools
             'phase' => $week['phase'] ?? '',
             'card' => $this->programCard($program),
             'week_detail' => $this->weekDetail($week),
-            '_show' => 'Lead with the `program` card for the new week, then say what changed (more volume / tighter RIR, or — if deload — back off and recover). Read out the first session if they want it.',
+            '_show' => 'Lead with the `program` card for the new week, then say what changed (more volume / tighter RIR, or -- if deload -- back off and recover). Read out the first session if they want it.',
         ];
     }
 
@@ -1741,7 +1741,7 @@ class CoachTools
         foreach (($week['days'] ?? []) as $d) {
             $lines = [];
             foreach ($d['exercises'] as $e) {
-                $lines[] = "{$e['name']} — {$e['sets']}×{$e['reps']} @{$e['rir']}RIR".(isset($e['note']) ? " ({$e['note']})" : '');
+                $lines[] = "{$e['name']} -- {$e['sets']}×{$e['reps']} @{$e['rir']}RIR".(isset($e['note']) ? " ({$e['note']})" : '');
             }
             $out[$d['name']] = $lines;
         }
@@ -1756,7 +1756,7 @@ class CoachTools
         }
         $a = \App\Support\PhysiqueProgress::assess($this->profile);
         if (! $a) {
-            return ['note' => "You haven't set a dream physique yet — that's the whole point of Titan. Upload a current photo with the camera button and tell me your goal, and I'll render your realistic future self and track every week against it."];
+            return ['note' => "You haven't set a dream physique yet -- that's the whole point of Titan. Upload a current photo with the camera button and tell me your goal, and I'll render your realistic future self and track every week against it."];
         }
 
         return [
@@ -1772,12 +1772,12 @@ class CoachTools
         }
         $r = \App\Support\WeeklyReview::compile($this->profile);
         if (! $r) {
-            return ['note' => "Not enough logged this week to review yet — get a few sessions and meals in and I'll give you a real readout: what moved, what didn't, and what we change."];
+            return ['note' => "Not enough logged this week to review yet -- get a few sessions and meals in and I'll give you a real readout: what moved, what didn't, and what we change."];
         }
 
         return [
             'card' => ['type' => 'review'] + $r,
-            '_show' => 'Open with this `review` card (emit the card object inside a ```titan-card fence), then tell the progress STORY in your own voice and coach tone: lead with their week score and momentum (the score, whether it moved vs last week, and any streak), then the biggest win, the main thing to watch, and exactly what changes next week (use the `next` recommendation and tie it to their program/goal). Honest and motivating — this is the moment that makes the week feel like it went somewhere.',
+            '_show' => 'Open with this `review` card (emit the card object inside a ```titan-card fence), then tell the progress STORY in your own voice and coach tone: lead with their week score and momentum (the score, whether it moved vs last week, and any streak), then the biggest win, the main thing to watch, and exactly what changes next week (use the `next` recommendation and tie it to their program/goal). Honest and motivating -- this is the moment that makes the week feel like it went somewhere.',
         ];
     }
 
@@ -1788,7 +1788,7 @@ class CoachTools
         }
         $a = \App\Support\AthleteScore::assess($this->profile);
         if (! $a) {
-            return ['note' => "I can't score your fitness yet — it needs at least a VO₂max (from a wearable cardio session) or a couple of fitness signals (recovery, training, steps). Connect the band or log a run/lift and I'll have it."];
+            return ['note' => "I can't score your fitness yet -- it needs at least a VO₂max (from a wearable cardio session) or a couple of fitness signals (recovery, training, steps). Connect the band or log a run/lift and I'll have it."];
         }
 
         $card = [
@@ -1812,7 +1812,7 @@ class CoachTools
         ];
     }
 
-    // ---- Biological age — the Whoop-style "skill" card ------------------------
+    // ---- Biological age -- the Whoop-style "skill" card ------------------------
 
     private function biologicalAge(): mixed
     {
@@ -1821,7 +1821,7 @@ class CoachTools
         }
         $b = \App\Support\BiologicalAge::assess($this->profile);
         if (! $b) {
-            return ['note' => "I can't compute your biological age yet — it needs an anchor: either bloodwork (the PhenoAge clock — snap a labs photo), a VO₂max estimate (from a wearable cardio session), or a couple of weeks of wearable data. Add one of those and I'll have it."];
+            return ['note' => "I can't compute your biological age yet -- it needs an anchor: either bloodwork (the PhenoAge clock -- snap a labs photo), a VO₂max estimate (from a wearable cardio session), or a couple of weeks of wearable data. Add one of those and I'll have it."];
         }
 
         $chrono = $b['chronological_age'];
@@ -1869,7 +1869,7 @@ class CoachTools
         ];
     }
 
-    // ---- Dream physique — the marquee, rendered right in the chat --------------
+    // ---- Dream physique -- the marquee, rendered right in the chat --------------
 
     private function renderDreamPhysique(array $a): mixed
     {
@@ -1890,7 +1890,7 @@ class CoachTools
         $prompt = \App\Support\PhysiquePrompt::build($sex, $description, 'front');
 
         try {
-            // Text-only — Gemini IMAGE_SAFETY blocks person-photo body-transformation.
+            // Text-only -- Gemini IMAGE_SAFETY blocks person-photo body-transformation.
             $generated = $nano->generateToDisk($prompt, 'physique/goal');
         } catch (\Throwable $e) {
             return ['error' => 'Could not render the image right now: '.$e->getMessage()];
@@ -1910,13 +1910,13 @@ class CoachTools
             'description' => $description,
             'future_self_image_url' => $goal->goalUrl(),
             'now_image_url' => $photo->photoUrl(),
-            '_show' => 'Embed future_self_image_url inline as markdown ![your future self]('.($goal->goalUrl() ?? 'url').') so they SEE it. Celebrate it warmly and tell them this is where consistency takes them — it advances toward this as they stay on track.',
+            '_show' => 'Embed future_self_image_url inline as markdown ![your future self]('.($goal->goalUrl() ?? 'url').') so they SEE it. Celebrate it warmly and tell them this is where consistency takes them -- it advances toward this as they stay on track.',
             'message' => 'Rendered your dream physique.',
         ];
     }
 
     /**
-     * Everything for one day, in one shot — the "how was my day / my vitals today" tool.
+     * Everything for one day, in one shot -- the "how was my day / my vitals today" tool.
      * Pulls raw wearable vitals plus the computed pillars (readiness, sleep, strain, activity,
      * nutrition, workouts, focus). Every block is independently guarded so a missing model or a
      * blank day degrades to a note instead of failing the whole summary.
@@ -1955,7 +1955,7 @@ class CoachTools
                         'mood_1_10' => $rec->getAttribute('mood'),
                         'energy_1_10' => $rec->getAttribute('energy'),
                     ])->filter(fn ($v) => $v !== null)->all();
-                    // How much to trust these vitals — sealed night vs spot window vs manual, and
+                    // How much to trust these vitals -- sealed night vs spot window vs manual, and
                     // how deep the baseline is. The coach should phrase numbers accordingly.
                     if (($rec->getAttribute('hrv_ms') || $rec->getAttribute('resting_hr')) && class_exists(\App\Support\RecoveryConfidence::class)) {
                         $c = \App\Support\RecoveryConfidence::assess($this->profile, $rec);
@@ -1970,7 +1970,7 @@ class CoachTools
             }
             if (! isset($out['vitals'])) {
                 $out['vitals'] = $isToday
-                    ? 'No wearable vitals captured yet today — sync the band or log how you feel.'
+                    ? 'No wearable vitals captured yet today -- sync the band or log how you feel.'
                     : "No wearable vitals recorded for {$out['date']}.";
             }
         }
@@ -2174,7 +2174,7 @@ class CoachTools
             }
         }
 
-        $out['_guidance'] = 'Give a warm, brief daily check-in. Lead with the headline vitals and readiness, call out anything notably good or off, and end with the one thing to focus on. Use a small markdown table for the vitals when there are several. Only mention sections that have data. If a `cycle` section is present, work her phase into the read (what it means for energy/training/nutrition today) — it is part of her everyday life, not an afterthought.';
+        $out['_guidance'] = 'Give a warm, brief daily check-in. Lead with the headline vitals and readiness, call out anything notably good or off, and end with the one thing to focus on. Use a small markdown table for the vitals when there are several. Only mention sections that have data. If a `cycle` section is present, work her phase into the read (what it means for energy/training/nutrition today) -- it is part of her everyday life, not an afterthought.';
 
         return $out;
     }
@@ -2235,7 +2235,7 @@ class CoachTools
                     $active = (clone $q)->where('is_active', true)->latest('id')->first();
                     $goal = $active ?: $goal;
                 } catch (\Throwable) {
-                    // no is_active column — keep latest
+                    // no is_active column -- keep latest
                 }
                 if ($goal) {
                     $out['goal'] = collect($goal->getAttributes())
@@ -2283,7 +2283,7 @@ class CoachTools
                 $out['_show'] = 'Embed these image URLs as markdown ![](url) so the user sees them inline.';
             }
         } catch (\Throwable) {
-            // image URLs are a bonus — never fail the tool on them
+            // image URLs are a bonus -- never fail the tool on them
         }
 
         return $out === [] ? 'No physique goal or analysis yet.' : $out;

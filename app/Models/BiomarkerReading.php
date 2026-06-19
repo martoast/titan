@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * One bloodwork value at one point in time. The `flag` is derived from the
- * App\Support\Biomarkers catalog — set it via flagFor() / the booted hook so it
+ * App\Support\Biomarkers catalog -- set it via flagFor() / the booted hook so it
  * always stays in sync with the catalog ranges.
  */
 class BiomarkerReading extends Model

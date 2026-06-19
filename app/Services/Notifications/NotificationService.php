@@ -8,7 +8,7 @@ use App\Models\PushSubscription;
 
 /**
  * The single entry point for telling a profile something. One call:
- *   1. persists an in-app Notification (always — drives the header bell), and
+ *   1. persists an in-app Notification (always -- drives the header bell), and
  *   2. fires a Web Push to all that profile's browser subscriptions (best-effort).
  *
  * Push delivery is wrapped in WebPushService and can never break the caller, so

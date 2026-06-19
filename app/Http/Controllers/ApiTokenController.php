@@ -6,7 +6,7 @@ use App\Models\ApiToken;
 use Illuminate\Http\Request;
 
 /**
- * In-account management of personal API tokens — the credential a user generates and hands to an
+ * In-account management of personal API tokens -- the credential a user generates and hands to an
  * external agent (Claude via MCP) so it can run their Titan account. The plaintext is shown once.
  */
 class ApiTokenController extends Controller
@@ -35,7 +35,7 @@ class ApiTokenController extends Controller
 
         return redirect()->route('connect.index')
             ->with('plain_token', $plain)
-            ->with('status', "Token \"{$token->name}\" created — copy it now, it won't be shown again.");
+            ->with('status', "Token \"{$token->name}\" created -- copy it now, it won't be shown again.");
     }
 
     public function destroy(Request $request, ApiToken $token)

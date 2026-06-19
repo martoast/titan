@@ -10,7 +10,7 @@ use Minishlink\WebPush\WebPush;
 /**
  * Thin wrapper around minishlink/web-push. Signs an encrypted Web Push with the app's
  * VAPID keypair (config('services.webpush')) and delivers a `{title, body, url}` JSON
- * payload to one profile's browser endpoints — that JSON is what public/sw.js's `push`
+ * payload to one profile's browser endpoints -- that JSON is what public/sw.js's `push`
  * listener reads.
  *
  * Resilience contract:
@@ -73,7 +73,7 @@ class WebPushService
                 $model = $byHash[PushSubscription::hashFor($endpoint)] ?? null;
 
                 if ($report->isSubscriptionExpired() && $model) {
-                    // 404/410 — the browser unsubscribed or the endpoint died. Prune it.
+                    // 404/410 -- the browser unsubscribed or the endpoint died. Prune it.
                     rescue(fn () => $model->delete(), report: false);
 
                     continue;

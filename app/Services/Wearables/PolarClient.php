@@ -12,14 +12,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Thin client for Polar AccessLink — the free, official Polar wearable API
+ * Thin client for Polar AccessLink -- the free, official Polar wearable API
  * (OAuth2 Authorization Code + webhooks). A real second data source: a user with any
  * recent Polar watch (Vantage, Grit X, Ignite, …) authorizes Titan and we pull their
  * exercises, sleep, and Nightly Recharge straight into the same canonical tables.
  *
  * This is a scaffold: the OAuth handshake + user registration are wired; the data-pull
  * methods map Polar's response shapes to Titan rows but are stubbed where they need a
- * persisted access token (we don't yet have a column for it — see registerUser()).
+ * persisted access token (we don't yet have a column for it -- see registerUser()).
  * Everything degrades gracefully when credentials are absent (configured() === false),
  * so the app runs fine without a Polar dev account.
  *

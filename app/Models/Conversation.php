@@ -27,7 +27,7 @@ class Conversation extends Model
         return $this->hasMany(ChatMessage::class)->orderBy('id');
     }
 
-    /** A short label for the sidebar — its set title, else its first user message. */
+    /** A short label for the sidebar -- its set title, else its first user message. */
     public function displayTitle(): string
     {
         if (filled($this->title)) {

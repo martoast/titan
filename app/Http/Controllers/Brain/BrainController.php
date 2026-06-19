@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
- * The Brain — a per-profile long-term-memory markdown wiki the AI coach reads and
+ * The Brain -- a per-profile long-term-memory markdown wiki the AI coach reads and
  * writes. Pages, semantic search, brain-dump ingestion, and document upload.
  */
 class BrainController extends Controller
@@ -155,7 +155,7 @@ class BrainController extends Controller
         $dump = trim((string) $request->input('dump', ''));
 
         if ($dump === '') {
-            return back()->with('status', 'Nothing to organize — the note was empty.');
+            return back()->with('status', 'Nothing to organize -- the note was empty.');
         }
 
         try {
@@ -227,7 +227,7 @@ class BrainController extends Controller
         try {
             $this->search->embedPage($page);
         } catch (AiException) {
-            // Best-effort — page is saved; embedding will refresh on next search.
+            // Best-effort -- page is saved; embedding will refresh on next search.
         }
     }
 }

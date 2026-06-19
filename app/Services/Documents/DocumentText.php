@@ -8,7 +8,7 @@ use ZipArchive;
 /**
  * Extracts plain text from an uploaded document so it can be ingested into the
  * Brain. PDFs go through PdfService (smalot/pdfparser); Office files (.docx/.pptx)
- * are OOXML zips we read directly — no heavy office library. Plain text formats are
+ * are OOXML zips we read directly -- no heavy office library. Plain text formats are
  * read as-is. Anything we can't read returns an empty string.
  */
 class DocumentText
@@ -67,7 +67,7 @@ class DocumentText
         if ($zip->open($absPath) !== true) {
             return '';
         }
-        // Slides are ppt/slides/slide1.xml, slide2.xml, … — keep them in order.
+        // Slides are ppt/slides/slide1.xml, slide2.xml, … -- keep them in order.
         $slides = [];
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);

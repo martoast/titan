@@ -47,7 +47,7 @@ class BrowseSeed extends Command
         for ($i = 1; $i <= $pairs; $i++) {
             $t = $topics[($i - 1) % count($topics)];
             $convo->messages()->create(['role' => 'user', 'content' => "Q{$i}: {$t}?"]);
-            $convo->messages()->create(['role' => 'assistant', 'content' => "A{$i}: Here's detailed coaching on **{$t}** — sets, reps, RIR and the rationale, message number {$i} so you can tell the pages apart."]);
+            $convo->messages()->create(['role' => 'assistant', 'content' => "A{$i}: Here's detailed coaching on **{$t}** -- sets, reps, RIR and the rationale, message number {$i} so you can tell the pages apart."]);
         }
 
         $this->line((string) $convo->id);   // stdout = the conversation id for the harness

@@ -46,7 +46,7 @@ class Workout extends Model
         return $this->exercises->flatMap->sets->where('is_warmup', false)->count();
     }
 
-    /** The heaviest working set per exercise — the session's "top sets". */
+    /** The heaviest working set per exercise -- the session's "top sets". */
     public function topSets(): \Illuminate\Support\Collection
     {
         return $this->exercises->map(function ($we) {

@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 
 /**
  * Headlessly simulate a full night with the Titan virtual band and stream it into the
- * REAL ingestion pipeline — exactly like the hardware would, HMAC-signed.
+ * REAL ingestion pipeline -- exactly like the hardware would, HMAC-signed.
  *
  *   php artisan simulator:night --profile=1
  *   php artisan simulator:night --profile=1 --speed=0     # generate, don't sleep between batches
@@ -52,7 +52,7 @@ class SimulateNight extends Command
         [$device, $secret] = $this->resolveDevice($profile);
         $tz = $device->effectiveTimezone();
 
-        $this->line("<info>Titan virtual band</info> — profile #{$profile->id}, device <comment>{$device->device_id}</comment>, seed {$sim->seed()}");
+        $this->line("<info>Titan virtual band</info> -- profile #{$profile->id}, device <comment>{$device->device_id}</comment>, seed {$sim->seed()}");
         $this->newLine();
 
         // Anchor the night to last night: bedtime ~23:30, waking after `$minutes`.
@@ -115,7 +115,7 @@ class SimulateNight extends Command
         ]);
 
         if ($this->option('dry')) {
-            $this->warn('Dry run — not POSTing to the ingestion API.');
+            $this->warn('Dry run -- not POSTing to the ingestion API.');
 
             return self::SUCCESS;
         }
@@ -162,7 +162,7 @@ class SimulateNight extends Command
             $this->info('Night streamed to Titan. Check Recovery / Sleep / Coach to see the worn device reflected.');
         } else {
             $this->newLine();
-            $this->warn('Ingestion API unreachable — the night was generated but not stored. (The ingestion build may not be merged yet.)');
+            $this->warn('Ingestion API unreachable -- the night was generated but not stored. (The ingestion build may not be merged yet.)');
         }
 
         return self::SUCCESS;
@@ -170,7 +170,7 @@ class SimulateNight extends Command
 
     /**
      * A realistic 24 h activity profile (counts per hour, midnight→midnight): near-zero overnight,
-     * a morning and an evening peak, moderate daytime — gives a strong day/night contrast (high RA).
+     * a morning and an evening peak, moderate daytime -- gives a strong day/night contrast (high RA).
      *
      * @return array<int,int>
      */
@@ -198,7 +198,7 @@ class SimulateNight extends Command
      * Find-or-create this profile's simulator band connection. Mirrors the documented
      * pairing model: a `device_id` + a 32-byte secret whose sha256 is stored. We keep
      * the plaintext secret cached locally (config/runtime) only for the simulator so it
-     * can sign — the real hardware shows it once. For a freshly minted device we know
+     * can sign -- the real hardware shows it once. For a freshly minted device we know
      * the secret; for an existing one we re-mint so signing still works headlessly.
      *
      * @return array{0: WearableConnection, 1: string}

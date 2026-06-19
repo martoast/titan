@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 /**
- * Proactive coach — MORNING briefing.
+ * Proactive coach -- MORNING briefing.
  *
  *   php artisan coach:morning-briefing                 # every opted-in profile
  *   php artisan coach:morning-briefing --profile=1     # just one
@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Mail;
  * is skipped only if it's explicitly false. AI failures and mail failures are caught
  * per-profile so one bad row never aborts the run.
  *
- * The orchestrator wires the schedule — see scheduleLines() for the lines to add to
+ * The orchestrator wires the schedule -- see scheduleLines() for the lines to add to
  * routes/console.php (this command does NOT edit that file itself).
  */
 class MorningBriefing extends Command
@@ -50,7 +50,7 @@ class MorningBriefing extends Command
 
         foreach ($profiles as $profile) {
             if (! self::briefingsEnabled($profile)) {
-                $this->line("  · profile #{$profile->id} — briefings off, skipped");
+                $this->line("  · profile #{$profile->id} -- briefings off, skipped");
                 $skipped++;
 
                 continue;
@@ -61,12 +61,12 @@ class MorningBriefing extends Command
                 $generated++;
             } catch (AiException $e) {
                 Log::warning('[coach] morning briefing AI failure', ['profile' => $profile->id, 'error' => $e->getMessage()]);
-                $this->line("  <fg=red>✗</> profile #{$profile->id} — coach offline ({$e->getMessage()})");
+                $this->line("  <fg=red>✗</> profile #{$profile->id} -- coach offline ({$e->getMessage()})");
 
                 continue;
             }
 
-            $this->line("  <info>✓</info> profile #{$profile->id} — ".\Illuminate\Support\Str::limit($message, 70));
+            $this->line("  <info>✓</info> profile #{$profile->id} -- ".\Illuminate\Support\Str::limit($message, 70));
 
             // Surface the briefing as an in-app notification + Web Push (best-effort).
             $notifications->notify(
@@ -97,7 +97,7 @@ class MorningBriefing extends Command
     {
         $email = $profile->user?->email;
         if (! $email) {
-            $this->line("  <fg=yellow>…</> profile #{$profile->id} — no email on file, not sent");
+            $this->line("  <fg=yellow>…</> profile #{$profile->id} -- no email on file, not sent");
 
             return false;
         }
@@ -108,7 +108,7 @@ class MorningBriefing extends Command
             return true;
         } catch (\Throwable $e) {
             Log::warning('[coach] morning briefing email failure', ['profile' => $profile->id, 'error' => $e->getMessage()]);
-            $this->line("  <fg=yellow>…</> profile #{$profile->id} — email not delivered ({$e->getMessage()})");
+            $this->line("  <fg=yellow>…</> profile #{$profile->id} -- email not delivered ({$e->getMessage()})");
 
             return false;
         }

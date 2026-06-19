@@ -9,7 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * The assistant/MCP API. Authenticated by a personal API token (Bearer) — see
+ * The assistant/MCP API. Authenticated by a personal API token (Bearer) -- see
  * {@see \App\Http\Middleware\AuthenticateApiToken}. Exposes the whole Titan account through one
  * generic tool dispatcher so an external agent can read every metric and write logs without the web UI.
  */
@@ -26,7 +26,7 @@ class AssistantController extends Controller
         ]);
     }
 
-    /** The tool catalog — the MCP server turns these into MCP tools. */
+    /** The tool catalog -- the MCP server turns these into MCP tools. */
     public function tools(Request $request): JsonResponse
     {
         return response()->json(['tools' => (new AssistantTools($request->user()))->schemas()]);

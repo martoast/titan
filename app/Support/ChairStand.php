@@ -6,12 +6,12 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * The 30-second chair-stand test (30CST) — a validated lower-body-strength & frailty screen, and the
+ * The 30-second chair-stand test (30CST) -- a validated lower-body-strength & frailty screen, and the
  * honest way a wearable can assess function (gait SPEED from the wrist isn't reliable; a GUIDED test is).
  * Protocol: arms crossed, stand fully and sit back down as many times as you can in 30 seconds.
  *
  * Norms: Rikli & Jones 1999 (Senior Fitness Test). We score reps against the age/sex below-average cut
- * (under it → flag for lower-body work). A wellness screen, never a clinical frailty diagnosis — gait
+ * (under it → flag for lower-body work). A wellness screen, never a clinical frailty diagnosis -- gait
  * speed itself is the "sixth vital sign" (Studenski 2011, mortality HR 0.88 per +0.1 m/s).
  *
  * Mirrors biosignal/app/core/gait.py::chair_stand_score so the manual-entry UI and the wearable
@@ -40,7 +40,7 @@ class ChairStand
         $good = $age >= 60 ? (int) round($below * 1.5) : max((int) round($below * 1.6), 18);
 
         [$band, $label] = match (true) {
-            $reps < $below => ['below', 'Below average for your age — worth building lower-body strength'],
+            $reps < $below => ['below', 'Below average for your age -- worth building lower-body strength'],
             $reps >= $good => ['good', 'Strong lower-body function for your age'],
             default => ['average', 'Average lower-body function for your age'],
         };

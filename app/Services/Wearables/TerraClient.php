@@ -76,7 +76,7 @@ class TerraClient
     {
         $secret = (string) config('services.terra.signing_secret');
         if ($secret === '') {
-            // No secret set (e.g. local dev / simulated payloads) — don't hard-fail.
+            // No secret set (e.g. local dev / simulated payloads) -- don't hard-fail.
             return ! app()->environment('production');
         }
         if (! $signatureHeader) {
@@ -101,8 +101,8 @@ class TerraClient
 
     /**
      * Verify a Titan device signature against an explicit per-device secret. Identical
-     * HMAC scheme to verifySignature() — header `X-Titan-Signature: t=<ts>,v1=<hmac>`
-     * where hmac = HMAC-SHA256("<ts>.<raw body>", secret) — but used for the open-source
+     * HMAC scheme to verifySignature() -- header `X-Titan-Signature: t=<ts>,v1=<hmac>`
+     * where hmac = HMAC-SHA256("<ts>.<raw body>", secret) -- but used for the open-source
      * band / device ingestion path where each device has its own 32-byte secret. Also
      * enforces a replay window: rejects when |now − ts| exceeds $toleranceSeconds.
      *

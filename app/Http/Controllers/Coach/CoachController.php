@@ -19,7 +19,7 @@ use Illuminate\View\View;
  * The AI coach chat. Renders the chat page (continuing the latest conversation),
  * starts new conversations, and handles message sends. The send endpoint persists the
  * user message, runs CoachService, stores + returns the assistant reply. If the AI is
- * offline it degrades gracefully — the page still renders, and a send returns a
+ * offline it degrades gracefully -- the page still renders, and a send returns a
  * friendly "coach is offline" message instead of crashing.
  */
 class CoachController extends Controller
@@ -33,7 +33,7 @@ class CoachController extends Controller
         protected ScanService $scans,
     ) {}
 
-    /** The chat page — opens the requested conversation, else the most recent, else a fresh one. */
+    /** The chat page -- opens the requested conversation, else the most recent, else a fresh one. */
     public function index(Request $request): View
     {
         $profile = $request->user()->ensureProfile();
@@ -42,7 +42,7 @@ class CoachController extends Controller
         if ($request->filled('c')) {
             $conversation = $profile->conversations()->whereKey($request->integer('c'))->first();
         }
-        // Default to the latest CHAT thread, not the "Daily Briefings" thread — the
+        // Default to the latest CHAT thread, not the "Daily Briefings" thread -- the
         // briefing already has its own card up top, so chats shouldn't land in it.
         $conversation ??= $profile->conversations()
             ->where(fn ($q) => $q->whereNull('title')->orWhere('title', '!=', 'Daily Briefings'))
@@ -53,7 +53,7 @@ class CoachController extends Controller
             ->where(fn ($q) => $q->whereNull('title')->orWhere('title', '!=', 'Daily Briefings'))
             ->latest('id')->get();
 
-        // Only the most recent page of messages renders up front — older ones load as you scroll up.
+        // Only the most recent page of messages renders up front -- older ones load as you scroll up.
         $page = $conversation ? $this->messagePage($conversation) : ['messages' => collect(), 'has_more' => false, 'oldest_id' => null];
 
         return view('coach.index', [
@@ -70,8 +70,8 @@ class CoachController extends Controller
     }
 
     /**
-     * Paginated message history for a conversation (JSON). Returns the most recent page, or — with
-     * ?before={id} — the page of messages older than that id. Powers AJAX chat switching and the
+     * Paginated message history for a conversation (JSON). Returns the most recent page, or -- with
+     * ?before={id} -- the page of messages older than that id. Powers AJAX chat switching and the
      * load-older-as-you-scroll-up behaviour, so a long thread never loads all at once.
      */
     public function messages(Request $request, Conversation $conversation): JsonResponse
@@ -116,7 +116,7 @@ class CoachController extends Controller
     /**
      * Regenerate today's briefing on demand (the "Today's briefing" card button). Picks
      * morning vs evening by local time, stores it in the Daily Briefings thread, and
-     * redirects back to the coach. Never 500s — AI failure shows a friendly status.
+     * redirects back to the coach. Never 500s -- AI failure shows a friendly status.
      */
     public function briefing(Request $request): RedirectResponse
     {
@@ -130,7 +130,7 @@ class CoachController extends Controller
         } catch (AiException $e) {
             Log::warning('[Coach] briefing regenerate failed', ['error' => $e->getMessage()]);
 
-            return redirect('/coach')->with('status', 'Your coach is offline right now — try regenerating your briefing in a moment.');
+            return redirect('/coach')->with('status', 'Your coach is offline right now -- try regenerating your briefing in a moment.');
         }
 
         return redirect('/coach')->with('status', 'Fresh briefing ready.');
@@ -170,7 +170,7 @@ class CoachController extends Controller
         } catch (AiException $e) {
             Log::warning('[Coach] AI unavailable', ['error' => $e->getMessage()]);
 
-            $friendly = 'Your coach is offline right now (the AI service is unavailable). Your message was saved — try again in a moment.';
+            $friendly = 'Your coach is offline right now (the AI service is unavailable). Your message was saved -- try again in a moment.';
 
             if ($wantsJson) {
                 return response()->json([
@@ -245,7 +245,7 @@ class CoachController extends Controller
                     'content' => $reply->content,
                 ]);
 
-                // Follow-up chips are a bonus — emitted after the answer, never block it.
+                // Follow-up chips are a bonus -- emitted after the answer, never block it.
                 $suggestions = $this->coach->suggestFollowUps($conversation, $profile);
                 if ($suggestions !== []) {
                     $emit('suggestions', ['items' => $suggestions]);
@@ -254,7 +254,7 @@ class CoachController extends Controller
                 Log::warning('[Coach] AI stream unavailable', ['error' => $e->getMessage()]);
                 $emit('error', [
                     'conversation_id' => $conversation->id,
-                    'message' => 'Your coach is offline right now (the AI service is unavailable). Your message was saved — try again in a moment.',
+                    'message' => 'Your coach is offline right now (the AI service is unavailable). Your message was saved -- try again in a moment.',
                 ]);
             }
         }, 200, [
@@ -275,7 +275,7 @@ class CoachController extends Controller
         $profile = $request->user()->ensureProfile();
 
         // The client downscales + converts to JPEG before upload, so this should always pass; the
-        // friendly JSON reply (vs a raw 422) covers the rare case it doesn't — e.g. an un-converted HEIC.
+        // friendly JSON reply (vs a raw 422) covers the rare case it doesn't -- e.g. an un-converted HEIC.
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'photo' => ['required', 'image', 'max:12288'],   // ≤ 12 MB
             'message' => ['nullable', 'string', 'max:1000'],   // optional caption: "this is what I ate"
@@ -286,8 +286,8 @@ class CoachController extends Controller
             return response()->json([
                 'ok' => false,
                 'reply' => $tooBig
-                    ? "That image was too large to upload. Try again — it should compress automatically."
-                    : "I couldn't read that file — please attach a photo (JPEG, PNG or HEIC) and try again.",
+                    ? "That image was too large to upload. Try again -- it should compress automatically."
+                    : "I couldn't read that file -- please attach a photo (JPEG, PNG or HEIC) and try again.",
             ], 200);
         }
         $caption = trim((string) ($validator->validated()['message'] ?? ''));
@@ -314,7 +314,7 @@ class CoachController extends Controller
         }
 
         // The photo (+ the user's caption) becomes a user turn; the coach's confirmation an
-        // assistant turn — so the whole exchange survives a refresh.
+        // assistant turn -- so the whole exchange survives a refresh.
         $conversation->messages()->create([
             'role' => 'user',
             'content' => ($caption !== '' ? $caption."\n\n" : '').'![photo]('.$result['image_url'].')',
@@ -335,7 +335,7 @@ class CoachController extends Controller
     }
 
     /**
-     * Transcribe a recorded voice clip (OpenAI). Returns the text only — the client drops
+     * Transcribe a recorded voice clip (OpenAI). Returns the text only -- the client drops
      * it into the input for the user to review and edit before sending. Never auto-sends.
      */
     public function transcribe(Request $request, \App\Services\Ai\AiService $ai): JsonResponse
@@ -351,7 +351,7 @@ class CoachController extends Controller
             ],
         ]);
         if ($validator->fails()) {
-            return response()->json(['ok' => false, 'error' => 'That recording couldn't be read — try again.'], 422);
+            return response()->json(['ok' => false, 'error' => 'That recording couldn't be read -- try again.'], 422);
         }
 
         $file = $request->file('audio');
@@ -359,7 +359,7 @@ class CoachController extends Controller
         $text = $ai->transcribe((string) file_get_contents($file->getRealPath()), 'voice.'.$ext);
 
         if ($text === null) {
-            return response()->json(['ok' => false, 'error' => 'Couldn't transcribe that — try again.'], 200);
+            return response()->json(['ok' => false, 'error' => 'Couldn't transcribe that -- try again.'], 200);
         }
 
         return response()->json(['ok' => true, 'text' => $text]);

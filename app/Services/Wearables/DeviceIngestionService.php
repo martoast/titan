@@ -58,7 +58,7 @@ class DeviceIngestionService
             }
 
             // Sanity-gate the raw signal BEFORE it touches storage or the queue. The HMAC
-            // proved who sent it, not that the signal is real — drop clearly-corrupt windows
+            // proved who sent it, not that the signal is real -- drop clearly-corrupt windows
             // (flatline, NaN, impossible rate/clock) so garbage can't masquerade as data.
             $sanity = WindowSanity::check($window);
             if (! $sanity['ok']) {
@@ -146,7 +146,7 @@ class DeviceIngestionService
         $end = isset($window['end']) ? CarbonImmutable::parse($window['end']) : $start;
         $date = $end->setTimezone($tz)->toDateString();
 
-        // raw/{profile}/{yyyy-mm-dd}/{batch_uid}.ndjson.gz — one window per line.
+        // raw/{profile}/{yyyy-mm-dd}/{batch_uid}.ndjson.gz -- one window per line.
         $ext = $kind === 'ppg_raw' ? 'ppg.gz' : 'ndjson.gz';
         $objectKey = "raw/{$connection->profile_id}/{$date}/{$windowUid}.{$ext}";
 

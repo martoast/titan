@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One night's sleep for a profile. Duration is stored in minutes; helpers expose it
  * as hours/min for display. The optional stage breakdown (deep/rem/light/awake)
- * powers the stacked bar — present only when a wearable supplied it.
+ * powers the stacked bar -- present only when a wearable supplied it.
  */
 class SleepLog extends Model
 {

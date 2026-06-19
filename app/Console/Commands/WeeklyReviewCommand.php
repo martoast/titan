@@ -52,7 +52,7 @@ class WeeklyReviewCommand extends Command
                 $lead = $score !== null
                     ? 'Week score '.$score.($delta ? ' ('.($delta > 0 ? '+' : '').$delta.' vs last week)' : '').'. '
                     : '';
-                // Lead the physique north star — staying on track to the dream physique is the point.
+                // Lead the physique north star -- staying on track to the dream physique is the point.
                 $phys = '';
                 if (! empty($review['physique'])) {
                     $p = $review['physique'];
@@ -88,7 +88,7 @@ class WeeklyReviewCommand extends Command
         return self::SUCCESS;
     }
 
-    /** All profiles — the weekly review goes out by email too, so it isn't limited to push-subscribers. */
+    /** All profiles -- the weekly review goes out by email too, so it isn't limited to push-subscribers. */
     private function resolveProfiles()
     {
         if ($id = $this->option('profile')) {

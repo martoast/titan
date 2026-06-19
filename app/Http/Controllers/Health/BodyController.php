@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
  */
 class BodyController extends Controller
 {
-    /** /body — trend charts, latest snapshot, and the add form. */
+    /** /body -- trend charts, latest snapshot, and the add form. */
     public function index(Request $request)
     {
         $profile = $request->user()->ensureProfile();

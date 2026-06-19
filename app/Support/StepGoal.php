@@ -11,8 +11,8 @@ use Carbon\CarbonImmutable;
  * The dose-response is among the most robust in all of wearable epidemiology: each +1,000 steps/day
  * ≈ −15% all-cause mortality (Paluch et al., Lancet Public Health 2022, 15 cohorts n≈47k), and
  * 8,000 vs 4,000 steps/day → mortality HR 0.49 (Saint-Maurice et al., JAMA 2020, NHANES). Crucially
- * the benefit PLATEAUS — ~6,000–8,000 for adults ≥60 and ~8,000–10,000 for under-60s (optimal
- * ~8,700, JACC 2023). The famous "10,000 steps" is a marketing number, not science — so we set an
+ * the benefit PLATEAUS -- ~6,000-8,000 for adults ≥60 and ~8,000-10,000 for under-60s (optimal
+ * ~8,700, JACC 2023). The famous "10,000 steps" is a marketing number, not science -- so we set an
  * honest, age-personalized target at the plateau, not above it.
  */
 class StepGoal

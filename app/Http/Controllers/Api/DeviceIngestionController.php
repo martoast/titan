@@ -15,16 +15,16 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 /**
- * Device-agnostic biosignal ingestion API. No web/session auth — each request is
+ * Device-agnostic biosignal ingestion API. No web/session auth -- each request is
  * authenticated by a per-device HMAC signature (X-Device-Id + X-Titan-Signature),
  * the same scheme TerraClient uses for webhooks. CSRF-exempt by virtue of being an
  * API route (no web middleware group).
  *
  * Endpoints:
- *   POST   /api/devices/pair         — issue a device_id + one-time secret (web-auth'd)
- *   POST   /api/devices/ingest       — accept a signed batch (Shapes A/B/C) → 202
- *   DELETE /api/devices/{id}         — revoke a device (null the token hash)
- *   GET    /api/devices/ingestions   — store-and-forward catch-up (?since=)
+ *   POST   /api/devices/pair         -- issue a device_id + one-time secret (web-auth'd)
+ *   POST   /api/devices/ingest       -- accept a signed batch (Shapes A/B/C) → 202
+ *   DELETE /api/devices/{id}         -- revoke a device (null the token hash)
+ *   GET    /api/devices/ingestions   -- store-and-forward catch-up (?since=)
  */
 class DeviceIngestionController extends Controller
 {
@@ -98,7 +98,7 @@ class DeviceIngestionController extends Controller
 
     /**
      * Device → server READ: the band polls this on connection to learn what activity (if any)
-     * the user has started via the coach, so it can switch to the right sensing profile —
+     * the user has started via the coach, so it can switch to the right sensing profile --
      * GPS + faster HR for a run, low-power for everyday. Same HMAC auth as /ingest (the GET
      * has an empty body, which the device signs). Returns {active:false} when nothing is set.
      */
@@ -150,7 +150,7 @@ class DeviceIngestionController extends Controller
     /**
      * Pair a device to the authenticated user's profile. Issues a public device_id and
      * a 32-byte secret returned ONCE (only its sha256 is stored). This route runs under
-     * web auth (registered in routes/api.php inside the auth middleware) — the device
+     * web auth (registered in routes/api.php inside the auth middleware) -- the device
      * never self-pairs.
      */
     public function pair(Request $request): JsonResponse
@@ -179,13 +179,13 @@ class DeviceIngestionController extends Controller
 
         return response()->json([
             'device_id' => $deviceId,
-            'secret' => $secret, // shown ONCE — the client must store it now
+            'secret' => $secret, // shown ONCE -- the client must store it now
             'source' => $connection->source,
             'connection_id' => $connection->id,
         ], 201);
     }
 
-    /** Revoke a device — null its token hash so signatures can never verify again. */
+    /** Revoke a device -- null its token hash so signatures can never verify again. */
     public function destroy(Request $request, WearableConnection $connection): JsonResponse
     {
         $profile = $request->user()->ensureProfile();
@@ -248,7 +248,7 @@ class DeviceIngestionController extends Controller
             return null;
         }
 
-        // The shared HMAC key is sha256(secret) — which is exactly what we store as
+        // The shared HMAC key is sha256(secret) -- which is exactly what we store as
         // device_token_hash. The plaintext 32-byte secret is shown once at pairing and
         // never reaches the server; the device derives sha256(secret) itself to sign.
         // So we key the HMAC on the stored hash: the device's secret stays off-server

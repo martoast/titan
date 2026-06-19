@@ -7,10 +7,10 @@ namespace App\Support;
  *  - volume ramps MEV → MRV across the accumulation weeks, then a deload;
  *  - proximity to failure tightens (RIR 3 → 1), compounds kept a touch more conservative than isolations;
  *  - FOCUS (weak-point) muscles get more volume, are trained FIRST (fresh) and more frequently, and get a
- *    lengthened-position / FST-7 emphasis — that's how you bring a lagging muscle up;
+ *    lengthened-position / FST-7 emphasis -- that's how you bring a lagging muscle up;
  *  - split chosen by training days, frequency ~2×/muscle/week where it fits.
  *
- * Natural, evidence-based dosing — no pharmacology assumed.
+ * Natural, evidence-based dosing -- no pharmacology assumed.
  */
 class MesocycleGenerator
 {
@@ -31,7 +31,7 @@ class MesocycleGenerator
         'abs' => [['Pallof Press (anti-rotation)', 'isolation', '10-12/side'], ['Plank', 'isolation', '20-40s'], ['Dead Bug', 'isolation', '8-10/side'], ['Stomach Vacuum (TVA)', 'isolation', '10-20s holds'], ['Hanging Leg Raise', 'isolation', '10-15'], ['Cable Crunch', 'isolation', '12-15']],
     ];
 
-    /** Movement regions — so a focus muscle is added to anatomically-sensible days. */
+    /** Movement regions -- so a focus muscle is added to anatomically-sensible days. */
     private const REGIONS = [
         'lower' => ['quads', 'hamstrings', 'glutes', 'calves'],
         'push' => ['chest', 'shoulders', 'triceps'],
@@ -156,7 +156,7 @@ class MesocycleGenerator
         for ($i = 0; $i < $nEx; $i++) {
             $picks[] = ($start + $i) % $count;
         }
-        // Glute focus ALWAYS finishes with hip abduction — that's the gluteus-medius "shelf" work that builds
+        // Glute focus ALWAYS finishes with hip abduction -- that's the gluteus-medius "shelf" work that builds
         // the round/3D look, and it's the one thing day-rotation can miss at low frequency. (Contreras.)
         if ($muscle === 'glutes' && $priority && ! in_array(6, $picks, true)) {
             $picks[$nEx - 1] = 6;

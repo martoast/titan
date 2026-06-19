@@ -13,9 +13,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 /**
- * The home dashboard — the emotional core, not a metrics dump. Three things, in order:
- *   1. Your FUTURE SELF — the living dream-physique render (it advances with adherence) + % to goal.
- *   2. Your TRAJECTORY — sparklines of the few metrics that show you're actually improving.
+ * The home dashboard -- the emotional core, not a metrics dump. Three things, in order:
+ *   1. Your FUTURE SELF -- the living dream-physique render (it advances with adherence) + % to goal.
+ *   2. Your TRAJECTORY -- sparklines of the few metrics that show you're actually improving.
  *   3. Your daily pulse + the visual journey (recent progress photos).
  * Everything degrades gracefully to a gentle call-to-action when the data isn't there yet.
  */
@@ -75,7 +75,7 @@ class DashboardController extends Controller
                 'weight' => $ph->weight_kg ? rtrim(rtrim(number_format((float) $ph->weight_kg, 1), '0'), '.').' kg' : null,
             ])->filter(fn ($x) => $x['url'])->values();
 
-        // --- Cycle (only for women / those who track it) — phase-aware context tile ---
+        // --- Cycle (only for women / those who track it) -- phase-aware context tile ---
         $cycle = null;
         if (\App\Support\Cycle::available($p)) {
             $cs = \App\Support\Cycle::status($p);

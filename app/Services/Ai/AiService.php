@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Thin, dependency-free wrapper over the OpenAI API — the Titan coach's language
+ * Thin, dependency-free wrapper over the OpenAI API -- the Titan coach's language
  * + vision brain. Ported from fullstack-suite. Powers chat, JSON extraction,
  * tool-calling agent loops, vision (meal + progress photos), embeddings (semantic
  * search over each profile's health wiki), and Whisper transcription (voice notes).
@@ -287,7 +287,7 @@ class AiService
     /**
      * One streamed chat-completions round. Reads the OpenAI SSE stream, calls $onDelta for
      * each content token, reassembles streamed tool-call fragments (by index), and returns
-     * the finished assistant message array — exactly the shape completion() returns.
+     * the finished assistant message array -- exactly the shape completion() returns.
      *
      * @param  array<string,mixed>  $payload
      * @param  callable(string):void  $onDelta
@@ -433,7 +433,7 @@ class AiService
             return [];
         }
 
-        // The API rejects empty strings — substitute a single space placeholder.
+        // The API rejects empty strings -- substitute a single space placeholder.
         $input = array_map(fn ($t) => trim((string) $t) === '' ? ' ' : (string) $t, array_values($texts));
 
         try {
@@ -469,7 +469,7 @@ class AiService
     }
 
     /**
-     * Transcribe audio bytes to text (Whisper). Returns null on any failure —
+     * Transcribe audio bytes to text (Whisper). Returns null on any failure --
      * used for voice notes to the coach.
      */
     public function transcribe(string $bytes, string $filename = 'audio.ogg'): ?string

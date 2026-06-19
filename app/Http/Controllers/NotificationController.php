@@ -137,7 +137,7 @@ class NotificationController extends Controller
         $notifications->notify(
             $profile,
             '🔔 Titan test',
-            "Push is working. I'll nudge you to eat, train, move and sleep — at your chosen intensity.",
+            "Push is working. I'll nudge you to eat, train, move and sleep -- at your chosen intensity.",
             '/coach',
             'general',
         );

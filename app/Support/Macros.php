@@ -8,7 +8,7 @@ use Illuminate\Support\Carbon;
 /**
  * Today's macros as a ready-made chat card: calories + protein/carbs/fat vs targets.
  * Shared by the coach's macros_today / log_meal tools and the meal-photo scan, so logging
- * food — by text or by photo — always shows the same "your day filling up" card.
+ * food -- by text or by photo -- always shows the same "your day filling up" card.
  */
 class Macros
 {

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CoachMemory extends Model
 {
-    /** category => [label, emoji] — the shape of what a coach remembers about someone. */
+    /** category => [label, emoji] -- the shape of what a coach remembers about someone. */
     public const CATEGORIES = [
         'injury' => ['Injuries & limitations', '🩹'],
         'preference' => ['Preferences', '✅'],

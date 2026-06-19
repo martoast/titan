@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * MinIO under `object_key`; this row is the queryable index + the processing state
  * machine the worker advances (received → queued → processing → processed | failed).
  *
- * `batch_uid` (a client-supplied ULID) is the idempotency key — UNIQUE, so a replayed
+ * `batch_uid` (a client-supplied ULID) is the idempotency key -- UNIQUE, so a replayed
  * batch resolves to the same row and queues no duplicate work. The primary key stays a
  * plain auto-increment id; batch_uid is supplied by the device, not auto-generated.
  * `result_refs` records which canonical rows the metrics landed in (reprocess + audit).

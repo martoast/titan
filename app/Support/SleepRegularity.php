@@ -7,14 +7,14 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
- * Sleep Regularity Index (SRI) — Phillips et al., Scientific Reports 2017.
+ * Sleep Regularity Index (SRI) -- Phillips et al., Scientific Reports 2017.
  *
  * The probability, scaled to [-100, 100], that a person is in the SAME sleep/wake state at any two
  * times exactly 24 h apart. 100 = identical schedule every day; 0 = no better than chance; negative
  * = anti-phase. It measures the CONSISTENCY of sleep timing, independent of how much you sleep.
  *
  * Why it's worth surfacing: in UK Biobank (Windred et al., Sleep 2024, n≈60k) SRI predicted
- * all-cause mortality MORE strongly than sleep duration — the most-irregular sleepers had a hazard
+ * all-cause mortality MORE strongly than sleep duration -- the most-irregular sleepers had a hazard
  * ratio ~1.5 vs the median, and the most-regular quintiles 20-48% lower mortality. It's also
  * directly behaviourally actionable ("keep a consistent schedule") and free from the data we
  * already store.
@@ -87,7 +87,7 @@ class SleepRegularity
     private static function intervalFor(SleepLog $log): ?array
     {
         if (! $log->bedtime || ! $log->wake_time) {
-            return null; // SRI is about timing — need both ends of the sleep window
+            return null; // SRI is about timing -- need both ends of the sleep window
         }
         $date = CarbonImmutable::parse($log->slept_at);
         [$bh, $bm] = array_pad(array_map('intval', explode(':', (string) $log->bedtime)), 2, 0);

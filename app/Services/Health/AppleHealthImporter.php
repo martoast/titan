@@ -315,7 +315,7 @@ class AppleHealthImporter
 
     /**
      * Sleep "Analysis" records come as overlapping intervals tagged with a stage value.
-     * We sum the duration of each interval into its stage bucket for the *wake* night —
+     * We sum the duration of each interval into its stage bucket for the *wake* night --
      * a session that crosses midnight is attributed to the calendar day it ended on
      * (local), which is how a "night of the 14th" is conventionally labelled.
      *

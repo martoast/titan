@@ -40,7 +40,7 @@ class LiveWorkoutController extends Controller
         ]);
     }
 
-    /** Vision-identify the exercise in an uploaded photo. Stateless — no DB write. */
+    /** Vision-identify the exercise in an uploaded photo. Stateless -- no DB write. */
     public function identify(Request $request)
     {
         $request->validate(['photo' => ['required', 'image', 'max:15360']]);
@@ -171,7 +171,7 @@ class LiveWorkoutController extends Controller
                     'ok' => true,
                     'heard' => $data['transcript'],
                     'action' => 'finish',
-                    'spoken' => 'Session complete — nice work.',
+                    'spoken' => 'Session complete -- nice work.',
                     'redirect' => route('workouts.show', $workout),
                 ]);
 
@@ -216,7 +216,7 @@ class LiveWorkoutController extends Controller
 
             default: // add_set
                 if (! $cmd['exercise'] || $cmd['reps'] === null) {
-                    return $this->voiceFail($data['transcript'], "Didn't catch a set — try \"bench press, 80 kilos, 8 reps\".");
+                    return $this->voiceFail($data['transcript'], "Didn't catch a set -- try \"bench press, 80 kilos, 8 reps\".");
                 }
                 $workout ??= $profile->workouts()->create([
                     'name' => 'Live session · '.now()->format('M j'), 'performed_at' => now(),
@@ -234,7 +234,7 @@ class LiveWorkoutController extends Controller
                     'rpe' => $cmd['rpe'],
                 ]);
                 $w = rtrim(rtrim(number_format((float) $set->weight_kg, 1), '0'), '.');
-                $spoken = "Added {$exercise->name} — {$w} kg × {$set->reps}.";
+                $spoken = "Added {$exercise->name} -- {$w} kg × {$set->reps}.";
                 break;
         }
 
@@ -252,7 +252,7 @@ class LiveWorkoutController extends Controller
         return response()->json(['ok' => false, 'heard' => $heard, 'message' => $message], 200);
     }
 
-    /** The most recent set in the workout — or in a named exercise if the user said one. */
+    /** The most recent set in the workout -- or in a named exercise if the user said one. */
     private function targetSet(Workout $workout, ?string $exerciseName): ?WorkoutSet
     {
         $we = $this->targetExercise($workout, $exerciseName);
@@ -260,7 +260,7 @@ class LiveWorkoutController extends Controller
         return $we ? $we->sets()->latest('id')->first() : null;
     }
 
-    /** The named exercise's card (plural-tolerant fuzzy match) — or the most recent one. */
+    /** The named exercise's card (plural-tolerant fuzzy match) -- or the most recent one. */
     private function targetExercise(Workout $workout, ?string $exerciseName): ?WorkoutExercise
     {
         $exercises = $workout->exercises()->with('exercise')->latest('id')->get();
@@ -409,7 +409,7 @@ class LiveWorkoutController extends Controller
         return ['exercise' => $ex ? ucwords($ex) : null, 'weight_kg' => $weight, 'reps' => $reps, 'rpe' => $rpe];
     }
 
-    /** End the session — optionally rename it — and go to the summary. */
+    /** End the session -- optionally rename it -- and go to the summary. */
     public function finish(Request $request)
     {
         $profile = auth()->user()->ensureProfile();

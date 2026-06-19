@@ -6,18 +6,18 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * Daily Strain (0–21) + the Strain Coach — the "how hard should I go today" half of the daily loop.
+ * Daily Strain (0-21) + the Strain Coach -- the "how hard should I go today" half of the daily loop.
  *
- * Strain is the day's accumulated cardiovascular/metabolic load mapped onto a 0–21 scale (Whoop-style,
+ * Strain is the day's accumulated cardiovascular/metabolic load mapped onto a 0-21 scale (Whoop-style,
  * Borg-flavoured), so a rest day sits low and a double session sits near the top. We build the load
  * from what we actually measure: each logged workout's Banister TRIMP plus ambient activity (MVPA
- * minutes / steps), then compress it logarithmically (load saturates — going from hard to brutal moves
+ * minutes / steps), then compress it logarithmically (load saturates -- going from hard to brutal moves
  * the number less than easy to moderate).
  *
  * The COACH closes the loop with the morning Readiness score: well-recovered → a higher target ("push"),
  * run-down → a low target ("restrain", protect recovery). It's the guidance the readiness score is
  * begging for. Honest scope: a relative training-guidance heuristic (like TRIMP/ACWR), not a validated
- * physiological unit — the value is the daily push/rest decision, not the absolute number.
+ * physiological unit -- the value is the daily push/rest decision, not the absolute number.
  */
 class Strain
 {
@@ -80,8 +80,8 @@ class Strain
     {
         if ($strain < $target['low']) {
             return match ($target['mode']) {
-                'restrain' => ['under', "You're under your easy ceiling — good. Keep it light and let recovery come back."],
-                'push' => ['under', sprintf('Room to push — about %.0f more strain to hit your target. Your body is primed for it today.', $target['low'] - $strain)],
+                'restrain' => ['under', "You're under your easy ceiling -- good. Keep it light and let recovery come back."],
+                'push' => ['under', sprintf('Room to push -- about %.0f more strain to hit your target. Your body is primed for it today.', $target['low'] - $strain)],
                 default => ['under', sprintf('A bit more would hit your target (~%.0f to go). A solid session fits well today.', $target['low'] - $strain)],
             };
         }
@@ -90,8 +90,8 @@ class Strain
         }
         // Above the target band.
         return $target['mode'] === 'restrain'
-            ? ['over', "Above your target on a low-recovery day — ease off and prioritise sleep tonight."]
-            : ['over', "You've cleared your target — strong day. Anything more is a bonus; guard recovery."];
+            ? ['over', "Above your target on a low-recovery day -- ease off and prioritise sleep tonight."]
+            : ['over', "You've cleared your target -- strong day. Anything more is a bonus; guard recovery."];
     }
 
     /** @return array{0:string,1:string} */

@@ -7,8 +7,8 @@ use App\Models\Profile;
 
 /**
  * The coach's ONE knowledge base. A single search spans both stores of what the coach knows about a
- * person — the atomic coach memories (injuries, preferences, what's worked, commitments) AND the
- * health-wiki pages (notes, history, doctor's notes) — and returns one ranked, source-tagged result.
+ * person -- the atomic coach memories (injuries, preferences, what's worked, commitments) AND the
+ * health-wiki pages (notes, history, doctor's notes) -- and returns one ranked, source-tagged result.
  *
  * Built for speed: a fast keyword pass over both stores runs first with zero network calls; the
  * semantic (embedding) page search is only invoked when the lexical pass comes back thin. For the
@@ -44,7 +44,7 @@ class KnowledgeBase
         return $this->rank(array_merge($memories, $semPages, $lexPages), $limit);
     }
 
-    /** Keyword-score the active coach memories (instant — they're short and few). */
+    /** Keyword-score the active coach memories (instant -- they're short and few). */
     private function memoryHits(Profile $profile, string $query, int $limit): array
     {
         if (! class_exists(CoachMemory::class)) {
@@ -58,7 +58,7 @@ class KnowledgeBase
 
         $out = [];
         foreach ($memories as $m) {
-            $imp = ($m->importance ?? 2) / 3;                 // 0.33–1.0
+            $imp = ($m->importance ?? 2) / 3;                 // 0.33-1.0
             if ($terms === []) {
                 $score = 0.4 * $imp;                          // browse mode → important facts first
             } else {

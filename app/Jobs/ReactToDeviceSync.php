@@ -12,7 +12,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 
 /**
- * The "your band just synced" moment — the magic that makes Titan feel alive. When fresh overnight
+ * The "your band just synced" moment -- the magic that makes Titan feel alive. When fresh overnight
  * recovery lands from the wearable, the coach reacts on its own: a push + a note in the chat with the
  * morning read (readiness + today's focus), once per day. This is the sensor pipeline reaching out
  * through the AI, instead of the user always having to ask.
@@ -43,7 +43,7 @@ class ReactToDeviceSync implements ShouldQueue
             return;
         }
 
-        // Wait for the read to be computable — if recovery isn't ready yet, a later sync will fire this.
+        // Wait for the read to be computable -- if recovery isn't ready yet, a later sync will fire this.
         $score = class_exists(\App\Support\Readiness::class)
             ? rescue(fn () => \App\Support\Readiness::compute($profile)['score'] ?? null, null, false)
             : null;
@@ -55,7 +55,7 @@ class ReactToDeviceSync implements ShouldQueue
             ? rescue(fn () => \App\Support\DailyFocus::compute($profile)['headline'] ?? null, null, false)
             : null;
 
-        $body = "Your overnight data just synced — readiness {$score}".($label ? " ({$label})" : '').'.'.($focus ? " Today's focus: {$focus}." : '');
+        $body = "Your overnight data just synced -- readiness {$score}".($label ? " ({$label})" : '').'.'.($focus ? " Today's focus: {$focus}." : '');
 
         $notifications->notify($profile, '🌅 Your recovery is in', $body, '/coach', 'sync');
 

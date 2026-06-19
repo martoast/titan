@@ -29,7 +29,7 @@ use Illuminate\Support\Str;
 
 /**
  * The Titan assistant/MCP operation layer: a profile-scoped, HTTP-free surface an external agent
- * (Claude via MCP) uses to run a user's whole Titan account — read every metric, log sleep /
+ * (Claude via MCP) uses to run a user's whole Titan account -- read every metric, log sleep /
  * recovery / steps / weight / workouts, manage goals, and even pair the wearable. Every operation
  * is scoped to ONE user's profile (the token owner); nothing is cross-tenant.
  *
@@ -53,27 +53,27 @@ class AssistantTools
     {
         return [
             // --- the one-call entry point ---
-            ['name' => 'get_overview', 'description' => "START HERE. A complete snapshot of the user right now — readiness, last night's sleep + regularity, recovery (HRV/resting HR), steps vs goal + movement, VO2max, metabolic health, today's nutrition, latest weight, flagged biomarkers and their primary goal. Call this first to understand someone before answering or acting.", 'args' => []],
+            ['name' => 'get_overview', 'description' => "START HERE. A complete snapshot of the user right now -- readiness, last night's sleep + regularity, recovery (HRV/resting HR), steps vs goal + movement, VO2max, metabolic health, today's nutrition, latest weight, flagged biomarkers and their primary goal. Call this first to understand someone before answering or acting.", 'args' => []],
 
             // --- reads ---
             ['name' => 'get_today', 'description' => "Today's snapshot: readiness, last sleep, resting HR, steps vs goal, metabolic health.", 'args' => []],
-            ['name' => 'get_longevity', 'description' => 'The longevity panel: Sleep Regularity Index, circadian rest-activity rhythm, metabolic-health forecast, VO2max, resting HR & HRV — each with the score and what it means. The "how well am I aging" view.', 'args' => []],
-            ['name' => 'get_trends', 'description' => 'Time-series over recent days so you can spot patterns: HRV, resting HR, sleep hours, weight, steps. Great for "how has my X changed".', 'args' => ['days' => 'int — default 30']],
-            ['name' => 'get_nutrition', 'description' => "Today's calories & macros (and recent days) vs targets.", 'args' => ['days' => 'int — default 7']],
+            ['name' => 'get_longevity', 'description' => 'The longevity panel: Sleep Regularity Index, circadian rest-activity rhythm, metabolic-health forecast, VO2max, resting HR & HRV -- each with the score and what it means. The "how well am I aging" view.', 'args' => []],
+            ['name' => 'get_trends', 'description' => 'Time-series over recent days so you can spot patterns: HRV, resting HR, sleep hours, weight, steps. Great for "how has my X changed".', 'args' => ['days' => 'int -- default 30']],
+            ['name' => 'get_nutrition', 'description' => "Today's calories & macros (and recent days) vs targets.", 'args' => ['days' => 'int -- default 7']],
             ['name' => 'get_physique', 'description' => 'Physique status: latest body composition, the dream-physique goal and progress.', 'args' => []],
             ['name' => 'search_knowledge', 'description' => "Search the user's personal knowledge base / notes (their 'brain') in natural language.", 'args' => ['query' => 'string']],
             ['name' => 'get_recovery', 'description' => 'Latest HRV (RMSSD), resting HR, readiness, baselines and the metabolic-health forecast.', 'args' => []],
-            ['name' => 'get_sleep', 'description' => 'Recent nights, the 7-day average, the Sleep Regularity Index and the circadian rest-activity rhythm.', 'args' => ['days' => 'int — nights back (default 14)']],
+            ['name' => 'get_sleep', 'description' => 'Recent nights, the 7-day average, the Sleep Regularity Index and the circadian rest-activity rhythm.', 'args' => ['days' => 'int -- nights back (default 14)']],
             ['name' => 'get_fitness', 'description' => 'VO2max estimate + trend, heart-rate recovery, and recent cardio sessions.', 'args' => []],
             ['name' => 'get_activity', 'description' => "Today's steps vs the personalized goal, movement breaks, and the 7-day step trend.", 'args' => []],
-            ['name' => 'get_workouts', 'description' => 'Recent strength workouts with exercises, sets, reps and volume.', 'args' => ['days' => 'int — default 14']],
+            ['name' => 'get_workouts', 'description' => 'Recent strength workouts with exercises, sets, reps and volume.', 'args' => ['days' => 'int -- default 14']],
             ['name' => 'get_biomarkers', 'description' => 'Most recent bloodwork / biomarker results with flags.', 'args' => []],
-            ['name' => 'assess_chair_stand', 'description' => 'Score a guided 30-second chair-stand test (lower-body function / frailty screen) against the user\'s age/sex norms. Guide them: arms crossed, stand fully and sit as many times as they can in 30s, then pass the count.', 'args' => ['reps' => 'int — full stands in 30 seconds']],
-            ['name' => 'get_meals', 'description' => 'Recent nutrition: per-day calories/macros and recent meals.', 'args' => ['days' => 'int — default 7']],
+            ['name' => 'assess_chair_stand', 'description' => 'Score a guided 30-second chair-stand test (lower-body function / frailty screen) against the user\'s age/sex norms. Guide them: arms crossed, stand fully and sit as many times as they can in 30s, then pass the count.', 'args' => ['reps' => 'int -- full stands in 30 seconds']],
+            ['name' => 'get_meals', 'description' => 'Recent nutrition: per-day calories/macros and recent meals.', 'args' => ['days' => 'int -- default 7']],
             ['name' => 'get_pantry', 'description' => "The food the user currently has on hand (their kitchen). Read this before suggesting meals so you only suggest things they can actually make.", 'args' => []],
             ['name' => 'get_profile', 'description' => 'Profile basics: name, age, sex, height, latest weight, primary goal.', 'args' => []],
             ['name' => 'get_devices', 'description' => 'Paired wearables and their last sync time.', 'args' => []],
-            ['name' => 'get_cycle', 'description' => "Menstrual-cycle status: cycle day, phase (menstrual/follicular/fertile/ovulation/luteal), predicted next period + ovulation, fertile window, conception likelihood, regularity, and how the cycle phase relates to resting-HR/HRV recovery. Awareness only — never contraception or diagnosis.", 'args' => []],
+            ['name' => 'get_cycle', 'description' => "Menstrual-cycle status: cycle day, phase (menstrual/follicular/fertile/ovulation/luteal), predicted next period + ovulation, fertile window, conception likelihood, regularity, and how the cycle phase relates to resting-HR/HRV recovery. Awareness only -- never contraception or diagnosis.", 'args' => []],
             // --- writes ---
             ['name' => 'log_sleep', 'description' => 'Log a night of sleep.', 'args' => ['date' => 'YYYY-MM-DD', 'hours' => 'number', 'bedtime' => 'HH:MM (optional)', 'wake_time' => 'HH:MM (optional)', 'quality' => '1-100 (optional)'], 'write' => true],
             ['name' => 'log_steps', 'description' => "Set a day's step count.", 'args' => ['steps' => 'int', 'date' => 'YYYY-MM-DD (optional, default today)'], 'write' => true],
@@ -82,7 +82,7 @@ class AssistantTools
             ['name' => 'log_workout', 'description' => 'Log a strength workout with its exercises and sets.', 'args' => ['name' => 'string (optional)', 'performed_at' => 'ISO datetime (optional)', 'exercises' => '[{name, sets:[{reps, weight_kg, rpe?}]}]'], 'write' => true],
             ['name' => 'set_goal', 'description' => "Set the profile's primary goal.", 'args' => ['goal' => 'string'], 'write' => true],
             ['name' => 'log_meal', 'description' => 'Log a meal with its macros.', 'args' => ['name' => 'string', 'calories' => 'int', 'protein_g' => 'number (optional)', 'carbs_g' => 'number (optional)', 'fat_g' => 'number (optional)', 'eaten_at' => 'ISO datetime (optional, default now)'], 'write' => true],
-            ['name' => 'update_pantry', 'description' => "Update the user's kitchen inventory when they say what they have or bought (e.g. \"I bought ground beef, eggs, tuna\"). mode=add appends, replace overwrites, remove deletes. Then suggest meals from what they have.", 'args' => ['items' => 'string (comma-separated) or array', 'mode' => 'add|replace|remove — default add'], 'write' => true],
+            ['name' => 'update_pantry', 'description' => "Update the user's kitchen inventory when they say what they have or bought (e.g. \"I bought ground beef, eggs, tuna\"). mode=add appends, replace overwrites, remove deletes. Then suggest meals from what they have.", 'args' => ['items' => 'string (comma-separated) or array', 'mode' => 'add|replace|remove -- default add'], 'write' => true],
             ['name' => 'log_cardio', 'description' => 'Log a cardio session (run/walk/ride/etc).', 'args' => ['type' => 'run|walk|cycle|other', 'duration_min' => 'int', 'distance_km' => 'number (optional)', 'avg_hr' => 'int (optional)', 'calories_kcal' => 'int (optional)', 'started_at' => 'ISO datetime (optional)'], 'write' => true],
             ['name' => 'log_biomarker', 'description' => 'Log a bloodwork / biomarker result (the abnormal-range flag is computed automatically).', 'args' => ['marker' => 'string e.g. ldl, hba1c, vitamin_d', 'value' => 'number', 'unit' => 'string (optional)', 'taken_at' => 'YYYY-MM-DD (optional)'], 'write' => true],
             ['name' => 'log_period', 'description' => "Log a menstrual period event. event='start' = day 1 of a new period (anchors all cycle math); event='end' = last day of bleeding.", 'args' => ['event' => 'start|end', 'date' => "YYYY-MM-DD / today / yesterday (optional)"], 'write' => true],
@@ -200,7 +200,7 @@ class AssistantTools
             return ['error' => 'set the profile birthdate first so the result can be scored against age norms'];
         }
 
-        return $score + ['protocol' => '30-second chair-stand: arms crossed, stand fully and sit, max reps in 30s. Lower-body function / frailty screen — a wellness estimate, not a diagnosis.'];
+        return $score + ['protocol' => '30-second chair-stand: arms crossed, stand fully and sit, max reps in 30s. Lower-body function / frailty screen -- a wellness estimate, not a diagnosis.'];
     }
 
     private function getFitness(): array
@@ -402,18 +402,18 @@ class AssistantTools
         return [
             'ok' => true,
             'device_id' => $device->device_id,
-            'secret' => $secret,   // shown ONCE — the user enters this on the watch / bridge
+            'secret' => $secret,   // shown ONCE -- the user enters this on the watch / bridge
             'note' => 'Secret shown once. Walk the user through setup_steps; the device_id + secret go into the live bridge.',
             'setup_steps' => [
                 '1. Install the watch app (once, from a computer): open the Espruino Web IDE (espruino.com/ide) in desktop Chrome, connect the Bangle.js 2 over Bluetooth, paste the Titan firmware (Devices → Set up → Titan firmware, or /devices/firmware), and Send to Espruino. Phone browsers cannot flash BLE devices.',
-                '2. Pairing is done (this call) — give the user the device_id + secret above.',
+                '2. Pairing is done (this call) -- give the user the device_id + secret above.',
                 '3. Open the live bridge at /devices/bridge and tap Connect. On iPhone, open that URL in the Bluefy app (free Web-Bluetooth browser) since Safari has no Bluetooth; on a computer/Android use Chrome. Paste the credentials if not auto-filled.',
-                '4. Wear it overnight — it logs to its own memory. In the morning, open the bridge and Connect; the whole night syncs in seconds → readiness, sleep, recovery.',
+                '4. Wear it overnight -- it logs to its own memory. In the morning, open the bridge and Connect; the whole night syncs in seconds → readiness, sleep, recovery.',
             ],
         ];
     }
 
-    /** The streamlined first call — everything an agent needs to understand the user at a glance. */
+    /** The streamlined first call -- everything an agent needs to understand the user at a glance. */
     private function getOverview(): array
     {
         $p = $this->profile;
@@ -494,7 +494,7 @@ class AssistantTools
             'items' => $items,
             'count' => count($items),
             'updated_at' => optional(\App\Support\Pantry::updatedAt($this->profile))->toIso8601String(),
-            'note' => $items === [] ? 'Empty — ask the user what they have, then update_pantry.' : 'Suggest meals the user can make from these.',
+            'note' => $items === [] ? 'Empty -- ask the user what they have, then update_pantry.' : 'Suggest meals the user can make from these.',
         ];
     }
 
@@ -529,9 +529,9 @@ class AssistantTools
         return [
             'window_days' => $days, 'targets' => $targets, 'by_day' => $byDay,
             // The meal-timing coach: when the next meal is due + what it should carry. Use this to
-            // nudge the user to eat (they overwork and forget) — protein-forward, before hunger hits.
+            // nudge the user to eat (they overwork and forget) -- protein-forward, before hunger hits.
             'meal_timing' => \App\Support\MealCoach::assess($this->profile),
-            // What's in their kitchen — suggest meals from these, not things they'd have to buy.
+            // What's in their kitchen -- suggest meals from these, not things they'd have to buy.
             'pantry' => \App\Support\Pantry::get($this->profile),
         ];
     }

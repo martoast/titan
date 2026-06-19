@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
  * the topic into angles, investigate each in depth, then synthesize a structured writeup tailored to
  * THIS person (their goal, level, constraints). The result is filed in their Brain wiki.
  *
- * This is knowledge synthesis by the model, not live web crawling — the report says so, and stays in
+ * This is knowledge synthesis by the model, not live web crawling -- the report says so, and stays in
  * Titan's wellness lane (no medical/diagnostic claims).
  */
 class ResearchService
@@ -30,9 +30,9 @@ class ResearchService
         $topic = trim($topic);
         $who = $this->context($profile);
 
-        // 1. PLAN — break the topic into a handful of focused angles to investigate.
+        // 1. PLAN -- break the topic into a handful of focused angles to investigate.
         $plan = $this->ai->json([
-            ['role' => 'system', 'content' => 'You plan a focused research brief for a fitness/health/longevity topic. Return JSON {"title": string, "sections": [{"heading": string, "question": string}]} with 4–5 sections covering the most useful angles (what it is, the mechanism/how it works, how to actually do it, the evidence + caveats, who it suits). No preamble.'],
+            ['role' => 'system', 'content' => 'You plan a focused research brief for a fitness/health/longevity topic. Return JSON {"title": string, "sections": [{"heading": string, "question": string}]} with 4-5 sections covering the most useful angles (what it is, the mechanism/how it works, how to actually do it, the evidence + caveats, who it suits). No preamble.'],
             ['role' => 'user', 'content' => "Topic to research: {$topic}".($focus ? "\nUser's angle/why: {$focus}" : '')],
         ], ['temperature' => 0.4, 'max_tokens' => 500]);
 
@@ -43,7 +43,7 @@ class ResearchService
             $sections = [['heading' => 'Overview', 'question' => "Explain {$topic} thoroughly and practically."]];
         }
 
-        // 2. INVESTIGATE — a detailed, evidence-informed pass per angle.
+        // 2. INVESTIGATE -- a detailed, evidence-informed pass per angle.
         $body = [];
         $sources = [];
         foreach ($sections as $s) {
@@ -70,7 +70,7 @@ class ResearchService
             $body[] = "## {$heading}\n\n".trim($content);
         }
 
-        // 3. SYNTHESIZE — personalise it to this person + a crisp summary for the chat/notification.
+        // 3. SYNTHESIZE -- personalise it to this person + a crisp summary for the chat/notification.
         $applied = $this->ai->json([
             ['role' => 'system', 'content' => 'Return JSON {"applies": string, "summary": string}. "applies" = a short, specific "How this applies to you" section (markdown, a few bullets) tailoring the research to the person described, honouring any injuries/constraints. "summary" = 2 sentences capturing the gist for a notification. No medical advice.'],
             ['role' => 'user', 'content' => "Person: {$who}\n\nResearch topic: {$topic}\n\nFindings:\n".Str::limit(implode("\n\n", $body), 6000)],
@@ -92,7 +92,7 @@ class ResearchService
             ."\n\n---\n*Researched by your Titan coach"
             .($focus ? " (you asked: {$focus})" : '')
             .($grounded ? ', grounded in live web sources' : ' (knowledge synthesis)')
-            .". Not medical advice — verify specifics with a qualified professional.*";
+            .". Not medical advice -- verify specifics with a qualified professional.*";
 
         return ['title' => $title, 'markdown' => $markdown, 'summary' => $summary];
     }
@@ -116,7 +116,7 @@ class ResearchService
         if (class_exists(\App\Support\CoachMemoryBook::class)) {
             $mem = \App\Support\CoachMemoryBook::digest($profile, 500);
             if ($mem !== '') {
-                $bits[] = "known facts — {$mem}";
+                $bits[] = "known facts -- {$mem}";
             }
         }
 

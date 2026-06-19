@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
  *   php artisan devices:simulate --device=titan_band_fixture --secret=…
  *
  * The HMAC scheme matches TerraClient::verifyDeviceSignature(): the device hashes its
- * 32-byte secret (sha256) to derive the shared key, then signs "<ts>.<body>" with it —
+ * 32-byte secret (sha256) to derive the shared key, then signs "<ts>.<body>" with it --
  * keeping the plaintext secret off the server while both sides share a stable key. By
  * default it uses the fixture devices/secrets that WearableSeeder pairs.
  */
@@ -53,7 +53,7 @@ class SimulateDeviceBatch extends Command
         $deviceId = $this->option('device') ?: $defaultDevice;
         $secret = $this->option('secret') ?: $defaultSecret;
 
-        // The shared HMAC key is sha256(secret) — exactly the device_token_hash the
+        // The shared HMAC key is sha256(secret) -- exactly the device_token_hash the
         // server stores. So we sign with sha256(secret); the plaintext secret never
         // leaves the device.
         $sharedKey = hash('sha256', $secret);

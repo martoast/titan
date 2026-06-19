@@ -12,10 +12,10 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * The "your band is LIVE" moment — the payoff of pairing. The instant a freshly-paired
+ * The "your band is LIVE" moment -- the payoff of pairing. The instant a freshly-paired
  * band streams its very first data, the coach reacts with a one-time celebration: a push +
  * a note in the chat confirming the connection (and the first vital, if one's already
- * processed). Distinct from ReactToDeviceSync's recurring morning recovery greeting — this
+ * processed). Distinct from ReactToDeviceSync's recurring morning recovery greeting -- this
  * fires exactly once per band, the moment it comes alive, closing the pairing arc.
  */
 class ReactToFirstConnection implements ShouldQueue
@@ -34,7 +34,7 @@ class ReactToFirstConnection implements ShouldQueue
         }
         $profile = $conn->profile;
 
-        // Fire exactly once per band — even if two first batches race in.
+        // Fire exactly once per band -- even if two first batches race in.
         $announced = (array) data_get($profile->settings, 'bands_announced', []);
         if (in_array($conn->id, $announced, true)) {
             return;
@@ -43,14 +43,14 @@ class ReactToFirstConnection implements ShouldQueue
         $source = DeviceStatus::sourceLabel($conn);
 
         // Surface whatever's already real: a just-processed vital, else the battery, else
-        // an honest "I'm reading it now" — the raw windows are still being crunched.
+        // an honest "I'm reading it now" -- the raw windows are still being crunched.
         $vital = $this->firstVital($profile->id);
         if ($vital) {
             $detail = "First read: {$vital}. Signal looks clean.";
         } elseif ($conn->battery_pct !== null) {
-            $detail = "Battery's at {$conn->battery_pct}% — I'm reading your first signals now; your vitals will land in a moment.";
+            $detail = "Battery's at {$conn->battery_pct}% -- I'm reading your first signals now; your vitals will land in a moment.";
         } else {
-            $detail = "I'm reading your first signals now — your vitals will land on the dashboard in a moment.";
+            $detail = "I'm reading your first signals now -- your vitals will land on the dashboard in a moment.";
         }
 
         $body = "Your {$source} just came online and started streaming. {$detail}";
@@ -60,7 +60,7 @@ class ReactToFirstConnection implements ShouldQueue
         $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
         $convo->messages()->create([
             'role' => 'assistant',
-            'content' => "🎉 **Your {$source} is live!**\n\n{$body}\n\nFrom here I'll watch your recovery, sleep and strain automatically — no need to log them by hand. Ask me anything once your first numbers settle.",
+            'content' => "🎉 **Your {$source} is live!**\n\n{$body}\n\nFrom here I'll watch your recovery, sleep and strain automatically -- no need to log them by hand. Ask me anything once your first numbers settle.",
         ]);
 
         $settings = $profile->settings ?? [];

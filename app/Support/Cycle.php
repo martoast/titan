@@ -8,7 +8,7 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * The menstrual-cycle engine — Titan's cycle-aware lens.
+ * The menstrual-cycle engine -- Titan's cycle-aware lens.
  *
  * It answers, from logged period starts + each person's own averages: what cycle day is it,
  * which phase (menstrual → follicular → fertile → ovulation → luteal), when the next period and
@@ -18,13 +18,13 @@ use Illuminate\Support\Carbon;
  * and hormone bloodwork is only interpretable against the cycle day it was drawn.
  *
  * --- The two rails (never crossed) ----------------------------------------------------------
- *  1. WELLNESS, NOT MEDICAL. The fertile window / conception likelihood is AWARENESS only — it is
+ *  1. WELLNESS, NOT MEDICAL. The fertile window / conception likelihood is AWARENESS only -- it is
  *     NOT a contraceptive method and must never be presented as one (see DISCLAIMER). We don't
  *     diagnose (PCOS, endometriosis, pregnancy); at most we flag a pattern "worth a doctor's eyes".
  *  2. Estimates are honest. Predictions need real data; with <2 logged cycles we say so and lean on
  *     the person's configured averages rather than pretending precision.
  *
- * Physiology basis: the luteal phase is the stable part of the cycle (~12–14 d); cycle-length
+ * Physiology basis: the luteal phase is the stable part of the cycle (~12-14 d); cycle-length
  * variation is mostly follicular. So ovulation is estimated as next_period − luteal_length, and the
  * fertile window as the ~5 days before ovulation through ~1 day after (sperm ~5 d, egg ~24 h).
  */
@@ -36,7 +36,7 @@ class Cycle
     public const FERTILE_PRE = 5;    // fertile days before ovulation
     public const FERTILE_POST = 1;   // fertile days after ovulation
 
-    public const DISCLAIMER = 'These are estimates for awareness, not a contraceptive method or medical advice. Cycles vary — for preventing or planning pregnancy, talk to a healthcare provider.';
+    public const DISCLAIMER = 'These are estimates for awareness, not a contraceptive method or medical advice. Cycles vary -- for preventing or planning pregnancy, talk to a healthcare provider.';
 
     /** Symptoms we recognise (for the UI + the coach's vocabulary). */
     public const SYMPTOMS = [
@@ -173,35 +173,35 @@ class Cycle
     }
 
     /**
-     * Wellness guidance for a phase — how it tends to shape training, nutrition, body/energy and intimacy.
+     * Wellness guidance for a phase -- how it tends to shape training, nutrition, body/energy and intimacy.
      * Supportive and evidence-informed, never clinical. @return array{training:string,nutrition:string,body:string,vibe:string}
      */
     public static function guidanceFor(string $phase): array
     {
         return match ($phase) {
             'menstrual' => [
-                'training' => 'Energy can be low on heavier-flow days — train to feel; lighter is fine and it often lifts as the period eases.',
+                'training' => 'Energy can be low on heavier-flow days -- train to feel; lighter is fine and it often lifts as the period eases.',
                 'nutrition' => 'Lean on iron-rich foods (red meat, leafy greens, lentils) to offset menstrual losses.',
-                'body' => 'Cramps and fatigue are normal — warmth, hydration and rest help.',
-                'vibe' => 'menstrual — train to feel, refuel iron',
+                'body' => 'Cramps and fatigue are normal -- warmth, hydration and rest help.',
+                'vibe' => 'menstrual -- train to feel, refuel iron',
             ],
             'follicular' => [
-                'training' => 'Rising estrogen means strength and energy are climbing — your best window to PUSH: PRs, heavy loads, higher volume.',
-                'nutrition' => 'Insulin sensitivity is great here — carbs are well used, so fuel the harder training.',
-                'body' => 'Mood and motivation usually run high — capitalise on it.',
-                'vibe' => 'follicular — prime to push hard',
+                'training' => 'Rising estrogen means strength and energy are climbing -- your best window to PUSH: PRs, heavy loads, higher volume.',
+                'nutrition' => 'Insulin sensitivity is great here -- carbs are well used, so fuel the harder training.',
+                'body' => 'Mood and motivation usually run high -- capitalise on it.',
+                'vibe' => 'follicular -- prime to push hard',
             ],
             'fertile', 'ovulation' => [
-                'training' => 'Peak strength and power — go for PRs. Joints are a touch laxer near ovulation, so keep form tight on heavy lifts.',
-                'nutrition' => 'Appetite is usually steady — keep protein up around the hard sessions.',
-                'body' => 'Energy and libido typically peak. This is the fertile window — pregnancy is most likely now if not using contraception (awareness only).',
-                'vibe' => 'ovulation — peak power, fertile window',
+                'training' => 'Peak strength and power -- go for PRs. Joints are a touch laxer near ovulation, so keep form tight on heavy lifts.',
+                'nutrition' => 'Appetite is usually steady -- keep protein up around the hard sessions.',
+                'body' => 'Energy and libido typically peak. This is the fertile window -- pregnancy is most likely now if not using contraception (awareness only).',
+                'vibe' => 'ovulation -- peak power, fertile window',
             ],
             'luteal' => [
-                'training' => 'Energy may dip later in this phase and resting HR runs a little higher — favour moderate volume over max intensity, especially the few days before your period.',
-                'nutrition' => 'Metabolism and hunger rise — a small calorie bump (~5–10%) is normal; lean on protein and fibre for cravings, and ease off salt for bloating.',
-                'body' => 'PMS — mood swings, poorer sleep, bloating — can show up premenstrually; extra sleep and self-compassion go a long way.',
-                'vibe' => 'luteal — recover well, fuel a little more',
+                'training' => 'Energy may dip later in this phase and resting HR runs a little higher -- favour moderate volume over max intensity, especially the few days before your period.',
+                'nutrition' => 'Metabolism and hunger rise -- a small calorie bump (~5-10%) is normal; lean on protein and fibre for cravings, and ease off salt for bloating.',
+                'body' => 'PMS -- mood swings, poorer sleep, bloating -- can show up premenstrually; extra sleep and self-compassion go a long way.',
+                'vibe' => 'luteal -- recover well, fuel a little more',
             ],
             default => ['training' => '', 'nutrition' => '', 'body' => '', 'vibe' => ''],
         };
@@ -230,7 +230,7 @@ class Cycle
         return $line;
     }
 
-    /** A short phase tag for cards/summaries, e.g. "Day 8 · follicular — prime to push hard". */
+    /** A short phase tag for cards/summaries, e.g. "Day 8 · follicular -- prime to push hard". */
     public static function shortLine(Profile $profile): ?string
     {
         if (! self::available($profile)) {
@@ -274,7 +274,7 @@ class Cycle
 
     /**
      * Cross-signal insight: average resting-HR and HRV by phase, from recovery logs over the
-     * window. This is the differentiator — it lets the coach say "your RHR runs ~4 bpm higher in
+     * window. This is the differentiator -- it lets the coach say "your RHR runs ~4 bpm higher in
      * the luteal phase, which is expected" instead of flagging false alarms. Needs both data sets.
      *
      * @return array{by_phase:array<string,array{rhr:?float,hrv:?float,n:int}>, luteal_rhr_delta:?float, note:?string}
@@ -324,7 +324,7 @@ class Cycle
         if (isset($by['luteal']['rhr'], $by['follicular']['rhr']) && $by['luteal']['rhr'] && $by['follicular']['rhr']) {
             $delta = round($by['luteal']['rhr'] - $by['follicular']['rhr'], 1);
             if ($delta >= 1.5) {
-                $note = "Your resting HR runs about {$delta} bpm higher in your luteal phase than your follicular — a normal hormonal shift, so a small recovery dip premenstrually is expected, not a red flag.";
+                $note = "Your resting HR runs about {$delta} bpm higher in your luteal phase than your follicular -- a normal hormonal shift, so a small recovery dip premenstrually is expected, not a red flag.";
             }
         }
 
@@ -333,10 +333,10 @@ class Cycle
 
     /**
      * Phase-aware readiness correction. The luteal phase raises resting HR by a few bpm for
-     * normal hormonal reasons — so without this, a woman's readiness would dip every luteal
+     * normal hormonal reasons -- so without this, a woman's readiness would dip every luteal
      * phase as a FALSE alarm. We return how much today's phase elevates her resting HR above
      * her own all-phase average (from her own logged data), so Readiness can normalise today's
-     * RHR before scoring. We only ever NEUTRALISE an elevation (offset ≥ 0) — never inflate a
+     * RHR before scoring. We only ever NEUTRALISE an elevation (offset ≥ 0) -- never inflate a
      * naturally well-recovered phase. Returns null until there's enough same-phase history.
      *
      * @return array{phase:string,offset:float,note:?string}|null
@@ -368,7 +368,7 @@ class Cycle
         return [
             'phase' => $phase,
             'offset' => $offset,
-            'note' => "Adjusted for your {$status['phase_label']} phase, where your resting HR naturally runs about {$offset} bpm higher — so this isn't read as poor recovery.",
+            'note' => "Adjusted for your {$status['phase_label']} phase, where your resting HR naturally runs about {$offset} bpm higher -- so this isn't read as poor recovery.",
         ];
     }
 
@@ -459,7 +459,7 @@ class Cycle
             return ['low', 'Hormonal birth control typically suppresses ovulation, so a fertile window doesn\'t apply in the usual way.'];
         }
         if ($cycleDay >= $ovDay - 2 && $cycleDay <= $ovDay) {
-            return ['high', 'Peak fertility — the two days before and the day of estimated ovulation.'];
+            return ['high', 'Peak fertility -- the two days before and the day of estimated ovulation.'];
         }
         if ($cycleDay >= $fertileStart && $cycleDay <= $fertileEnd) {
             return ['medium', 'Inside your estimated fertile window.'];
@@ -471,8 +471,8 @@ class Cycle
     private static function phaseBlurb(string $phase): string
     {
         return match ($phase) {
-            'menstrual' => 'Your period. Estrogen and progesterone are at their lowest; iron stores draw down with bleeding. Energy can be low early, often lifting by day 3–4.',
-            'follicular' => 'Post-period, estrogen rising. Often the highest-energy stretch — frequently the best window for harder training and PRs.',
+            'menstrual' => 'Your period. Estrogen and progesterone are at their lowest; iron stores draw down with bleeding. Energy can be low early, often lifting by day 3-4.',
+            'follicular' => 'Post-period, estrogen rising. Often the highest-energy stretch -- frequently the best window for harder training and PRs.',
             'fertile' => 'The days around ovulation when conception is most likely. Estrogen peaks; many feel strong and social.',
             'ovulation' => 'An egg is released (estimated). A small temperature rise follows; libido often peaks.',
             'luteal' => 'Post-ovulation, progesterone rising. Resting HR ticks up and HRV dips a little (normal), appetite and PMS symptoms can build toward the period.',
@@ -484,7 +484,7 @@ class Cycle
     {
         $base = "Day {$cycleDay} · {$phaseLabel} phase.";
         if ($late) {
-            return $base.' Your period is '.abs($inDays).' day'.(abs($inDays) === 1 ? '' : 's').' later than predicted — cycles vary, but worth noting.';
+            return $base.' Your period is '.abs($inDays).' day'.(abs($inDays) === 1 ? '' : 's').' later than predicted -- cycles vary, but worth noting.';
         }
         $next = $inDays === 0 ? 'Your period is predicted today.' : "Next period in ~{$inDays} day".($inDays === 1 ? '' : 's').'.';
         if (! $hormonalBc && $likelihood === 'high') {

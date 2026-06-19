@@ -12,7 +12,7 @@ use Illuminate\Support\Carbon;
  * the estimated fertile window (awareness only), period/day logging, history, settings, and
  * the phase×recovery insight that ties the cycle to the rest of Titan.
  *
- * Wellness-only: nothing here is contraception or diagnosis — the engine carries that rail.
+ * Wellness-only: nothing here is contraception or diagnosis -- the engine carries that rail.
  */
 class CycleController extends Controller
 {
@@ -63,7 +63,7 @@ class CycleController extends Controller
 
         Cycle::startPeriod($profile, Carbon::parse($data['date']));
 
-        return redirect('/cycle')->with('status', 'Period start logged — day 1.');
+        return redirect('/cycle')->with('status', 'Period start logged -- day 1.');
     }
 
     /** Log a cycle day: flow, symptoms, mood/energy, BBT. */

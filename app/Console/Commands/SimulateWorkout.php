@@ -14,15 +14,15 @@ use Illuminate\Support\Str;
 
 /**
  * Simulate a GPS-paced workout with the Titan virtual band and run it through the REAL biosignal
- * service — proving the activity + fitness pipeline (workout classification, TRIMP, VO2max, HRR)
+ * service -- proving the activity + fitness pipeline (workout classification, TRIMP, VO2max, HRR)
  * works end-to-end before the hardware arrives.
  *
  *   php artisan simulator:workout run --minutes=30
  *   php artisan simulator:workout cycle --fitness=0.8 --minutes=45
  *
  * Honesty: this PHP twin drives the FITNESS path (HR + GPS pace + baro grade → VO2max / HRR /
- * TRIMP), which doesn't depend on the raw accel signature. The classification-accurate twin —
- * which REPLAYS real PAMAP2 motion so the classifier behaves — is the Python one
+ * TRIMP), which doesn't depend on the raw accel signature. The classification-accurate twin --
+ * which REPLAYS real PAMAP2 motion so the classifier behaves -- is the Python one
  * (biosignal/scripts/simulate_workout.py). If the biosignal service isn't up, this still prints
  * what the band produced and degrades gracefully.
  */
@@ -61,11 +61,11 @@ class SimulateWorkout extends Command
         $p = $w['profile'];
         $weight = (float) $this->option('weight');
 
-        $this->line("<info>Titan virtual band</info> — {$activity}, {$minutes} min, seed {$sim->seed()}");
+        $this->line("<info>Titan virtual band</info> -- {$activity}, {$minutes} min, seed {$sim->seed()}");
         $this->table(['Sensor', 'Value'], [
             ['GPS distance', $w['distance_km'].' km'],
             ['Resting / max HR', $p['resting_hr'].' / '.$p['hr_max'].' bpm'],
-            ['HRR-60s', ($w['run']['hrr60'] ?? '—').' bpm'],
+            ['HRR-60s', ($w['run']['hrr60'] ?? '--').' bpm'],
         ]);
 
         // --- Stream into the REAL pipeline so it surfaces on the Fitness page ---
@@ -100,17 +100,17 @@ class SimulateWorkout extends Command
             $this->newLine();
             if ($s) {
                 $this->line("  <info>Session</info>   {$s['duration_min']} min · TRIMP {$s['trimp']} · ".round($s['calories_kcal'])." kcal");
-                $type = $s['activity_type'] ?? '—';
+                $type = $s['activity_type'] ?? '--';
                 $this->line("  <info>Activity</info>  {$type}".(isset($s['activity_confidence']) ? " (conf {$s['activity_confidence']})" : ''));
             }
             $this->line("  <info>VO2max</info>    {$fit['vo2max']} ± {$fit['plusminus']} ml/kg/min ({$fit['fitness_level']}) via ".implode(', ', $fit['methods']));
             $hrr = $fit['hrr']['hrr_bpm'] ?? null;
-            $this->line('  <info>HRR-60s</info>   '.($hrr ?? '—').' bpm');
+            $this->line('  <info>HRR-60s</info>   '.($hrr ?? '--').' bpm');
             $this->newLine();
             $this->info('Workout processed by the biosignal service.');
         } catch (\Throwable $e) {
             $this->newLine();
-            $this->warn('Biosignal service unreachable — the workout was generated but not processed. '.
+            $this->warn('Biosignal service unreachable -- the workout was generated but not processed. '.
                 'Bring it up with: docker compose up -d --build biosignal');
             $this->line('  ('.$e->getMessage().')');
         }
@@ -150,7 +150,7 @@ class SimulateWorkout extends Command
         ];
 
         if (! $this->postSigned($device->device_id, $secret, $payload)) {
-            $this->warn('Ingestion API unreachable — workout not stored. (Is the app serving at '.config('app.url').'?)');
+            $this->warn('Ingestion API unreachable -- workout not stored. (Is the app serving at '.config('app.url').'?)');
 
             return self::SUCCESS;
         }

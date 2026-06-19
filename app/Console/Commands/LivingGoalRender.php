@@ -12,14 +12,14 @@ use Illuminate\Console\Command;
  * dream-physique goal AND a recent progress photo, render the next "one step closer" image
  * (calibrated to the last ~2 weeks of adherence) and refresh the "are you on track?" % to
  * goal comparison. This is what makes the rendered "you" advance on its own as the user stays
- * consistent — the founding wedge, on a cadence.
+ * consistent -- the founding wedge, on a cadence.
  *
  *   php artisan physique:living-render                 # all eligible profiles
  *   php artisan physique:living-render --profile=1     # one profile
  *   php artisan physique:living-render --skip-compare  # render the step only, no vision compare
  *
  * AI/image errors are caught per-profile so one offline provider or one bad photo never aborts
- * the whole run. Schedule it weekly (the schedule line lives in routes/console.php — not edited
+ * the whole run. Schedule it weekly (the schedule line lives in routes/console.php -- not edited
  * here): Schedule::command('physique:living-render')->weeklyOn(1, '06:00');
  */
 class LivingGoalRender extends Command
@@ -52,7 +52,7 @@ class LivingGoalRender extends Command
             $hasPhoto = $profile->progressPhotos()->whereNotNull('photo_path')->exists();
 
             if (! $hasGoal || ! $hasPhoto) {
-                $this->line("  <fg=gray>–</> {$label} skipped (".(! $hasGoal ? 'no goal image' : 'no progress photo').')');
+                $this->line("  <fg=gray>-</> {$label} skipped (".(! $hasGoal ? 'no goal image' : 'no progress photo').')');
                 $skipped++;
 
                 continue;
@@ -66,7 +66,7 @@ class LivingGoalRender extends Command
                     $this->line("  <info>✓</info> {$label} stepped to {$step['step_pct']}% (adherence {$adh}%)");
                     $rendered++;
                 } else {
-                    $this->line("  <fg=gray>–</> {$label} no render ({$step['message']})");
+                    $this->line("  <fg=gray>-</> {$label} no render ({$step['message']})");
                     $skipped++;
                 }
             } catch (AiException $e) {

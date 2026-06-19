@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 /**
- * Progress & trends — the visual longitudinal view, built around the north star (the dream physique).
+ * Progress & trends -- the visual longitudinal view, built around the north star (the dream physique).
  * Shows how close they are to the goal, their week-score trajectory, and their bodyweight trend over
  * time. The deep, scrollable companion to the in-chat `physique` and `review` cards.
  */

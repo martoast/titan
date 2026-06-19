@@ -7,7 +7,7 @@ use App\Models\Profile;
 /**
  * Proactive-coach preferences. The user picks how PRESENT they want their coach (coaching_intensity),
  * which sets the default mix of nudges; individual types can still be toggled. This is what makes Titan
- * feel like a real coach who's with you all day — reminding you to eat, train, move/stretch and sleep —
+ * feel like a real coach who's with you all day -- reminding you to eat, train, move/stretch and sleep --
  * without being a nag for people who want a lighter touch.
  */
 class Reminders
@@ -25,9 +25,9 @@ class Reminders
 
     /** intensity => [label, blurb, default-on types]. */
     public const INTENSITIES = [
-        'minimal' => ['label' => 'Light touch', 'blurb' => 'Just a morning briefing and a weekly review — I stay out of your way.', 'types' => ['briefing', 'review']],
+        'minimal' => ['label' => 'Light touch', 'blurb' => 'Just a morning briefing and a weekly review -- I stay out of your way.', 'types' => ['briefing', 'review']],
         'balanced' => ['label' => 'Balanced', 'blurb' => 'Daily briefing, weekly review, meal timing, a nightly wind-down, and cycle heads-ups.', 'types' => ['briefing', 'review', 'meals', 'sleep', 'cycle']],
-        'intense' => ['label' => 'All-in', 'blurb' => "I'm on you all day — eat, train, move, stretch, sleep, plus a weekly review. Like a coach in your pocket.", 'types' => ['briefing', 'review', 'meals', 'sleep', 'cycle', 'move', 'training']],
+        'intense' => ['label' => 'All-in', 'blurb' => "I'm on you all day -- eat, train, move, stretch, sleep, plus a weekly review. Like a coach in your pocket.", 'types' => ['briefing', 'review', 'meals', 'sleep', 'cycle', 'move', 'training']],
     ];
 
     public static function intensity(Profile $profile): string

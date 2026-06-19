@@ -5,9 +5,9 @@ namespace App\Support;
 use App\Models\Profile;
 
 /**
- * The user's eating patterns — their most-eaten foods, computed on demand from logged meals (grouped by
+ * The user's eating patterns -- their most-eaten foods, computed on demand from logged meals (grouped by
  * the same normalization the food cache uses). This is a reference the coach FETCHES when it needs it
- * (meal planning, "what do I usually eat"), not something kept in the system prompt — so it never clogs
+ * (meal planning, "what do I usually eat"), not something kept in the system prompt -- so it never clogs
  * context yet is always current.
  */
 class FoodDiary

@@ -6,12 +6,12 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * The Athlete Score — one 0–100 read on overall fitness, composed from the pillars Titan can
+ * The Athlete Score -- one 0-100 read on overall fitness, composed from the pillars Titan can
  * measure: cardio (VO₂max vs age/sex norms), autonomic recovery (resting HR + HRV), strength
  * (relative strength from logged lifts, else training consistency), and activity (daily steps).
  *
  * Honest by construction: pillars with no data are dropped and the weights renormalised, so the
- * score reflects what we actually know — and confidence drops when VO₂max (the strongest signal)
+ * score reflects what we actually know -- and confidence drops when VO₂max (the strongest signal)
  * is missing. It's a motivating composite, not a lab VO₂max test.
  */
 class AthleteScore
@@ -132,7 +132,7 @@ class AthleteScore
                 'detail' => round($ratio, 2).'× bodyweight'];
         }
 
-        // Fallback: training consistency over the last 28 days (frequency, capped — not true strength).
+        // Fallback: training consistency over the last 28 days (frequency, capped -- not true strength).
         $sessions = $profile->workouts()->where('performed_at', '>=', Carbon::now()->subDays(28))->count();
         if ($sessions >= 1) {
             $perWeek = $sessions / 4;
@@ -157,10 +157,10 @@ class AthleteScore
     {
         return match (true) {
             $s >= 85 => ['Elite', 'Top-tier athletic fitness.'],
-            $s >= 70 => ['Excellent', 'Well above average — strong all round.'],
+            $s >= 70 => ['Excellent', 'Well above average -- strong all round.'],
             $s >= 55 => ['Strong', 'Solidly fit with clear strengths.'],
             $s >= 40 => ['Building', 'A real base to build on.'],
-            $s >= 25 => ['Developing', 'Early days — momentum is everything.'],
+            $s >= 25 => ['Developing', 'Early days -- momentum is everything.'],
             default => ['Starting out', 'The best time to begin was yesterday.'],
         };
     }

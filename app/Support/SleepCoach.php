@@ -6,14 +6,14 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * Sleep Coach — the "how much sleep do you actually need" half of the daily loop.
+ * Sleep Coach -- the "how much sleep do you actually need" half of the daily loop.
  *
  * Sleep Need tonight = a personalised baseline + the sleep debt you've built up + a bump for how hard
  * today was (harder days need more sleep). Sleep Performance scores last night against a full baseline
- * night. Together: "you got 84% of a full night, and you're carrying 1.3 h of debt — aim for 8.7 h
+ * night. Together: "you got 84% of a full night, and you're carrying 1.3 h of debt -- aim for 8.7 h
  * tonight."
  *
- * Grounded in the consensus that adults need ~7–9 h (baseline ~8 h, nudged by age), that deficits
+ * Grounded in the consensus that adults need ~7-9 h (baseline ~8 h, nudged by age), that deficits
  * accumulate as debt, and that exercise modestly raises sleep need. Honest scope: a wellness coaching
  * heuristic (Whoop's exact formula is proprietary; ours is transparent), not a clinical sleep measure.
  */
@@ -101,7 +101,7 @@ class SleepCoach
             return ['debt', 'Carrying sleep debt', sprintf("You're down ~%s h. %s An earlier night chips into it.", rtrim(rtrim(number_format($debt, 1), '0'), '.'), $aim)];
         }
         if ($perf >= 90) {
-            return ['optimal', 'Well rested', "Last night covered your need — keep this rhythm. {$aim}"];
+            return ['optimal', 'Well rested', "Last night covered your need -- keep this rhythm. {$aim}"];
         }
         if ($perf >= 80) {
             return ['good', 'Solid', "A good night, a little short of a full one. {$aim}"];

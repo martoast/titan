@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 /**
  * Turns a raw "brain dump" (the user pasting everything about their health, or text
  * extracted from an uploaded lab report / document) into a clean, organized set of
- * wiki pages — the AI acting as the personal-health LIBRARIAN. Append-safe by
+ * wiki pages -- the AI acting as the personal-health LIBRARIAN. Append-safe by
  * contract: it only CREATES new pages or APPENDS to existing ones (matched by slug),
  * never silently overwrites. Each touched page is re-embedded so search works
  * immediately.
@@ -39,7 +39,7 @@ class KnowledgeIngestor
     {
         $dump = trim($dump);
         if ($dump === '') {
-            return ['created' => [], 'updated' => [], 'message' => 'Nothing to organize — the note was empty.'];
+            return ['created' => [], 'updated' => [], 'message' => 'Nothing to organize -- the note was empty.'];
         }
         if (! $this->ai->configured()) {
             throw new AiException('The Brain AI is not configured (missing OPENAI_API_KEY).');
@@ -50,7 +50,7 @@ class KnowledgeIngestor
             ->get(['id', 'title', 'slug', 'type']);
         $index = $existing->isEmpty()
             ? '(the wiki is empty)'
-            : $existing->map(fn ($p) => "- {$p->slug} — \"{$p->title}\" [{$p->type}]")->implode("\n");
+            : $existing->map(fn ($p) => "- {$p->slug} -- \"{$p->title}\" [{$p->type}]")->implode("\n");
 
         $plan = $this->ai->json([
             ['role' => 'system', 'content' => $this->systemPrompt($index)],
@@ -75,7 +75,7 @@ class KnowledgeIngestor
             $page = KnowledgePage::query()->where('profile_id', $profile->id)->where('slug', $slug)->first();
 
             if ($page) {
-                // APPEND — never overwrite. Skip if this exact text is already present.
+                // APPEND -- never overwrite. Skip if this exact text is already present.
                 if (! str_contains((string) $page->content, $body)) {
                     $page->content = trim((string) $page->content)."\n\n".$body;
                 }
@@ -110,10 +110,10 @@ class KnowledgeIngestor
     {
         return <<<PROMPT
         You are the knowledge LIBRARIAN for a person's long-term PERSONAL HEALTH wiki. The user pastes a
-        raw brain dump — notes about their training, nutrition, sleep, bloodwork, goals, injuries, and
+        raw brain dump -- notes about their training, nutrition, sleep, bloodwork, goals, injuries, and
         family history, or text extracted from a lab report or document. Your job is to organize it into
         clean, well-structured wiki pages that an AI health coach can actually use to get smarter about
-        this person over time — not a single wall of text.
+        this person over time -- not a single wall of text.
 
         Return ONLY JSON: {"pages": [{"title", "type", "action", "existing_slug", "content", "pinned"}]}
 
@@ -129,11 +129,11 @@ class KnowledgeIngestor
         - REUSE existing pages by slug rather than creating near-duplicates. When unsure, append.
         - "content" is clean Markdown: short intro, then bullet points / sections. Preserve every concrete
           specific (dates, numbers, lab values + units, exercise weights, doctor names). Do NOT invent
-          facts not in the dump. Do NOT give medical advice or diagnoses — just file what was said.
+          facts not in the dump. Do NOT give medical advice or diagnoses -- just file what was said.
         - Cross-link related pages with [[Page Title]] where natural.
-        - "pinned": true only for the 1–2 most foundational pages (e.g. a "Profile Overview" or "Goals").
+        - "pinned": true only for the 1-2 most foundational pages (e.g. a "Profile Overview" or "Goals").
 
-        Existing wiki pages (slug — "title" [type]):
+        Existing wiki pages (slug -- "title" [type]):
         {$index}
         PROMPT;
     }

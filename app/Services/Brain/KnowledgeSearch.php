@@ -11,7 +11,7 @@ use Throwable;
 
 /**
  * Hybrid (semantic + keyword) search over a profile's health wiki. Embeddings are
- * cached per page and refreshed lazily — the first search after a page edit
+ * cached per page and refreshed lazily -- the first search after a page edit
  * re-embeds just the changed pages (matched by content hash), so there's no
  * separate index to keep in sync. Brute-force cosine in PHP is fine at one
  * profile's scale. Degrades to keyword-only when OpenAI isn't configured.
@@ -40,7 +40,7 @@ class KnowledgeSearch
 
     /**
      * Make sure the given pages have a current embedding. Re-embeds only those
-     * whose content changed (hash mismatch). Best-effort — never throws.
+     * whose content changed (hash mismatch). Best-effort -- never throws.
      */
     public function ensureIndexed(Collection $pages): void
     {
@@ -62,7 +62,7 @@ class KnowledgeSearch
                 }
             }
         } catch (Throwable) {
-            // Embedding unavailable (rate limit / outage) — search falls back to keyword.
+            // Embedding unavailable (rate limit / outage) -- search falls back to keyword.
         }
     }
 
@@ -105,7 +105,7 @@ class KnowledgeSearch
         $scored = $pages->map(function (KnowledgePage $p) use ($terms, $queryVec) {
             $keyword = $this->keywordScore($p, $terms);
             $semantic = ($queryVec !== [] && ! empty($p->embedding)) ? $this->cosine($queryVec, $p->embedding) : 0.0;
-            // Cosine on 3-small is ~0.1–0.7; stretch into 0–1 so it's comparable.
+            // Cosine on 3-small is ~0.1-0.7; stretch into 0-1 so it's comparable.
             $semantic = max(0.0, min(1.0, ($semantic - 0.15) / 0.5));
 
             $score = $queryVec !== []
@@ -143,7 +143,7 @@ class KnowledgeSearch
         return array_values(array_unique($m[0] ?? []));
     }
 
-    /** 0–1 keyword score: title hits weigh more than body hits. */
+    /** 0-1 keyword score: title hits weigh more than body hits. */
     private function keywordScore(KnowledgePage $page, array $terms): float
     {
         if ($terms === []) {

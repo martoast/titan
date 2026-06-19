@@ -6,16 +6,16 @@ use App\Models\DailyActivity;
 use Illuminate\Support\Collection;
 
 /**
- * Non-parametric circadian rest-activity rhythm (RAR) metrics — Van Someren et al. 1999.
+ * Non-parametric circadian rest-activity rhythm (RAR) metrics -- Van Someren et al. 1999.
  *
  * Computed from the hourly activity profile across several days:
- *   - IS  (interdaily stability)   0..1  — how reproducible the 24 h pattern is day-to-day (higher = stronger clock)
- *   - IV  (intradaily variability) 0..2  — how fragmented activity is within a day (higher = choppier, more napping/waking)
- *   - M10 — average activity in the most-active 10 h block; L5 — average in the least-active 5 h block
- *   - RA  (relative amplitude) = (M10 − L5)/(M10 + L5)  0..1 — the day/night contrast; the headline metric
+ *   - IS  (interdaily stability)   0..1  -- how reproducible the 24 h pattern is day-to-day (higher = stronger clock)
+ *   - IV  (intradaily variability) 0..2  -- how fragmented activity is within a day (higher = choppier, more napping/waking)
+ *   - M10 -- average activity in the most-active 10 h block; L5 -- average in the least-active 5 h block
+ *   - RA  (relative amplitude) = (M10 − L5)/(M10 + L5)  0..1 -- the day/night contrast; the headline metric
  *
  * Why RA is the headline: in UK Biobank (Feng et al., Lancet Healthy Longevity 2023, n≈92k) a blunted
- * (low) relative amplitude predicted all-cause mortality HR 1.54, CVD 1.73, cancer 1.32 — a robust,
+ * (low) relative amplitude predicted all-cause mortality HR 1.54, CVD 1.73, cancer 1.32 -- a robust,
  * recent, large-cohort signal. A strong rhythm (active days, still nights) is protective.
  *
  * Everything is computed from data we already stream 24/7; the absolute activity unit is irrelevant

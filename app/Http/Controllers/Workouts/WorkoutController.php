@@ -121,7 +121,7 @@ class WorkoutController extends Controller
 
     /**
      * Log the load (and correct the auto-counted reps / RPE) against a workout's sets. Built for
-     * band-detected strength sessions, where reps come from the wrist but weight is unknown — the
+     * band-detected strength sessions, where reps come from the wrist but weight is unknown -- the
      * user fills it in here. Bulk-updates every set in one form submit; only touches sets that
      * actually belong to this workout (and so to this profile).
      */
@@ -184,7 +184,7 @@ class WorkoutController extends Controller
             return [
                 'last' => null,
                 'suggestion' => null,
-                'note' => 'No history yet — log your first set to start tracking progression.',
+                'note' => 'No history yet -- log your first set to start tracking progression.',
             ];
         }
 
@@ -201,13 +201,13 @@ class WorkoutController extends Controller
             $suggestion = [
                 'weight_kg' => round($lastWeight + 2.5, 2),
                 'reps' => max(5, min($lastReps, 8)),
-                'reason' => '+2.5 kg — last session looked manageable.',
+                'reason' => '+2.5 kg -- last session looked manageable.',
             ];
         } else {
             $suggestion = [
                 'weight_kg' => $lastWeight,
                 'reps' => $lastReps + 1,
-                'reason' => '+1 rep at the same load — earn the weight jump first.',
+                'reason' => '+1 rep at the same load -- earn the weight jump first.',
             ];
         }
 

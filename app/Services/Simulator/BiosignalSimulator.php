@@ -3,7 +3,7 @@
 namespace App\Services\Simulator;
 
 /**
- * Synthetic physiology engine — the digital twin of the Titan band's signal output.
+ * Synthetic physiology engine -- the digital twin of the Titan band's signal output.
  *
  * Generates physiologically-plausible heart-rate, beat-to-beat IBI/RR series, HRV
  * (RMSSD), resting HR, accelerometer activity counts and a full night of sleep
@@ -37,7 +37,7 @@ class BiosignalSimulator
      * (km/h), `hrr_frac` the HR-reserve fraction the effort sits at. Mirrors the Python twin
      * (biosignal/app/sim/workout.py); the Python side owns the accel-classification-accurate
      * replay, this PHP twin drives the FITNESS path (VO2max / HRR / TRIMP), which depends on HR +
-     * pace + grade, not the raw accel signature — so synthetic physiology is faithful here.
+     * pace + grade, not the raw accel signature -- so synthetic physiology is faithful here.
      */
     public const WORKOUTS = [
         'walk'  => ['speed' => 5.2,  'hrr_frac' => 0.45],
@@ -95,7 +95,7 @@ class BiosignalSimulator
             if ($this->frand() < ($cfg['motion'] > 5 ? 0.012 : 0.002)) {
                 $beat += ($this->frand() < 0.5 ? -1 : 1) * $meanIbi * 0.35;
             }
-            // Clamp to physiological + the pipeline's documented IBI gate (300–2000 ms).
+            // Clamp to physiological + the pipeline's documented IBI gate (300-2000 ms).
             $beat = max(320, min(1900, $beat));
             $ibi[] = (int) round($beat);
             $elapsed += $beat;
@@ -130,7 +130,7 @@ class BiosignalSimulator
         return $out;
     }
 
-    /** RMSSD (ms) of an IBI series — the primary vagal HRV metric (§2). */
+    /** RMSSD (ms) of an IBI series -- the primary vagal HRV metric (§2). */
     public static function rmssd(array $ibi): float
     {
         $n = count($ibi);
@@ -146,7 +146,7 @@ class BiosignalSimulator
         return round(sqrt($sum / ($n - 1)), 1);
     }
 
-    /** SDNN (ms) — standard deviation of NN intervals. */
+    /** SDNN (ms) -- standard deviation of NN intervals. */
     public static function sdnn(array $ibi): float
     {
         $n = count($ibi);
@@ -175,7 +175,7 @@ class BiosignalSimulator
     /**
      * A full night's hypnogram: a list of {state, minutes} segments progressing
      * through realistic NREM/REM cycles. Early night is deep-sleep-heavy; later
-     * cycles lengthen REM — the textbook architecture (§3).
+     * cycles lengthen REM -- the textbook architecture (§3).
      *
      * @return array<int,array{state:string,minutes:int}>
      */
@@ -329,7 +329,7 @@ class BiosignalSimulator
         }
 
         // HRR: HR drop in the 60 s after exercise ends (measured from the cooldown onset, the
-        // stable reference — a noisy global max would understate the drop).
+        // stable reference -- a noisy global max would understate the drop).
         $onset = (int) round($tCool);
         $hrr60 = ($onset + 60 < count($hr1)) ? round($hr1[$onset] - $hr1[$onset + 60], 1) : null;
 

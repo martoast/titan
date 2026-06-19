@@ -6,19 +6,19 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
- * Training load + the acute:chronic workload ratio (ACWR) — a "do no harm" guardrail.
+ * Training load + the acute:chronic workload ratio (ACWR) -- a "do no harm" guardrail.
  *
  * We are nudging sedentary people to move more; the matching duty of care is not to let them ramp so
  * fast they get hurt and quit. Each workout already carries a Banister TRIMP (heart-rate training
  * impulse). ACWR compares the ACUTE load (roughly the last week) to the CHRONIC load (roughly the last
- * month, "what your body is adapted to"). A sharp spike — doing far more this week than you've built up
- * to — is the classic over-reaching pattern.
+ * month, "what your body is adapted to"). A sharp spike -- doing far more this week than you've built up
+ * to -- is the classic over-reaching pattern.
  *
  * We use the EWMA formulation (Williams et al. 2017, Br J Sports Med), which weights recent days more
- * and decays old load, rather than the older flat rolling average (Hulin/Gabbett) — it tracks the
+ * and decays old load, rather than the older flat rolling average (Hulin/Gabbett) -- it tracks the
  * decaying nature of fitness/fatigue better and avoids the rolling window's edge artefacts.
  *
- * HONEST SCOPE — this is training-load GUIDANCE, not an injury prediction. The "sweet spot ~0.8–1.3 /
+ * HONEST SCOPE -- this is training-load GUIDANCE, not an injury prediction. The "sweet spot ~0.8-1.3 /
  * danger >1.5" bands come from team-sport cohorts and their individual predictive validity is genuinely
  * debated (Impellizzeri 2020; Lolli 2019 flag the ratio's mathematical coupling). What survives the
  * critique is the uncontroversial principle underneath: progress load gradually, don't spike it. We
@@ -82,7 +82,7 @@ class TrainingLoad
             return [
                 'acute' => round($acute, 1), 'chronic' => round($chronic, 1), 'acwr' => null,
                 'band' => 'building', 'label' => 'Building your baseline',
-                'advice' => 'Keep logging workouts — once you have ~2 weeks of history we can track whether '
+                'advice' => 'Keep logging workouts -- once you have ~2 weeks of history we can track whether '
                     .'your load is progressing safely.',
                 'week_trimp' => $weekTrimp, 'history_days' => $historyDays, 'sufficient' => false,
             ];
@@ -114,7 +114,7 @@ class TrainingLoad
         }
         if ($acwr < self::SWEET_LOW) {
             return ['detraining', 'Load tapering',
-                'Your training load is dropping. Fine for a recovery week — but sustained low load slowly '
+                'Your training load is dropping. Fine for a recovery week -- but sustained low load slowly '
                 .'gives back the fitness you built. A couple of easy sessions keeps the base.'];
         }
         if ($acwr <= self::SWEET_HIGH) {
@@ -123,11 +123,11 @@ class TrainingLoad
         }
         if ($acwr <= self::CAUTION_HIGH) {
             return ['caution', 'Ramping up',
-                "You're building load faster than usual. That's how fitness grows — just keep the climb "
+                "You're building load faster than usual. That's how fitness grows -- just keep the climb "
                 .'gradual (~10% a week) and watch for niggles.'];
         }
         return ['high', 'Sharp spike',
-            "This week's load jumped well above what you've built up to. Ease back for a few days — the "
+            "This week's load jumped well above what you've built up to. Ease back for a few days -- the "
             .'biggest injury risk is doing too much too soon. Your body adapts on the easy days.'];
     }
 }

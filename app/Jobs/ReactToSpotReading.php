@@ -17,7 +17,7 @@ use Illuminate\Support\Carbon;
  * instant the band's 60-second capture is processed. Posts a `spot` card (HRV + heart
  * rate vs the user's own baseline) and a push, so an on-demand reading feels like the
  * band answering directly. Unlike the daily recovery read, a spot reading is a momentary
- * snapshot — it never overwrites the morning's overnight recovery.
+ * snapshot -- it never overwrites the morning's overnight recovery.
  */
 class ReactToSpotReading implements ShouldQueue
 {
@@ -41,9 +41,9 @@ class ReactToSpotReading implements ShouldQueue
 
         // A noisy capture (motion artifact / no clean beats) → coach asks for a redo.
         if (! $this->valid || $this->hrvMs === null) {
-            $body = "I couldn't get a clean read just now — usually movement or a loose band. Sit still, keep it snug on the wrist, and ask me to take another.";
-            $notifications->notify($profile, '📍 Spot reading — try again', $body, '/coach', 'spot');
-            $this->post($profile, "📍 **Spot reading — couldn't lock on.**\n\n{$body}");
+            $body = "I couldn't get a clean read just now -- usually movement or a loose band. Sit still, keep it snug on the wrist, and ask me to take another.";
+            $notifications->notify($profile, '📍 Spot reading -- try again', $body, '/coach', 'spot');
+            $this->post($profile, "📍 **Spot reading -- couldn't lock on.**\n\n{$body}");
 
             return;
         }
@@ -61,7 +61,7 @@ class ReactToSpotReading implements ShouldQueue
         ];
 
         $line = "HRV {$this->hrvMs}ms".($this->restingHr ? ", heart rate {$this->restingHr}" : '')
-            .($baseline ? " (baseline {$baseline}ms)" : '').' — '.$read;
+            .($baseline ? " (baseline {$baseline}ms)" : '').' -- '.$read;
 
         $notifications->notify($profile, '📍 Your spot reading is in', $line, '/coach', 'spot');
 
@@ -69,7 +69,7 @@ class ReactToSpotReading implements ShouldQueue
         $this->post($profile, "{$fence}\n\n📍 **Live reading:** {$line}");
     }
 
-    /** The user's own resting HRV baseline — median of the last 14 days of recovery logs. */
+    /** The user's own resting HRV baseline -- median of the last 14 days of recovery logs. */
     private function baselineHrv(int $profileId): ?int
     {
         $vals = RecoveryLog::where('profile_id', $profileId)
@@ -100,10 +100,10 @@ class ReactToSpotReading implements ShouldQueue
         $ratio = $hrv / $baseline;
 
         return match (true) {
-            $ratio >= 1.08 => ['high', 'Above baseline', 'parasympathetic tone is high right now — you\'re calm and well recovered.'],
-            $ratio >= 0.92 => ['steady', 'Around baseline', 'right around your normal — a balanced, steady state.'],
-            $ratio >= 0.80 => ['low', 'Below baseline', 'a bit under your norm — some fatigue or stress load; ease into anything hard.'],
-            default => ['verylow', 'Well below baseline', 'notably suppressed — your body\'s under real strain. Favour rest, hydration and a calm hour.'],
+            $ratio >= 1.08 => ['high', 'Above baseline', 'parasympathetic tone is high right now -- you\'re calm and well recovered.'],
+            $ratio >= 0.92 => ['steady', 'Around baseline', 'right around your normal -- a balanced, steady state.'],
+            $ratio >= 0.80 => ['low', 'Below baseline', 'a bit under your norm -- some fatigue or stress load; ease into anything hard.'],
+            default => ['verylow', 'Well below baseline', 'notably suppressed -- your body\'s under real strain. Favour rest, hydration and a calm hour.'],
         };
     }
 

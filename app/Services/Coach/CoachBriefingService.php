@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 /**
  * The PROACTIVE side of the coach. Where CoachService answers questions the user asks,
  * this service speaks first: a short, specific, grounded morning briefing and an evening
- * nudge — the "behavior-triggered push" the research report calls out as one of the
+ * nudge -- the "behavior-triggered push" the research report calls out as one of the
  * highest-leverage retention mechanics.
  *
  * Every line is grounded in the profile's REAL data (last night's recovery + sleep,
@@ -32,7 +32,7 @@ class CoachBriefingService
     public function __construct(protected AiService $ai) {}
 
     /**
-     * Generate, persist and return this profile's morning briefing — readiness/HRV/RHR
+     * Generate, persist and return this profile's morning briefing -- readiness/HRV/RHR
      * from last night, sleep, yesterday's nutrition + training, grounded against the brain.
      *
      * @throws AiException when the AI service fails (caller decides how to surface it).
@@ -47,7 +47,7 @@ class CoachBriefingService
     }
 
     /**
-     * Generate, persist and return this profile's evening nudge — what's still open today
+     * Generate, persist and return this profile's evening nudge -- what's still open today
      * (e.g. a protein gap), framed as one concrete, easy closing action.
      *
      * @throws AiException when the AI service fails.
@@ -85,16 +85,16 @@ class CoachBriefingService
             concrete nutrition target like a protein number). Be supportive and motivating.
             TXT
             : <<<'TXT'
-            Write an EVENING nudge (1-3 short sentences). Look at where today stands so far —
+            Write an EVENING nudge (1-3 short sentences). Look at where today stands so far --
             especially any gap to their nutrition target (e.g. protein remaining) or a missed
-            session — and suggest ONE concrete, easy action to close it tonight
-            (e.g. "you're 40g protein short — a cup of Greek yogurt closes it"). Encouraging,
+            session -- and suggest ONE concrete, easy action to close it tonight
+            (e.g. "you're 40g protein short -- a cup of Greek yogurt closes it"). Encouraging,
             never nagging.
             TXT;
 
         $system = <<<TXT
         You are Titan, {$name}'s personal AI health and physique coach, writing a PROACTIVE
-        push notification / briefing — they did NOT ask a question; you are reaching out.
+        push notification / briefing -- they did NOT ask a question; you are reaching out.
 
         Hard rules:
         - GROUND every statement in the DATA provided below. Quote their real numbers.
@@ -102,15 +102,15 @@ class CoachBriefingService
         - RESPECT DATA CONFIDENCE. A recovery read carries a `confidence` (level + caveat) and
           the baseline carries `sufficient`. Only state a number flatly when confidence is
           "high". When it's "building" or "low", give the number WITH its caveat in plain words
-          (e.g. "HRV's around 68 — still learning your baseline, so don't read too much into it")
+          (e.g. "HRV's around 68 -- still learning your baseline, so don't read too much into it")
           and soften any "vs baseline" comparison when `sufficient` is false. Never present a
           manual estimate or a single spot window as if it were a sealed night's recovery.
         - Be SPECIFIC and actionable, not generic. No filler, no "good morning champion!"
-          fluff — lead with a real number that matters.
-        - Keep it SHORT — this is a glanceable message, not an essay. No headings, no bullet
+          fluff -- lead with a real number that matters.
+        - Keep it SHORT -- this is a glanceable message, not an essay. No headings, no bullet
           lists, no markdown. Plain sentences. Address them by name at most once.
         - You are a coach, NOT a doctor. Never diagnose or make medical claims. If a number
-          looks clinically concerning, gently suggest they check with a physician — don't alarm.
+          looks clinically concerning, gently suggest they check with a physician -- don't alarm.
 
         Tone: {$tone}
 
@@ -123,7 +123,7 @@ class CoachBriefingService
 
         $cycle = class_exists(\App\Support\Cycle::class) ? \App\Support\Cycle::coachDigest($profile) : '';
         if ($cycle !== '') {
-            $system .= "\n\n--- HER CYCLE TODAY (work it into the briefing — phase shapes energy, training & nutrition) ---\n".$cycle;
+            $system .= "\n\n--- HER CYCLE TODAY (work it into the briefing -- phase shapes energy, training & nutrition) ---\n".$cycle;
         }
 
         $dataBlock = "Here is {$name}'s real data right now:\n".json_encode(
@@ -151,14 +151,14 @@ class CoachBriefingService
         $answer = trim($answer);
         if ($answer === '') {
             return $this->dataOnlySummary($name, $kind, $facts)
-                ?: "Morning {$name} — log today's recovery, meals and training so I can give you a sharper briefing tomorrow.";
+                ?: "Morning {$name} -- log today's recovery, meals and training so I can give you a sharper briefing tomorrow.";
         }
 
         return $answer;
     }
 
     /**
-     * Deterministic, grounded fallback if the model is unavailable or silent. Plain data —
+     * Deterministic, grounded fallback if the model is unavailable or silent. Plain data --
      * no invented coaching, just the facts we have.
      *
      * @param  array<string,mixed>  $facts
@@ -180,7 +180,7 @@ class CoachBriefingService
                     $parts[] = "resting HR {$rec['resting_hr']}bpm";
                 }
                 if ($parts) {
-                    // Honour confidence even in the deterministic fallback — never overstate a shaky read.
+                    // Honour confidence even in the deterministic fallback -- never overstate a shaky read.
                     $caveat = $rec['confidence']['caveat'] ?? null;
                     $level = $rec['confidence']['level'] ?? 'high';
                     $line = 'Last night: '.implode(', ', $parts).'.';
@@ -255,7 +255,7 @@ class CoachBriefingService
         try {
             // Prefer a real sealed overnight read (or a provider summary) from the last few days
             // over a noisier daytime window that merely happens to be the newest row. Fall back
-            // to whatever is latest so a fresh user still gets something — with low confidence.
+            // to whatever is latest so a fresh user still gets something -- with low confidence.
             $base = \App\Models\RecoveryLog::query()->where('profile_id', $profile->id);
             $r = (clone $base)
                 ->where(fn ($q) => $q->where('updated_via', 'like', 'biosignal:sealed%')->orWhere('updated_via', 'like', 'device:summary%'))
@@ -281,7 +281,7 @@ class CoachBriefingService
             'soreness' => $r->soreness,
             'mood' => $r->mood,
             'energy' => $r->energy,
-            // The coach must phrase numbers according to this — see the CONFIDENCE rule in the prompt.
+            // The coach must phrase numbers according to this -- see the CONFIDENCE rule in the prompt.
             'confidence' => $confidence ? array_filter([
                 'level' => $confidence['level'],
                 'source' => $confidence['source'],
@@ -402,7 +402,7 @@ class CoachBriefingService
             'avg_hrv_ms' => $avg('hrv_ms'),
             'avg_resting_hr' => $avg('resting_hr'),
             'nights' => $rows->count(),
-            // Below ~2 weeks the baseline is still settling — the coach should hedge "vs baseline" claims.
+            // Below ~2 weeks the baseline is still settling -- the coach should hedge "vs baseline" claims.
             'sufficient' => $rows->count() >= (class_exists(\App\Support\RecoveryConfidence::class) ? \App\Support\RecoveryConfidence::FULL_BASELINE : 14),
         ], fn ($v) => $v !== null);
     }
@@ -442,7 +442,7 @@ class CoachBriefingService
     private function toneGuidance(string $tone): string
     {
         return match ($tone) {
-            'tough_love' => 'Direct, demanding and honest. Hold them accountable and push them — but always with their progress at heart. No coddling, no fluff.',
+            'tough_love' => 'Direct, demanding and honest. Hold them accountable and push them -- but always with their progress at heart. No coddling, no fluff.',
             'gentle' => 'Warm, patient and encouraging. Celebrate small wins, never shame, build momentum gently.',
             default => 'Balanced: supportive but straight-talking. Encourage progress and be honest, without being harsh.',
         };

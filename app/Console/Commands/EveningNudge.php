@@ -13,8 +13,8 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 /**
- * Proactive coach — EVENING nudge (the research report's "behavior-triggered push,
- * evening 5-7pm" — up to 3x open rates vs generic blasts).
+ * Proactive coach -- EVENING nudge (the research report's "behavior-triggered push,
+ * evening 5-7pm" -- up to 3x open rates vs generic blasts).
  *
  *   php artisan coach:evening-nudge
  *   php artisan coach:evening-nudge --profile=1
@@ -47,7 +47,7 @@ class EveningNudge extends Command
 
         foreach ($profiles as $profile) {
             if (! MorningBriefing::briefingsEnabled($profile)) {
-                $this->line("  · profile #{$profile->id} — briefings off, skipped");
+                $this->line("  · profile #{$profile->id} -- briefings off, skipped");
                 $skipped++;
 
                 continue;
@@ -58,12 +58,12 @@ class EveningNudge extends Command
                 $generated++;
             } catch (AiException $e) {
                 Log::warning('[coach] evening nudge AI failure', ['profile' => $profile->id, 'error' => $e->getMessage()]);
-                $this->line("  <fg=red>✗</> profile #{$profile->id} — coach offline ({$e->getMessage()})");
+                $this->line("  <fg=red>✗</> profile #{$profile->id} -- coach offline ({$e->getMessage()})");
 
                 continue;
             }
 
-            $this->line("  <info>✓</info> profile #{$profile->id} — ".Str::limit($message, 70));
+            $this->line("  <info>✓</info> profile #{$profile->id} -- ".Str::limit($message, 70));
 
             // Surface the nudge as an in-app notification + Web Push (best-effort). The
             // research report's evening "behavior-triggered push" lands here.
@@ -95,7 +95,7 @@ class EveningNudge extends Command
     {
         $email = $profile->user?->email;
         if (! $email) {
-            $this->line("  <fg=yellow>…</> profile #{$profile->id} — no email on file, not sent");
+            $this->line("  <fg=yellow>…</> profile #{$profile->id} -- no email on file, not sent");
 
             return false;
         }
@@ -106,7 +106,7 @@ class EveningNudge extends Command
             return true;
         } catch (\Throwable $e) {
             Log::warning('[coach] evening nudge email failure', ['profile' => $profile->id, 'error' => $e->getMessage()]);
-            $this->line("  <fg=yellow>…</> profile #{$profile->id} — email not delivered ({$e->getMessage()})");
+            $this->line("  <fg=yellow>…</> profile #{$profile->id} -- email not delivered ({$e->getMessage()})");
 
             return false;
         }

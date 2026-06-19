@@ -32,7 +32,7 @@ class MealSuggestionController extends Controller
             return back()->withErrors(['suggest' => 'Could not generate ideas just now. Try again shortly.']);
         }
 
-        return redirect()->route('meals.index')->with('status', $made->count().' meal ideas ready — tap one for the recipe.');
+        return redirect()->route('meals.index')->with('status', $made->count().' meal ideas ready -- tap one for the recipe.');
     }
 
     /** Update the kitchen: add what you bought, remove an item, or clear it. */

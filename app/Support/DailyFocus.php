@@ -6,10 +6,10 @@ use App\Models\Profile;
 use Illuminate\Support\Carbon;
 
 /**
- * Daily Focus — the one thing to work on today, synthesised from the Recovery → Strain → Sleep loop.
+ * Daily Focus -- the one thing to work on today, synthesised from the Recovery → Strain → Sleep loop.
  *
  * The dashboard's job is to answer "what should I do today?" in a glance. This reads the three pillars
- * and picks the single highest-priority message: recover, sleep, push, or maintain — so the user never
+ * and picks the single highest-priority message: recover, sleep, push, or maintain -- so the user never
  * has to interpret three scores themselves.
  */
 class DailyFocus
@@ -32,7 +32,7 @@ class DailyFocus
         [$focus, $headline, $detail] = match (true) {
             $readiness !== null && $readiness < 34 => [
                 'recover', 'Recover today',
-                'Your recovery is low — keep strain easy and bank an early night. Pushing now digs the hole deeper.',
+                'Your recovery is low -- keep strain easy and bank an early night. Pushing now digs the hole deeper.',
             ],
             $sleep && ($debt >= 2.0 || ($perf !== null && $perf < 75)) => [
                 'sleep', 'Prioritise sleep',
@@ -40,7 +40,7 @@ class DailyFocus
             ],
             $readiness !== null && $readiness >= 67 && $strain['status'] === 'under' => [
                 'push', 'Primed to push',
-                'You\'re well recovered and under your strain target — today\'s the day to go hard.',
+                'You\'re well recovered and under your strain target -- today\'s the day to go hard.',
             ],
             $strain['status'] === 'over' => [
                 'maintain', 'Solid work in',
@@ -48,7 +48,7 @@ class DailyFocus
             ],
             default => [
                 'maintain', 'Stay the course',
-                'Recovery, strain and sleep are in balance — keep the rhythm and stay consistent.',
+                'Recovery, strain and sleep are in balance -- keep the rhythm and stay consistent.',
             ],
         };
 

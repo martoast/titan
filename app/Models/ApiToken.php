@@ -26,7 +26,7 @@ class ApiToken extends Model
     }
 
     /**
-     * Mint a new token for a user. Returns [model, plaintext] — show the plaintext ONCE.
+     * Mint a new token for a user. Returns [model, plaintext] -- show the plaintext ONCE.
      *
      * @param  array<int,string>  $abilities
      * @return array{0:self,1:string}

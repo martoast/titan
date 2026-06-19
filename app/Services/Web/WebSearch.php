@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Live web access for the coach — Google search (SerpAPI) + page scraping (ScraperAPI). This is how
+ * Live web access for the coach -- Google search (SerpAPI) + page scraping (ScraperAPI). This is how
  * Titan grounds claims in REAL data instead of the model inventing them: looking up a food's actual
  * calories/macros, checking current facts, and sourcing the deep-research briefs.
  *

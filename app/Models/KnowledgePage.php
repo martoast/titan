@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 /**
  * One page in a profile's long-term-memory health wiki. Profile-scoped. Content is
  * markdown and may cross-reference other pages with [[Page Title]] wikilinks. Pinned
- * pages are the profile's "core memory" — injected into the coach every turn.
+ * pages are the profile's "core memory" -- injected into the coach every turn.
  */
 class KnowledgePage extends Model
 {
@@ -43,7 +43,7 @@ class KnowledgePage extends Model
         return trim($this->title."\n\n".(string) $this->content);
     }
 
-    /** Hash of the embed source — lets us skip re-embedding unchanged pages. */
+    /** Hash of the embed source -- lets us skip re-embedding unchanged pages. */
     public function contentHash(): string
     {
         return md5($this->embedText());

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 /**
- * A movement in the shared, global exercise library. NOT profile-scoped — every
+ * A movement in the shared, global exercise library. NOT profile-scoped -- every
  * profile's workouts draw from the same library. Seeded by ExerciseLibrarySeeder.
  */
 class Exercise extends Model

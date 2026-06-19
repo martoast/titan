@@ -6,7 +6,7 @@ use App\Support\FoodDiary;
 use Illuminate\Http\Request;
 
 /**
- * The food wiki — your most-eaten foods and patterns, computed from your logged meals. The same data
+ * The food wiki -- your most-eaten foods and patterns, computed from your logged meals. The same data
  * the coach pulls via my_foods, in a browsable view.
  */
 class FoodController extends Controller

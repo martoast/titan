@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Proactive meal reminder — the "you forgot to eat again" nudge.
+ * Proactive meal reminder -- the "you forgot to eat again" nudge.
  *
  *   php artisan meals:remind                 # every push-enabled profile due/overdue for a meal
  *   php artisan meals:remind --profile=1
@@ -44,7 +44,7 @@ class MealReminder extends Command
                     continue;
                 }
 
-                $title = $m['status'] === 'overdue' ? '🍽️ Eat now — you\'re overdue' : '🍽️ Time to eat';
+                $title = $m['status'] === 'overdue' ? '🍽️ Eat now -- you\'re overdue' : '🍽️ Time to eat';
                 $notifications->notify($profile, $title, $m['advice'], '/meals/add', 'meal');
 
                 $profile->settings = array_merge($profile->settings ?? [], ['meal_last_reminder' => $slotKey]);
@@ -60,7 +60,7 @@ class MealReminder extends Command
         return self::SUCCESS;
     }
 
-    /** Profiles that opted into push (have a subscription) — those are the ones who want a buzz. */
+    /** Profiles that opted into push (have a subscription) -- those are the ones who want a buzz. */
     private function resolveProfiles()
     {
         if ($id = $this->option('profile')) {

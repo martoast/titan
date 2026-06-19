@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 /**
- * The Research Library — every deep-dive brief the coach has written, in one place. Briefs are
+ * The Research Library -- every deep-dive brief the coach has written, in one place. Briefs are
  * KnowledgePages tagged `research` (plus older ones recognised by their footer), so this is just a
  * focused view over them with a markdown reader.
  */

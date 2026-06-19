@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
  * Generates images with Google's "Nano Banana 2" (Gemini Flash Image) via the
  * Gemini generateContent endpoint, which returns the image as base64 inline data.
  * Ported from fullstack-suite and extended to accept INPUT images so we can do
- * image+text → image — the core of Titan's visual features:
+ * image+text → image -- the core of Titan's visual features:
  *   - dream-physique: current photo + "add 10 lbs lean muscle"
  *   - living goal image: current progress photo morphed a step toward the goal
  *

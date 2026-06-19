@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Storage;
  * Seal completed WORKOUT windows for one profile into authoritative activity_sessions rows.
  *
  * The band streams a workout as one or more `kind=workout` windows (3-axis accel + on-device HR
- * + GPS speed/grade — see firmware T1/T4). This job groups them into sessions, then runs each
+ * + GPS speed/grade -- see firmware T1/T4). This job groups them into sessions, then runs each
  * session through the biosignal service twice: /process/activity classifies it (run/walk/cycle…)
  * and computes TRIMP + calories, and /process/fitness turns the GPS-paced run + the profile's
  * overnight resting HR into a run-calibrated VO2max + heart-rate recovery. One activity_sessions
@@ -76,7 +76,7 @@ class SealActivityJob implements ShouldQueue
 
         foreach ($this->groupIntoSessions($windows) as $session) {
             if (! $this->sessionIsComplete($session)) {
-                continue; // still streaming — let it finish
+                continue; // still streaming -- let it finish
             }
             try {
                 $this->sealSession($profile, $biosignal, $session);

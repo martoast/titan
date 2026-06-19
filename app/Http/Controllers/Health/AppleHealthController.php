@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
  *
  * NOTE on big uploads: the zip can be tens to hundreds of MB. PHP gates uploads with
  *   upload_max_filesize  and  post_max_size  (php.ini). If a user's export exceeds the
- * server limit, PHP silently drops the file and $request->file() is null — we detect
+ * server limit, PHP silently drops the file and $request->file() is null -- we detect
  * that and return a friendly message telling them to raise the limit. To support large
  * exports set e.g.  upload_max_filesize=512M  post_max_size=512M  (and the web server's
  * client_max_body_size for nginx). The importer itself never loads the XML into memory.
@@ -79,7 +79,7 @@ class AppleHealthController extends Controller
     }
 
     /**
-     * True when the request body exceeded post_max_size — PHP empties superglobals in
+     * True when the request body exceeded post_max_size -- PHP empties superglobals in
      * that case, which we'd otherwise misread as an empty form.
      */
     private function exceededPostMax(Request $request): bool
