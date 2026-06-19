@@ -2302,4 +2302,3 @@ class CoachTools
         return null;
     }
 }
-'

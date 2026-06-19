@@ -50,7 +50,7 @@ class AppleHealthController extends Controller
 
         if (! $file || ! $file->isValid()) {
             return back()->with('apple_health_error',
-                'The upload did not complete. The file may exceed the server's size limit (php.ini upload_max_filesize).');
+                "The upload did not complete. The file may exceed the server's size limit (php.ini upload_max_filesize).");
         }
 
         // Accept .zip by extension/mime; Apple's export is always a zip.

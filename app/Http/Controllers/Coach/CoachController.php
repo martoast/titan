@@ -365,4 +365,3 @@ class CoachController extends Controller
         return response()->json(['ok' => true, 'text' => $text]);
     }
 }
-'
