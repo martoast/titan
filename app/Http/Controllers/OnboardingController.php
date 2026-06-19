@@ -161,10 +161,14 @@ class OnboardingController extends Controller
     }
 
     /**
-     * Generate a dream-physique goal image DURING onboarding (AJAX). Gender-aware: the
-     * `sex` chosen in the wizard (not yet saved to the profile) steers the render, plus the
-     * user's own description. The freshly generated render becomes the active goal so the
-     * coach has a north star from day one; "try again" just replaces it. Always JSON.
+     * Generate ONE angle of the dream physique DURING onboarding (AJAX). The wizard captures up to
+     * three shots — front / back / side — and calls this once per angle, because a single front photo
+     * can't show a glute or leg goal. Gender- AND angle-aware: the `sex` chosen in the wizard plus the
+     * angle steer the render (the back shot pushes glutes/back, the side pushes waist taper + glute
+     * profile), and the user's free-text layers on top.
+     *
+     * The FIRST call (front) creates the active goal; later calls pass its `goal_id` and just append
+     * their angle's render to the same goal. "Try again" re-posts an angle and replaces it. Always JSON.
      */
     public function generatePhysique(Request $request, \App\Services\Ai\NanoBananaClient $nano): \Illuminate\Http\JsonResponse
     {
@@ -172,37 +176,53 @@ class OnboardingController extends Controller
 
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'photo' => ['required', 'image', 'max:12288'],
+            'angle' => ['nullable', 'in:front,back,side'],
             'description' => ['nullable', 'string', 'max:255'],
             'sex' => ['nullable', 'in:F,M,other'],
+            'goal_id' => ['nullable', 'integer'],
         ]);
         if ($validator->fails()) {
             return response()->json(['ok' => false, 'error' => 'Add a clear, well-lit photo of yourself, then generate.'], 422);
         }
 
+        $angle = $request->input('angle') ?: 'front';
         $sourcePath = $request->file('photo')->store('physique/source', 'public');
         $sex = $request->input('sex') ?: $profile->sex;
         $description = trim((string) $request->input('description')) ?: null;
-        $prompt = \App\Support\PhysiquePrompt::build($sex, $description);
+        $prompt = \App\Support\PhysiquePrompt::build($sex, $description, $angle);
 
         try {
             $input = $nano->imageFromDisk($sourcePath);
             $generated = $nano->generateToDisk($prompt, 'physique/goal', [$input]);
         } catch (\App\Exceptions\AiException $e) {
-            \Illuminate\Support\Facades\Log::warning('[Onboarding] physique generation failed', ['error' => $e->getMessage()]);
+            \Illuminate\Support\Facades\Log::warning('[Onboarding] physique generation failed', ['error' => $e->getMessage(), 'angle' => $angle]);
 
             return response()->json(['ok' => false, 'error' => 'Couldn’t generate that just now — give it another try in a moment.'], 200);
         }
 
-        $profile->physiqueGoals()->update(['is_active' => false]);
-        $goal = $profile->physiqueGoals()->create([
-            'source_photo_path' => $sourcePath,
-            'goal_image_path' => $generated['path'],
-            'prompt' => $prompt,
-            'description' => $description,
-            'is_active' => true,
-        ]);
+        // Reuse the goal the front shot created (passed back as goal_id); otherwise start a fresh one.
+        $goal = $request->filled('goal_id')
+            ? $profile->physiqueGoals()->where('id', $request->integer('goal_id'))->where('is_active', true)->first()
+            : null;
+        if (! $goal) {
+            $profile->physiqueGoals()->update(['is_active' => false]);
+            $goal = $profile->physiqueGoals()->create([
+                'source_photo_path' => $sourcePath,    // primary; putShot() corrects it to the front shot
+                'goal_image_path' => $generated['path'],
+                'prompt' => $prompt,
+                'description' => $description,
+                'is_active' => true,
+                'shots' => [],
+            ]);
+        }
+        $goal->putShot($angle, $sourcePath, $generated['path']);
 
-        return response()->json(['ok' => true, 'goal_id' => $goal->id, 'image_url' => $goal->goalUrl()]);
+        return response()->json([
+            'ok' => true,
+            'goal_id' => $goal->id,
+            'angle' => $angle,
+            'image_url' => \Illuminate\Support\Facades\Storage::disk('public')->url($generated['path']),
+        ]);
     }
 
     /**

@@ -18,7 +18,7 @@ class PhysiqueGoal extends Model
     use HasFactory;
 
     protected $fillable = [
-        'profile_id', 'source_photo_path', 'goal_image_path',
+        'profile_id', 'source_photo_path', 'goal_image_path', 'shots',
         'prompt', 'description', 'is_active',
     ];
 
@@ -26,8 +26,12 @@ class PhysiqueGoal extends Model
     {
         return [
             'is_active' => 'boolean',
+            'shots' => 'array',
         ];
     }
+
+    /** The angles we capture, in display order. Front is the identity anchor + primary shot. */
+    public const ANGLES = ['front', 'back', 'side'];
 
     public function profile(): BelongsTo
     {
@@ -44,5 +48,59 @@ class PhysiqueGoal extends Model
     public function goalUrl(): ?string
     {
         return $this->goal_image_path ? Storage::disk('public')->url($this->goal_image_path) : null;
+    }
+
+    /**
+     * Every captured angle as display-ready URLs, ordered front → back → side.
+     * Legacy single-shot goals (no `shots`) synthesize a single front entry, so the
+     * gallery renders the same whether a goal predates multi-angle or not.
+     *
+     * @return array<int,array{angle:string,source_url:?string,goal_url:?string}>
+     */
+    public function shotUrls(): array
+    {
+        $disk = Storage::disk('public');
+        $byAngle = [];
+        foreach (($this->shots ?? []) as $s) {
+            $angle = $s['angle'] ?? 'front';
+            $byAngle[$angle] = [
+                'angle' => $angle,
+                'source_url' => ! empty($s['source']) ? $disk->url($s['source']) : null,
+                'goal_url' => ! empty($s['goal']) ? $disk->url($s['goal']) : null,
+            ];
+        }
+
+        $out = [];
+        foreach (self::ANGLES as $angle) {
+            if (isset($byAngle[$angle])) {
+                $out[] = $byAngle[$angle];
+            }
+        }
+
+        // Legacy goals (created before multi-angle): present the primary pair as the front shot.
+        if ($out === [] && $this->goal_image_path) {
+            $out[] = ['angle' => 'front', 'source_url' => $this->sourceUrl(), 'goal_url' => $this->goalUrl()];
+        }
+
+        return $out;
+    }
+
+    /** Upsert one angle's {source,goal} into the shots set, keeping ANGLES order. */
+    public function putShot(string $angle, string $sourcePath, string $goalPath): void
+    {
+        $shots = collect($this->shots ?? [])
+            ->reject(fn ($s) => ($s['angle'] ?? null) === $angle)
+            ->push(['angle' => $angle, 'source' => $sourcePath, 'goal' => $goalPath])
+            ->sortBy(fn ($s) => array_search($s['angle'], self::ANGLES, true))
+            ->values()
+            ->all();
+
+        $attrs = ['shots' => $shots];
+        // Front is the primary shot the rest of the app reads.
+        if ($angle === 'front') {
+            $attrs['source_photo_path'] = $sourcePath;
+            $attrs['goal_image_path'] = $goalPath;
+        }
+        $this->update($attrs);
     }
 }

@@ -370,77 +370,103 @@
                     </section>
                 </template>
 
-                {{-- Dream physique — the coach's north star, generated from a photo --}}
+                {{-- Dream physique — the coach's north star, rendered from front / back / side --}}
                 <template x-if="current === 'physique'">
                     <section class="ob-step">
                         <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">The moment of truth</p>
                         <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">See your dream physique.</h2>
-                        <p class="mt-2 text-sm text-gray-500">Built from everything you just told me. Add a photo and I'll render a realistic, achievable version of future you.</p>
+                        <p class="mt-2 text-sm text-gray-500">Add a front, back and side photo and I'll render a realistic future you from every angle — so your glute, leg and back goals actually show.</p>
 
-                        {{-- A · recap + upload + generate --}}
-                        <div x-show="!form.phys_goal_image && !physGenerating" class="mt-6 space-y-4">
-                            {{-- What we're building from — pulled live from the intake above --}}
-                            <div class="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.04] p-4">
-                                <p class="text-xs font-bold uppercase tracking-wider text-cyan-300/80">Building around</p>
-                                <p class="mt-1.5 text-sm font-medium text-gray-200" x-text="goalLabel"></p>
-                                <div x-show="form.focus_areas.length" class="mt-2 flex flex-wrap gap-1.5">
-                                    <template x-for="c in form.focus_areas" :key="c">
-                                        <span class="rounded-full bg-white/[0.06] px-2.5 py-1 text-xs text-gray-300" x-text="c"></span>
-                                    </template>
-                                </div>
-                                <button type="button" @click="goToStep('focus')" class="mt-2.5 text-xs font-semibold text-cyan-400 active:text-cyan-200">Change focus areas →</button>
-                            </div>
-                            <input x-model="form.phys_desc" maxlength="160" type="text" placeholder="Any last detail to nail? (optional)"
-                                   class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-cyan-400 focus:ring-0">
-                            <input x-ref="physPhoto" type="file" accept="image/*" class="hidden" @change="onPhysPhoto($event)">
-                            <button type="button" @click="$refs.physPhoto.click()"
-                                    class="flex w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.03] py-8 transition active:bg-white/[0.06]"
-                                    :class="physPhotoPreview ? 'border-solid !border-cyan-400/40 !py-0' : ''">
-                                <template x-if="physPhotoPreview"><img :src="physPhotoPreview" alt="" class="max-h-56 w-full object-contain"></template>
-                                <template x-if="!physPhotoPreview">
-                                    <span class="flex flex-col items-center gap-2 text-gray-400">
-                                        <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5V18a2 2 0 002 2h14a2 2 0 002-2v-1.5M12 16V3m0 0L8 7m4-4l4 4"/></svg>
-                                        <span class="font-display text-sm font-bold text-gray-200">Upload a photo of yourself</span>
-                                        <span class="text-xs text-gray-600">A clear, well-lit, front-facing shot works best</span>
-                                    </span>
+                        {{-- What we're building from — pulled live from the intake above --}}
+                        <div class="mt-5 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.04] p-4">
+                            <p class="text-xs font-bold uppercase tracking-wider text-cyan-300/80">Building around</p>
+                            <p class="mt-1.5 text-sm font-medium text-gray-200" x-text="goalLabel"></p>
+                            <div x-show="form.focus_areas.length" class="mt-2 flex flex-wrap gap-1.5">
+                                <template x-for="c in form.focus_areas" :key="c">
+                                    <span class="rounded-full bg-white/[0.06] px-2.5 py-1 text-xs text-gray-300" x-text="c"></span>
                                 </template>
-                            </button>
-                            <p x-show="physPhotoPreview" x-cloak class="text-center text-xs text-gray-600">Tap the photo to change it</p>
-                            <button type="button" @click="generatePhys()" :disabled="!physPhotoFile"
-                                    class="h-14 w-full rounded-2xl font-display text-base font-bold transition disabled:cursor-not-allowed"
-                                    :style="physPhotoFile ? 'background:linear-gradient(90deg,#6366f1,#22d3ee); color:#0b1220' : 'background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.4)'">
-                                Generate my dream physique ✨
-                            </button>
-                            <button type="button" @click="next()" class="block w-full py-1 text-center text-sm text-gray-500 active:text-gray-300">I'll do this later</button>
+                            </div>
+                            <button type="button" @click="goToStep('focus')" class="mt-2.5 text-xs font-semibold text-cyan-400 active:text-cyan-200">Change focus areas →</button>
                         </div>
 
-                        {{-- B · generating --}}
-                        <div x-show="physGenerating" x-cloak class="mt-6">
-                            <div class="relative grid aspect-[4/5] w-full place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-                                <img x-show="physPhotoPreview" :src="physPhotoPreview" alt="" class="absolute inset-0 h-full w-full object-cover opacity-20 blur-[3px]">
-                                <div class="relative flex flex-col items-center gap-3">
-                                    <svg class="h-8 w-8 animate-spin text-cyan-300" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-opacity="0.25"/><path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
-                                    <p class="font-display text-base font-bold text-gray-100">Sculpting your future self…</p>
-                                    <p class="text-xs text-gray-500">This takes a few seconds</p>
+                        <input x-model="form.phys_desc" maxlength="160" type="text" placeholder="Any last detail to nail? (optional)"
+                               class="mt-4 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-gray-100 placeholder-gray-600 focus:border-cyan-400 focus:ring-0">
+
+                        {{-- Three angle cards: front (required) + back & side (optional but where glutes/legs show) --}}
+                        <div class="mt-5 space-y-3">
+                            <template x-for="a in PHYS_ANGLES" :key="a">
+                                <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="min-w-0">
+                                            <span class="font-display text-sm font-bold text-gray-100" x-text="physMeta[a].label"></span>
+                                            <span class="ml-1.5 text-[11px] font-semibold uppercase tracking-wider"
+                                                  :class="physMeta[a].req ? 'text-cyan-300/80' : 'text-gray-600'"
+                                                  x-text="physMeta[a].req ? 'Required' : 'Optional'"></span>
+                                            <p class="text-xs text-gray-500" x-text="physMeta[a].hint"></p>
+                                        </div>
+                                        {{-- status chip --}}
+                                        <span class="shrink-0">
+                                            <svg x-show="physShots[a].status === 'generating'" class="h-5 w-5 animate-spin text-cyan-300" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-opacity="0.25"/><path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+                                            <svg x-show="physShots[a].status === 'done'" class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                        </span>
+                                    </div>
+
+                                    {{-- Empty / re-pick dropzone (before a render exists for this angle) --}}
+                                    <label x-show="physShots[a].status !== 'done'"
+                                           class="mt-3 flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-white/15 bg-white/[0.02] transition active:bg-white/[0.05]"
+                                           :class="physShots[a].preview ? 'border-solid !border-cyan-400/40' : ''">
+                                        <input type="file" accept="image/*" class="hidden" @change="onPhysPhoto(a, $event)">
+                                        <template x-if="physShots[a].preview">
+                                            <div class="relative w-full">
+                                                <img :src="physShots[a].preview" alt="" class="max-h-44 w-full object-contain">
+                                                <div x-show="physShots[a].status === 'generating'" x-cloak class="absolute inset-0 grid place-items-center bg-black/55 backdrop-blur-[2px]">
+                                                    <span class="font-display text-xs font-bold text-cyan-200">Sculpting…</span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <template x-if="!physShots[a].preview">
+                                            <span class="flex flex-col items-center gap-1.5 py-6 text-gray-400">
+                                                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5V18a2 2 0 002 2h14a2 2 0 002-2v-1.5M12 16V3m0 0L8 7m4-4l4 4"/></svg>
+                                                <span class="font-display text-xs font-bold text-gray-200" x-text="'Add your ' + physMeta[a].label.toLowerCase() + ' photo'"></span>
+                                            </span>
+                                        </template>
+                                    </label>
+
+                                    {{-- Result: before / after for this angle --}}
+                                    <div x-show="physShots[a].status === 'done'" x-cloak class="mt-3">
+                                        <div class="grid grid-cols-2 gap-2.5">
+                                            <figure class="space-y-1">
+                                                <img :src="physShots[a].preview" alt="" class="aspect-[3/4] w-full rounded-xl border border-white/10 object-cover">
+                                                <figcaption class="text-center text-[11px] font-medium uppercase tracking-wider text-gray-600">Now</figcaption>
+                                            </figure>
+                                            <figure class="space-y-1">
+                                                <img :src="physShots[a].goal" alt="Your dream physique" class="aspect-[3/4] w-full rounded-xl border-2 object-cover" style="border-color:rgba(34,211,238,0.4)">
+                                                <figcaption class="text-center text-[11px] font-bold uppercase tracking-wider" style="color:#67e8f9">Goal</figcaption>
+                                            </figure>
+                                        </div>
+                                        <div class="mt-2 flex items-center justify-center gap-4">
+                                            <button type="button" :disabled="physGenerating" @click="redoAngle(a)" class="text-xs font-medium text-gray-400 active:text-gray-200 disabled:opacity-40">↻ Redo</button>
+                                            <label class="cursor-pointer text-xs font-medium text-gray-400 active:text-gray-200">
+                                                <input type="file" accept="image/*" class="hidden" @change="onPhysPhoto(a, $event)">
+                                                Change photo
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            </template>
                         </div>
 
-                        {{-- C · before / after --}}
-                        <div x-show="form.phys_goal_image && !physGenerating" x-cloak class="mt-6 space-y-4">
-                            <div class="grid grid-cols-2 gap-3">
-                                <figure class="space-y-1.5">
-                                    <img :src="physPhotoPreview" alt="" class="aspect-[4/5] w-full rounded-2xl border border-white/10 object-cover">
-                                    <figcaption class="text-center text-xs font-medium uppercase tracking-wider text-gray-600">You, now</figcaption>
-                                </figure>
-                                <figure class="space-y-1.5">
-                                    <img :src="form.phys_goal_image" alt="Your dream physique" class="aspect-[4/5] w-full rounded-2xl border-2 object-cover" style="border-color:rgba(34,211,238,0.4)">
-                                    <figcaption class="text-center text-xs font-bold uppercase tracking-wider" style="color:#67e8f9">Your goal</figcaption>
-                                </figure>
-                            </div>
-                            <p class="text-center text-sm text-gray-400">Your north star — your coach trains you toward this.</p>
-                            <button type="button" @click="next()" class="h-14 w-full rounded-2xl font-display text-base font-bold text-gray-900" style="background:linear-gradient(90deg,#6366f1,#22d3ee)">This is it — let's go →</button>
-                            <button type="button" @click="retryPhys()" class="block w-full py-1 text-center text-sm font-medium text-gray-400 active:text-gray-200">↻ Try again</button>
+                        {{-- Generate / continue --}}
+                        <div class="mt-5 space-y-2">
+                            <button type="button" x-show="physHasPending" @click="generatePhys()" :disabled="physGenerating || !physFrontReady"
+                                    class="h-14 w-full rounded-2xl font-display text-base font-bold transition disabled:cursor-not-allowed"
+                                    :style="(!physGenerating && physFrontReady) ? 'background:linear-gradient(90deg,#6366f1,#22d3ee); color:#0b1220' : 'background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.4)'">
+                                <span x-show="!physGenerating" x-text="physAnyDone ? 'Render the rest ✨' : 'Generate my dream physique ✨'"></span>
+                                <span x-show="physGenerating" x-cloak>Sculpting your future self…</span>
+                            </button>
+                            <button type="button" x-show="physAnyDone && !physHasPending && !physGenerating" @click="next()"
+                                    class="h-14 w-full rounded-2xl font-display text-base font-bold text-gray-900" style="background:linear-gradient(90deg,#6366f1,#22d3ee)">This is it — let's go →</button>
+                            <button type="button" x-show="!physGenerating" @click="next()" class="block w-full py-1 text-center text-sm text-gray-500 active:text-gray-300" x-text="physAnyDone ? 'Skip the rest for now' : 'I\'ll do this later'"></button>
                         </div>
 
                         <p x-show="physError" x-cloak x-text="physError" @click="physError=''" class="mt-3 text-center text-sm text-rose-300"></p>
@@ -631,7 +657,7 @@
                     experience: '', train_at: '', train_days: 0,
                     diet: '', allergies: '', avoid_foods: '',
                     motivation: '', event_date: '', focus_areas: [],
-                    phys_desc: '', phys_goal_image: '', phys_goal_id: null,
+                    phys_desc: '', phys_goal_id: null,
                 },
 
                 // ---- Deep-intake chip lists ----
@@ -664,55 +690,121 @@
                     if (i === -1) a.push(val); else a.splice(i, 1);
                 },
 
-                // ---- Dream physique (generated mid-wizard) ----
-                physPhotoFile: null,
-                physPhotoPreview: '',
+                // ---- Dream physique (front / back / side, generated mid-wizard) ----
+                PHYS_ANGLES: ['front', 'back', 'side'],
+                physMeta: {
+                    front: { label: 'Front', req: true,  hint: 'Your face & overall — the identity anchor' },
+                    back:  { label: 'Back',  req: false, hint: 'Where glutes, hamstrings & back show' },
+                    side:  { label: 'Side',  req: false, hint: 'Waist, posture & glute profile' },
+                },
+                physShots: {
+                    front: { file: null, preview: '', goal: '', status: '' },   // status: ''|generating|done|error
+                    back:  { file: null, preview: '', goal: '', status: '' },
+                    side:  { file: null, preview: '', goal: '', status: '' },
+                },
                 physGenerating: false,
                 physError: '',
-                onPhysPhoto(e) {
+
+                get physFrontReady() { const f = this.physShots.front; return f.status === 'done' || !!f.file; },
+                get physHasPending() { return this.PHYS_ANGLES.some((a) => this.physShots[a].file && this.physShots[a].status !== 'done'); },
+                get physAnyDone() { return this.PHYS_ANGLES.some((a) => this.physShots[a].status === 'done'); },
+
+                onPhysPhoto(angle, e) {
                     const f = e.target.files && e.target.files[0];
                     if (!f) return;
-                    this.physPhotoFile = f;
-                    if (this.physPhotoPreview) URL.revokeObjectURL(this.physPhotoPreview);
-                    this.physPhotoPreview = URL.createObjectURL(f);
-                    this.form.phys_goal_image = '';   // a new photo invalidates the old render
+                    const s = this.physShots[angle];
+                    if (s.preview) URL.revokeObjectURL(s.preview);
+                    s.file = f;
+                    s.preview = URL.createObjectURL(f);
+                    s.goal = '';
+                    s.status = '';        // a new photo invalidates this angle's render
                     this.physError = '';
                 },
+
+                // Generate every chosen-but-not-yet-rendered angle, front first (it creates the goal the
+                // others append to). One request per angle keeps each upload short.
                 async generatePhys() {
-                    if (!this.physPhotoFile || this.physGenerating) return;
+                    if (this.physGenerating) return;
+                    if (!this.physFrontReady) { this.physError = 'Add your front photo to start.'; return; }
                     this.physError = '';
                     this.physGenerating = true;
-                    // Description = everything we collected: their goal, the focus areas they chose, plus any last detail.
+                    // Description = everything we collected: goal, focus areas, plus any last detail.
                     const desc = [
                         this.goalLabel && this.goalLabel !== '—' ? 'Goal: ' + this.goalLabel : '',
                         this.form.focus_areas.length ? 'Focus: ' + this.form.focus_areas.join(', ') : '',
                         (this.form.phys_desc || '').trim(),
                     ].filter(Boolean).join('. ').slice(0, 255);
-                    const fd = new FormData();
-                    fd.append('photo', this.physPhotoFile);
-                    fd.append('sex', this.form.sex || '');
-                    if (desc) fd.append('description', desc);
                     const token = document.querySelector('meta[name=csrf-token]')?.content || document.querySelector('input[name=_token]')?.value || '';
                     try {
-                        const res = await fetch('/onboarding/physique', {
-                            method: 'POST',
-                            headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-                            body: fd,
-                        });
-                        const data = await res.json();
-                        if (data && data.ok && data.image_url) {
-                            this.form.phys_goal_image = data.image_url;
-                            this.form.phys_goal_id = data.goal_id;
-                        } else {
-                            this.physError = (data && data.error) || 'Couldn’t generate that — try again.';
+                        for (const angle of this.PHYS_ANGLES) {
+                            const s = this.physShots[angle];
+                            if (!s.file || s.status === 'done') continue;
+                            s.status = 'generating';
+                            const file = await this.compressPhoto(s.file);
+                            const fd = new FormData();
+                            fd.append('photo', file);
+                            fd.append('angle', angle);
+                            fd.append('sex', this.form.sex || '');
+                            if (desc) fd.append('description', desc);
+                            if (this.form.phys_goal_id) fd.append('goal_id', this.form.phys_goal_id);
+                            let data = null;
+                            try {
+                                const res = await fetch('/onboarding/physique', {
+                                    method: 'POST',
+                                    headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                                    body: fd,
+                                });
+                                data = await res.json();
+                            } catch (_) { data = null; }
+                            if (data && data.ok && data.image_url) {
+                                s.goal = data.image_url;
+                                s.status = 'done';
+                                this.form.phys_goal_id = data.goal_id;
+                            } else {
+                                s.status = 'error';
+                                this.physError = (data && data.error) || ('Couldn’t generate the ' + angle + ' shot — try again.');
+                                if (angle === 'front') break;   // no goal was created → can't append the rest
+                            }
                         }
-                    } catch (e) {
-                        this.physError = 'Something went wrong. Check your connection and try again.';
                     } finally {
                         this.physGenerating = false;
                     }
                 },
-                retryPhys() { this.form.phys_goal_image = ''; this.form.phys_goal_id = null; },
+                // Re-render a single angle (keeps its photo).
+                redoAngle(angle) {
+                    if (this.physGenerating) return;
+                    this.physShots[angle].status = '';
+                    this.physShots[angle].goal = '';
+                    this.generatePhys();
+                },
+
+                // Downscale + re-encode to JPEG before upload (small payload + HEIC → JPEG, which the
+                // `image` rule and the vision model both need). Falls back to the original on any failure.
+                async compressPhoto(file, maxDim = 1600, quality = 0.82) {
+                    if (!file || !file.type || !file.type.startsWith('image/')) return file;
+                    try {
+                        let src = null, w = 0, h = 0;
+                        try { src = await createImageBitmap(file); w = src.width; h = src.height; }
+                        catch (_) {
+                            const url = URL.createObjectURL(file);
+                            try {
+                                src = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+                                w = src.naturalWidth; h = src.naturalHeight;
+                            } finally { URL.revokeObjectURL(url); }
+                        }
+                        if (!w || !h) return file;
+                        const scale = Math.min(1, maxDim / Math.max(w, h));
+                        const cw = Math.round(w * scale), ch = Math.round(h * scale);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = cw; canvas.height = ch;
+                        canvas.getContext('2d').drawImage(src, 0, 0, cw, ch);
+                        if (src.close) src.close();
+                        const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality));
+                        if (!blob) return file;
+                        if (blob.size >= file.size && /jpe?g/i.test(file.type)) return file;
+                        return new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+                    } catch (_) { return file; }
+                },
 
                 sexes: [
                     { value: 'F', label: 'Female', glyph: '♀', accent: '#fb7185' },
