@@ -76,6 +76,8 @@ class OnboardingController extends Controller
             'motivation' => ['nullable', 'string', 'max:400'],
             'event_date' => ['nullable', 'date', 'after_or_equal:today'],
             'focus_areas' => ['nullable', 'string', 'max:400'],
+            // Wearable: did they say their band is already in hand? (routes them to pairing after setup)
+            'has_wearable' => ['nullable', 'boolean'],
         ]);
 
         // Parse the '|'-joined chip arrays into clean lists.
@@ -155,6 +157,12 @@ class OnboardingController extends Controller
         // First period → anchors the cycle engine immediately.
         if ($female && $request->boolean('cycle_enabled') && ! empty($data['last_period'])) {
             Cycle::startPeriod($profile, Carbon::parse($data['last_period']));
+        }
+
+        // If their band is already in hand, the perfect moment to connect it is right now —
+        // drop them on the devices page (pair + live bridge) instead of the coach.
+        if ($request->boolean('has_wearable')) {
+            return redirect()->route('devices.index')->with('status', "Welcome to Titan, {$data['display_name']} — your profile's ready. Let's connect your band so your coach reads recovery from night one.");
         }
 
         return redirect()->route('coach.index')->with('status', "Welcome to Titan, {$data['display_name']} — your profile is ready. Ask me anything.");

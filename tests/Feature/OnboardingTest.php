@@ -132,6 +132,26 @@ class OnboardingTest extends TestCase
         $this->assertStringContainsString('wedding', $goals->content);
     }
 
+    public function test_having_a_band_routes_to_device_pairing_after_setup(): void
+    {
+        $user = User::factory()->notOnboarded()->create();
+
+        $base = [
+            'display_name' => 'Theo', 'birthdate' => '1992-02-02', 'sex' => 'M', 'units' => 'metric',
+            'height' => 178, 'weight' => 78, 'activity_level' => 'moderate', 'primary_goal' => 'build_muscle',
+            'coach_tone' => 'balanced', 'meals_per_day' => 3,
+        ];
+
+        // Band in hand → straight to the devices page to connect it.
+        $this->actingAs($user)->post('/onboarding', $base + ['has_wearable' => 1])
+            ->assertRedirect(route('devices.index'));
+
+        // No band → the usual coach landing.
+        $user2 = User::factory()->notOnboarded()->create();
+        $this->actingAs($user2)->post('/onboarding', $base + ['display_name' => 'Mia', 'has_wearable' => 0])
+            ->assertRedirect(route('coach.index'));
+    }
+
     public function test_imperial_units_convert_to_metric(): void
     {
         $user = User::factory()->notOnboarded()->create();

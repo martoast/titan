@@ -92,6 +92,7 @@
             <input type="hidden" name="cycle_length" :value="form.cycle_length">
             <input type="hidden" name="birth_control" :value="form.birth_control">
             <input type="hidden" name="cycle_intent" :value="form.cycle_intent">
+            <input type="hidden" name="has_wearable" :value="form.has_wearable === null ? '' : (form.has_wearable ? 1 : 0)">
             {{-- Deep intake — so the coach truly knows the user from message one --}}
             <input type="hidden" name="injuries" :value="form.injuries.join('|')">
             <input type="hidden" name="health_notes" :value="form.health_notes">
@@ -608,6 +609,41 @@
                     </section>
                 </template>
 
+                {{-- Wearable — if their band is here, connect it right after setup --}}
+                <template x-if="current === 'wearable'">
+                    <section class="ob-step">
+                        <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Your recovery band</p>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Got your Titan band?</h2>
+                        <p class="mt-2 text-sm text-gray-500">If your recovery band is already here, now's the perfect time — connect it and your coach reads your HRV, sleep and recovery from night one.</p>
+                        <div class="mt-6 space-y-3">
+                            <button type="button" @click="form.has_wearable = true; pickAdvance()"
+                                    class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left"
+                                    :style="form.has_wearable === true ? 'border-color:#22d3ee; background:#22d3ee1f' : 'border-color:rgba(255,255,255,0.08)'">
+                                <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl" style="background:#22d3ee26; color:#22d3ee">
+                                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.9"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l2-7 4 14 2-7h4"/></svg>
+                                </span>
+                                <span class="flex-1">
+                                    <span class="block font-display text-lg font-bold text-gray-100">Yes — it's here</span>
+                                    <span class="block text-xs text-gray-500">We'll connect it right after setup</span>
+                                </span>
+                                <svg x-show="form.has_wearable === true" class="h-6 w-6 shrink-0" style="color:#22d3ee" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                            </button>
+                            <button type="button" @click="form.has_wearable = false; pickAdvance()"
+                                    class="ob-opt flex w-full items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left"
+                                    :style="form.has_wearable === false ? 'border-color:#818cf8; background:#818cf81f' : 'border-color:rgba(255,255,255,0.08)'">
+                                <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/5 text-gray-400">
+                                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.9"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                </span>
+                                <span class="flex-1">
+                                    <span class="block font-display text-lg font-bold text-gray-300">Not yet</span>
+                                    <span class="block text-xs text-gray-500">Connect it anytime from Devices</span>
+                                </span>
+                            </button>
+                        </div>
+                        <p class="mt-4 text-center text-xs text-gray-600">No band? Titan still coaches your training, nutrition and physique — the band just adds recovery, sleep and HRV.</p>
+                    </section>
+                </template>
+
                 {{-- Finish --}}
                 <template x-if="current === 'finish'">
                     <section class="ob-step text-center">
@@ -621,7 +657,9 @@
                             <div class="flex justify-between"><span class="text-gray-500">Coaching</span><span class="font-semibold capitalize text-gray-200" x-text="form.coach_tone.replace('_',' ')"></span></div>
                             <div class="flex justify-between"><span class="text-gray-500">Meals / day</span><span class="font-semibold text-gray-200" x-text="form.meals_per_day"></span></div>
                             <div class="flex justify-between" x-show="form.sex === 'F' && form.cycle_enabled"><span class="text-gray-500">Cycle</span><span class="font-semibold text-rose-300">Tracking on</span></div>
+                            <div class="flex justify-between" x-show="form.has_wearable === true"><span class="text-gray-500">Band</span><span class="font-semibold text-cyan-300">Connect next →</span></div>
                         </div>
+                        <p x-show="form.has_wearable === true" class="mt-4 text-sm text-cyan-300/90">Tap below and we'll take you straight to connecting your band.</p>
                     </section>
                 </template>
             </main>
@@ -638,7 +676,7 @@
                         x-text="idx === 0 ? 'Get started' : 'Continue'"></button>
                 <button type="submit" x-show="current === 'finish'" :disabled="submitting"
                         class="h-14 flex-1 rounded-2xl bg-gradient-to-r from-indigo-500 to-cyan-400 font-display text-base font-bold text-gray-900 active:opacity-90 disabled:opacity-60">
-                    <span x-show="!submitting">Enter Titan →</span>
+                    <span x-show="!submitting" x-text="form.has_wearable === true ? 'Connect my band →' : 'Enter Titan →'"></span>
                     <span x-show="submitting" x-cloak>Setting up…</span>
                 </button>
             </footer>
@@ -656,7 +694,7 @@
                     display_name: name || '',
                     bMonth: '', bDay: '', bYear: '', sex: '', units: 'metric', height: '', weight: '',
                     activity_level: '', timezone: tz || 'UTC',
-                    primary_goal: '', coach_tone: '', coaching_intensity: 'balanced',
+                    primary_goal: '', coach_tone: '', coaching_intensity: 'balanced', has_wearable: null,
                     meals_per_day: 0, eat_start: '08:00', eat_end: '21:00',
                     cycle_enabled: false, last_period: '', cycle_length: 28, birth_control: 'none', cycle_intent: 'tracking',
                     // Deep intake — the coach's working knowledge of the user
@@ -865,7 +903,7 @@
                     welcome: '#6366f1', name: '#6366f1', birthday: '#6366f1', sex: '#a78bfa', units: '#22d3ee',
                     body: '#22d3ee', activity: '#22d3ee', health: '#fb7185', training: '#fbbf24', goal: '#a78bfa',
                     diet: '#34d399', focus: '#22d3ee', physique: '#22d3ee', tone: '#818cf8', intensity: '#fb7185',
-                    cycle_enable: '#fb7185', cycle_details: '#fb7185', nutrition: '#34d399', finish: '#22d3ee',
+                    cycle_enable: '#fb7185', cycle_details: '#fb7185', nutrition: '#34d399', wearable: '#22d3ee', finish: '#22d3ee',
                 },
 
                 months: [
@@ -927,8 +965,8 @@
                         s.push('cycle_enable');
                         if (this.form.cycle_enabled) s.push('cycle_details');
                     }
-                    // Dream physique LAST — built from everything above, the first "wow".
-                    s.push('nutrition', 'physique', 'finish');
+                    // Dream physique = the "wow"; then offer to connect the band before the finish.
+                    s.push('nutrition', 'physique', 'wearable', 'finish');
                     return s;
                 },
                 get current() { return this.steps[Math.min(this.idx, this.steps.length - 1)]; },
@@ -948,6 +986,7 @@
                         case 'diet': return !!f.diet;
                         case 'tone': return !!f.coach_tone;
                         case 'nutrition': return Number(f.meals_per_day) >= 2;
+                        case 'wearable': return f.has_wearable !== null;
                         default: return true;
                     }
                 },
