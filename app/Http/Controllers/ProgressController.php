@@ -35,11 +35,17 @@ class ProgressController extends Controller
             'value' => round($imperial ? (float) $b->weight_kg * 2.2046226 : (float) $b->weight_kg, 1),
         ])->all();
 
+        // Progress photos — most recent first, grouped by date for the gallery timeline.
+        $photos = class_exists(\App\Models\ProgressPhoto::class)
+            ? $profile->progressPhotos()->orderByDesc('taken_at')->orderByDesc('id')->get()
+            : collect();
+
         return view('progress.index', [
             'physique' => $physique,
             'weekScores' => $weekScores,
             'weightSeries' => $weightSeries,
             'weightUnit' => $imperial ? 'lb' : 'kg',
+            'photos' => $photos,
         ]);
     }
 }
