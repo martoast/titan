@@ -120,9 +120,6 @@
                 {{-- Empty state: greeting + starter prompts --}}
                 <template x-if="messages.length === 0 && !loadingChat">
                     <div class="max-w-xl mx-auto text-center py-8">
-                        <div class="mx-auto mb-4 h-12 w-12 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center">
-                            <svg class="h-6 w-6 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 21l1.8-4A7.97 7.97 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                        </div>
                         <h2 class="font-display text-lg font-bold text-gray-100">Hey {{ $coachName }} — I'm your coach.</h2>
                         <p class="text-sm text-gray-500 mt-1">I can see your biomarkers, meals, training, sleep and physique. Ask me anything.</p>
                         <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
