@@ -68,7 +68,7 @@
         @php
             $mc = $mealCoach;
             $mcTone = match ($mc['status']) {
-                'overdue' => 'text-rose-300', 'soon' => 'text-amber-300', 'done' => 'text-emerald-300', default => 'text-indigo-300',
+                'overdue' => 'text-amber-300', 'soon' => 'text-amber-300', 'done' => 'text-emerald-300', default => 'text-indigo-300',
             };
         @endphp
         <div class="rounded-2xl border border-indigo-500/20 bg-gradient-to-b from-indigo-500/[0.07] to-transparent p-4 md:p-5 mb-5">

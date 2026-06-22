@@ -141,8 +141,9 @@
 
         {{-- ============ NEXT MEAL — fuel before you're hungry ============ --}}
         @php
+            // Overdue is a warm nudge, not an alarm — amber, never red. (Red reads as "something's wrong".)
             $mTone = match ($meal['status']) {
-                'overdue' => ['border-rose-500/30', 'from-rose-500/[0.10]', 'text-rose-300', 'bg-rose-500/90'],
+                'overdue' => ['border-amber-500/30', 'from-amber-500/[0.10]', 'text-amber-300', 'bg-amber-500/90'],
                 'soon' => ['border-amber-500/25', 'from-amber-500/[0.09]', 'text-amber-300', 'bg-amber-500/90'],
                 'done' => ['border-emerald-500/20', 'from-emerald-500/[0.06]', 'text-emerald-300', 'bg-white/10'],
                 default => ['border-indigo-500/20', 'from-indigo-500/[0.07]', 'text-indigo-300', 'bg-indigo-500/90'],
@@ -156,11 +157,13 @@
                     <div class="text-[11px] uppercase tracking-wider {{ $mTone[2] }} font-semibold flex items-center gap-1.5">
                         <span>🍽️</span> {{ $meal['label'] }}
                     </div>
-                    {{-- live countdown / overdue timer --}}
+                    {{-- A live "in 25m" countdown is genuinely useful; a giant "15h overdue" clock just nags.
+                         So show the countdown only while a meal is upcoming/soon, and let the supportive
+                         copy + protein target lead once it's overdue. --}}
                     @if ($meal['status'] === 'done')
                         <div class="mt-1 font-display text-2xl font-bold text-emerald-300 leading-none">{{ $meal['meals_logged'] }}/{{ $meal['meals_planned'] }} meals</div>
-                    @else
-                        <div class="mt-1 font-display text-3xl font-bold nums {{ $mTone[2] }} leading-none" x-text="display"></div>
+                    @elseif (in_array($meal['status'], ['upcoming', 'soon'], true))
+                        <div class="mt-1 font-display text-2xl font-bold nums {{ $mTone[2] }} leading-none" x-text="display"></div>
                     @endif
                     <p class="mt-1.5 text-sm text-gray-300 leading-relaxed">{{ $meal['advice'] }}</p>
                     @if (! empty($meal['cycle_note']))
