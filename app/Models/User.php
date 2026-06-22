@@ -28,9 +28,18 @@ class User extends Authenticatable
     /** Get the user's profile, creating an empty one on first access. */
     public function ensureProfile(): Profile
     {
-        return $this->profile()->firstOrCreate([], [
+        // Memoize as a loaded relation so the many ensureProfile() calls per request
+        // (controllers, layouts, support classes) don't each re-query firstOrCreate.
+        if ($this->relationLoaded('profile') && $this->profile) {
+            return $this->profile;
+        }
+
+        $profile = $this->profile()->firstOrCreate([], [
             'display_name' => $this->name,
         ]);
+        $this->setRelation('profile', $profile);
+
+        return $profile;
     }
 
     /** Personal API tokens (assistant / MCP access). */

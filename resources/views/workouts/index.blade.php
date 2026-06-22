@@ -12,21 +12,9 @@
             Log manually
         </a>
     </div>
-    <p class="text-gray-500 text-xs mb-5 nums">{{ $workouts->count() }} session{{ $workouts->count() === 1 ? '' : 's' }} recorded</p>
+    <p class="text-gray-500 text-xs mb-5 nums">{{ $workouts->total() }} session{{ $workouts->total() === 1 ? '' : 's' }} recorded</p>
 
-    @php
-        // A band-detected session needs weights: reps came from the wrist, but every set is still 0 kg.
-        $needsWeights = function ($w) {
-            if (! str_starts_with((string) $w->updated_via, 'biosignal')) {
-                return false;
-            }
-            $sets = $w->exercises->flatMap->sets;
-            return $sets->isNotEmpty() && $sets->every(fn ($s) => (float) $s->weight_kg === 0.0);
-        };
-        $pending = $workouts->filter($needsWeights)->values();
-    @endphp
-
-    {{-- Nudge: band-detected sessions waiting on the load --}}
+    {{-- Nudge: band-detected sessions waiting on the load (computed across all history in the controller) --}}
     @if ($pending->isNotEmpty())
         <a href="/workouts/{{ $pending->first()->id }}"
            class="flex items-center gap-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 mb-5 active:bg-cyan-500/15 transition">
@@ -67,6 +55,7 @@
     </div>
 
     {{-- History --}}
+    @php $pendingIds = $pending->pluck('id'); @endphp
     @if ($workouts->isEmpty())
         <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-8 text-center">
             <p class="text-gray-400 text-sm">No workouts logged yet.</p>
@@ -88,7 +77,7 @@
                                 @if ($workout->duration_min)
                                     <span class="text-xs text-gray-500 shrink-0 nums">· {{ $workout->duration_min }} min</span>
                                 @endif
-                                @if ($needsWeights($workout))
+                                @if ($pendingIds->contains($workout->id))
                                     <span class="shrink-0 inline-flex items-center rounded-md bg-cyan-500/15 border border-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">Needs weights</span>
                                 @endif
                             </div>
@@ -113,5 +102,30 @@
                 </a>
             @endforeach
         </div>
+
+        {{-- Pager — keep older sessions one tap away without loading them all up front --}}
+        @if ($workouts->hasPages())
+            <div class="mt-5 flex items-center justify-between gap-3">
+                @if ($workouts->onFirstPage())
+                    <span class="flex-1"></span>
+                @else
+                    <a href="{{ $workouts->previousPageUrl() }}" rel="prev"
+                       class="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium text-gray-200 active:bg-white/10 transition">
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                        Newer
+                    </a>
+                @endif
+                <span class="shrink-0 text-xs text-gray-500 nums">Page {{ $workouts->currentPage() }} / {{ $workouts->lastPage() }}</span>
+                @if ($workouts->hasMorePages())
+                    <a href="{{ $workouts->nextPageUrl() }}" rel="next"
+                       class="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium text-gray-200 active:bg-white/10 transition">
+                        Older
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                    </a>
+                @else
+                    <span class="flex-1"></span>
+                @endif
+            </div>
+        @endif
     @endif
 </x-titan-layout>

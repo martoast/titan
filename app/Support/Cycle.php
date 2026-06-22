@@ -46,17 +46,22 @@ class Cycle
 
     public const FLOWS = ['none', 'spotting', 'light', 'medium', 'heavy'];
 
+    /** Per-request memo for available() — it's called many times per page (nav + controller + support classes). */
+    private static array $availableMemo = [];
+
     /** Should the cycle features even be offered to this profile? (female, or explicitly enabled, or has data). */
     public static function available(Profile $profile): bool
     {
-        if (self::config($profile)['enabled']) {
-            return true;
-        }
-        if (in_array(strtolower((string) ($profile->sex ?? '')), ['f', 'female', 'woman', 'w'], true)) {
-            return true;
+        $key = $profile->id ?? spl_object_id($profile);
+        if (isset(self::$availableMemo[$key])) {
+            return self::$availableMemo[$key];
         }
 
-        return $profile->menstrualCycles()->exists();
+        $available = self::config($profile)['enabled']
+            || in_array(strtolower((string) ($profile->sex ?? '')), ['f', 'female', 'woman', 'w'], true)
+            || $profile->menstrualCycles()->exists();   // only this branch touches the DB
+
+        return self::$availableMemo[$key] = $available;
     }
 
     /** Merged cycle settings (profile.settings['cycle']) over sane defaults. */
