@@ -81,8 +81,18 @@
         @endif
     </div>
 
-    {{-- Brain dump + document upload --}}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+    {{-- Brain dump + document upload — deferred; the page leads with what it already knows --}}
+    <div x-data="{ addOpen: {{ $errors->any() ? 'true' : 'false' }} }">
+    <button type="button" @click="addOpen = !addOpen" class="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3.5 text-left active:bg-white/[0.05]">
+        <span class="flex items-center gap-2.5">
+            <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-500/15 text-indigo-300">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            </span>
+            <span class="font-display font-bold text-gray-100">Add to brain</span>
+        </span>
+        <svg class="h-5 w-5 shrink-0 text-gray-500 transition" :class="addOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+    </button>
+    <div x-show="addOpen" x-collapse x-cloak class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100">Brain dump</h3>
             <p class="text-sm text-gray-500 mt-1 mb-3">Paste anything — training history, nutrition notes, goals, injuries. The AI librarian files it into clean wiki pages.</p>
@@ -111,6 +121,7 @@
                 </button>
             </form>
         </div>
+    </div>
     </div>
 
 </x-titan-layout>

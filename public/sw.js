@@ -1,6 +1,6 @@
 /* Titan service worker — app-shell offline strategy.
  * Bump CACHE_VERSION to invalidate old caches on deploy. */
-const CACHE_VERSION = 'titan-v1';
+const CACHE_VERSION = 'titan-v2';
 const PRECACHE = `${CACHE_VERSION}-precache`;
 const RUNTIME = `${CACHE_VERSION}-runtime`;
 
@@ -12,10 +12,10 @@ const PRECACHE_URLS = [
   OFFLINE_URL,
   '/manifest.webmanifest',
   '/icons/icon.svg',
-  '/icons/icon-192.svg',
-  '/icons/icon-512.svg',
-  '/icons/icon-maskable.svg',
-  '/icons/apple-touch-icon.svg',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-maskable.png',
+  '/icons/apple-touch-icon.png',
 ];
 
 // ---- Install: precache the shell, activate immediately ----
@@ -126,8 +126,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body: payload.body || '',
-      icon: '/icons/icon-192.svg',
-      badge: '/icons/icon-192.svg',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
       tag: payload.tag || undefined,
       data: { url },
     })

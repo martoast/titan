@@ -1,31 +1,13 @@
 @props(['title' => 'Titan', 'subtitle' => null])
 
 @php
-    // Full nav registry (desktop sidebar + mobile "More" sheet). Single source of truth.
-    $nav = [
-        ['label' => 'Dashboard', 'path' => 'dashboard',  'icon' => 'M3 12l2-2 7-7 7 7 2 2M5 10v10a1 1 0 001 1h3m10-11v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'],
-        ['label' => 'The Brain', 'path' => 'brain',      'icon' => 'M9.5 4a2.5 2.5 0 00-2.45 3A2.5 2.5 0 005 9.5a2.5 2.5 0 001.5 2.29M9.5 4A2.5 2.5 0 0112 6.5m-2.5-2.5A2.5 2.5 0 0112 6.5m0 0v13m0-13A2.5 2.5 0 0114.5 4a2.5 2.5 0 012.45 3A2.5 2.5 0 0119 9.5a2.5 2.5 0 01-1.5 2.29'],
-        ['label' => 'Bloodwork', 'path' => 'biomarkers', 'icon' => 'M12 3s5 5.5 5 9.5a5 5 0 11-10 0C7 8.5 12 3 12 3z'],
-        ['label' => 'Meals',     'path' => 'meals',      'icon' => 'M5 3v7a3 3 0 006 0V3M8 3v18m9-18s2 1 2 5-2 4-2 4v7'],
-        ['label' => 'Workouts',  'path' => 'workouts',   'icon' => 'M6.5 6.5l11 11M4 9l1.5-1.5M9 4L7.5 5.5m9 13L18 17m-1-9l2-2M2.5 11.5l3 3m13-3l-3-3'],
-        ['label' => 'Sleep',     'path' => 'sleep',      'icon' => 'M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z'],
-        ['label' => 'Recovery',  'path' => 'recovery',   'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
-        ['label' => 'Fitness',   'path' => 'fitness',    'icon' => 'M3 12h3l2-7 4 14 2-7h7'],
-        ['label' => 'Devices',   'path' => 'devices',    'icon' => 'M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM5 9h14M7 9V6a1 1 0 011-1h8a1 1 0 011 1v3m-1 0v4a1 1 0 01-1 1H9a1 1 0 01-1-1V9'],
-        ['label' => 'Connect',   'path' => 'connect',    'icon' => 'M13 10V3L4 14h7v7l9-11h-7zM8 21l8-18'],
-        ['label' => 'Simulator', 'path' => 'simulator',  'icon' => 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z'],
-        ['label' => 'Progress',  'path' => 'progress',   'icon' => 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'],
-        ['label' => 'Coach',     'path' => 'coach',      'icon' => 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 21l1.8-4A7.97 7.97 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'],
-        ['label' => 'Duo',       'path' => 'duo',        'icon' => 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-2a4 4 0 10-4-4 4 4 0 004 4zm6 0a3.5 3.5 0 00-1-.2'],
-    ];
-    // Cycle is shown only when relevant (female profile, or tracking enabled, or has data).
-    if (auth()->check() && \App\Support\Cycle::available(auth()->user()->ensureProfile())) {
-        $cycleItem = ['label' => 'Cycle', 'path' => 'cycle', 'icon' => 'M21 12a9 9 0 11-2.64-6.36M21 4v4h-4'];
-        $ri = collect($nav)->search(fn ($i) => $i['path'] === 'recovery');
-        array_splice($nav, $ri === false ? count($nav) : $ri + 1, 0, [$cycleItem]);
-    }
+    // Navigation comes grouped from the single source of truth (App\Support\Nav), shared
+    // with the chat drawer in components/chat-shell so the two never drift apart.
+    $profile = auth()->user()?->ensureProfile();
+    $navGroups = \App\Support\Nav::groups($profile);
+    $nav = \App\Support\Nav::flat($profile);          // desktop sidebar (flat)
     // Primary destinations for the mobile bottom bar (most-used daily).
-    $tabPaths = ['dashboard', 'meals', 'workouts', 'coach'];
+    $tabPaths = \App\Support\Nav::PRIMARY;
     $tabs = collect($nav)->whereIn('path', $tabPaths)->sortBy(fn ($i) => array_search($i['path'], $tabPaths))->values();
     $isActive = fn ($path) => request()->is($path) || request()->is($path.'/*');
 @endphp
@@ -42,7 +24,9 @@
 
     {{-- PWA --}}
     <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.svg">
+    {{-- iOS uses PNG for the home-screen icon (it ignores SVG apple-touch-icons). --}}
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
     <meta name="application-name" content="Titan">
     <meta name="apple-mobile-web-app-title" content="Titan">
@@ -233,16 +217,21 @@
                 <span class="font-display text-lg font-bold">All sections</span>
                 <button @click="moreOpen = false" class="text-gray-500 p-2 -mr-2"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
             </div>
-            <div class="grid grid-cols-4 gap-1 px-3 pb-3 pt-2">
-                @foreach ($nav as $item)
-                    <a href="/{{ $item['path'] }}"
-                       class="flex flex-col items-center gap-2 rounded-2xl py-3 px-1 text-center transition active:bg-white/5
-                              {{ $isActive($item['path']) ? 'text-indigo-300' : 'text-gray-300' }}">
-                        <span class="flex h-11 w-11 items-center justify-center rounded-2xl {{ $isActive($item['path']) ? 'bg-indigo-500/20' : 'bg-white/5' }}">
-                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $item['icon'] }}" /></svg>
-                        </span>
-                        <span class="text-[11px] leading-tight">{{ $item['label'] }}</span>
-                    </a>
+            <div class="max-h-[60vh] overflow-y-auto px-3 pb-3 pt-1">
+                @foreach ($navGroups as $groupLabel => $items)
+                    <p class="px-1 pb-1.5 pt-3 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-gray-600">{{ $groupLabel }}</p>
+                    <div class="grid grid-cols-4 gap-1">
+                        @foreach ($items as $item)
+                            <a href="/{{ $item['path'] }}"
+                               class="flex flex-col items-center gap-2 rounded-2xl py-3 px-1 text-center transition active:bg-white/5
+                                      {{ $isActive($item['path']) ? 'text-indigo-300' : 'text-gray-300' }}">
+                                <span class="flex h-11 w-11 items-center justify-center rounded-2xl {{ $isActive($item['path']) ? 'bg-indigo-500/20' : 'bg-white/5' }}">
+                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $item['icon'] }}" /></svg>
+                                </span>
+                                <span class="text-[11px] leading-tight">{{ $item['label'] }}</span>
+                            </a>
+                        @endforeach
+                    </div>
                 @endforeach
             </div>
             <form method="POST" action="{{ route('logout') }}" class="px-5 pb-4 pt-1">
@@ -391,5 +380,7 @@
         };
     })();
     </script>
+
+    <x-install-hint />
 </body>
 </html>

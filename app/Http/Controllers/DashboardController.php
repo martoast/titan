@@ -56,24 +56,10 @@ class DashboardController extends Controller
             'step_goal' => StepGoal::assess($steps, StepGoal::targetFor($p)),
         ];
 
-        // --- Trajectory: the few graphs that show real improvement ---
-        $body = $p->bodyMetrics()->orderBy('taken_at')->get();
-        $vo2 = $p->activitySessions()->whereNotNull('vo2max')->orderBy('started_at')->get();
+        // --- The long game: one motivating biological-age stat. The deep longitudinal
+        //     review (weight / body-fat / VO₂ trends + photo journey) lives on /progress,
+        //     so the home stays a calm "today" screen instead of a metrics dump. ---
         $bioAge = BiologicalAge::assess($p);
-
-        $trajectories = array_values(array_filter([
-            $this->series('Weight', $body->whereNotNull('weight_kg'), 'taken_at', 'weight_kg', 'kg', 'neutral'),
-            $this->series('Body fat', $body->whereNotNull('body_fat_pct'), 'taken_at', 'body_fat_pct', '%', 'down'),
-            $this->series('VO₂max', $vo2, 'started_at', 'vo2max', '', 'up'),
-        ]));
-
-        // --- The visual journey: recent progress photos ---
-        $photos = $p->progressPhotos()->orderByDesc('taken_at')->orderByDesc('id')->take(6)->get()
-            ->map(fn ($ph) => [
-                'url' => $ph->photoUrl(),
-                'date' => optional($ph->taken_at)->format('M j'),
-                'weight' => $ph->weight_kg ? rtrim(rtrim(number_format((float) $ph->weight_kg, 1), '0'), '.').' kg' : null,
-            ])->filter(fn ($x) => $x['url'])->values();
 
         // --- Cycle (only for women / those who track it) -- phase-aware context tile ---
         $cycle = null;
@@ -94,37 +80,7 @@ class DashboardController extends Controller
             'strain' => $strain,
             'sleepCoach' => $sleepCoach,
             'meal' => MealCoach::assess($p),
-            'trajectories' => $trajectories,
-            'photos' => $photos,
             'bioAge' => $bioAge,
         ]);
-    }
-
-    /**
-     * Build a sparkline series from a model collection. `better` = which direction is improvement
-     * ('up'/'down'/'neutral') → colours the delta. Returns null when there's nothing to plot.
-     */
-    private function series(string $label, $rows, string $dateKey, string $valKey, string $unit, string $better): ?array
-    {
-        $pts = $rows->map(fn ($r) => ['t' => optional($r->{$dateKey})->timestamp ?? 0, 'v' => (float) $r->{$valKey}])
-            ->filter(fn ($x) => $x['v'] > 0)->sortBy('t')->values();
-        if ($pts->count() < 2) {
-            return null;
-        }
-        $first = $pts->first()['v'];
-        $last = $pts->last()['v'];
-        $delta = $last - $first;
-        $improving = match ($better) {
-            'up' => $delta > 0, 'down' => $delta < 0, default => null,
-        };
-
-        return [
-            'label' => $label,
-            'unit' => $unit,
-            'current' => rtrim(rtrim(number_format($last, 1), '0'), '.'),
-            'delta' => ($delta > 0 ? '+' : '').rtrim(rtrim(number_format($delta, 1), '0'), '.'),
-            'improving' => $improving,
-            'values' => $pts->pluck('v')->all(),
-        ];
     }
 }

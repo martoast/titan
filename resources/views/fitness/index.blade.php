@@ -64,7 +64,7 @@
                 <form method="POST" action="{{ route('fitness.steps') }}" x-show="edit" x-cloak class="mt-3 flex items-center gap-2">
                     @csrf
                     <input type="number" name="steps" min="0" max="200000" value="{{ $steps ?: '' }}" inputmode="numeric" placeholder="steps today"
-                           class="w-28 h-10 rounded-lg bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 nums focus:border-cyan-500/50 focus:outline-none">
+                           class="min-w-0 flex-1 h-10 rounded-lg bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 nums focus:border-cyan-500/50 focus:outline-none">
                     <button type="submit" class="h-10 rounded-lg bg-cyan-500/90 px-3 text-sm font-semibold text-gray-950 active:bg-cyan-400">Save</button>
                 </form>
             </div>

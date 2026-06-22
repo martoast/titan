@@ -263,7 +263,7 @@
                             Transcribing your message…
                         </div>
                     </div>
-                    <button type="submit"
+                    <button type="submit" aria-label="Send message"
                             :disabled="loading || (!draft.trim() && !pendingPhoto)"
                             class="shrink-0 h-12 w-12 grid place-items-center rounded-xl bg-indigo-500 active:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed text-white transition">
                         <span x-show="!loading">

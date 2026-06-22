@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Workouts;
 
 use App\Http\Controllers\Controller;
 use App\Models\Exercise;
+use App\Models\Profile;
 use App\Models\Workout;
 use App\Models\WorkoutExercise;
 use App\Models\WorkoutSet;
+use App\Support\Units;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -18,17 +20,35 @@ class WorkoutController extends Controller
     {
         $profile = auth()->user()->ensureProfile();
 
+        // Paginate so the history stays a light payload on mobile no matter how many
+        // sessions pile up (each session eager-loads its exercises + sets).
         $workouts = $profile->workouts()
             ->with(['exercises.exercise', 'exercises.sets'])
             ->orderByDesc('performed_at')
-            ->get();
+            ->paginate(15);
+
+        // Band-detected sessions awaiting their load — computed across ALL history (not just
+        // the current page) from a focused query, so the nudge never goes missing on page 2+.
+        $pending = $profile->workouts()
+            ->where('updated_via', 'like', 'biosignal%')
+            ->with('exercises.sets')
+            ->orderByDesc('performed_at')
+            ->get()
+            ->filter(function ($w) {
+                $sets = $w->exercises->flatMap->sets;
+
+                return $sets->isNotEmpty() && $sets->every(fn ($s) => (float) $s->weight_kg === 0.0);
+            })
+            ->values();
 
         $weeklyVolume = $this->weeklyMuscleGroupVolume($profile->id);
 
         return view('workouts.index', [
             'profile' => $profile,
             'workouts' => $workouts,
+            'pending' => $pending,
             'weeklyVolume' => $weeklyVolume,
+            'weightUnit' => Units::weightUnit($profile),
         ]);
     }
 
@@ -41,15 +61,21 @@ class WorkoutController extends Controller
 
         // Map exercise_id => ['last' => [...], 'suggestion' => [...]] for the whole library,
         // so the Alpine UI can surface a progressive-overload hint the moment one is picked.
-        $suggestions = [];
+        // Built from ONE query (was one query per exercise — an N+1 that scaled with the library).
+        $suggestions = $this->progressionMap($profile->id, $profile);
         foreach ($exercises as $exercise) {
-            $suggestions[$exercise->id] = $this->progressionFor($profile->id, $exercise->id);
+            $suggestions[$exercise->id] ??= [
+                'last' => null,
+                'suggestion' => null,
+                'note' => 'No history yet -- log your first set to start tracking progression.',
+            ];
         }
 
         return view('workouts.create', [
             'profile' => $profile,
             'exercises' => $exercises,
             'suggestions' => $suggestions,
+            'weightUnit' => Units::weightUnit($profile),
         ]);
     }
 
@@ -94,7 +120,8 @@ class WorkoutController extends Controller
                         'workout_exercise_id' => $we->id,
                         'set_number' => $j + 1,
                         'reps' => $set['reps'],
-                        'weight_kg' => $set['weight_kg'],
+                        // The form collects weight in the user's display units; store metric.
+                        'weight_kg' => Units::weightIn((float) $set['weight_kg'], $profile),
                         'rpe' => $set['rpe'] ?? null,
                         'is_warmup' => (bool) ($set['is_warmup'] ?? false),
                     ]);
@@ -116,6 +143,8 @@ class WorkoutController extends Controller
 
         return view('workouts.show', [
             'workout' => $workout,
+            'profile' => $profile,
+            'weightUnit' => Units::weightUnit($profile),
         ]);
     }
 
@@ -141,13 +170,14 @@ class WorkoutController extends Controller
         $ownSetIds = WorkoutSet::whereHas('workoutExercise', fn ($q) => $q->where('workout_id', $workout->id))
             ->pluck('id')->flip();
 
-        DB::transaction(function () use ($data, $ownSetIds) {
+        DB::transaction(function () use ($data, $ownSetIds, $profile) {
             foreach ($data['sets'] as $id => $fields) {
                 if (! $ownSetIds->has((int) $id)) {
                     continue;
                 }
                 WorkoutSet::where('id', (int) $id)->update(array_filter([
-                    'weight_kg' => isset($fields['weight_kg']) ? (float) $fields['weight_kg'] : null,
+                    // Weight comes in the user's display units; store metric.
+                    'weight_kg' => isset($fields['weight_kg']) ? Units::weightIn((float) $fields['weight_kg'], $profile) : null,
                     'reps' => isset($fields['reps']) ? (int) $fields['reps'] : null,
                     'rpe' => isset($fields['rpe']) ? (float) $fields['rpe'] : null,
                 ], fn ($v) => $v !== null));
@@ -158,68 +188,96 @@ class WorkoutController extends Controller
     }
 
     /**
-     * Simple adaptive progressive-overload heuristic for one exercise.
-     * Looks at the user's most recent working top set; suggests a small bump:
-     *  - if last RPE was easy (<= 7) or reps already high (>= 12) → +2.5 kg, reset reps;
-     *  - otherwise → +1 rep at the same load.
-     * Returns ['last' => ?array, 'suggestion' => ?array, 'note' => string].
+     * Progressive-overload hints for the WHOLE exercise library in ONE query.
+     * Returns exercise_id => ['last' => ?array, 'suggestion' => ?array, 'note' => string]
+     * for every exercise the user has working-set history on. Exercises with no history
+     * are simply absent (the caller fills in the default note).
+     *
+     * Previously this was computed per-exercise (an N+1 that scaled with the library);
+     * here a single joined query pulls every working set, then we reduce in PHP to each
+     * exercise's most-recent-session top set.
+     *
+     * @return array<int, array{last:?array, suggestion:?array, note:string}>
      */
-    private function progressionFor(int $profileId, int $exerciseId): array
+    private function progressionMap(int $profileId, Profile $profile): array
     {
-        $lastSet = WorkoutSet::query()
-            ->where('is_warmup', false)
-            ->whereHas('workoutExercise', function ($q) use ($exerciseId, $profileId) {
-                $q->where('exercise_id', $exerciseId)
-                    ->whereHas('workout', fn ($w) => $w->where('profile_id', $profileId));
-            })
-            // Order by the parent workout's date, then heaviest set of that session.
-            ->whereHas('workoutExercise.workout')
-            ->with('workoutExercise.workout')
-            ->get()
-            ->sortByDesc(fn ($s) => optional($s->workoutExercise->workout)->performed_at)
-            ->groupBy(fn ($s) => optional($s->workoutExercise->workout)->performed_at?->toDateTimeString())
-            ->first(); // sets from the most recent session
+        $rows = DB::table('workout_sets as ws')
+            ->join('workout_exercises as we', 'we.id', '=', 'ws.workout_exercise_id')
+            ->join('workouts as w', 'w.id', '=', 'we.workout_id')
+            ->where('w.profile_id', $profileId)
+            ->where('ws.is_warmup', false)
+            ->whereNotNull('w.performed_at')
+            ->orderBy('we.exercise_id')
+            ->orderByDesc('w.performed_at')
+            ->select('we.exercise_id', 'w.performed_at', 'ws.weight_kg', 'ws.reps', 'ws.rpe')
+            ->get();
 
-        if (! $lastSet || $lastSet->isEmpty()) {
-            return [
-                'last' => null,
-                'suggestion' => null,
-                'note' => 'No history yet -- log your first set to start tracking progression.',
-            ];
+        $map = [];
+        foreach ($rows as $r) {
+            $exId = (int) $r->exercise_id;
+            // Rows are date-desc, so the first date seen for an exercise is its latest session.
+            if (! isset($map[$exId])) {
+                $map[$exId] = ['date' => (string) $r->performed_at, 'top' => $r];
+
+                continue;
+            }
+            // Still in the latest session? keep the heaviest working set.
+            if ((string) $r->performed_at === $map[$exId]['date']
+                && (float) $r->weight_kg > (float) $map[$exId]['top']->weight_kg) {
+                $map[$exId]['top'] = $r;
+            }
         }
 
-        // Top working set of the most recent session (heaviest).
-        $top = $lastSet->sortByDesc('weight_kg')->first();
-        $lastWeight = (float) $top->weight_kg;
-        $lastReps = (int) $top->reps;
-        $lastRpe = $top->rpe !== null ? (float) $top->rpe : null;
+        $out = [];
+        foreach ($map as $exId => $entry) {
+            $top = $entry['top'];
+            $out[$exId] = $this->buildProgression(
+                (float) $top->weight_kg,
+                (int) $top->reps,
+                $top->rpe !== null ? (float) $top->rpe : null,
+                Carbon::parse($entry['date'])->toDateString(),
+                $profile,
+            );
+        }
 
+        return $out;
+    }
+
+    /**
+     * Build the last/suggestion/note payload from a top working set. Suggests a small bump:
+     *  - if last RPE was easy (<= 7) or reps already high (>= 12) → +2.5 kg, reset reps;
+     *  - otherwise → +1 rep at the same load.
+     *
+     * The progression math runs in kg (sane plate increments); all weights handed to the
+     * view are converted to the user's display units so the form + hints read consistently.
+     *
+     * @return array{last:array, suggestion:array, note:string}
+     */
+    private function buildProgression(float $lastWeight, int $lastReps, ?float $lastRpe, string $performedAt, Profile $profile): array
+    {
         $easy = ($lastRpe !== null && $lastRpe <= 7) || $lastReps >= 12;
 
-        if ($easy) {
-            // Bump the load; drop reps back to a sensible working target to "earn" the new weight.
-            $suggestion = [
-                'weight_kg' => round($lastWeight + 2.5, 2),
+        $suggestion = $easy
+            ? [
+                'weight_kg' => Units::weightOut($lastWeight + 2.5, $profile),
                 'reps' => max(5, min($lastReps, 8)),
-                'reason' => '+2.5 kg -- last session looked manageable.',
-            ];
-        } else {
-            $suggestion = [
-                'weight_kg' => $lastWeight,
+                'reason' => 'last session looked manageable -- nudge the load up.',
+            ]
+            : [
+                'weight_kg' => Units::weightOut($lastWeight, $profile),
                 'reps' => $lastReps + 1,
                 'reason' => '+1 rep at the same load -- earn the weight jump first.',
             ];
-        }
 
         return [
             'last' => [
-                'weight_kg' => $lastWeight,
+                'weight_kg' => Units::weightOut($lastWeight, $profile),
                 'reps' => $lastReps,
                 'rpe' => $lastRpe,
-                'performed_at' => optional($top->workoutExercise->workout)->performed_at?->toDateString(),
+                'performed_at' => $performedAt,
             ],
             'suggestion' => $suggestion,
-            'note' => 'Last: '.$lastReps.' × '.rtrim(rtrim(number_format($lastWeight, 1), '0'), '.').' kg'
+            'note' => 'Last: '.$lastReps.' × '.Units::weight($lastWeight, $profile)
                 .($lastRpe !== null ? ' @ RPE '.rtrim(rtrim(number_format($lastRpe, 1), '0'), '.') : ''),
         ];
     }

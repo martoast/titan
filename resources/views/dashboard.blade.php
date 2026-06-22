@@ -1,4 +1,4 @@
-<x-titan-layout title="Dashboard" subtitle="Your trajectory toward the strongest version of yourself">
+<x-titan-layout title="Today" subtitle="How you are, and what's next">
     <div class="space-y-4 md:space-y-5">
 
         {{-- ============ FUTURE SELF — compact dream-physique panel ============ --}}
@@ -25,7 +25,7 @@
                         <div class="min-w-0 flex-1">
                             <div class="text-[11px] font-semibold uppercase tracking-wider text-indigo-300/80">Toward your dream physique</div>
                             <div class="mt-0.5 font-display text-2xl font-bold leading-none text-gray-100">
-                                {{ $futureSelf['pct'] !== null ? $futureSelf['pct'].'%' : 'Tracking' }}<span class="ml-1 text-sm font-normal text-gray-500">there</span>
+                                @if ($futureSelf['pct'] !== null){{ $futureSelf['pct'] }}%<span class="ml-1 text-sm font-normal text-gray-500">there</span>@else Tracking @endif
                             </div>
                             @if ($futureSelf['pct'] !== null)
                                 <div class="mt-2.5 h-2 rounded-full bg-white/10 overflow-hidden">
@@ -141,8 +141,9 @@
 
         {{-- ============ NEXT MEAL — fuel before you're hungry ============ --}}
         @php
+            // Overdue is a warm nudge, not an alarm — amber, never red. (Red reads as "something's wrong".)
             $mTone = match ($meal['status']) {
-                'overdue' => ['border-rose-500/30', 'from-rose-500/[0.10]', 'text-rose-300', 'bg-rose-500/90'],
+                'overdue' => ['border-amber-500/30', 'from-amber-500/[0.10]', 'text-amber-300', 'bg-amber-500/90'],
                 'soon' => ['border-amber-500/25', 'from-amber-500/[0.09]', 'text-amber-300', 'bg-amber-500/90'],
                 'done' => ['border-emerald-500/20', 'from-emerald-500/[0.06]', 'text-emerald-300', 'bg-white/10'],
                 default => ['border-indigo-500/20', 'from-indigo-500/[0.07]', 'text-indigo-300', 'bg-indigo-500/90'],
@@ -156,11 +157,13 @@
                     <div class="text-[11px] uppercase tracking-wider {{ $mTone[2] }} font-semibold flex items-center gap-1.5">
                         <span>🍽️</span> {{ $meal['label'] }}
                     </div>
-                    {{-- live countdown / overdue timer --}}
+                    {{-- A live "in 25m" countdown is genuinely useful; a giant "15h overdue" clock just nags.
+                         So show the countdown only while a meal is upcoming/soon, and let the supportive
+                         copy + protein target lead once it's overdue. --}}
                     @if ($meal['status'] === 'done')
                         <div class="mt-1 font-display text-2xl font-bold text-emerald-300 leading-none">{{ $meal['meals_logged'] }}/{{ $meal['meals_planned'] }} meals</div>
-                    @else
-                        <div class="mt-1 font-display text-3xl font-bold nums {{ $mTone[2] }} leading-none" x-text="display"></div>
+                    @elseif (in_array($meal['status'], ['upcoming', 'soon'], true))
+                        <div class="mt-1 font-display text-2xl font-bold nums {{ $mTone[2] }} leading-none" x-text="display"></div>
                     @endif
                     <p class="mt-1.5 text-sm text-gray-300 leading-relaxed">{{ $meal['advice'] }}</p>
                     @if (! empty($meal['cycle_note']))
@@ -198,87 +201,32 @@
             </div>
         </div>
 
-        {{-- ============ TRAJECTORY — the graphs that show you're improving ============ --}}
-        @if (count($trajectories) || $bioAge)
-            <div>
-                <h2 class="text-[11px] uppercase tracking-wider text-gray-500 mb-2 px-1">Your trajectory</h2>
-                <div class="grid grid-cols-2 gap-3 md:gap-4">
-
-                    @foreach ($trajectories as $t)
-                        @php
-                            $vals = $t['values']; $min = min($vals); $max = max($vals); $span = max($max - $min, 0.0001);
-                            $n = count($vals); $w = 100; $h = 34;
-                            $pts = collect($vals)->map(fn ($v, $i) => round($i / max($n - 1, 1) * $w, 1).','.round($h - ($v - $min) / $span * $h, 1))->implode(' ');
-                            $tone = $t['improving'] === true ? 'text-emerald-300' : ($t['improving'] === false ? 'text-rose-300' : 'text-indigo-300');
-                            $stroke = $t['improving'] === true ? '#6ee7b7' : ($t['improving'] === false ? '#fda4af' : '#a5b4fc');
-                        @endphp
-                        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
-                            <div class="flex items-start justify-between gap-2">
-                                <div>
-                                    <div class="text-[11px] uppercase tracking-wide text-gray-500">{{ $t['label'] }}</div>
-                                    <div class="mt-0.5 font-display text-2xl font-bold nums text-gray-100 leading-none">{{ $t['current'] }}<span class="text-gray-500 text-sm font-normal">{{ $t['unit'] ? ' '.$t['unit'] : '' }}</span></div>
-                                </div>
-                                <div class="text-right shrink-0 text-xs nums {{ $tone }}">{{ $t['delta'] }}{{ $t['unit'] ? ' '.$t['unit'] : '' }}</div>
-                            </div>
-                            <svg viewBox="0 0 100 34" preserveAspectRatio="none" class="mt-3 w-full h-9">
-                                <polyline points="{{ $pts }}" fill="none" stroke="{{ $stroke }}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-                            </svg>
-                        </div>
-                    @endforeach
-
-                    {{-- Biological age — the "are you winning the long game" number --}}
-                    @if ($bioAge)
-                        @php
-                            $aTone = match ($bioAge['band']) {
-                                'much_younger', 'younger' => 'text-emerald-300', 'on_par' => 'text-cyan-300',
-                                'older' => 'text-amber-300', default => 'text-orange-300',
-                            };
-                        @endphp
-                        <a href="/recovery" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 active:bg-white/[0.05]">
-                            <div class="text-[11px] uppercase tracking-wide text-gray-500">Biological age</div>
-                            <div class="mt-0.5 flex items-baseline gap-2">
-                                <span class="font-display text-2xl font-bold nums {{ $aTone }} leading-none">{{ number_format($bioAge['biological_age'], 0) }}</span>
-                                <span class="text-xs text-gray-500">vs {{ number_format($bioAge['chronological_age'], 0) }} actual</span>
-                            </div>
-                            <p class="mt-2 text-xs {{ $aTone }}">{{ $bioAge['delta'] <= 0 ? abs($bioAge['delta']).' yr younger' : '+'.$bioAge['delta'].' yr' }}<span class="text-gray-600"> · {{ $bioAge['confidence'] }} confidence</span></p>
-                        </a>
-                    @endif
+        {{-- ============ THE LONG GAME — one calm doorway to the full review on /progress ============ --}}
+        @php
+            $aTone = $bioAge ? match ($bioAge['band']) {
+                'much_younger', 'younger' => 'text-emerald-300', 'on_par' => 'text-cyan-300',
+                'older' => 'text-amber-300', default => 'text-orange-300',
+            } : 'text-gray-300';
+        @endphp
+        <a href="/progress" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 active:bg-white/[0.05] transition">
+            <div class="flex items-center gap-4">
+                @if ($bioAge)
+                    <div class="shrink-0">
+                        <div class="font-display text-3xl font-bold nums {{ $aTone }} leading-none">{{ number_format($bioAge['biological_age'], 0) }}</div>
+                        <div class="mt-1 text-[10px] uppercase tracking-wide text-gray-500">bio age</div>
+                    </div>
+                    <div class="h-10 w-px bg-white/10"></div>
+                @endif
+                <div class="min-w-0 flex-1">
+                    <div class="font-display font-bold text-gray-100">Your progress</div>
+                    <p class="mt-0.5 text-[13px] leading-snug text-gray-400">
+                        @if ($bioAge){{ $bioAge['delta'] <= 0 ? abs($bioAge['delta']).' yrs younger than your age — ' : '' }}@endif
+                        weight, body fat &amp; physique trends
+                    </p>
                 </div>
+                <span class="shrink-0 text-indigo-300/70 group-active:text-indigo-200">→</span>
             </div>
-        @endif
-
-        {{-- ============ PROGRESS PHOTOS — the visual journey ============ --}}
-        @if ($photos->count())
-            <div>
-                <div class="flex items-center justify-between mb-2 px-1">
-                    <h2 class="text-[11px] uppercase tracking-wider text-gray-500">Your journey</h2>
-                    <a href="/photos" class="text-[11px] font-medium text-indigo-400 active:text-indigo-300">All photos →</a>
-                </div>
-                <div class="flex gap-3 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 md:-mx-1 md:px-1 snap-x">
-                    @foreach ($photos as $ph)
-                        <a href="/photos" class="shrink-0 snap-start active:opacity-80">
-                            <div class="relative h-40 w-28 overflow-hidden rounded-xl border border-white/10 bg-gray-950">
-                                <img src="{{ $ph['url'] }}" alt="Progress {{ $ph['date'] }}" class="absolute inset-0 h-full w-full object-cover">
-                                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
-                                    <div class="text-[10px] font-semibold text-gray-200 nums">{{ $ph['date'] }}</div>
-                                    @if ($ph['weight'])<div class="text-[9px] text-gray-400 nums">{{ $ph['weight'] }}</div>@endif
-                                </div>
-                            </div>
-                        </a>
-                    @endforeach
-                </div>
-            </div>
-        @endif
-
-        {{-- ============ EXPLORE — slim links, the detail lives in each domain ============ --}}
-        <div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
-            @foreach ([
-                ['Coach', 'coach'], ['Meals', 'meals'], ['Workouts', 'workouts'],
-                ['Bloodwork', 'biomarkers'], ['Brain', 'brain'], ['Duo', 'duo'],
-            ] as [$label, $path])
-                <a href="/{{ $path }}" class="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-3 text-center text-xs font-semibold text-gray-300 transition hover:border-indigo-500/40 hover:bg-gray-900 active:bg-white/[0.06]">{{ $label }}</a>
-            @endforeach
-        </div>
+        </a>
     </div>
 
     {{-- Live meal countdown (counts down to the next meal, then counts up while overdue) --}}

@@ -41,7 +41,11 @@ class MealCoachTest extends TestCase
         $m = MealCoach::assess($p, Carbon::parse('2026-06-16 13:00', 'UTC'));
         $this->assertSame('overdue', $m['status']);
         $this->assertNotNull($m['overdue_min']);
-        $this->assertStringContainsStringIgnoringCase('too late', $m['advice']);
+        // Overdue should be a warm, actionable nudge — not an alarm. (We softened "already too late".)
+        $this->assertStringContainsStringIgnoringCase('fuel', $m['advice']);
+        $this->assertStringContainsString('protein', $m['advice']);
+        $this->assertStringNotContainsStringIgnoringCase('too late', $m['advice']);
+        $this->assertSame('Time to fuel up', $m['label']);
     }
 
     public function test_all_meals_logged_is_done(): void

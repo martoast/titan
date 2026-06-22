@@ -6,6 +6,7 @@ use App\Models\ChatMessage;
 use App\Models\Conversation;
 use App\Models\Profile;
 use App\Services\Ai\AiService;
+use App\Support\Cycle;
 use Illuminate\Support\Str;
 
 /**
@@ -26,13 +27,63 @@ class CoachService
 {
     public function __construct(protected AiService $ai) {}
 
-    /** Suggested starter prompts shown on an empty conversation. */
+    /** Generic fallback starter prompts (used when a profile has no intake yet). */
     public const STARTERS = [
         'How are my biomarkers trending?',
         'Plan my meals to hit my protein goal.',
         'Am I on track to my goal physique?',
         'What should I focus on this week?',
     ];
+
+    /**
+     * Starter prompts for an empty conversation, tailored to who's asking. Men and women
+     * come to Titan for different things, so the first four taps should reflect THIS user's
+     * goal, focus areas and (for women) cycle — subtly, not a different app. Falls back to
+     * the generic STARTERS when we don't know enough yet.
+     *
+     * @return list<string>
+     */
+    public static function startersFor(Profile $profile): array
+    {
+        $intake = (array) ($profile->settings['intake'] ?? []);
+        $focus = array_values(array_filter((array) ($intake['focus_areas'] ?? [])));
+        $goal = (string) ($profile->primary_goal ?? ($intake['goal'] ?? ''));
+        $female = $profile->sex === 'F';
+
+        // Nothing personal known yet → the safe generic set.
+        if (! $focus && $goal === '') {
+            return self::STARTERS;
+        }
+
+        $starters = [];
+
+        // 1) Their headline focus area, in their words ("Rounder glutes" → "…for rounder glutes").
+        if ($focus) {
+            $starters[] = 'Am I on track for '.Str::lower($focus[0]).'?';
+        } else {
+            $starters[] = 'Am I on track to my goal physique?';
+        }
+
+        // 2) Nutrition framed by goal (protein is the through-line either way).
+        $starters[] = match (true) {
+            str_contains(Str::lower($goal), 'lose') => 'Plan meals that keep me full in a fat-loss deficit.',
+            str_contains(Str::lower($goal), 'muscle'), str_contains(Str::lower($goal), 'recomp')
+                => 'Plan high-protein meals to build muscle.',
+            default => 'Plan my meals to hit my protein goal.',
+        };
+
+        // 3) Training, lightly gendered toward what each tends to ask for.
+        $starters[] = $female
+            ? 'What should I train this week to tone up?'
+            : 'What should I train this week to add muscle?';
+
+        // 4) Cycle-aware when relevant, otherwise the weekly check-in.
+        $starters[] = ($female && Cycle::available($profile))
+            ? 'How should I train and eat for my cycle phase right now?'
+            : 'What should I focus on this week?';
+
+        return $starters;
+    }
 
     /** Context-compaction thresholds (user+assistant turns). */
     private const COMPACT_AFTER = 28;   // condense once the unsummarised tail exceeds this…

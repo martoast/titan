@@ -37,7 +37,8 @@
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
             <div class="sm:col-span-1">
                 <label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Workout name</label>
-                <input type="text" name="name" value="{{ old('name') }}" required placeholder="Push Day"
+                {{-- Pre-filled with a sensible default so saving never blocks on a blank name; the user can rename. --}}
+                <input type="text" name="name" value="{{ old('name', now()->format('l').' workout') }}" required placeholder="Push Day"
                        class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">
             </div>
             <div>
@@ -60,10 +61,11 @@
                         <div class="flex-1 min-w-0">
                             <label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Exercise</label>
                             <div class="relative">
-                                <input type="text" x-model="ex.search" @input="ex.open = true" @focus="ex.open = true"
+                                <input type="text" x-model="ex.search" @input="ex.open = true; ex.invalid = false; ex.exercise_id = null" @focus="ex.open = true"
                                        placeholder="Search the library…"
                                        :name="ex.exercise_id ? null : 'search_' + ex.uid"
-                                       class="w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">
+                                       class="w-full h-11 rounded-xl bg-gray-950 border px-3 text-base text-gray-100 focus:ring-0"
+                                       :class="ex.invalid ? 'border-rose-500/60 focus:border-rose-500' : 'border-white/10 focus:border-indigo-500'">
                                 {{-- Searchable dropdown --}}
                                 <div x-show="ex.open && filtered(ex.search).length" @click.outside="ex.open = false"
                                      class="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-gray-950 shadow-xl">
@@ -79,6 +81,7 @@
                             <span x-show="ex.exercise_id" class="mt-2 inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2 py-1 text-xs text-indigo-300">
                                 <span x-text="exerciseName(ex.exercise_id)"></span>
                             </span>
+                            <p x-show="ex.invalid" x-cloak class="mt-1.5 text-xs text-rose-300">Tap a result to add this exercise.</p>
                         </div>
                         <button type="button" @click="removeExercise(exIndex)"
                                 class="shrink-0 h-10 w-10 grid place-items-center rounded-xl text-gray-500 active:text-red-400 active:bg-white/5 mt-5" title="Remove exercise">
@@ -96,7 +99,7 @@
                                     <span class="inline-flex items-center gap-2">
                                         <span class="text-cyan-300 font-medium nums">
                                             Try: <span x-text="suggestionFor(ex.exercise_id).suggestion.reps"></span> ×
-                                            <span x-text="suggestionFor(ex.exercise_id).suggestion.weight_kg"></span>kg
+                                            <span x-text="suggestionFor(ex.exercise_id).suggestion.weight_kg"></span>{{ $weightUnit }}
                                         </span>
                                         <button type="button" @click="applySuggestion(exIndex)"
                                                 class="rounded-md bg-cyan-500/20 active:bg-cyan-500/30 px-2.5 py-1 text-xs font-medium text-cyan-200">Apply</button>
@@ -122,7 +125,7 @@
                                                class="w-full h-11 rounded-lg bg-gray-950 border border-white/10 px-2.5 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">
                                     </label>
                                     <label class="flex-1 min-w-[5rem]">
-                                        <span class="block text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Weight (kg)</span>
+                                        <span class="block text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Weight ({{ $weightUnit }})</span>
                                         <input type="number" step="0.5" min="0" max="9999" x-model="set.weight_kg" inputmode="decimal"
                                                :name="`exercises[${exIndex}][sets][${setIndex}][weight_kg]`"
                                                class="w-full h-11 rounded-lg bg-gray-950 border border-white/10 px-2.5 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">
@@ -193,7 +196,7 @@
             let counter = 0;
             const uid = () => 'r' + (++counter);
             const blankSet = () => ({ uid: uid(), reps: '', weight_kg: '', rpe: '', is_warmup: false });
-            const blankRow = () => ({ uid: uid(), exercise_id: null, search: '', open: false, notes: '', sets: [blankSet()] });
+            const blankRow = () => ({ uid: uid(), exercise_id: null, search: '', open: false, invalid: false, notes: '', sets: [blankSet()] });
 
             return {
                 exercises: config.exercises,
@@ -220,6 +223,16 @@
                     row.exercise_id = opt.id;
                     row.search = opt.name;
                     row.open = false;
+                    row.invalid = false;
+                },
+                // Resolve a typed-but-unpicked row to an exact name match, or the only match.
+                resolve(row) {
+                    if (row.exercise_id || !row.search) return;
+                    const q = row.search.trim().toLowerCase();
+                    const matches = this.filtered(row.search);
+                    const exact = matches.find(o => o.name.toLowerCase() === q);
+                    const hit = exact || (matches.length === 1 ? matches[0] : null);
+                    if (hit) { row.exercise_id = hit.id; row.search = hit.name; }
                 },
                 applySuggestion(exIndex) {
                     const row = this.rows[exIndex];
@@ -241,11 +254,16 @@
                     if (sets.length === 0) sets.push(blankSet());
                 },
                 prepare(e) {
-                    // Block submit if any exercise row lacks a picked exercise.
-                    const incomplete = this.rows.some(r => !r.exercise_id);
-                    if (incomplete) {
+                    // Forgive a typed-but-unpicked exercise: auto-resolve an exact / only match
+                    // so the common case just works instead of erroring.
+                    this.rows.forEach(r => this.resolve(r));
+
+                    // Anything still unpicked → flag it inline (no jarring browser alert) and stop.
+                    const bad = this.rows.find(r => !r.exercise_id);
+                    if (bad) {
                         e.preventDefault();
-                        alert('Pick an exercise from the library for each row before saving.');
+                        this.rows.forEach(r => { r.invalid = ! r.exercise_id; });
+                        bad.open = true;
                     }
                 },
             };

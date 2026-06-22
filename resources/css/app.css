@@ -135,7 +135,9 @@ body {
 .tcard-ring-label { font-weight: 600; color: #f1f5f9; margin-top: 0.15rem; }
 .tcard-ring-caption { font-size: 0.82rem; color: #9ca3af; margin-top: 0.2rem; }
 /* Vitals / stat grid */
-.tcard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 0.5rem; }
+/* Explicit 2-up: auto-fit collapsed to a single tall column inside the shrink-to-fit chat bubble. */
+.tcard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+.tcard-cell-value { white-space: nowrap; }
 .tcard-cell { border-radius: 0.7rem; background: rgba(0,0,0,0.25); padding: 0.55rem 0.6rem; }
 .tcard-cell.is-flagged { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.25); }
 .tcard-cell-value { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums; }
@@ -176,10 +178,10 @@ body {
 
 /* ---- Daily check-in card ---- */
 .tcard-checkin-cycle { margin: 0.5rem 0 0.1rem; display: flex; align-items: center; gap: 0.4rem; border-radius: 999px; background: rgba(244,114,182,0.12); border: 1px solid rgba(244,114,182,0.22); padding: 0.3rem 0.7rem; font-size: 0.76rem; font-weight: 600; color: #f9a8d4; width: fit-content; }
-.tcard-checkin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.7rem; }
-.tcard-checkin-cell { border-radius: 0.8rem; background: rgba(0,0,0,0.25); padding: 0.7rem 0.4rem; text-align: center; }
-.tcard-checkin-big { font-family: var(--font-display); font-weight: 800; font-size: 1.45rem; line-height: 1; color: #f1f5f9; font-variant-numeric: tabular-nums; }
-.tcard-checkin-lbl { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-top: 0.35rem; }
+.tcard-checkin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-top: 0.7rem; }
+.tcard-checkin-cell { min-width: 0; border-radius: 0.8rem; background: rgba(0,0,0,0.25); padding: 0.7rem 0.3rem; text-align: center; }
+.tcard-checkin-big { font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; line-height: 1.05; color: #f1f5f9; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tcard-checkin-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.02em; color: #9ca3af; margin-top: 0.35rem; white-space: nowrap; }
 .tcard-checkin-sub { font-size: 0.66rem; color: #6b7280; margin-top: 0.1rem; min-height: 0.8rem; }
 .tcard-checkin-focus { margin-top: 0.8rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.7rem; }
 .tcard-checkin-fh { font-family: var(--font-display); font-weight: 700; color: #f1f5f9; font-size: 0.95rem; }
@@ -231,16 +233,17 @@ body {
 .tcard-macros-calnum span { font-size: 0.72rem; }
 .tcard-macros-track { height: 0.45rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 0.5rem; }
 .tcard-macros-track > div { height: 100%; border-radius: 999px; }
-.tcard-macros-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-top: 0.9rem; }
-.tcard-macros-mtop { display: flex; align-items: baseline; justify-content: space-between; gap: 0.25rem; font-size: 0.74rem; color: #9ca3af; }
-.tcard-macros-mval { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; }
+.tcard-macros-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.9rem; }
+/* Stack label over value so neither breaks mid-word in a tight 3-up column on mobile. */
+.tcard-macros-mtop { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; min-width: 0; font-size: 0.72rem; color: #9ca3af; white-space: nowrap; }
+.tcard-macros-mval { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tcard-macros-mtrack { height: 0.35rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 0.35rem; }
 .tcard-macros-mtrack > div { height: 100%; border-radius: 999px; }
 .tcard-macros-foot { margin-top: 0.8rem; font-size: 0.78rem; color: #6b7280; }
 
 /* ---- Athlete score card ---- */
 .tcard-fitness-main { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
-.tcard-fitness-num { font-family: var(--font-display); font-weight: 900; font-size: 2.9rem; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tcard-fitness-num { font-family: var(--font-display); font-weight: 900; font-size: 2.9rem; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tcard-fitness-outof { font-size: 1rem; font-weight: 700; color: #6b7280; margin-left: 0.1rem; }
 .tcard-fitness-grade { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; margin-top: 0.2rem; }
 .tcard-fitness-vo2 { text-align: right; }

@@ -19,7 +19,7 @@
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mb-5">
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
             <p class="text-[11px] uppercase tracking-wide text-gray-500">Total volume</p>
-            <p class="font-display text-xl font-bold text-cyan-300 nums mt-1">{{ number_format($volume) }} <span class="text-sm font-normal text-gray-500">kg</span></p>
+            <p class="font-display text-xl font-bold text-cyan-300 nums mt-1">{{ number_format(\App\Support\Units::weightOut($volume, $profile, 0)) }} <span class="text-sm font-normal text-gray-500">{{ $weightUnit }}</span></p>
         </div>
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
             <p class="text-[11px] uppercase tracking-wide text-gray-500">Working sets</p>
@@ -103,13 +103,13 @@
                                     {{-- Weight --}}
                                     <div class="flex items-center justify-between mt-1 sm:mt-0 sm:block">
                                         <span class="text-[11px] uppercase tracking-wide text-gray-500 sm:hidden">Weight</span>
-                                        <span x-show="!editing" class="text-sm text-gray-200 nums">{{ rtrim(rtrim(number_format($set->weight_kg, 1), '0'), '.') }} kg</span>
+                                        <span x-show="!editing" class="text-sm text-gray-200 nums">{{ \App\Support\Units::weight($set->weight_kg, $profile) }}</span>
                                         <div x-show="editing" x-cloak class="flex items-center gap-1">
                                             <input type="number" step="0.5" min="0" max="1000" inputmode="decimal"
                                                    name="sets[{{ $set->id }}][weight_kg]"
-                                                   value="{{ (float) $set->weight_kg !== 0.0 ? rtrim(rtrim(number_format($set->weight_kg, 1), '0'), '.') : '' }}"
+                                                   value="{{ (float) $set->weight_kg !== 0.0 ? \App\Support\Units::num(\App\Support\Units::weightOut($set->weight_kg, $profile)) : '' }}"
                                                    placeholder="0" class="w-20 rounded-lg bg-gray-900 border border-white/10 px-2 py-1 text-sm text-gray-100 nums focus:border-cyan-500/50 focus:outline-none">
-                                            <span class="text-xs text-gray-500">kg</span>
+                                            <span class="text-xs text-gray-500">{{ $weightUnit }}</span>
                                         </div>
                                     </div>
 
@@ -125,7 +125,7 @@
                                     {{-- Volume --}}
                                     <div class="flex items-center justify-between mt-1 sm:mt-0 sm:block sm:text-right">
                                         <span class="text-[11px] uppercase tracking-wide text-gray-500 sm:hidden">Volume</span>
-                                        <span class="text-sm font-medium text-gray-100 nums">{{ $set->is_warmup ? '—' : number_format($set->volume()) }}</span>
+                                        <span class="text-sm font-medium text-gray-100 nums">{{ $set->is_warmup ? '—' : number_format(\App\Support\Units::weightOut($set->volume(), $profile, 0)) }}</span>
                                     </div>
                                 </div>
                             </div>

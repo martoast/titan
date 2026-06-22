@@ -26,6 +26,7 @@ class Profile extends Model
     {
         return [
             'birthdate' => 'date',
+            'height_cm' => 'decimal:1',
             'settings' => 'array',
             'onboarded_at' => 'datetime',
         ];

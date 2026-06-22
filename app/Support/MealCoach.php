@@ -153,9 +153,9 @@ class MealCoach
                 $thisMeal['calories'], $thisMeal['protein_g']);
         } else {
             $status = 'overdue';
-            $label = 'Eat now';
-            $advice = sprintf("You're %s past your meal -- fuel up: ~%dg protein, ~%d kcal. By the time you feel hungry it's already too late.",
-                self::human(-$diffMin), $thisMeal['protein_g'], $thisMeal['calories']);
+            $label = 'Time to fuel up';
+            $advice = sprintf("Let's get some fuel in -- about %dg protein, ~%d kcal. Even something quick counts; eating before you're starving keeps your energy and your build on track.",
+                $thisMeal['protein_g'], $thisMeal['calories']);
         }
 
         return self::pack($status, $label, $nextAt->toIso8601String(), $diffMin > 0 ? $diffMin : 0,

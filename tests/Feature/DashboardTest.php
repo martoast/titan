@@ -21,8 +21,10 @@ class DashboardTest extends TestCase
         $resp->assertSee('Today');
     }
 
-    public function test_weight_history_renders_a_trajectory_graph(): void
+    public function test_home_is_a_focused_today_screen_not_a_metrics_dump(): void
     {
+        // The deep longitudinal review (trends + photo journey) lives on /progress now;
+        // the home defers to it with one calm doorway instead of carrying it all.
         $user = User::factory()->create();
         $p = $user->ensureProfile();
         $p->bodyMetrics()->create(['weight_kg' => 84.0, 'taken_at' => now()->subDays(60)->toDateString()]);
@@ -30,8 +32,21 @@ class DashboardTest extends TestCase
 
         $resp = $this->actingAs($user)->get('/dashboard');
         $resp->assertOk();
-        $resp->assertSee('Your trajectory');
-        $resp->assertSee('Weight');
-        $resp->assertSee('<polyline', false);               // the sparkline actually drew
+        $resp->assertSee('Your progress');                  // the single doorway card
+        $resp->assertSee('/progress', false);               // pointing at the review page
+        $resp->assertDontSee('Your trajectory');            // trends moved off the home
+        $resp->assertDontSee('Your journey');               // photo strip moved off the home
+    }
+
+    public function test_explore_quicklinks_are_gone_no_nav_duplication(): void
+    {
+        // The old quick-links row duplicated the bottom tab bar + More menu. Removed.
+        $user = User::factory()->create();
+        $user->ensureProfile();
+
+        $resp = $this->actingAs($user)->get('/dashboard');
+        $resp->assertOk();
+        // A bare grid of nav-duplicate chips no longer exists; nav lives in the shell only.
+        $resp->assertDontSee('the detail lives in each domain');   // the old section comment cue
     }
 }
