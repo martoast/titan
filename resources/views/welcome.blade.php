@@ -191,6 +191,22 @@
         .cycle-legend span { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.84rem; font-weight: 600; color: var(--muted); }
         .cycle-legend i { width: 10px; height: 10px; border-radius: 999px; }
 
+        /* ---- dream physique ---- */
+        .phys-grid { display: grid; grid-template-columns: 1.02fr 0.98fr; gap: 3.5rem; align-items: center; }
+        .phys-stage { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 1rem; box-shadow: 0 40px 90px -40px rgba(0,0,0,0.85); }
+        .phys-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+        .phys-shot { position: relative; border-radius: 16px; overflow: hidden; aspect-ratio: 3 / 4; background: #0c0f16; }
+        .phys-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+        .phys-shot.goal { box-shadow: 0 0 0 2px rgba(34,211,238,0.55), 0 20px 50px -20px rgba(34,211,238,0.35); }
+        .phys-label { position: absolute; top: 9px; left: 9px; padding: 0.25rem 0.6rem; border-radius: 999px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; background: rgba(6,7,10,0.66); backdrop-filter: blur(6px); border: 1px solid var(--line-2); color: var(--muted); }
+        .phys-label.goal { color: #0b1220; background: var(--grad); border-color: transparent; }
+        .phys-prog { margin-top: 1rem; padding: 0 0.3rem 0.3rem; }
+        .phys-prog-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.5rem; }
+        .phys-prog-top b { font-family: var(--font-d); font-weight: 800; color: #fff; font-size: 1.05rem; }
+        .phys-prog-top span { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+        .phys-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+        .phys-bar i { display: block; height: 100%; border-radius: 999px; background: var(--grad); width: 64%; }
+
         /* ---- coach ---- */
         .coach-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 3.5rem; align-items: center; }
         .feat-list { margin-top: 2rem; display: flex; flex-direction: column; gap: 1.3rem; }
@@ -275,7 +291,7 @@
             .hero .lead { margin-left: auto; margin-right: auto; }
             .hero-cta, .pillrow { justify-content: center; }
             .band-stage { order: -1; height: clamp(300px, 70vw, 420px); }
-            .cmp, .coach-grid, .hw-grid, .host-grid, .cycle-grid { grid-template-columns: 1fr; }
+            .cmp, .coach-grid, .hw-grid, .host-grid, .cycle-grid, .phys-grid { grid-template-columns: 1fr; }
             .cycle-grid .cycle-wheel-wrap { order: -1; }
             .snap-demo { grid-template-columns: 1fr; gap: 1.1rem; }
             .snap-arrow { transform: rotate(90deg); }
@@ -455,6 +471,47 @@
                     <div class="ring" style="--p:74;--c:var(--indigo)"><span class="ring-val">68<small>HRV ms</small></span></div>
                     <div class="score-label">Above baseline</div>
                     <div class="score-sub">Whole-night RMSSD, signal-quality graded</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- DREAM PHYSIQUE -->
+    <section class="sec" id="physique">
+        <div class="wrap phys-grid">
+            <div class="phys-stage rv">
+                <div class="phys-pair">
+                    <div class="phys-shot">
+                        <img src="{{ asset('images/physique-now.png') }}" alt="Your physique today" loading="lazy">
+                        <span class="phys-label">Now</span>
+                    </div>
+                    <div class="phys-shot goal">
+                        <img src="{{ asset('images/physique-goal.png') }}" alt="Your AI-rendered dream physique" loading="lazy">
+                        <span class="phys-label goal">Your goal ✨</span>
+                    </div>
+                </div>
+                <div class="phys-prog">
+                    <div class="phys-prog-top"><b>64% to your dream physique</b><span>+8 lbs lean</span></div>
+                    <div class="phys-bar"><i></i></div>
+                </div>
+            </div>
+            <div class="rv">
+                <span class="eyebrow kicker">Dream physique</span>
+                <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">See your future self. Then become them.</h2>
+                <p class="lead" style="margin-top:1rem;">Upload a photo and Titan renders a realistic version of the body you're working toward — your actual future self, not a stock model. It becomes your north star, and every workout and meal moves the needle toward it.</p>
+                <div class="feat-list">
+                    <div class="feat">
+                        <div class="feat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 16l4.5-4.5a2 2 0 012.8 0L16 16m-2-2l1.5-1.5a2 2 0 012.8 0L20 14M4 6h16v12H4z" stroke="#a5b4fc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div><h4>Rendered from your photo</h4><p>Front, back and side — so your glutes, legs and back goals actually show. It's you, leveled up, not someone else.</p></div>
+                    </div>
+                    <div class="feat">
+                        <div class="feat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 3v18h18M7 14l4-4 3 3 5-6" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div><h4>It advances as you do</h4><p>Stay consistent and your render sharpens week by week. A living progress bar to the body you want — endlessly motivating.</p></div>
+                    </div>
+                    <div class="feat">
+                        <div class="feat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" stroke="#6ee7b7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div><h4>Your coach builds the plan to get there</h4><p>Training, protein and recovery are all pointed at this one goal — the whole system pulling in the same direction.</p></div>
+                    </div>
                 </div>
             </div>
         </div>
