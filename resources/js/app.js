@@ -1,6 +1,7 @@
 
 
 import Alpine from 'alpinejs';
+import collapse from '@alpinejs/collapse';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -782,6 +783,7 @@ window.coachEnhance = (root) => {
     });
 };
 
+Alpine.plugin(collapse);
 window.Alpine = Alpine;
 
 Alpine.start();

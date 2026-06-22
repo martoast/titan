@@ -2,27 +2,13 @@
 
 @php
     // The chat is the centre of the app, but every page is one tap away via the hamburger nav.
-    $nav = [
-        ['label' => 'Coach',          'path' => 'coach',      'icon' => 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 21l1.8-4A7.97 7.97 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'],
-        ['label' => 'Dashboard',      'path' => 'dashboard',  'icon' => 'M3 12l2-2 7-7 7 7 2 2M5 10v10a1 1 0 001 1h3m10-11v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'],
-        ['label' => 'Dream Physique', 'path' => 'photos',     'icon' => 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'],
-        ['label' => 'Progress',       'path' => 'progress',   'icon' => 'M3 3v18h18M7 14l4-4 3 3 5-6'],
-        ['label' => 'Sleep',          'path' => 'sleep',      'icon' => 'M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z'],
-        ['label' => 'Recovery',       'path' => 'recovery',   'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
-        ['label' => 'Fitness',        'path' => 'fitness',    'icon' => 'M3 12h3l2-7 4 14 2-7h7'],
-        ['label' => 'Cycle',          'path' => 'cycle',      'icon' => 'M21 12a9 9 0 11-2.64-6.36M21 4v4h-4', 'cycle' => true],
-        ['label' => 'Meals',          'path' => 'meals',      'icon' => 'M5 3v7a3 3 0 006 0V3M8 3v18m9-18s2 1 2 5-2 4-2 4v7'],
-        ['label' => 'Workouts',       'path' => 'workouts',   'icon' => 'M6.5 6.5l11 11M4 9l1.5-1.5M9 4L7.5 5.5m9 13L18 17m-1-9l2-2M2.5 11.5l3 3m13-3l-3-3'],
-        ['label' => 'Foods',          'path' => 'foods',      'icon' => 'M4 6h16M4 10h16M4 14h10M4 18h10'],
-        ['label' => 'Bloodwork',      'path' => 'biomarkers', 'icon' => 'M12 3s5 5.5 5 9.5a5 5 0 11-10 0C7 8.5 12 3 12 3z'],
-        ['label' => 'The Brain',      'path' => 'brain',      'icon' => 'M9.5 4a2.5 2.5 0 00-2.45 3A2.5 2.5 0 005 9.5a2.5 2.5 0 001.5 2.29M9.5 4A2.5 2.5 0 0112 6.5m0 0v13m0-13A2.5 2.5 0 0114.5 4a2.5 2.5 0 012.45 3A2.5 2.5 0 0119 9.5a2.5 2.5 0 01-1.5 2.29'],
-        ['label' => 'Research',       'path' => 'research',   'icon' => 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.247m0-13C13.168 5.477 14.754 5 16.5 5s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18s-3.332.477-4.5 1.247'],
-        ['label' => 'Devices',        'path' => 'devices',    'icon' => 'M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM5 9h14M7 9V6a1 1 0 011-1h8a1 1 0 011 1v3m-1 0v4a1 1 0 01-1 1H9a1 1 0 01-1-1V9'],
-    ];
+    // Destinations come grouped from the single source of truth (App\Support\Nav) so the
+    // drawer here and the bottom bar / "More" sheet in titan-layout never drift apart.
     $u = auth()->user();
-    $name = $u?->ensureProfile()->display_name ?: ($u?->name ?? 'You');
+    $profile = $u?->ensureProfile();
+    $name = $profile?->display_name ?: ($u?->name ?? 'You');
     $initial = strtoupper(mb_substr($name, 0, 1));
-    $showCycle = \App\Support\Cycle::available($u->ensureProfile());
+    $navGroups = \App\Support\Nav::groups($profile);
     $activePath = trim(request()->path(), '/');
 @endphp
 
@@ -83,20 +69,21 @@
                             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
                     </div>
-                    <nav class="flex-1 overflow-y-auto p-2">
-                        @foreach ($nav as $item)
-                            @if (empty($item['cycle']) || $showCycle)
+                    <nav class="flex-1 overflow-y-auto px-2 py-3">
+                        @foreach ($navGroups as $groupLabel => $items)
+                            <p class="px-3 pb-1.5 pt-3 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-gray-600 first:pt-1">{{ $groupLabel }}</p>
+                            @foreach ($items as $item)
                                 @php $isActive = $activePath === $item['path']; @endphp
                                 <a href="/{{ $item['path'] }}"
                                    @class([
-                                       'flex items-center gap-3 rounded-xl px-3 py-3 text-[0.95rem] font-medium transition',
+                                       'flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.95rem] font-medium transition',
                                        'bg-gradient-to-r from-indigo-500/20 to-cyan-400/10 text-white' => $isActive,
                                        'text-gray-300 hover:bg-white/5 hover:text-white' => ! $isActive,
                                    ])>
                                     <svg class="h-5 w-5 shrink-0 {{ $isActive ? 'text-cyan-300' : 'text-gray-500' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $item['icon'] }}" /></svg>
                                     {{ $item['label'] }}
                                 </a>
-                            @endif
+                            @endforeach
                         @endforeach
                     </nav>
                 </aside>

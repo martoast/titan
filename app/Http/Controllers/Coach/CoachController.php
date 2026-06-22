@@ -63,7 +63,7 @@ class CoachController extends Controller
             'messages' => $page['messages'],
             'hasMore' => $page['has_more'],
             'oldestId' => $page['oldest_id'],
-            'starters' => CoachService::STARTERS,
+            'starters' => CoachService::startersFor($profile),
             'aiOffline' => ! app(\App\Services\Ai\AiService::class)->configured(),
             'latestBriefing' => $this->briefings->latestBriefing($profile),
         ]);
