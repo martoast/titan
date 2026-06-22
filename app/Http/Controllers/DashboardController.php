@@ -61,8 +61,13 @@ class DashboardController extends Controller
         $vo2 = $p->activitySessions()->whereNotNull('vo2max')->orderBy('started_at')->get();
         $bioAge = BiologicalAge::assess($p);
 
+        // Respect the user's unit preference so weight reads the same here as on Progress.
+        $imperial = ($p->settings['units'] ?? 'metric') === 'imperial';
+        $wUnit = $imperial ? 'lb' : 'kg';
+        $wMul = $imperial ? 2.2046226 : 1.0;
+
         $trajectories = array_values(array_filter([
-            $this->series('Weight', $body->whereNotNull('weight_kg'), 'taken_at', 'weight_kg', 'kg', 'neutral'),
+            $this->series('Weight', $body->whereNotNull('weight_kg'), 'taken_at', 'weight_kg', $wUnit, 'neutral', $wMul),
             $this->series('Body fat', $body->whereNotNull('body_fat_pct'), 'taken_at', 'body_fat_pct', '%', 'down'),
             $this->series('VO₂max', $vo2, 'started_at', 'vo2max', '', 'up'),
         ]));
@@ -72,7 +77,7 @@ class DashboardController extends Controller
             ->map(fn ($ph) => [
                 'url' => $ph->photoUrl(),
                 'date' => optional($ph->taken_at)->format('M j'),
-                'weight' => $ph->weight_kg ? rtrim(rtrim(number_format((float) $ph->weight_kg, 1), '0'), '.').' kg' : null,
+                'weight' => $ph->weight_kg ? rtrim(rtrim(number_format((float) $ph->weight_kg * $wMul, 1), '0'), '.').' '.$wUnit : null,
             ])->filter(fn ($x) => $x['url'])->values();
 
         // --- Cycle (only for women / those who track it) -- phase-aware context tile ---
@@ -104,9 +109,9 @@ class DashboardController extends Controller
      * Build a sparkline series from a model collection. `better` = which direction is improvement
      * ('up'/'down'/'neutral') → colours the delta. Returns null when there's nothing to plot.
      */
-    private function series(string $label, $rows, string $dateKey, string $valKey, string $unit, string $better): ?array
+    private function series(string $label, $rows, string $dateKey, string $valKey, string $unit, string $better, float $mul = 1.0): ?array
     {
-        $pts = $rows->map(fn ($r) => ['t' => optional($r->{$dateKey})->timestamp ?? 0, 'v' => (float) $r->{$valKey}])
+        $pts = $rows->map(fn ($r) => ['t' => optional($r->{$dateKey})->timestamp ?? 0, 'v' => (float) $r->{$valKey} * $mul])
             ->filter(fn ($x) => $x['v'] > 0)->sortBy('t')->values();
         if ($pts->count() < 2) {
             return null;
