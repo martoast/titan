@@ -148,6 +148,20 @@
         .score-label { font-family: var(--font-d); font-weight: 700; font-size: 1.05rem; }
         .score-sub { font-size: 0.86rem; color: var(--muted); margin-top: 0.35rem; }
 
+        /* ---- sleep architecture panel ---- */
+        .sleeparch { margin-top: 1.5rem; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 1.6rem 1.7rem; }
+        .sleeparch-top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.4rem 1rem; }
+        .sleeparch-top h4 { font-family: var(--font-d); font-weight: 700; color: #fff; font-size: 1.06rem; }
+        .sleeparch-top h4 span { color: var(--cyan); }
+        .sleeparch-dur { font-family: var(--font-d); font-weight: 900; font-size: 1.5rem; color: #fff; letter-spacing: -0.01em; }
+        .sleeparch-dur small { font-size: 0.8rem; color: var(--muted); font-weight: 600; margin-left: 0.2rem; }
+        .sleeparch-bar { display: flex; height: 38px; border-radius: 10px; overflow: hidden; margin-top: 1.1rem; gap: 2px; }
+        .sleeparch-bar i { display: block; height: 100%; }
+        .sleeparch-legend { display: flex; flex-wrap: wrap; gap: 0.7rem 1.5rem; margin-top: 1.1rem; }
+        .sleeparch-legend span { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.86rem; color: var(--muted); font-weight: 600; }
+        .sleeparch-legend i { width: 11px; height: 11px; border-radius: 3px; }
+        .sleeparch-legend b { color: #fff; font-family: var(--font-d); font-weight: 700; }
+
         /* ---- snap your food (AI nutrition) ---- */
         .snap-demo { margin-top: 3.2rem; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1.6rem; }
         .snap-photo { position: relative; border-radius: 22px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: 0 40px 80px -40px rgba(0,0,0,0.85); aspect-ratio: 16 / 11; }
@@ -449,7 +463,7 @@
             <div class="sec-head center rv">
                 <span class="eyebrow kicker">What Titan sees</span>
                 <h2>Your whole body, in numbers you can act on.</h2>
-                <p class="lead">From one wearable: overnight recovery, sleep architecture, daily strain, and heart-rate variability — validated against gold-standard science, explained in plain language by your coach.</p>
+                <p class="lead">From one wearable: overnight recovery, sleep architecture, daily strain, VO₂max, even your biological age — validated against gold-standard science, and explained in plain language by your coach.</p>
             </div>
             <div class="scores">
                 <div class="score rv">
@@ -458,21 +472,44 @@
                     <div class="score-sub">HRV &amp; resting HR vs your own baseline</div>
                 </div>
                 <div class="score rv">
-                    <div class="ring" style="--p:92;--c:var(--cyan)"><span class="ring-val">7:42<small>Sleep</small></span></div>
-                    <div class="score-label">Deep, REM &amp; light</div>
-                    <div class="score-sub">Whole-night staging from a real PSG model</div>
+                    <div class="ring" style="--p:82;--c:var(--cyan)"><span class="ring-val">52<small>VO₂max</small></span></div>
+                    <div class="score-label">Top 10% for your age</div>
+                    <div class="score-sub">Cardio fitness, the #1 longevity signal</div>
+                </div>
+                <div class="score rv">
+                    <div class="ring" style="--p:90;--c:var(--indigo)"><span class="ring-val">22<small>Bio age</small></span></div>
+                    <div class="score-label">8 yrs younger</div>
+                    <div class="score-sub">PhenoAge from your bloodwork &amp; vitals</div>
                 </div>
                 <div class="score rv">
                     <div class="ring" style="--p:68;--c:var(--amber)"><span class="ring-val">14.2<small>Strain</small></span></div>
                     <div class="score-label">Cardiovascular load</div>
                     <div class="score-sub">Today's effort vs your recovery-aware target</div>
                 </div>
-                <div class="score rv">
-                    <div class="ring" style="--p:74;--c:var(--indigo)"><span class="ring-val">68<small>HRV ms</small></span></div>
-                    <div class="score-label">Above baseline</div>
-                    <div class="score-sub">Whole-night RMSSD, signal-quality graded</div>
+            </div>
+            @verbatim
+            <div class="sleeparch rv">
+                <div class="sleeparch-top">
+                    <h4>Last night's <span>sleep architecture</span></h4>
+                    <div class="sleeparch-dur">7h 42m <small>· 92% performance</small></div>
+                </div>
+                <div class="sleeparch-bar">
+                    <i style="width:5%;background:#475569" title="Awake"></i>
+                    <i style="width:24%;background:#818cf8" title="Light"></i>
+                    <i style="width:16%;background:#6366f1" title="Deep"></i>
+                    <i style="width:13%;background:#22d3ee" title="REM"></i>
+                    <i style="width:22%;background:#818cf8" title="Light"></i>
+                    <i style="width:8%;background:#6366f1" title="Deep"></i>
+                    <i style="width:12%;background:#22d3ee" title="REM"></i>
+                </div>
+                <div class="sleeparch-legend">
+                    <span><i style="background:#6366f1"></i> Deep <b>1h 12m</b></span>
+                    <span><i style="background:#22d3ee"></i> REM <b>1h 58m</b></span>
+                    <span><i style="background:#818cf8"></i> Light <b>4h 13m</b></span>
+                    <span><i style="background:#475569"></i> Awake <b>0h 19m</b></span>
                 </div>
             </div>
+            @endverbatim
         </div>
     </section>
 
