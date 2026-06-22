@@ -365,7 +365,7 @@
             <div>
                 <div class="eyebrow rv">24/7 health intelligence</div>
                 <h1 class="rv" style="margin-top:1.1rem;">Your body,<br><span class="grad-text">fully understood.</span></h1>
-                <p class="lead rv">Titan pairs round-the-clock health insights with a personal AI coach to help you improve how you sleep, train, and feel — starting day one.</p>
+                <p class="lead rv">Snap your meals, read your recovery, see your future self — all coached by one AI that actually knows your body. A wearable you own, no subscription, your data forever.</p>
                 <div class="hero-cta rv">
                     <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
                     <a class="btn btn-ghost" href="#data">See how it works</a>
@@ -422,38 +422,6 @@
                 </div>
                 @endverbatim
             </div>
-        </div>
-    </section>
-
-    <!-- THESIS -->
-    <section class="thesis">
-        <div class="wrap sec">
-            <div class="sec-head center rv">
-                <span class="eyebrow kicker">The complete picture</span>
-                <h2>A complete view of<br><span class="grad-text">your health.</span></h2>
-                <p class="lead">24/7 monitoring across sleep, recovery, strain, and heart health — the same validated science the premium wearables run on, so you can make smarter decisions every day. With one quiet difference: it's yours to keep.</p>
-            </div>
-            @verbatim
-            <div class="cmp-table-wrap rv">
-                <table class="cmp-table">
-                    <thead>
-                        <tr><th class="ft">Same science as the big names</th><th class="brand-us">Titan</th><th>Whoop</th><th>Oura</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td>Recovery &amp; readiness score</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
-                        <tr><td>Sleep stages &amp; quality</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
-                        <tr><td>HRV, resting HR &amp; strain</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
-                        <tr><td>AI coach that knows your body</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><span class="lim">Limited</span></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
-                        <tr><td>Export your raw data</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
-                        <tr><td>Open source</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
-                        <tr><td>Self-hostable — your server</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
-                        <tr><td>Monthly subscription</td><td class="us"><b class="g">None</b></td><td>$30 / mo</td><td>$6 / mo</td></tr>
-                        <tr class="cost"><td>Cost after the device</td><td class="us"><b class="grad-text">$0 forever</b></td><td>$239 / yr</td><td>$70 / yr</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <p class="cmp-foot rv">Same science. Same insights. <span class="grad-text">None of the rent</span> — and your data never leaves your hands.</p>
-            @endverbatim
         </div>
     </section>
 
@@ -653,6 +621,41 @@
                     <div class="spec"><span class="sd" style="background:var(--indigo)"></span><div><b>Open hardware, your data</b><p>Every sample is yours to export, self-host, and build on. No walled garden, no lock-in.</p></div></div>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <!-- THESIS -->
+    <section class="thesis">
+        <div class="wrap sec">
+            <div class="sec-head center rv">
+                <span class="eyebrow kicker">The complete picture</span>
+                <h2>A complete view of<br><span class="grad-text">your health.</span></h2>
+                <p class="lead">24/7 monitoring across sleep, recovery, strain, and heart health — the same validated science the premium wearables run on, so you can make smarter decisions every day. With one quiet difference: it's yours to keep.</p>
+            </div>
+            @verbatim
+            <div class="cmp-table-wrap rv">
+                <table class="cmp-table">
+                    <thead>
+                        <tr><th class="ft">Same science as the big names</th><th class="brand-us">Titan</th><th>Whoop</th><th>Oura</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Recovery &amp; readiness score</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
+                        <tr><td>Sleep stages &amp; quality</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
+                        <tr><td>HRV, resting HR &amp; strain</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td></tr>
+                        <tr><td>Snap-a-photo nutrition &amp; macros</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>AI dream-physique render</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Cycle-aware training &amp; nutrition</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>AI coach that knows your body</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><span class="lim">Limited</span></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Export your raw data</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Open source</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Self-hostable — your server</td><td class="us"><svg class="ic ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td><td><svg class="ic no" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></td></tr>
+                        <tr><td>Monthly subscription</td><td class="us"><b class="g">None</b></td><td>$30 / mo</td><td>$6 / mo</td></tr>
+                        <tr class="cost"><td>Cost after the device</td><td class="us"><b class="grad-text">$0 forever</b></td><td>$239 / yr</td><td>$70 / yr</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="cmp-foot rv">Same science. Same insights. <span class="grad-text">None of the rent</span> — and your data never leaves your hands.</p>
+            @endverbatim
         </div>
     </section>
 
