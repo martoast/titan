@@ -23,7 +23,9 @@
     <title>{{ $title }} · Titan</title>
 
     <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.svg">
+    {{-- iOS uses PNG for the home-screen icon (it ignores SVG apple-touch-icons). --}}
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
     <meta name="apple-mobile-web-app-title" content="Titan">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -133,5 +135,7 @@
             {{ $slot }}
         </main>
     </div>
+
+    <x-install-hint />
 </body>
 </html>
