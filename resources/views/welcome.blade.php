@@ -148,6 +148,32 @@
         .score-label { font-family: var(--font-d); font-weight: 700; font-size: 1.05rem; }
         .score-sub { font-size: 0.86rem; color: var(--muted); margin-top: 0.35rem; }
 
+        /* ---- snap your food (AI nutrition) ---- */
+        .snap-demo { margin-top: 3.2rem; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1.6rem; }
+        .snap-photo { position: relative; border-radius: 22px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: 0 40px 80px -40px rgba(0,0,0,0.85); aspect-ratio: 16 / 11; }
+        .snap-photo img { width: 100%; height: 100%; object-fit: cover; }
+        .snap-photo::after { content: ''; position: absolute; left: 0; right: 0; height: 38%; top: -38%; background: linear-gradient(180deg, transparent, rgba(34,211,238,0.28), transparent); animation: scanmove 2.6s ease-in-out infinite; }
+        @keyframes scanmove { 0% { top: -38%; } 60%,100% { top: 100%; } }
+        .snap-tag { position: absolute; left: 12px; bottom: 12px; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.7rem; border-radius: 999px; background: rgba(6,7,10,0.7); backdrop-filter: blur(8px); font-size: 0.74rem; font-weight: 600; color: #e7ecf5; border: 1px solid var(--line-2); }
+        .snap-shutter { width: 9px; height: 9px; border-radius: 999px; background: var(--cyan); box-shadow: 0 0 0 0 rgba(34,211,238,0.6); animation: pulsedot 1.6s ease-out infinite; }
+        @keyframes pulsedot { 0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.55); } 100% { box-shadow: 0 0 0 10px rgba(34,211,238,0); } }
+        .snap-arrow { color: var(--faint); font-size: 1.5rem; }
+        .snap-card { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 1.5rem 1.6rem; box-shadow: 0 40px 80px -40px rgba(0,0,0,0.8); }
+        .snap-card-head { display: flex; align-items: center; justify-content: space-between; }
+        .snap-ai { font-size: 0.74rem; font-weight: 700; color: var(--cyan); display: inline-flex; align-items: center; gap: 0.35rem; }
+        .snap-done { font-size: 0.74rem; font-weight: 700; color: var(--green); }
+        .snap-title { font-family: var(--font-d); font-weight: 800; font-size: 1.16rem; color: #fff; margin-top: 0.7rem; }
+        .snap-cal { font-family: var(--font-d); margin-top: 0.5rem; display: flex; align-items: baseline; gap: 0.4rem; }
+        .snap-cal b { font-size: 2.8rem; font-weight: 900; letter-spacing: -0.02em; color: #fff; line-height: 1; }
+        .snap-cal span { font-size: 0.95rem; color: var(--muted); font-weight: 600; }
+        .snap-macros { margin-top: 1.3rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; }
+        .snap-macro { text-align: center; }
+        .snap-mr { width: 76px; height: 76px; margin: 0 auto 0.5rem; border-radius: 50%; display: grid; place-items: center; position: relative; background: conic-gradient(var(--mc) calc(var(--p) * 1%), rgba(255,255,255,0.07) 0); }
+        .snap-mr::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--surface); }
+        .snap-mr b { position: relative; font-family: var(--font-d); font-weight: 800; font-size: 1.15rem; color: #fff; }
+        .snap-mr i { position: relative; font-style: normal; font-size: 0.7rem; color: var(--muted); font-weight: 600; }
+        .snap-macro span { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+
         /* ---- coach ---- */
         .coach-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 3.5rem; align-items: center; }
         .feat-list { margin-top: 2rem; display: flex; flex-direction: column; gap: 1.3rem; }
@@ -233,6 +259,8 @@
             .hero-cta, .pillrow { justify-content: center; }
             .band-stage { order: -1; height: clamp(300px, 70vw, 420px); }
             .cmp, .coach-grid, .hw-grid, .host-grid { grid-template-columns: 1fr; }
+            .snap-demo { grid-template-columns: 1fr; gap: 1.1rem; }
+            .snap-arrow { transform: rotate(90deg); }
             .scores { grid-template-columns: repeat(2, 1fr); }
             .every { grid-template-columns: 1fr; }
             .coach-grid .chat { order: -1; }
@@ -306,6 +334,48 @@
             </div>
         </div>
     </header>
+
+    <!-- SNAP YOUR FOOD (AI NUTRITION) -->
+    <section class="sec" id="food">
+        <div class="wrap">
+            <div class="sec-head center rv">
+                <span class="eyebrow kicker">AI nutrition</span>
+                <h2>Just snap it.<br><span class="grad-text">Titan reads the plate.</span></h2>
+                <p class="lead">No weighing, no barcodes, no scrolling a database. Photograph your meal — or just tell your coach what you ate — and the calories and macros are logged in seconds, then tracked against your targets all day.</p>
+            </div>
+            <div class="snap-demo rv">
+                <figure class="snap-photo">
+                    <img src="{{ asset('images/meal-hero.png') }}" alt="A meal of grilled chicken, rice and broccoli being analyzed by Titan" loading="lazy">
+                    <figcaption class="snap-tag"><span class="snap-shutter"></span> Snapped · analyzing…</figcaption>
+                </figure>
+                <div class="snap-arrow" aria-hidden="true">&rarr;</div>
+                @verbatim
+                <div class="snap-card">
+                    <div class="snap-card-head">
+                        <span class="snap-ai">✨ AI estimated</span>
+                        <span class="snap-done">Logged ✓</span>
+                    </div>
+                    <div class="snap-title">Grilled chicken, rice &amp; broccoli</div>
+                    <div class="snap-cal"><b>540</b> <span>kcal</span></div>
+                    <div class="snap-macros">
+                        <div class="snap-macro">
+                            <div class="snap-mr" style="--p:61;--mc:var(--green)"><b>61</b><i>g</i></div>
+                            <span>Protein</span>
+                        </div>
+                        <div class="snap-macro">
+                            <div class="snap-mr" style="--p:46;--mc:var(--amber)"><b>56</b><i>g</i></div>
+                            <span>Carbs</span>
+                        </div>
+                        <div class="snap-macro">
+                            <div class="snap-mr" style="--p:14;--mc:var(--rose)"><b>7</b><i>g</i></div>
+                            <span>Fat</span>
+                        </div>
+                    </div>
+                </div>
+                @endverbatim
+            </div>
+        </div>
+    </section>
 
     <!-- THESIS -->
     <section class="thesis">
