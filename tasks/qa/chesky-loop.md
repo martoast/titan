@@ -62,13 +62,16 @@ the flow to confirm it's smooth. Add a regression test where it makes sense.
   history + store). Dashboard/Progress already converted earlier. Covered by
   UnitsTest, BodyUnitsTest, WorkoutUnitsTest. Stored data stays metric.
 
+- **Live/voice workout units** ✅: `/workouts/live` now works entirely in the user's
+  display units. Client state holds display weight; conversion happens at the
+  controller boundary (hydration, add-set store, voice snapshot, spoken text). Voice
+  bare numbers follow the user's units (imperial → pounds), while explicit
+  "kilos"/"pounds" are honored as-is. Covered by LiveWorkoutUnitsTest.
+- **Meal-card tone** ✅: overdue is now a warm amber nudge with supportive copy, no
+  giant red "overdue" clock (de-escalated on Dashboard + Meals).
+
 ### ⏳ Open (next iterations)
-- **Live/voice workout units**: `/workouts/live` still works entirely in kg. Its
-  real-time Alpine state holds weight in kg end-to-end (display, volume, add-set
-  round-trip) and the voice parser assumes kg for *bare* numbers (explicit
-  "kilos"/"pounds" already convert correctly). Converting it means reworking the
-  client state model — a focused follow-up to avoid regressing the working voice flow.
-- **Meal-card tone**: the giant red "Xh overdue" on Dashboard + Meals reads as nagging;
-  decide whether to soften (smaller/warmer) — product/tone call.
 - Remaining low-density pages (foods, research, devices, connect, duo, notifications)
   — quick five-question review.
+- Coach system-prompt facts still emit "Height: X cm" regardless of units (coach
+  context, not UI) — low priority.

@@ -1,4 +1,9 @@
 @php
+    // The live UI works entirely in the user's display units; weights convert to/from metric
+    // at the controller boundary (hydration here, store on add-set, snapshot on voice).
+    $weightUnit = \App\Support\Units::weightUnit($profile);
+    $spokenUnit = $weightUnit === 'lb' ? 'pounds' : 'kilos';   // how the example reads aloud
+
     // Hydrate any in-progress session so a reload continues it.
     $initial = ['workoutId' => null, 'startedAt' => null, 'exercises' => []];
     if ($active) {
@@ -10,7 +15,7 @@
                 'name' => $we->exercise?->name ?? 'Exercise',
                 'muscle_group' => $we->exercise?->muscle_group,
                 'sets' => $we->sets->map(fn ($s) => [
-                    'reps' => $s->reps, 'weight' => (float) $s->weight_kg, 'rpe' => $s->rpe,
+                    'reps' => $s->reps, 'weight' => \App\Support\Units::weightOut((float) $s->weight_kg, $profile), 'rpe' => $s->rpe,
                 ])->values(),
             ];
         }
@@ -29,7 +34,7 @@
         {{-- ===== Say your set (voice logging) ===== --}}
         <div class="rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.04] p-4 md:p-5 mb-5" x-show="voiceSupported" x-cloak>
             <h3 class="font-display font-bold text-gray-100">Say your set</h3>
-            <p class="text-xs text-gray-500 mt-0.5">Tap, then say it — e.g. “bench press, 80 kilos, 8 reps”.</p>
+            <p class="text-xs text-gray-500 mt-0.5">Tap, then say it — e.g. “bench press, 80 {{ $spokenUnit }}, 8 reps”.</p>
 
             <button type="button" @click="toggleVoice()"
                     class="mt-4 w-full h-20 rounded-2xl flex items-center justify-center gap-3 text-lg font-semibold text-white transition"
@@ -43,7 +48,7 @@
             <p x-show="spoken" x-cloak class="mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm text-emerald-200" x-text="spoken"></p>
 
             <p class="mt-3 text-[11px] text-gray-600 leading-relaxed">
-                Say a set — “bench press 80 kilos 8 reps”. Fix it by talking: “change the last set to 10 reps”, “make it 85 kilos”, “delete that set”, “undo”. When you’re done: “finish workout”.
+                Say a set — “bench press 80 {{ $spokenUnit }} 8 reps”. Fix it by talking: “change the last set to 10 reps”, “make it 85 {{ $spokenUnit }}”, “delete that set”, “undo”. When you’re done: “finish workout”.
             </p>
         </div>
         <div x-show="!voiceSupported" x-cloak class="mb-5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-gray-400">
@@ -59,7 +64,7 @@
             <div class="grid grid-cols-3 gap-3 text-center">
                 <div>
                     <div class="font-display text-2xl font-bold text-cyan-300 nums leading-none" x-text="Math.round(totalVolume).toLocaleString()"></div>
-                    <div class="text-[10px] uppercase tracking-wide text-gray-500 mt-1">kg volume</div>
+                    <div class="text-[10px] uppercase tracking-wide text-gray-500 mt-1">{{ $weightUnit }} volume</div>
                 </div>
                 <div>
                     <div class="font-display text-2xl font-bold text-gray-100 nums leading-none" x-text="totalSets"></div>
@@ -154,7 +159,7 @@
                             <div class="flex items-center gap-3 text-sm text-gray-300 bg-gray-950/60 rounded-lg px-3 py-2">
                                 <span class="text-gray-600 w-5 shrink-0 nums" x-text="(j+1)+'.'"></span>
                                 <span class="nums"><span class="font-semibold text-gray-100" x-text="s.reps"></span> reps</span>
-                                <span class="nums"><span class="font-semibold text-gray-100" x-text="s.weight"></span> kg</span>
+                                <span class="nums"><span class="font-semibold text-gray-100" x-text="s.weight"></span> {{ $weightUnit }}</span>
                                 <span x-show="s.rpe" class="text-gray-500 nums ml-auto">RPE <span x-text="s.rpe"></span></span>
                             </div>
                         </template>
@@ -166,7 +171,7 @@
                             <label class="flex-1 min-w-0"><span class="block text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">Reps</span>
                                 <input type="number" min="0" x-model.number="draft[ex.id].reps" inputmode="numeric"
                                        class="w-full h-12 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0"></label>
-                            <label class="flex-1 min-w-0"><span class="block text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">Weight (kg)</span>
+                            <label class="flex-1 min-w-0"><span class="block text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">Weight ({{ $weightUnit }})</span>
                                 <input type="number" min="0" step="0.5" x-model.number="draft[ex.id].weight" inputmode="decimal"
                                        class="w-full h-12 rounded-xl bg-gray-950 border border-white/10 px-3 text-base text-gray-100 focus:border-indigo-500 focus:ring-0"></label>
                             <label class="w-16 shrink-0"><span class="block text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">RPE</span>

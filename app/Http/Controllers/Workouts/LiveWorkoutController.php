@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Workouts;
 
 use App\Exceptions\AiException;
 use App\Http\Controllers\Controller;
+use App\Models\Profile;
 use App\Models\Workout;
 use App\Models\WorkoutExercise;
 use App\Models\WorkoutSet;
 use App\Services\Workouts\ExerciseIdentifier;
+use App\Support\Units;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -128,7 +130,8 @@ class LiveWorkoutController extends Controller
             'workout_exercise_id' => $we->id,
             'set_number' => $we->sets()->count() + 1,
             'reps' => $data['reps'],
-            'weight_kg' => $data['weight_kg'],
+            // The live UI works in the user's display units; store metric.
+            'weight_kg' => Units::weightIn((float) $data['weight_kg'], $profile),
             'rpe' => $data['rpe'] ?? null,
             'is_warmup' => (bool) ($data['is_warmup'] ?? false),
         ]);
@@ -151,7 +154,8 @@ class LiveWorkoutController extends Controller
             'workout_id' => ['nullable', 'integer'],
         ]);
 
-        $cmd = $this->parseVoiceCommand($data['transcript']);
+        // Imperial speakers' bare numbers ("bench 185 8") are pounds; explicit "kilos"/"pounds" already resolve to kg.
+        $cmd = $this->parseVoiceCommand($data['transcript'], Units::imperial($profile));
         $workout = ! empty($data['workout_id']) ? $profile->workouts()->find($data['workout_id']) : null;
 
         // Edits need something already logged.
@@ -200,8 +204,7 @@ class LiveWorkoutController extends Controller
                     'weight_kg' => $cmd['weight_kg'],
                     'rpe' => $cmd['rpe'],
                 ], fn ($v) => $v !== null));
-                $w = rtrim(rtrim(number_format((float) $set->weight_kg, 1), '0'), '.');
-                $spoken = "Updated to {$set->reps} reps × {$w} kg.";
+                $spoken = "Updated to {$set->reps} reps × ".Units::weight($set->weight_kg, $profile, 1).'.';
                 break;
 
             case 'delete_exercise':
@@ -233,8 +236,7 @@ class LiveWorkoutController extends Controller
                     'weight_kg' => $cmd['weight_kg'] ?? 0,
                     'rpe' => $cmd['rpe'],
                 ]);
-                $w = rtrim(rtrim(number_format((float) $set->weight_kg, 1), '0'), '.');
-                $spoken = "Added {$exercise->name} -- {$w} kg × {$set->reps}.";
+                $spoken = "Added {$exercise->name} -- ".Units::weight($set->weight_kg, $profile, 1)." × {$set->reps}.";
                 break;
         }
 
@@ -243,7 +245,7 @@ class LiveWorkoutController extends Controller
             'heard' => $data['transcript'],
             'action' => $cmd['intent'],
             'spoken' => $spoken,
-            'session' => $this->sessionSnapshot($workout->fresh()),
+            'session' => $this->sessionSnapshot($workout->fresh(), $profile),
         ]);
     }
 
@@ -276,8 +278,8 @@ class LiveWorkoutController extends Controller
         });
     }
 
-    /** The session as the live UI consumes it (mirrors the page's initial hydration). */
-    private function sessionSnapshot(Workout $workout): array
+    /** The session as the live UI consumes it (mirrors the page's initial hydration). Weight in display units. */
+    private function sessionSnapshot(Workout $workout, Profile $profile): array
     {
         $workout->load('exercises.exercise', 'exercises.sets');
 
@@ -288,7 +290,7 @@ class LiveWorkoutController extends Controller
                 'name' => $we->exercise?->name ?? 'Exercise',
                 'muscle_group' => $we->exercise?->muscle_group,
                 'sets' => $we->sets->map(fn ($s) => [
-                    'reps' => $s->reps, 'weight' => (float) $s->weight_kg, 'rpe' => $s->rpe,
+                    'reps' => $s->reps, 'weight' => Units::weightOut((float) $s->weight_kg, $profile), 'rpe' => $s->rpe,
                 ])->values(),
             ])->values(),
         ];
@@ -300,7 +302,7 @@ class LiveWorkoutController extends Controller
      *
      * @return array{intent:string,exercise:?string,weight_kg:?float,reps:?int,rpe:?float}
      */
-    private function parseVoiceCommand(string $raw): array
+    private function parseVoiceCommand(string $raw, bool $imperial = false): array
     {
         $t = ' '.strtolower(trim($raw)).' ';
         $words = ['zero' => 0, 'one' => 1, 'two' => 2, 'three' => 3, 'four' => 4, 'five' => 5, 'six' => 6,
@@ -327,7 +329,7 @@ class LiveWorkoutController extends Controller
             || (bool) preg_match('/\bactually\b/', $t);
         $refLast = (bool) preg_match('/\b(last|that|it|previous|this)\b/', $t);
 
-        $metrics = $this->extractMetrics($t);
+        $metrics = $this->extractMetrics($t, false, $imperial);
 
         if ($undo) {
             return ['intent' => 'undo', 'exercise' => null, 'weight_kg' => null, 'reps' => null, 'rpe' => null];
@@ -339,7 +341,7 @@ class LiveWorkoutController extends Controller
         }
         // Correction → update the last set, unless they named a NEW exercise (then it's an add).
         if ($correct && ($refLast || ! $metrics['exercise'])) {
-            $upd = $this->extractMetrics($t, true);
+            $upd = $this->extractMetrics($t, true, $imperial);
 
             return ['intent' => 'update_set'] + $upd;
         }
@@ -354,18 +356,21 @@ class LiveWorkoutController extends Controller
      *
      * @return array{exercise:?string,weight_kg:?float,reps:?int,rpe:?float}
      */
-    private function extractMetrics(string $t, bool $update = false): array
+    private function extractMetrics(string $t, bool $update = false, bool $imperial = false): array
     {
         $weight = $reps = $rpe = null;
+        $weightExplicit = false;   // true when a unit was spoken (kilos/pounds) → already metric, don't reconvert
         if (preg_match('/\brpe\s*(\d+(?:\.\d+)?)/', $t, $m)) {
             $rpe = (float) $m[1];
             $t = str_replace($m[0], ' ', $t);
         }
         if (preg_match('/(\d+(?:\.\d+)?)\s*(kilograms?|kilos?|kgs?|kg)\b/', $t, $m)) {
             $weight = (float) $m[1];
+            $weightExplicit = true;
             $t = str_replace($m[0], ' ', $t);
         } elseif (preg_match('/(\d+(?:\.\d+)?)\s*(pounds?|lbs?|lb)\b/', $t, $m)) {
             $weight = round((float) $m[1] * 0.453592 * 2) / 2;
+            $weightExplicit = true;
             $t = str_replace($m[0], ' ', $t);
         }
         if (preg_match('/(\d+)\s*(reps?|times)\b/', $t, $m)) {
@@ -400,6 +405,11 @@ class LiveWorkoutController extends Controller
             } elseif ($reps !== null && $weight === null && $bare) {
                 $weight = (float) $bare[0];
             }
+        }
+
+        // A bare weight number from an imperial speaker is pounds → store metric.
+        if ($imperial && $weight !== null && ! $weightExplicit) {
+            $weight = round($weight * Units::KG_PER_LB * 2) / 2;
         }
 
         $ex = preg_replace('/\b\d+(?:\.\d+)?\b/', ' ', $t);
