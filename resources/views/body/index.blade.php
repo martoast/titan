@@ -59,12 +59,16 @@
         </div>
     </div>
 
-    {{-- ===================== Add form ===================== --}}
-    <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
-        <h3 class="font-display font-bold text-gray-100 mb-1">Add a measurement</h3>
-        <p class="text-sm text-gray-400 mb-4">Fill in whatever you measured today — every field is optional.</p>
-        <form method="POST" action="{{ route('body.store') }}" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            @csrf
+    {{-- ===================== Add form (deferred behind a tap) ===================== --}}
+    <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ logOpen: {{ $errors->any() ? 'true' : 'false' }} }">
+        <button type="button" @click="logOpen = !logOpen" class="flex w-full items-center justify-between gap-3 text-left">
+            <span class="font-display font-bold text-gray-100">Add a measurement</span>
+            <svg class="h-5 w-5 shrink-0 text-gray-500 transition" :class="logOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="logOpen" x-collapse x-cloak>
+            <p class="text-sm text-gray-400 mt-3 mb-4">Fill in whatever you measured today — every field is optional.</p>
+            <form method="POST" action="{{ route('body.store') }}" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                @csrf
             @php
                 $fields = [
                     ['weight_kg', 'Weight (kg)', 'any'],
@@ -98,7 +102,8 @@
                     Save measurement
                 </button>
             </div>
-        </form>
+            </form>
+        </div>
     </div>
 
     {{-- ===================== History ===================== --}}
