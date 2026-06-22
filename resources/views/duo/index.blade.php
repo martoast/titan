@@ -106,9 +106,10 @@
                     :a="$a['avg_sleep'] !== null ? $a['avg_sleep'].'h' : '—'"
                     :b="$b['avg_sleep'] !== null ? $b['avg_sleep'].'h' : '—'"
                     :aWin="$sl > 0" :bWin="$sl < 0" />
+                @php $me = auth()->user()->ensureProfile(); @endphp
                 <x-duo-stat label="Latest weight"
-                    :a="$a['latest_weight'] !== null ? $a['latest_weight'].' kg' : '—'"
-                    :b="$b['latest_weight'] !== null ? $b['latest_weight'].' kg' : '—'" />
+                    :a="\App\Support\Units::weight($a['latest_weight'], $me)"
+                    :b="\App\Support\Units::weight($b['latest_weight'], $me)" />
             </div>
 
             {{-- Streak chips per brother — wrap, never overflow --}}
