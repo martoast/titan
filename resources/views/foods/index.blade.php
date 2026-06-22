@@ -8,11 +8,14 @@
                         <div class="min-w-0 flex-1">
                             <div class="truncate font-display text-sm font-bold text-gray-100">{{ $f['food'] }}</div>
                             <div class="text-xs text-gray-500">
-                                {{ $f['count'] }}× · ~{{ number_format($f['avg_calories']) }} kcal · {{ $f['avg_protein_g'] }}g protein
+                                ~{{ number_format($f['avg_calories']) }} kcal · {{ $f['avg_protein_g'] }}g protein
                                 @if ($f['last_eaten']) · last {{ $f['last_eaten'] }} @endif
                             </div>
                         </div>
-                        <span class="shrink-0 font-display text-lg font-black text-gray-700">{{ $f['count'] }}</span>
+                        <div class="shrink-0 text-right">
+                            <div class="font-display text-base font-bold text-gray-200 nums leading-none">{{ $f['count'] }}×</div>
+                            <div class="mt-0.5 text-[10px] uppercase tracking-wide text-gray-600">logged</div>
+                        </div>
                     </div>
                 @endforeach
             </div>
