@@ -84,8 +84,8 @@
                             <p class="text-xs text-gray-500 mt-0.5 nums">{{ $workout->performed_at->format('D, M j Y · g:i A') }}</p>
                         </div>
                         <div class="text-right shrink-0">
-                            <p class="font-display text-xl font-bold text-cyan-300 nums leading-none">{{ number_format($volume) }}</p>
-                            <p class="text-[11px] uppercase tracking-wide text-gray-500 mt-1">kg volume</p>
+                            <p class="font-display text-xl font-bold text-cyan-300 nums leading-none">{{ number_format(\App\Support\Units::weightOut($volume, $profile, 0)) }}</p>
+                            <p class="text-[11px] uppercase tracking-wide text-gray-500 mt-1">{{ $weightUnit }} volume</p>
                             <p class="text-xs text-gray-500 mt-1 nums">{{ $workout->workingSetCount() }} sets</p>
                         </div>
                     </div>
@@ -94,7 +94,7 @@
                         <div class="flex flex-wrap gap-1.5 mt-3">
                             @foreach ($tops as $t)
                                 <span class="inline-flex items-center rounded-md bg-white/5 px-2 py-0.5 text-xs text-gray-300 nums">
-                                    {{ $t['exercise'] }}: {{ $t['reps'] }} × {{ rtrim(rtrim(number_format($t['weight_kg'], 1), '0'), '.') }}kg
+                                    {{ $t['exercise'] }}: {{ $t['reps'] }} × {{ \App\Support\Units::num(\App\Support\Units::weightOut($t['weight_kg'], $profile)) }}{{ $weightUnit }}
                                 </span>
                             @endforeach
                         </div>

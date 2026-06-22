@@ -99,7 +99,7 @@
                                     <span class="inline-flex items-center gap-2">
                                         <span class="text-cyan-300 font-medium nums">
                                             Try: <span x-text="suggestionFor(ex.exercise_id).suggestion.reps"></span> ×
-                                            <span x-text="suggestionFor(ex.exercise_id).suggestion.weight_kg"></span>kg
+                                            <span x-text="suggestionFor(ex.exercise_id).suggestion.weight_kg"></span>{{ $weightUnit }}
                                         </span>
                                         <button type="button" @click="applySuggestion(exIndex)"
                                                 class="rounded-md bg-cyan-500/20 active:bg-cyan-500/30 px-2.5 py-1 text-xs font-medium text-cyan-200">Apply</button>
@@ -125,7 +125,7 @@
                                                class="w-full h-11 rounded-lg bg-gray-950 border border-white/10 px-2.5 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">
                                     </label>
                                     <label class="flex-1 min-w-[5rem]">
-                                        <span class="block text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Weight (kg)</span>
+                                        <span class="block text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Weight ({{ $weightUnit }})</span>
                                         <input type="number" step="0.5" min="0" max="9999" x-model="set.weight_kg" inputmode="decimal"
                                                :name="`exercises[${exIndex}][sets][${setIndex}][weight_kg]`"
                                                class="w-full h-11 rounded-lg bg-gray-950 border border-white/10 px-2.5 text-base text-gray-100 focus:border-indigo-500 focus:ring-0">

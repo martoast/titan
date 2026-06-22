@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Workouts;
 
 use App\Http\Controllers\Controller;
 use App\Models\Exercise;
+use App\Models\Profile;
 use App\Models\Workout;
 use App\Models\WorkoutExercise;
 use App\Models\WorkoutSet;
+use App\Support\Units;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +48,7 @@ class WorkoutController extends Controller
             'workouts' => $workouts,
             'pending' => $pending,
             'weeklyVolume' => $weeklyVolume,
+            'weightUnit' => Units::weightUnit($profile),
         ]);
     }
 
@@ -59,7 +62,7 @@ class WorkoutController extends Controller
         // Map exercise_id => ['last' => [...], 'suggestion' => [...]] for the whole library,
         // so the Alpine UI can surface a progressive-overload hint the moment one is picked.
         // Built from ONE query (was one query per exercise — an N+1 that scaled with the library).
-        $suggestions = $this->progressionMap($profile->id);
+        $suggestions = $this->progressionMap($profile->id, $profile);
         foreach ($exercises as $exercise) {
             $suggestions[$exercise->id] ??= [
                 'last' => null,
@@ -72,6 +75,7 @@ class WorkoutController extends Controller
             'profile' => $profile,
             'exercises' => $exercises,
             'suggestions' => $suggestions,
+            'weightUnit' => Units::weightUnit($profile),
         ]);
     }
 
@@ -116,7 +120,8 @@ class WorkoutController extends Controller
                         'workout_exercise_id' => $we->id,
                         'set_number' => $j + 1,
                         'reps' => $set['reps'],
-                        'weight_kg' => $set['weight_kg'],
+                        // The form collects weight in the user's display units; store metric.
+                        'weight_kg' => Units::weightIn((float) $set['weight_kg'], $profile),
                         'rpe' => $set['rpe'] ?? null,
                         'is_warmup' => (bool) ($set['is_warmup'] ?? false),
                     ]);
@@ -138,6 +143,8 @@ class WorkoutController extends Controller
 
         return view('workouts.show', [
             'workout' => $workout,
+            'profile' => $profile,
+            'weightUnit' => Units::weightUnit($profile),
         ]);
     }
 
@@ -163,13 +170,14 @@ class WorkoutController extends Controller
         $ownSetIds = WorkoutSet::whereHas('workoutExercise', fn ($q) => $q->where('workout_id', $workout->id))
             ->pluck('id')->flip();
 
-        DB::transaction(function () use ($data, $ownSetIds) {
+        DB::transaction(function () use ($data, $ownSetIds, $profile) {
             foreach ($data['sets'] as $id => $fields) {
                 if (! $ownSetIds->has((int) $id)) {
                     continue;
                 }
                 WorkoutSet::where('id', (int) $id)->update(array_filter([
-                    'weight_kg' => isset($fields['weight_kg']) ? (float) $fields['weight_kg'] : null,
+                    // Weight comes in the user's display units; store metric.
+                    'weight_kg' => isset($fields['weight_kg']) ? Units::weightIn((float) $fields['weight_kg'], $profile) : null,
                     'reps' => isset($fields['reps']) ? (int) $fields['reps'] : null,
                     'rpe' => isset($fields['rpe']) ? (float) $fields['rpe'] : null,
                 ], fn ($v) => $v !== null));
@@ -191,7 +199,7 @@ class WorkoutController extends Controller
      *
      * @return array<int, array{last:?array, suggestion:?array, note:string}>
      */
-    private function progressionMap(int $profileId): array
+    private function progressionMap(int $profileId, Profile $profile): array
     {
         $rows = DB::table('workout_sets as ws')
             ->join('workout_exercises as we', 'we.id', '=', 'ws.workout_exercise_id')
@@ -228,6 +236,7 @@ class WorkoutController extends Controller
                 (int) $top->reps,
                 $top->rpe !== null ? (float) $top->rpe : null,
                 Carbon::parse($entry['date'])->toDateString(),
+                $profile,
             );
         }
 
@@ -239,33 +248,36 @@ class WorkoutController extends Controller
      *  - if last RPE was easy (<= 7) or reps already high (>= 12) → +2.5 kg, reset reps;
      *  - otherwise → +1 rep at the same load.
      *
+     * The progression math runs in kg (sane plate increments); all weights handed to the
+     * view are converted to the user's display units so the form + hints read consistently.
+     *
      * @return array{last:array, suggestion:array, note:string}
      */
-    private function buildProgression(float $lastWeight, int $lastReps, ?float $lastRpe, string $performedAt): array
+    private function buildProgression(float $lastWeight, int $lastReps, ?float $lastRpe, string $performedAt, Profile $profile): array
     {
         $easy = ($lastRpe !== null && $lastRpe <= 7) || $lastReps >= 12;
 
         $suggestion = $easy
             ? [
-                'weight_kg' => round($lastWeight + 2.5, 2),
+                'weight_kg' => Units::weightOut($lastWeight + 2.5, $profile),
                 'reps' => max(5, min($lastReps, 8)),
-                'reason' => '+2.5 kg -- last session looked manageable.',
+                'reason' => 'last session looked manageable -- nudge the load up.',
             ]
             : [
-                'weight_kg' => $lastWeight,
+                'weight_kg' => Units::weightOut($lastWeight, $profile),
                 'reps' => $lastReps + 1,
                 'reason' => '+1 rep at the same load -- earn the weight jump first.',
             ];
 
         return [
             'last' => [
-                'weight_kg' => $lastWeight,
+                'weight_kg' => Units::weightOut($lastWeight, $profile),
                 'reps' => $lastReps,
                 'rpe' => $lastRpe,
                 'performed_at' => $performedAt,
             ],
             'suggestion' => $suggestion,
-            'note' => 'Last: '.$lastReps.' × '.rtrim(rtrim(number_format($lastWeight, 1), '0'), '.').' kg'
+            'note' => 'Last: '.$lastReps.' × '.Units::weight($lastWeight, $profile)
                 .($lastRpe !== null ? ' @ RPE '.rtrim(rtrim(number_format($lastRpe, 1), '0'), '.') : ''),
         ];
     }

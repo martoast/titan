@@ -56,12 +56,19 @@ the flow to confirm it's smooth. Add a regression test where it makes sense.
   popup); typed-but-unpicked exercise now auto-resolves / inline error (was alert()).
 - **Nav** → one grouped registry (Daily/Body/Progress/Library) across drawer + More.
 
+- **Units pass** (mostly done): `App\Support\Units` is the one place for kg↔lb /
+  cm↔in. Applied to the **Workout logger** (label + suggestions + store), **Workout
+  index + show** (weights + volume), and the **Body page** (stats, chart, form labels,
+  history + store). Dashboard/Progress already converted earlier. Covered by
+  UnitsTest, BodyUnitsTest, WorkoutUnitsTest. Stored data stays metric.
+
 ### ⏳ Open (next iterations)
-- **Units pass**: weight still shows **kg** for imperial users on the Workout logger
-  ("Weight (kg)"), Body page (stats/chart/labels), and circumferences in cm. Needs a
-  careful conversion on input + display + totals, with tests. Highest-priority detail.
+- **Live/voice workout units**: `/workouts/live` still works entirely in kg. Its
+  real-time Alpine state holds weight in kg end-to-end (display, volume, add-set
+  round-trip) and the voice parser assumes kg for *bare* numbers (explicit
+  "kilos"/"pounds" already convert correctly). Converting it means reworking the
+  client state model — a focused follow-up to avoid regressing the working voice flow.
 - **Meal-card tone**: the giant red "Xh overdue" on Dashboard + Meals reads as nagging;
   decide whether to soften (smaller/warmer) — product/tone call.
-- Re-dogfood **recovery** and **body** logging end-to-end after the units pass.
-- Remaining low-density pages (foods, research, devices, connect, duo, notifications,
-  profile) — quick five-question review.
+- Remaining low-density pages (foods, research, devices, connect, duo, notifications)
+  — quick five-question review.

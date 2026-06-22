@@ -16,12 +16,12 @@
     {{-- ===================== Latest snapshot ===================== --}}
     @php
         $stats = [
-            ['Weight', $latest['weight_kg'], 'kg'],
+            ['Weight', $latest['weight_kg'], $weightUnit],
             ['Body fat', $latest['body_fat_pct'], '%'],
-            ['Waist', $latest['waist_cm'], 'cm'],
-            ['Chest', $latest['chest_cm'], 'cm'],
-            ['Arm', $latest['arm_cm'], 'cm'],
-            ['Thigh', $latest['thigh_cm'], 'cm'],
+            ['Waist', $latest['waist_cm'], $lengthUnit],
+            ['Chest', $latest['chest_cm'], $lengthUnit],
+            ['Arm', $latest['arm_cm'], $lengthUnit],
+            ['Thigh', $latest['thigh_cm'], $lengthUnit],
         ];
     @endphp
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
@@ -44,7 +44,7 @@
         <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100 mb-3">Weight</h3>
             @if (count($series['weight']) >= 2)
-                <div class="h-48 md:h-56"><canvas x-data x-init="$nextTick(() => window.titanLine($el, @js($series['weight']), '#818cf8', 'kg'))"></canvas></div>
+                <div class="h-48 md:h-56"><canvas x-data x-init="$nextTick(() => window.titanLine($el, @js($series['weight']), '#818cf8', '{{ $weightUnit }}'))"></canvas></div>
             @else
                 <p class="text-sm text-gray-500">Log at least two weigh-ins to see your trend.</p>
             @endif
@@ -71,12 +71,12 @@
                 @csrf
             @php
                 $fields = [
-                    ['weight_kg', 'Weight (kg)', 'any'],
+                    ['weight_kg', 'Weight ('.$weightUnit.')', 'any'],
                     ['body_fat_pct', 'Body fat (%)', 'any'],
-                    ['waist_cm', 'Waist (cm)', 'any'],
-                    ['chest_cm', 'Chest (cm)', 'any'],
-                    ['arm_cm', 'Arm (cm)', 'any'],
-                    ['thigh_cm', 'Thigh (cm)', 'any'],
+                    ['waist_cm', 'Waist ('.$lengthUnit.')', 'any'],
+                    ['chest_cm', 'Chest ('.$lengthUnit.')', 'any'],
+                    ['arm_cm', 'Arm ('.$lengthUnit.')', 'any'],
+                    ['thigh_cm', 'Thigh ('.$lengthUnit.')', 'any'],
                 ];
             @endphp
             @foreach ($fields as [$name, $label, $step])
@@ -107,7 +107,7 @@
     </div>
 
     {{-- ===================== History ===================== --}}
-    @if ($metrics->isNotEmpty())
+    @if ($history->isNotEmpty())
         <div>
             <h3 class="font-display text-sm font-bold text-gray-400 uppercase tracking-wide mb-3">History</h3>
             <div class="overflow-x-auto no-scrollbar rounded-2xl border border-white/5">
@@ -115,28 +115,28 @@
                     <thead class="bg-gray-900/60 text-gray-500">
                         <tr class="text-left">
                             <th class="px-4 py-2 font-medium">Date</th>
-                            <th class="px-4 py-2 font-medium text-right">Weight</th>
+                            <th class="px-4 py-2 font-medium text-right">Weight ({{ $weightUnit }})</th>
                             <th class="px-4 py-2 font-medium text-right">BF%</th>
-                            <th class="px-4 py-2 font-medium text-right">Waist</th>
-                            <th class="px-4 py-2 font-medium text-right">Chest</th>
-                            <th class="px-4 py-2 font-medium text-right">Arm</th>
-                            <th class="px-4 py-2 font-medium text-right">Thigh</th>
+                            <th class="px-4 py-2 font-medium text-right">Waist ({{ $lengthUnit }})</th>
+                            <th class="px-4 py-2 font-medium text-right">Chest ({{ $lengthUnit }})</th>
+                            <th class="px-4 py-2 font-medium text-right">Arm ({{ $lengthUnit }})</th>
+                            <th class="px-4 py-2 font-medium text-right">Thigh ({{ $lengthUnit }})</th>
                             <th class="px-4 py-2"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
-                        @foreach ($metrics as $m)
-                            @php $fmt = fn ($v) => $v !== null ? rtrim(rtrim(number_format((float) $v, 2, '.', ''), '0'), '.') : '—'; @endphp
+                        @foreach ($history as $h)
+                            @php $fmt = fn ($v) => $v !== null ? \App\Support\Units::num((float) $v) : '—'; @endphp
                             <tr class="text-gray-300 hover:bg-white/[0.02]">
-                                <td class="px-4 py-2 nums">{{ $m->taken_at->format('M j, Y') }}</td>
-                                <td class="px-4 py-2 text-right nums">{{ $fmt($m->weight_kg) }}</td>
-                                <td class="px-4 py-2 text-right nums">{{ $fmt($m->body_fat_pct) }}</td>
-                                <td class="px-4 py-2 text-right nums">{{ $fmt($m->waist_cm) }}</td>
-                                <td class="px-4 py-2 text-right nums">{{ $fmt($m->chest_cm) }}</td>
-                                <td class="px-4 py-2 text-right nums">{{ $fmt($m->arm_cm) }}</td>
-                                <td class="px-4 py-2 text-right nums">{{ $fmt($m->thigh_cm) }}</td>
+                                <td class="px-4 py-2 nums">{{ $h['date'] }}</td>
+                                <td class="px-4 py-2 text-right nums">{{ $fmt($h['weight']) }}</td>
+                                <td class="px-4 py-2 text-right nums">{{ $fmt($h['body_fat_pct']) }}</td>
+                                <td class="px-4 py-2 text-right nums">{{ $fmt($h['waist']) }}</td>
+                                <td class="px-4 py-2 text-right nums">{{ $fmt($h['chest']) }}</td>
+                                <td class="px-4 py-2 text-right nums">{{ $fmt($h['arm']) }}</td>
+                                <td class="px-4 py-2 text-right nums">{{ $fmt($h['thigh']) }}</td>
                                 <td class="px-4 py-2 text-right">
-                                    <form method="POST" action="{{ route('body.destroy', $m) }}"
+                                    <form method="POST" action="{{ route('body.destroy', $h['id']) }}"
                                           onsubmit="return confirm('Delete this measurement?')">
                                         @csrf @method('DELETE')
                                         <button class="text-gray-600 hover:text-rose-400 active:text-rose-400 transition" title="Delete">
