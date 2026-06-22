@@ -121,13 +121,13 @@ class OnboardingTest extends TestCase
 
         // Coach core memory was seeded as pinned wiki pages it sees from message one.
         $pinned = $p->knowledgePages()->pinned()->pluck('title');
-        $this->assertTrue($pinned->contains('Nadia — goals & focus'));
-        $this->assertTrue($pinned->contains('Nadia — training profile'));
-        $this->assertTrue($pinned->contains('Nadia — nutrition profile'));
-        $this->assertTrue($pinned->contains('Nadia — health & limitations'));
+        $this->assertTrue($pinned->contains('Nadia -- goals & focus'));
+        $this->assertTrue($pinned->contains('Nadia -- training profile'));
+        $this->assertTrue($pinned->contains('Nadia -- nutrition profile'));
+        $this->assertTrue($pinned->contains('Nadia -- health & limitations'));
 
         // The goals page actually carries the focus areas in its body.
-        $goals = $p->knowledgePages()->where('title', 'Nadia — goals & focus')->first();
+        $goals = $p->knowledgePages()->where('title', 'Nadia -- goals & focus')->first();
         $this->assertStringContainsString('Rounder glutes', $goals->content);
         $this->assertStringContainsString('wedding', $goals->content);
     }

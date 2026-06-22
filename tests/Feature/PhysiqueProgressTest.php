@@ -73,6 +73,6 @@ class PhysiqueProgressTest extends TestCase
     public function test_progress_page_renders(): void
     {
         $u = $this->withGoal();
-        $this->actingAs($u)->get('/progress')->assertOk()->assertSee('Dream physique');
+        $this->actingAs($u)->get('/progress')->assertOk()->assertSee('Progress photos');
     }
 }

@@ -61,11 +61,15 @@ class CoachUniversalToolsTest extends TestCase
         $this->assertStringContainsString('titan-card', $res['_show']);
     }
 
-    public function test_render_dream_physique_guides_when_no_photo(): void
+    public function test_render_dream_physique_sets_a_static_model_goal(): void
     {
-        $res = $this->tools()->dispatch('render_dream_physique', []);
-        // No photo (or no image key) → a helpful error, never a crash.
-        $this->assertArrayHasKey('error', $res);
+        // Physique goals now use pre-generated static model images (AI body-transform is
+        // content-moderation-blocked), so this succeeds even with no uploaded photo.
+        $p = User::factory()->create()->ensureProfile();
+        $res = (new CoachTools($p))->dispatch('render_dream_physique', []);
+        $this->assertTrue($res['ok'] ?? false);
+        $this->assertArrayHasKey('future_self_image_url', $res);
+        $this->assertNotNull($p->fresh()->physiqueGoals()->where('is_active', true)->first());
     }
 
     public function test_new_tools_are_registered(): void
