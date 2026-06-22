@@ -8,7 +8,6 @@ use App\Models\PhysiqueAnalysis;
 use App\Models\PhysiqueGoal;
 use App\Models\ProgressPhoto;
 use App\Services\Ai\AiService;
-use App\Services\Ai\ImageGenerator;
 use App\Services\Physique\LivingGoalService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,7 +29,6 @@ class PhysiqueController extends Controller
 {
     public function __construct(
         private readonly AiService $ai,
-        private readonly ImageGenerator $nano,
         private readonly LivingGoalService $living,
     ) {}
 
@@ -68,7 +66,7 @@ class PhysiqueController extends Controller
             'livingRenders' => $livingRenders->reverse()->values(),
             'adherence' => $this->living->adherence($profile),
             'aiConfigured' => $this->ai->configured(),
-            'imageGenConfigured' => $this->nano->configured(),
+            'imageGenConfigured' => true,
         ]);
     }
 
@@ -109,14 +107,10 @@ class PhysiqueController extends Controller
         }
 
         $description = trim((string) $request->input('description')) ?: null;
-        $prompt = \App\Support\PhysiquePrompt::build($profile->sex, $description, $angle);
 
-        try {
-            $input = $this->nano->imageFromDisk($sourcePath);
-            $generated = $this->nano->generateToDisk($prompt, 'physique/goal', [$input]);
-        } catch (AiException $e) {
-            return response()->json(['ok' => false, 'error' => 'Could not generate your dream physique right now: '.$e->getMessage()], 200);
-        }
+        // Use the pre-generated static model image for this sex + angle.
+        // The user's photo is stored for the before/after display and coach vision analysis.
+        $modelPath = \App\Support\PhysiqueModelImage::path($profile->sex, $angle);
 
         // Reuse the goal the front shot created (passed as goal_id), else start a fresh active goal.
         $goal = $request->filled('goal_id')
@@ -126,20 +120,19 @@ class PhysiqueController extends Controller
             $profile->physiqueGoals()->update(['is_active' => false]);
             $goal = $profile->physiqueGoals()->create([
                 'source_photo_path' => $sourcePath,
-                'goal_image_path' => $generated['path'],
-                'prompt' => $prompt,
+                'goal_image_path' => $modelPath,
                 'description' => $description,
                 'is_active' => true,
                 'shots' => [],
             ]);
         }
-        $goal->putShot($angle, $sourcePath, $generated['path']);
+        $goal->putShot($angle, $sourcePath, $modelPath);
 
         return response()->json([
             'ok' => true,
             'goal_id' => $goal->id,
             'angle' => $angle,
-            'image_url' => Storage::disk('public')->url($generated['path']),
+            'image_url' => \App\Support\PhysiqueModelImage::url($profile->sex, $angle),
         ]);
     }
 

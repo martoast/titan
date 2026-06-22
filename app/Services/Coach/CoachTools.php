@@ -1876,31 +1876,19 @@ class CoachTools
         if (! class_exists(\App\Models\PhysiqueGoal::class) || ! class_exists(\App\Models\ProgressPhoto::class)) {
             return ['error' => 'The physique module is not available.'];
         }
-        $nano = app(\App\Services\Ai\ImageGenerator::class);
-        if (! $nano->configured()) {
-            return ['error' => 'Image generation is not configured yet (no image API key).'];
-        }
-        $photo = $this->profile->progressPhotos()->latest('taken_at')->latest('id')->first();
-        if (! $photo || ! $photo->photo_path) {
-            return ['error' => 'No photo of you yet. Tap the camera button and upload a photo of yourself, then ask me to render your dream physique.'];
-        }
 
-        // Gender-aware, aspirational "dream physique" prompt — shared with onboarding + the physique page.
         $description = trim((string) ($a['description'] ?? '')) ?: null;
-        $prompt = \App\Support\PhysiquePrompt::build($this->profile->sex, $description);
 
-        try {
-            $input = $nano->imageFromDisk($photo->photo_path);
-            $generated = $nano->generateToDisk($prompt, 'physique/goal', [$input]);
-        } catch (\Throwable $e) {
-            return ['error' => 'Could not render the image right now: '.$e->getMessage()];
-        }
+        // Use the pre-generated static model image — AI body-transformation of real photos is
+        // blocked by content moderation on both Gemini and OpenAI. The user's own photo is
+        // stored as the "now" reference for the before/after display and coach vision analysis.
+        $modelPath = \App\Support\PhysiqueModelImage::path($this->profile->sex, 'front');
+        $modelUrl = \App\Support\PhysiqueModelImage::url($this->profile->sex, 'front');
 
         $this->profile->physiqueGoals()->update(['is_active' => false]);
         $goal = $this->profile->physiqueGoals()->create([
-            'source_photo_path' => $photo->photo_path,
-            'goal_image_path' => $generated['path'],
-            'prompt' => $prompt,
+            'source_photo_path' => $this->profile->progressPhotos()->latest('taken_at')->latest('id')->value('photo_path'),
+            'goal_image_path' => $modelPath,
             'description' => $description,
             'is_active' => true,
         ]);
@@ -1908,10 +1896,10 @@ class CoachTools
         return [
             'ok' => true,
             'description' => $description,
-            'future_self_image_url' => $goal->goalUrl(),
-            'now_image_url' => $photo->photoUrl(),
-            '_show' => 'Embed future_self_image_url inline as markdown ![your future self]('.($goal->goalUrl() ?? 'url').') so they SEE it. Celebrate it warmly and tell them this is where consistency takes them — it advances toward this as they stay on track.',
-            'message' => 'Rendered your dream physique.',
+            'future_self_image_url' => $modelUrl,
+            'now_image_url' => $this->profile->progressPhotos()->latest('taken_at')->latest('id')->first()?->photoUrl(),
+            '_show' => 'Embed future_self_image_url inline as markdown ![your future self]('.$modelUrl.') so they SEE it. Celebrate it warmly and tell them this is where consistency takes them — it advances toward this as they stay on track.',
+            'message' => 'Set your dream physique goal.',
         ];
     }
 
