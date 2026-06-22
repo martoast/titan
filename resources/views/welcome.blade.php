@@ -174,6 +174,23 @@
         .snap-mr i { position: relative; font-style: normal; font-size: 0.7rem; color: var(--muted); font-weight: 600; }
         .snap-macro span { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
 
+        /* ---- women's cycle ---- */
+        .cycle { background: var(--ink-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+        .cycle-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 3.5rem; align-items: center; }
+        .cycle-wheel-wrap { position: relative; display: grid; place-items: center; }
+        .cycle-wheel { width: clamp(230px, 32vw, 320px); aspect-ratio: 1; border-radius: 50%; position: relative;
+            background: conic-gradient(var(--rose) 0 17.9%, var(--green) 17.9% 46.4%, var(--cyan) 46.4% 57.1%, var(--amber) 57.1% 100%);
+            -webkit-mask: radial-gradient(circle, transparent 53%, #000 54%); mask: radial-gradient(circle, transparent 53%, #000 54%); }
+        .cycle-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+        .cycle-day { font-family: var(--font-d); font-weight: 900; font-size: clamp(2rem, 4vw, 2.6rem); color: #fff; line-height: 1; }
+        .cycle-day small { display: block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); font-family: var(--font-b); margin-bottom: 0.25rem; }
+        .cycle-phase { font-size: 0.92rem; font-weight: 700; color: var(--green); margin-top: 0.45rem; }
+        .cycle-marker { position: absolute; inset: 0; transform: rotate(103deg); }
+        .cycle-marker i { position: absolute; top: -7px; left: 50%; transform: translateX(-50%); width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 4px solid var(--green); box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .cycle-legend { display: flex; flex-wrap: wrap; gap: 0.8rem 1.3rem; margin-top: 2rem; }
+        .cycle-legend span { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.84rem; font-weight: 600; color: var(--muted); }
+        .cycle-legend i { width: 10px; height: 10px; border-radius: 999px; }
+
         /* ---- coach ---- */
         .coach-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 3.5rem; align-items: center; }
         .feat-list { margin-top: 2rem; display: flex; flex-direction: column; gap: 1.3rem; }
@@ -258,7 +275,8 @@
             .hero .lead { margin-left: auto; margin-right: auto; }
             .hero-cta, .pillrow { justify-content: center; }
             .band-stage { order: -1; height: clamp(300px, 70vw, 420px); }
-            .cmp, .coach-grid, .hw-grid, .host-grid { grid-template-columns: 1fr; }
+            .cmp, .coach-grid, .hw-grid, .host-grid, .cycle-grid { grid-template-columns: 1fr; }
+            .cycle-grid .cycle-wheel-wrap { order: -1; }
             .snap-demo { grid-template-columns: 1fr; gap: 1.1rem; }
             .snap-arrow { transform: rotate(90deg); }
             .scores { grid-template-columns: repeat(2, 1fr); }
@@ -437,6 +455,47 @@
                     <div class="ring" style="--p:74;--c:var(--indigo)"><span class="ring-val">68<small>HRV ms</small></span></div>
                     <div class="score-label">Above baseline</div>
                     <div class="score-sub">Whole-night RMSSD, signal-quality graded</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- WOMEN'S CYCLE -->
+    <section class="sec cycle" id="cycle">
+        <div class="wrap cycle-grid">
+            <div class="cycle-wheel-wrap rv">
+                @verbatim
+                <div class="cycle-wheel"></div>
+                <div class="cycle-center">
+                    <div class="cycle-day"><small>Cycle</small>Day 8</div>
+                    <div class="cycle-phase">Follicular phase</div>
+                </div>
+                <div class="cycle-marker"><i></i></div>
+                @endverbatim
+            </div>
+            <div class="rv">
+                <span class="eyebrow kicker">Women's health</span>
+                <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">Built for your cycle, too.</h2>
+                <p class="lead" style="margin-top:1rem;">Most health apps treat every day the same. Your hormones don't — so Titan weaves your cycle into your training, your nutrition, and your recovery.</p>
+                <div class="feat-list">
+                    <div class="feat">
+                        <div class="feat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" stroke="#fda4af" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div><h4>Training that flexes with your phase</h4><p>Push hard in your follicular phase when energy peaks; ease back before your period. Your plan adapts — you're not fighting your body.</p></div>
+                    </div>
+                    <div class="feat">
+                        <div class="feat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 3v7a3 3 0 006 0V3M8 3v18" stroke="#fbbf24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div><h4>Nutrition that meets you there</h4><p>Your calorie target rises in the luteal phase, when your body genuinely burns more. Cravings explained and fueled, never shamed.</p></div>
+                    </div>
+                    <div class="feat">
+                        <div class="feat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3s5 5.5 5 9.5a5 5 0 11-10 0C7 8.5 12 3 12 3z" stroke="#67e8f9" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+                        <div><h4>Private, predictive, yours</h4><p>Log your period in a tap and Titan predicts the next, factoring your phase into recovery. For awareness and coaching — never a diagnosis.</p></div>
+                    </div>
+                </div>
+                <div class="cycle-legend">
+                    <span><i style="background:var(--rose)"></i> Menstrual</span>
+                    <span><i style="background:var(--green)"></i> Follicular</span>
+                    <span><i style="background:var(--cyan)"></i> Ovulation</span>
+                    <span><i style="background:var(--amber)"></i> Luteal</span>
                 </div>
             </div>
         </div>
