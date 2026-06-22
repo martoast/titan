@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('display_name')->nullable();
             $table->date('birthdate')->nullable();
             $table->string('sex')->nullable();            // male | female | other
-            $table->unsignedSmallInteger('height_cm')->nullable();
+            $table->decimal('height_cm', 5, 1)->nullable();   // cm, one decimal (imperial converts to e.g. 180.3)
             $table->text('primary_goal')->nullable();     // e.g. "+10 lbs lean muscle, longevity"
             $table->string('coach_tone')->default('balanced'); // tough_love | balanced | gentle
             $table->json('settings')->nullable();
