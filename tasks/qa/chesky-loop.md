@@ -70,8 +70,23 @@ the flow to confirm it's smooth. Add a regression test where it makes sense.
 - **Meal-card tone** ✅: overdue is now a warm amber nudge with supportive copy, no
   giant red "overdue" clock (de-escalated on Dashboard + Meals).
 
-### ⏳ Open (next iterations)
-- Remaining low-density pages (foods, research, devices, connect, duo, notifications)
-  — quick five-question review.
+- **Low-density pages** ✅ reviewed: Duo weight now in viewer's units (was kg); Foods
+  count labeled "N× logged" (was an ambiguous dim number); foods/research/notifications/
+  connect/devices confirmed clean. Empty states across the app are genuinely strong
+  (educational, encouraging) — verified on a fresh no-data user.
+- **PWA install experience** ✅: real PNG icons (192/512/maskable/180 — iOS ignored the
+  old SVG apple-touch-icon, so the home-screen icon was blank); a dismissible
+  "Add to Home Screen" hint (iOS) + custom Install button (Android); manifest app
+  shortcuts (Coach / Log a meal / Start a workout); SW precache bumped to v2.
+- **Regression sweep** ✅: 21 pages × {fresh user, imperial data user} = 0 JS errors;
+  full suite 364 green.
+
+### ⏳ Open (next iterations / ideas for further polish)
+- Connect (API) page: curl/JSON code blocks scroll horizontally on mobile — could wrap
+  or add a copy button. Low priority (power-user/dev page).
+- Accessibility deep pass: audit tap-target sizes (≥44px), contrast ratios, and
+  aria-labels on icon-only buttons across the app.
 - Coach system-prompt facts still emit "Height: X cm" regardless of units (coach
-  context, not UI) — low priority.
+  context string, not UI) — low priority.
+- Consider Lighthouse PWA/perf audit on a deployed HTTPS instance (install prompt +
+  SW need HTTPS to fully validate).
