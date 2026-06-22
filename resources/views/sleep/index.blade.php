@@ -215,10 +215,13 @@
             @endif
         </div>
 
-        {{-- Manual log form --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
-            <h3 class="font-display font-bold text-gray-100 mb-4">Log sleep</h3>
-            <form method="POST" action="/sleep" class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+        {{-- Manual log form — deferred behind a tap; the band logs nights automatically --}}
+        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ logOpen: {{ $errors->any() ? 'true' : 'false' }} }">
+            <button type="button" @click="logOpen = !logOpen" class="flex w-full items-center justify-between gap-3 text-left">
+                <span class="font-display font-bold text-gray-100">Log sleep manually</span>
+                <svg class="h-5 w-5 shrink-0 text-gray-500 transition" :class="logOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <form method="POST" action="/sleep" x-show="logOpen" x-collapse x-cloak class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                 @csrf
                 <div class="sm:col-span-2">
                     <label class="block text-xs text-gray-500 mb-1">Night of</label>
