@@ -8,20 +8,27 @@ Full plan in `00-overview.md` → `05-protocol-port.md`. Detailed phases + DoD i
 - [ ] Create **APNs .p8** auth key (note Key ID + Team ID).
 - [ ] Be available to test on a **real iPhone + the real band** (BLE/restoration can't be simulated).
 
-## 🟢 Agent can do now (testable in this repo — no Apple account needed)
+## 🟢 Agent — DONE (verified in this repo, no Apple account needed)
 **Backend foundation (Phase 0):**
-- [ ] Add **Laravel Sanctum**; `HasApiTokens` on User; `POST /api/login` + `/api/logout`; tests.
-- [ ] `auth:sanctum` route variants for coach + device-management (don't conflate with the MCP
-      `auth.token` middleware — run alongside).
-- [ ] `POST /api/devices/push-token` + migration (store per-user APNs token).
+- [x] Mobile auth WITHOUT Sanctum — reused the existing `ApiToken`/`auth.token` system:
+      `POST /api/login` (→ bearer token, throttled), `POST /api/logout`. Tests green.
+- [x] `POST /api/devices/push-token` + `push_tokens` table + `PushToken` model. Idempotent. Tests.
+- [ ] Expose **coach + device-management routes under `auth.token`** for the mobile bearer token
+      (currently session-only). ← next backend task.
 - [ ] (Optional) `GET /api/me/dashboard` JSON aggregate so the app doesn't scrape Blade.
+- [ ] APNs sender in Laravel (`laravel-notification-channels/apn`) wired to the scheduler/coach.
 
-**Deterministic Swift core (author + unit-test; drop into Xcode later):**
-- [ ] `Signer.swift` + golden-vector tests (generate vectors from PHP first — see 05 §5).
-- [ ] `FrameDecoder.swift` (T1/T2/T4/T5/T6/T7) + `WorkoutAssembler` port.
-- [ ] `Windowing.swift` (120s ppg_raw windows, ULID).
-- [ ] `BandManager.swift` (CoreBluetooth restoration skeleton from 01).
-- [ ] `IngestClient.swift` + `SyncQueue.swift` (offline-durable, GRDB/SQLite).
+**Deterministic Swift core — `ios/TitanCore/` (ALL verified via golden vectors):**
+- [x] `Signer.swift` — HMAC; **byte-matches PHP backend** (3 golden vectors).
+- [x] `FrameDecoder.swift` (T1/T4/T5/T6/T7) — **byte-matches the JS decoder**.
+- [x] `Windowing.swift` (ULID + 120s ppg_raw window builder) — **matches the bridge**.
+- [ ] `WorkoutAssembler` port (T4/T6 → workout windows) — pure logic, next TitanCore piece.
+
+**App-sync layer — `ios/Titan/Sources/BandSync/` (authored; compiles in Xcode vs iOS SDK):**
+- [x] `BandManager.swift` — CoreBluetooth background + state restoration + no-timeout reconnect.
+- [x] `FrameRouter.swift` — newline reassembly → decode → window → queue; T5 → live bpm.
+- [x] `IngestClient.swift` — sign (TitanCore) + POST `/api/devices/ingest` (gzip TODO: zlib).
+- [x] `SyncQueue.swift` — offline-durable FIFO drain (WindowStore protocol; GRDB backing TODO).
 
 ## Sequencing
 1. Backend Sanctum + push-token (unblocks authed screens).
