@@ -78,10 +78,10 @@ struct MetricRing: View {
 // MARK: - Stat chip (HRV / RHR / etc.)
 struct Metric: View {
     let value: String
-    let unit: String?
+    var unit: String? = nil
     let label: String
     var color: Color = Theme.Palette.text
-    var icon: String?
+    var icon: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let icon { Image(systemName: icon).font(.system(size: 13)).foregroundStyle(color) }
