@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Drop these into the app target's Info.plist (Xcode → target → Info). The two BLE keys are
+     mandatory for background sync; HealthKit keys only if you enable the HealthKit capability. -->
+<plist version="1.0">
+<dict>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Titan connects to your recovery band to sync your biosignals in the background.</string>
+
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>bluetooth-central</string>
+        <string>remote-notification</string>
+    </array>
+
+    <!-- Optional (only with the HealthKit capability) -->
+    <key>NSHealthShareUsageDescription</key>
+    <string>Titan reads workouts and sleep to give you better recovery guidance.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Titan writes your recovery, sleep, and workouts to Apple Health.</string>
+
+    <!-- Optional (only with Core Location region monitoring to recover after force-quit) -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Titan uses your location to re-establish band sync after the app is closed.</string>
+</dict>
+</plist>
