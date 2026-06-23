@@ -46,11 +46,22 @@ Full plan in `00-overview.md` → `05-protocol-port.md`. Detailed phases + DoD i
   `auth.any` middleware → device + coach routes serve web AND mobile; `GET /api/me/dashboard`
   read aggregate (readiness + recovery + sleep + activity).
 
-## ⏭️ Remaining (the bulk needs Xcode; backend bits are agent-doable)
-- [ ] **SwiftUI feature modules** — Coach (SSE), Dashboard, Recovery, Sleep, Workouts, Devices
-  (pairing), Onboarding, Profile. Best authored in Xcode (they compile against the iOS SDK);
-  they consume the verified TitanCore + the API above.
-- [ ] APNs sender in Laravel (`laravel-notification-channels/apn`) + a notification for nudges/
-  briefings/"band synced" → the push_tokens table. (Dependency add.)
-- [ ] App-layer impl details: zlib gzip in IngestClient, GRDB-backed WindowStore for SyncQueue.
-- [ ] Then Xcode project assembly + **Phase 1 on device: prove background BLE** (needs Apple acct).
+## ✅ Now also DONE (this session)
+- [x] **SwiftUI app** — all 8 screens (Login, Dashboard, Recovery, Sleep, Workouts, Devices,
+  Coach SSE, Profile) + App layer (TitanApp, AppModel, APIClient, Keychain, Models) +
+  Info.plist.template. `ios/Titan/`. **TitanCore verified to compile (`swift build`).**
+- [x] **Durable SQLite sync store** (`SqliteWindowStore`) — offline buffer survives app kill.
+- [x] **Push service** — PushService + swappable PushTransport (LogPushTransport default);
+  User::pushTokens(); tested. Real APNs transport binds when the .p8 exists.
+
+## 🔴 ALL that remains is gated on Alex (Apple account + Xcode + device)
+- [ ] Enroll Apple Developer Program (Individual, $99/yr).
+- [ ] Create the Xcode app project: add the `TitanCore` package + the `BandSync`/`App`/`Features`
+  sources, set Info.plist (template provided) + capabilities (Background Modes: BLE accessories +
+  remote notifications; Push; HealthKit).
+- [ ] Create the APNs `.p8`, implement `ApnsTransport` (token-JWT over api.push.apple.com), bind
+  it in AppServiceProvider (replaces LogPushTransport).
+- [ ] **Phase 1 on device: prove background BLE** (the make-or-break test — can't be simulated).
+- [ ] Then HealthKit write, Core Location region re-wake, TestFlight, App Store submission.
+
+Everything buildable/testable without an Apple account + iPhone is **done and verified.**
