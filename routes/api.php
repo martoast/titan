@@ -31,6 +31,9 @@ Route::middleware('auth.token')->group(function () {
     Route::post('/devices/push-token', [MobileAuthController::class, 'pushToken']);
 });
 
+// Read-only dashboard aggregate for the native app (readiness + recovery + sleep + activity).
+Route::middleware('auth.any')->get('/me/dashboard', [\App\Http\Controllers\Api\MobileDashboardController::class, 'dashboard']);
+
 Route::prefix('devices')->group(function () {
     // Device → server: signed biosignal batches (HMAC auth, no session).
     Route::post('/ingest', [DeviceIngestionController::class, 'ingest']);
