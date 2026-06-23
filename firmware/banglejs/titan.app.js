@@ -170,6 +170,13 @@ var frameCount = 0;       // samples currently in the frame
 var frameEpochMs = 0;     // unix-ms timestamp of first sample in this frame
 var ppgFieldCode = 0;     // which PPG_FIELDS index we settled on
 
+// Coach-priming state. Declared up here (not next to the command channel below) because
+// applyAccelRate() reads `primed`, and the connection poll can call applyAccelRate via
+// onConnect before a later `var` line would have executed — Espruino doesn't hoist a
+// top-level var ahead of its statement, so referencing it early throws ReferenceError.
+var primed = null;        // active coach-primed activity, or null
+var cmdBuf = "";          // inbound NUS command line buffer
+
 // ----- Helpers --------------------------------------------------------------
 
 // Clamp a number into signed int16 range so DataView.setInt16 never wraps
@@ -730,8 +737,8 @@ function toggleManualWorkout() {
 // first (kept for debugging) — then this channel is ours alone.
 try { E.setConsole("USB", { force: false }); } catch (e) {}
 
-var primed = null;     // active coach-primed activity, or null
-var cmdBuf = "";
+// `primed` and `cmdBuf` are declared near the top (frame globals) so the connection
+// poll can't reference `primed` before its declaration runs. See that block.
 Bluetooth.on("data", function (d) {
   cmdBuf += d;
   var nl;
