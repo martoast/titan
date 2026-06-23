@@ -48,6 +48,12 @@ class User extends Authenticatable
         return $this->hasMany(ApiToken::class);
     }
 
+    /** Native-app push tokens (APNs/FCM), registered by the iOS app after login. */
+    public function pushTokens(): HasMany
+    {
+        return $this->hasMany(PushToken::class);
+    }
+
     /**
      * Get the attributes that should be cast.
      *

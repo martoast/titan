@@ -18,6 +18,10 @@ class AppServiceProvider extends ServiceProvider
                 ? $app->make(\App\Services\Ai\NanoBananaClient::class)
                 : $app->make(\App\Services\Ai\OpenAiImageClient::class);
         });
+
+        // Push delivery: log transport until the APNs .p8 is configured (needs the Apple
+        // Developer account); bind ApnsTransport there to go live. See tasks/native-ios/.
+        $this->app->bind(\App\Services\Push\PushTransport::class, \App\Services\Push\LogPushTransport::class);
     }
 
     /**
