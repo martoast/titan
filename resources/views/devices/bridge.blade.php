@@ -99,6 +99,28 @@
                 <p x-show="log.length===0" class="text-gray-600">No activity yet. <strong>Morning sync:</strong> wear the band overnight (it logs to its own memory), then Connect here in the morning — it streams the whole night in seconds. Or stream live, or send a test window.</p>
             </div>
         </section>
+
+        {{-- Build marker — so you can confirm the deployed bridge matches the latest commit.
+             Prefers the checked-out git SHA (read straight from .git, no shell); falls back to
+             a manually-bumped tag if .git isn't present in the runtime image. --}}
+        @php
+            $bridgeBuild = 'v3-livestream';
+            try {
+                $head = @file_get_contents(base_path('.git/HEAD'));
+                if ($head) {
+                    $head = trim($head);
+                    if (str_starts_with($head, 'ref:')) {
+                        $sha = @file_get_contents(base_path('.git/'.trim(substr($head, 5))));
+                        if ($sha) { $bridgeBuild = substr(trim($sha), 0, 7); }
+                    } else {
+                        $bridgeBuild = substr($head, 0, 7);
+                    }
+                }
+            } catch (\Throwable $e) { /* keep the fallback tag */ }
+        @endphp
+        <p class="text-center text-[11px] text-gray-600">
+            Titan bridge · build <span class="font-mono text-gray-500">{{ $bridgeBuild }}</span>
+        </p>
     </div>
 
     <script>
