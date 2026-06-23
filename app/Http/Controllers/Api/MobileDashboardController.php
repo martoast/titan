@@ -69,6 +69,36 @@ class MobileDashboardController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/me/trends?metric=hrv|rhr&days=30 — a series for the app's trend charts.
+     * Returns `{ metric, points: [{date, value}] }` oldest→newest.
+     */
+    public function trends(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'metric' => ['nullable', 'in:hrv,rhr'],
+            'days' => ['nullable', 'integer', 'min:2', 'max:180'],
+        ]);
+        $metric = $data['metric'] ?? 'hrv';
+        $days = $data['days'] ?? 30;
+        $col = $metric === 'rhr' ? 'resting_hr' : 'hrv_ms';
+        $profile = $request->user()->profile ?? $request->user()->ensureProfile();
+
+        $rows = RecoveryLog::where('profile_id', $profile->id)
+            ->whereNotNull($col)
+            ->where('logged_at', '>=', now()->subDays($days)->toDateString())
+            ->orderBy('logged_at')
+            ->get(['logged_at', $col]);
+
+        return response()->json([
+            'metric' => $metric,
+            'points' => $rows->map(fn ($r) => [
+                'date' => $r->logged_at,
+                'value' => (float) $r->getAttribute($col),
+            ])->values(),
+        ]);
+    }
+
     /** Run a closure, returning null on any failure (missing support class / no baseline). */
     private function safe(callable $fn): mixed
     {

@@ -55,6 +55,10 @@ final class APIClient {
         try await send(request("api/me/dashboard"), as: Dashboard.self)
     }
 
+    func trends(metric: String = "hrv", days: Int = 30) async throws -> TrendResponse {
+        try await send(request("api/me/trends?metric=\(metric)&days=\(days)"), as: TrendResponse.self)
+    }
+
     func pairDevice(source: String = "bangle") async throws -> PairResponse {
         try await send(request("api/devices/pair", method: "POST", json: ["source": source]),
                        as: PairResponse.self)

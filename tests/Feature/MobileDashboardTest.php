@@ -56,4 +56,26 @@ class MobileDashboardTest extends TestCase
     {
         $this->getJson('/api/me/dashboard')->assertStatus(401);
     }
+
+    public function test_trends_returns_an_hrv_series(): void
+    {
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        [, $token] = ApiToken::mint($user, 'ios', ['*']);
+
+        foreach ([['d' => 3, 'hrv' => 60], ['d' => 2, 'hrv' => 65], ['d' => 1, 'hrv' => 70]] as $row) {
+            RecoveryLog::create([
+                'profile_id' => $profile->id, 'logged_at' => today()->subDays($row['d']),
+                'hrv_ms' => $row['hrv'], 'updated_via' => 'biosignal:test',
+            ]);
+        }
+
+        $res = $this->withHeader('Authorization', "Bearer {$token}")->getJson('/api/me/trends?metric=hrv&days=30');
+
+        $res->assertOk()
+            ->assertJsonPath('metric', 'hrv')
+            ->assertJsonCount(3, 'points')
+            ->assertJsonPath('points.0.value', 60)   // oldest first
+            ->assertJsonPath('points.2.value', 70);
+    }
 }

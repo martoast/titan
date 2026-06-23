@@ -1,62 +1,109 @@
 import SwiftUI
 
-/// Today: readiness ring + recovery + sleep + activity, from `GET /api/me/dashboard`.
+/// Today — the hero screen. A big recovery ring up top (Whoop-style), then recovery vitals,
+/// last night's sleep with a stage bar, and activity. Fluid entrance + numeric count-ups.
 struct DashboardView: View {
     @EnvironmentObject var model: AppModel
+    @State private var appeared = false
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: Theme.Space.m) {
             let d = model.dashboard
 
-            Card {
-                HStack(spacing: 20) {
-                    ScoreRing(score: d?.readiness?.score, label: "Readiness")
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(d?.readiness?.label ?? "No data yet").font(.headline)
-                        if let note = d?.readiness?.note {
-                            Text(note).font(.subheadline).foregroundStyle(.secondary).lineLimit(4)
-                        }
-                        if d?.readiness?.provisional == true {
-                            Label("Still building your baseline", systemImage: "hourglass")
-                                .font(.caption).foregroundStyle(.orange)
-                        }
+            // Hero: recovery ring + headline
+            VStack(spacing: Theme.Space.m) {
+                MetricRing(score: d?.readiness?.score, label: "Recovery", size: 200)
+                    .padding(.top, Theme.Space.s)
+                VStack(spacing: 6) {
+                    Text(d?.readiness?.label ?? "Building your baseline")
+                        .font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                    if let note = d?.readiness?.note {
+                        Text(note).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+                            .multilineTextAlignment(.center).lineLimit(3)
+                    }
+                    if d?.readiness?.provisional == true {
+                        Label("Still learning your baseline", systemImage: "hourglass")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.amber)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Theme.Palette.amber.opacity(0.12), in: Capsule())
                     }
                 }
+                .padding(.horizontal)
             }
+            .frame(maxWidth: .infinity)
+            .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
 
+            // Recovery vitals
             NavigationLink { RecoveryView() } label: {
-                Card("Recovery") {
-                    HStack {
-                        StatTile(value: d?.recovery?.hrv_ms.map { String(Int($0)) } ?? "—", label: "HRV ms", accent: .cyan)
-                        StatTile(value: d?.recovery?.resting_hr.map { String(Int($0)) } ?? "—", label: "Resting HR", accent: .pink)
-                        StatTile(value: d?.recovery?.resp_rate.map { String(format: "%.1f", $0) } ?? "—", label: "Resp rate")
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: "Recovery", trailing: chevron)
+                        HStack(spacing: Theme.Space.m) {
+                            Metric(value: int(d?.recovery?.hrv_ms), unit: "ms", label: "HRV", color: Theme.Palette.cyan, icon: "waveform.path.ecg")
+                            divider
+                            Metric(value: int(d?.recovery?.resting_hr), unit: "bpm", label: "Resting HR", color: Theme.Palette.pink, icon: "heart.fill")
+                            divider
+                            Metric(value: dec(d?.recovery?.resp_rate), unit: "br/m", label: "Respiration", color: Theme.Palette.violet, icon: "lungs.fill")
+                        }
                     }
                 }
-            }.buttonStyle(.plain)
+            }.buttonStyle(PressCard())
 
+            // Sleep
             NavigationLink { SleepView() } label: {
-                Card("Last night's sleep") {
-                    HStack {
-                        StatTile(value: minToHrs(d?.sleep?.duration_min), label: "Duration", accent: .indigo)
-                        StatTile(value: d?.sleep?.quality.map { "\($0)" } ?? "—", label: "Quality")
-                        StatTile(value: minToHrs(d?.sleep?.rem_min), label: "REM")
-                        StatTile(value: minToHrs(d?.sleep?.deep_min), label: "Deep")
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: "Last night", trailing: chevron)
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(minToHrs(d?.sleep?.duration_min)).font(Theme.Font.num(30)).foregroundStyle(Theme.Palette.text)
+                            Spacer()
+                            if let q = d?.sleep?.quality { Metric(value: "\(q)", unit: nil, label: "Quality", color: Theme.Palette.indigo) }
+                        }
+                        StageBars(stages: [
+                            ("Deep", d?.sleep?.deep_min ?? 0, Theme.Palette.indigo),
+                            ("REM", d?.sleep?.rem_min ?? 0, Theme.Palette.violet),
+                            ("Light", d?.sleep?.light_min ?? 0, Theme.Palette.cyan.opacity(0.6)),
+                            ("Awake", d?.sleep?.awake_min ?? 0, Theme.Palette.textFaint),
+                        ])
                     }
                 }
-            }.buttonStyle(.plain)
+            }.buttonStyle(PressCard())
 
+            // Activity
             if let a = d?.activity {
-                Card("Activity") {
-                    HStack {
-                        StatTile(value: a.steps.map(String.init) ?? "—", label: "Steps")
-                        StatTile(value: a.active_kcal.map(String.init) ?? "—", label: "Active kcal")
-                        StatTile(value: a.floors.map(String.init) ?? "—", label: "Floors")
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: "Activity")
+                        HStack(spacing: Theme.Space.m) {
+                            Metric(value: int(a.steps.map(Double.init)), unit: nil, label: "Steps", color: Theme.Palette.mint, icon: "figure.walk")
+                            divider
+                            Metric(value: int(a.active_kcal.map(Double.init)), unit: "kcal", label: "Active", color: Theme.Palette.amber, icon: "flame.fill")
+                            divider
+                            Metric(value: int(a.floors.map(Double.init)), unit: nil, label: "Floors", color: Theme.Palette.cyan, icon: "stairs")
+                        }
                     }
                 }
             }
+
+            Color.clear.frame(height: 8)
         }
-        .screen("Today")
-        .refreshable { await model.refresh() }
-        .task { await model.refresh() }
+        .animation(Theme.Motion.spring, value: appeared)
+        .titanScreen("Today", glow: Theme.Palette.recovery(model.dashboard?.readiness?.score))
+        .refreshable { Haptic.soft(); await model.refresh() }
+        .task { await model.refresh(); appeared = true }
+    }
+
+    private var chevron: String { "›" }
+    private var divider: some View { Rectangle().fill(Theme.Palette.cardStroke).frame(width: 1, height: 34) }
+    private func int(_ v: Double?) -> String { v.map { String(Int($0.rounded())) } ?? "—" }
+    private func dec(_ v: Double?) -> String { v.map { String(format: "%.1f", $0) } ?? "—" }
+}
+
+/// Subtle press-scale for tappable cards.
+struct PressCard: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(Theme.Motion.snappy, value: configuration.isPressed)
     }
 }

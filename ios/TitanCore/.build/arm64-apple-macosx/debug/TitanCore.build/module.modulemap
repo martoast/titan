@@ -1,0 +1,4 @@
+module TitanCore {
+    header "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/TitanCore-Swift.h"
+    requires objc
+}

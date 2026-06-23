@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
 
     @Published var user: AuthUser?
     @Published var dashboard: Dashboard?
+    @Published var hrvTrend: [Double] = []
     @Published var bandConnected = false
     @Published var liveBpm: Int?
     @Published var error: String?
@@ -81,6 +82,10 @@ final class AppModel: ObservableObject {
     func refresh() async {
         do { dashboard = try await api.dashboard() }
         catch { if case APIError.unauthorized = error { await logout() } }
+    }
+
+    func loadTrends() async {
+        if let t = try? await api.trends(metric: "hrv", days: 30) { hrvTrend = t.points.map(\.value) }
     }
 
     // MARK: band

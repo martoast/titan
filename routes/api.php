@@ -33,6 +33,7 @@ Route::middleware('auth.token')->group(function () {
 
 // Read-only dashboard aggregate for the native app (readiness + recovery + sleep + activity).
 Route::middleware('auth.any')->get('/me/dashboard', [\App\Http\Controllers\Api\MobileDashboardController::class, 'dashboard']);
+Route::middleware('auth.any')->get('/me/trends', [\App\Http\Controllers\Api\MobileDashboardController::class, 'trends']);
 
 Route::prefix('devices')->group(function () {
     // Device → server: signed biosignal batches (HMAC auth, no session).

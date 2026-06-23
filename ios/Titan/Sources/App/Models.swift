@@ -55,6 +55,13 @@ struct Dashboard: Codable {
     }
 }
 
+/// `GET /api/me/trends`
+struct TrendResponse: Codable {
+    let metric: String
+    let points: [Point]
+    struct Point: Codable { let date: String; let value: Double }
+}
+
 /// `POST /api/devices/pair`
 struct PairResponse: Codable {
     let device_id: String

@@ -1,57 +1,115 @@
 import SwiftUI
 
-/// Band pairing + live connection status. This screen replaces the web "bridge" — there's no
-/// Bluefy / Web Bluetooth; the in-app CoreBluetooth `BandManager` keeps the band synced in the
-/// background. Pairing mints the one-time HMAC secret (stored in Keychain) and starts sync.
+/// Band pairing + live status. Replaces the web bridge — the in-app CoreBluetooth manager keeps
+/// the band synced in the background; no Bluefy, no manual connect.
 struct DevicesView: View {
     @EnvironmentObject var model: AppModel
+    @State private var pairing = false
 
     var body: some View {
-        VStack(spacing: 16) {
-            Card {
-                HStack(spacing: 12) {
-                    Circle().fill(model.bandConnected ? .green : .gray).frame(width: 12, height: 12)
-                        .overlay(Circle().fill(.green).opacity(model.bandConnected ? 0.4 : 0).blur(radius: 6))
-                    VStack(alignment: .leading) {
-                        Text(model.bandConnected ? "Band connected" : (model.isBandPaired ? "Searching for band…" : "No band paired"))
-                            .font(.headline)
-                        Text(model.bandConnected
-                             ? "Syncing in the background — even when the app is closed."
-                             : "Keeps trying automatically once paired.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if let bpm = model.liveBpm, model.bandConnected {
-                        VStack { Text("\(bpm)").font(.title2.weight(.bold)); Text("bpm").font(.caption2).foregroundStyle(.secondary) }
-                    }
-                }
-            }
+        VStack(spacing: Theme.Space.m) {
+            hero.padding(.top, Theme.Space.s)
 
             if !model.isBandPaired {
-                Card("Pair your band") {
-                    Text("One tap pairs your Titan band and starts background sync. Make sure the band is awake (tap its button) and nearby.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                    Button {
-                        Task { await model.pairBand() }
-                    } label: {
-                        Text("Pair Titan band").bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: "Pair your band")
+                        Text("One tap pairs your Titan band and starts background sync. Wake the band (tap its button) and keep it close.")
+                            .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+                        Button {
+                            Haptic.rigid(); pairing = true
+                            Task { await model.pairBand(); pairing = false; Haptic.success() }
+                        } label: {
+                            HStack {
+                                if pairing { ProgressView().tint(.white) }
+                                Text(pairing ? "Pairing…" : "Pair Titan band").font(Theme.Font.body.weight(.semibold))
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                            .foregroundStyle(.white)
+                        }.disabled(pairing)
                     }
-                    .background(.indigo, in: RoundedRectangle(cornerRadius: 12)).foregroundStyle(.black)
                 }
             } else {
-                Card("How it works") {
-                    Label("Wear it 24/7 — recovery, sleep, and workouts sync automatically.", systemImage: "moon.zzz.fill")
-                    Label("Background sync keeps the band connected even when the app is closed.", systemImage: "antenna.radiowaves.left.and.right")
-                    Label("Force-quitting the app stops sync until you reopen it once.", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.secondary)
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: "Always-on sync")
+                        feature("moon.zzz.fill", Theme.Palette.indigo, "Wear it 24/7", "Recovery, sleep, and workouts sync on their own.")
+                        feature("antenna.radiowaves.left.and.right", Theme.Palette.mint, "Background connection", "Stays synced even when the app is closed.")
+                        feature("bolt.fill", Theme.Palette.amber, "Morning sync", "Your whole night uploads in seconds when you wake.")
+                    }
                 }
-                .font(.subheadline)
             }
 
             if let err = model.error {
-                Text(err).font(.footnote).foregroundStyle(.red)
+                Text(err).font(Theme.Font.micro).foregroundStyle(Theme.Palette.pink)
+            }
+            Color.clear.frame(height: 8)
+        }
+        .titanScreen("Band", glow: model.bandConnected ? Theme.Palette.mint : Theme.Palette.indigo)
+    }
+
+    private var hero: some View {
+        GlassCard(padding: Theme.Space.l) {
+            VStack(spacing: Theme.Space.m) {
+                Radar(active: model.bandConnected)
+                VStack(spacing: 4) {
+                    Text(statusTitle).font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                    Text(statusSub).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+                        .multilineTextAlignment(.center)
+                }
+                if model.bandConnected, let bpm = model.liveBpm {
+                    HStack(spacing: 8) {
+                        Image(systemName: "heart.fill").foregroundStyle(Theme.Palette.pink)
+                            .symbolEffect(.pulse, options: .repeating)
+                        Text("\(bpm)").font(Theme.Font.num(28)).contentTransition(.numericText())
+                        Text("BPM").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    }
+                    .padding(.horizontal, Theme.Space.m).padding(.vertical, 8)
+                    .background(Theme.Palette.pink.opacity(0.12), in: Capsule())
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var statusTitle: String {
+        model.bandConnected ? "Band connected" : (model.isBandPaired ? "Searching…" : "No band yet")
+    }
+    private var statusSub: String {
+        model.bandConnected ? "Syncing in the background." : (model.isBandPaired ? "Reconnects automatically when it's near." : "Pair your Titan band to begin.")
+    }
+
+    private func feature(_ icon: String, _ c: Color, _ title: String, _ sub: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Space.m) {
+            Image(systemName: icon).font(.system(size: 17)).foregroundStyle(c).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                Text(sub).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
             }
         }
-        .screen("Band")
     }
+}
+
+/// Concentric radar that breathes when connected.
+private struct Radar: View {
+    let active: Bool
+    @State private var anim = false
+    var body: some View {
+        ZStack {
+            ForEach(0..<3) { i in
+                Circle().stroke(color.opacity(0.25 - Double(i) * 0.07), lineWidth: 1.5)
+                    .frame(width: 70 + CGFloat(i) * 38, height: 70 + CGFloat(i) * 38)
+                    .scaleEffect(anim && active ? 1.08 : 1)
+                    .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true).delay(Double(i) * 0.2), value: anim)
+            }
+            Circle().fill(color.opacity(0.16)).frame(width: 64, height: 64)
+            Image(systemName: active ? "applewatch.radiowaves.left.and.right" : "applewatch.slash")
+                .font(.system(size: 26, weight: .medium)).foregroundStyle(color)
+                .symbolEffect(.pulse, options: active ? .repeating : .nonRepeating)
+        }
+        .frame(height: 160)
+        .onAppear { anim = true }
+    }
+    private var color: Color { active ? Theme.Palette.mint : Theme.Palette.textDim }
 }

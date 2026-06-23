@@ -5,40 +5,56 @@ struct ProfileView: View {
     @State private var confirmLogout = false
 
     var body: some View {
-        VStack(spacing: 16) {
-            Card {
-                HStack(spacing: 14) {
-                    Image(systemName: "person.crop.circle.fill").font(.system(size: 44)).foregroundStyle(.indigo)
-                    VStack(alignment: .leading) {
-                        Text(model.user?.name ?? "Titan user").font(.headline)
-                        if let email = model.user?.email { Text(email).font(.caption).foregroundStyle(.secondary) }
+        VStack(spacing: Theme.Space.m) {
+            GlassCard(padding: Theme.Space.l) {
+                HStack(spacing: Theme.Space.m) {
+                    ZStack {
+                        Circle().fill(Theme.Grad.brand).frame(width: 60, height: 60)
+                        Text(initials).font(Theme.Font.num(22)).foregroundStyle(.white)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.user?.name ?? "Titan user").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                        if let email = model.user?.email { Text(email).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+                    }
+                    Spacer()
+                }
+            }
+
+            GlassCard {
+                HStack {
+                    Label("Band", systemImage: "applewatch").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                    Spacer()
+                    HStack(spacing: 7) {
+                        PulseDot(on: model.bandConnected)
+                        Text(model.bandConnected ? "Connected" : (model.isBandPaired ? "Paired" : "Not paired"))
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     }
                 }
             }
 
-            Card("Band") {
-                HStack {
-                    Label(model.isBandPaired ? "Paired" : "Not paired", systemImage: "applewatch")
-                    Spacer()
-                    Circle().fill(model.bandConnected ? .green : .gray).frame(width: 10, height: 10)
+            GlassCard {
+                VStack(alignment: .leading, spacing: Theme.Space.s) {
+                    Label("Open-source · free forever", systemImage: "heart.fill").font(Theme.Font.body).foregroundStyle(Theme.Palette.pink)
+                    Text("Titan is a subscription-free recovery OS. Your data is yours, always.")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                 }
-                .font(.subheadline)
             }
 
-            Card("About") {
-                Label("Open-source · free forever", systemImage: "heart.fill").foregroundStyle(.pink)
-                Text("Titan is a subscription-free recovery OS. Your data is yours.")
-                    .font(.caption).foregroundStyle(.secondary)
+            Button(role: .destructive) { Haptic.warning(); confirmLogout = true } label: {
+                Text("Sign out").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.pink)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
             }
-
-            Button(role: .destructive) { confirmLogout = true } label: {
-                Text("Sign out").frame(maxWidth: .infinity).padding(.vertical, 12)
-            }
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
             .confirmationDialog("Sign out?", isPresented: $confirmLogout, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) { Task { await model.logout() } }
             }
+            Color.clear.frame(height: 8)
         }
-        .screen("You")
+        .titanScreen("You")
+    }
+
+    private var initials: String {
+        let parts = (model.user?.name ?? "T").split(separator: " ")
+        return parts.prefix(2).compactMap { $0.first.map(String.init) }.joined().uppercased()
     }
 }

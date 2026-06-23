@@ -1,0 +1,460 @@
+{
+  "builtTestProducts" : [
+    {
+      "binaryPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCorePackageTests.xctest/Contents/MacOS/TitanCorePackageTests",
+      "packagePath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore",
+      "productName" : "TitanCorePackageTests"
+    }
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.TitanCore-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/sources",
+      "importPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/FrameDecoder.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Signer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Windowing.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/WorkoutAssembler.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "TitanCore",
+      "moduleOutputPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.swiftmodule",
+      "objects" : [
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/FrameDecoder.swift.o",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/Signer.swift.o",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/Windowing.swift.o",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/WorkoutAssembler.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-swift-version",
+        "5",
+        "-enable-batch-mode",
+        "-index-store-path",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-module-cache-path",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/TitanCore-Swift.h",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "titancore"
+      ],
+      "outputFileMapPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/FrameDecoder.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/Signer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/Windowing.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/WorkoutAssembler.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.swiftmodule"
+        }
+      ],
+      "sources" : [
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/FrameDecoder.swift",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Signer.swift",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Windowing.swift",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/WorkoutAssembler.swift"
+      ],
+      "tempsPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.TitanCoreTests-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/sources",
+      "importPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/FrameDecoderTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/SignerTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/WindowingTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/WorkoutAssemblerTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "TitanCoreTests",
+      "moduleOutputPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.swiftmodule",
+      "objects" : [
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/FrameDecoderTests.swift.o",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/SignerTests.swift.o",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/WindowingTests.swift.o",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/WorkoutAssemblerTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-swift-version",
+        "5",
+        "-enable-batch-mode",
+        "-index-store-path",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-module-cache-path",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "titancore"
+      ],
+      "outputFileMapPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/FrameDecoderTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/SignerTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/WindowingTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/WorkoutAssemblerTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.swiftmodule"
+        }
+      ],
+      "sources" : [
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/FrameDecoderTests.swift",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/SignerTests.swift",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/WindowingTests.swift",
+        "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/WorkoutAssemblerTests.swift"
+      ],
+      "tempsPath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "TitanCore" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "TitanCore",
+      "-package-name",
+      "titancore",
+      "-incremental",
+      "-c",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/FrameDecoder.swift",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Signer.swift",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Windowing.swift",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/WorkoutAssembler.swift",
+      "-I",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-swift-version",
+      "5",
+      "-enable-batch-mode",
+      "-index-store-path",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-module-cache-path",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/TitanCore-Swift.h",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "titancore",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ],
+    "TitanCoreTests" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "TitanCoreTests",
+      "-package-name",
+      "titancore",
+      "-incremental",
+      "-c",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/FrameDecoderTests.swift",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/SignerTests.swift",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/WindowingTests.swift",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/WorkoutAssemblerTests.swift",
+      "-I",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-swift-version",
+      "5",
+      "-enable-batch-mode",
+      "-index-store-path",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-module-cache-path",
+      "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "titancore",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "TitanCore" : [
+
+    ],
+    "TitanCoreTests" : [
+      "TitanCore"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "writeCommands" : {
+    "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/FrameDecoder.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Signer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Windowing.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/WorkoutAssembler.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/sources"
+    },
+    "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCorePackageTests.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/FrameDecoder.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/Signer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/Windowing.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCore.build/WorkoutAssembler.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/FrameDecoderTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/SignerTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/WindowingTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/WorkoutAssemblerTests.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCorePackageTests.product/Objects.LinkFileList"
+    },
+    "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/FrameDecoderTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/SignerTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/WindowingTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Tests/TitanCoreTests/WorkoutAssemblerTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/TitanCoreTests.build/sources"
+    },
+    "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+    }
+  }
+}
