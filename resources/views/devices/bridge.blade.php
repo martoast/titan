@@ -104,7 +104,7 @@
              live bridge is running the latest push (the runtime image has no .git to read a
              SHA from, so this is a hand-incremented tag). --}}
         <p class="text-center text-[11px] text-gray-600">
-            Titan bridge · build <span class="font-mono text-gray-500">v4 · livestream-poll-fix</span>
+            Titan bridge · build <span class="font-mono text-gray-500">v5 · relative-ingest-url</span>
         </p>
     </div>
 

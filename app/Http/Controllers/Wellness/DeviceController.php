@@ -98,7 +98,10 @@ class DeviceController extends Controller
 
         return view('devices.bridge', [
             'bangles' => $bangles,
-            'ingestUrl' => url('/api/devices/ingest'),
+            // Relative, NOT url(): the bridge fetch must hit the same origin the page loaded
+            // from. An absolute URL built from APP_URL breaks the POST ("Failed to fetch") if
+            // APP_URL is http/bare-IP/wrong-host vs. the HTTPS domain serving this page.
+            'ingestUrl' => '/api/devices/ingest',
             'justPaired' => $justPaired,
         ]);
     }
