@@ -102,7 +102,8 @@ final class AppModel: ObservableObject {
               let id = Keychain.get(Keychain.deviceId),
               let secret = Keychain.get(Keychain.deviceSecret) else { return }
         let client = IngestClient(baseURL: Self.baseURL, deviceId: id, secret: secret)
-        let queue = SyncQueue(store: InMemoryWindowStore(), client: client)
+        // Durable on-disk queue so the overnight buffer survives an app kill / relaunch.
+        let queue = SyncQueue(store: SqliteWindowStore(), client: client)
         let router = FrameRouter(queue: queue)
         router.onBpm = { [weak self] bpm in Task { @MainActor in self?.liveBpm = Int(bpm) } }
         let band = BandManager(router: router)

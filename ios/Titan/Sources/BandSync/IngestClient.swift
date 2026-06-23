@@ -31,14 +31,11 @@ public struct IngestClient {
         req.setValue(sig.deviceId, forHTTPHeaderField: "X-Device-Id")
         req.setValue(sig.titanSignature, forHTTPHeaderField: "X-Titan-Signature")
 
-        // gzip large bodies (server honors Content-Encoding: gzip and gzdecodes before verifying,
-        // so we still sign the *uncompressed* bytes above).
-        if body.count > 4096, let gz = Gzip.compress(body) {
-            req.setValue("gzip", forHTTPHeaderField: "Content-Encoding")
-            req.httpBody = gz
-        } else {
-            req.httpBody = body
-        }
+        // Send the signed, uncompressed JSON. A ppg_raw window is well under the server's 5 MB
+        // limit, so we don't gzip — and crucially the bytes on the wire match what we signed.
+        // (gzip would need RFC-1952 framing via zlib windowBits=31 to satisfy the server's
+        // gzdecode; left out deliberately rather than risk a header mismatch rejecting uploads.)
+        req.httpBody = body
 
         do {
             let (data, resp) = try await session.data(for: req)
@@ -55,10 +52,4 @@ public struct IngestClient {
     }
 
     struct Batch: Encodable { let batch_uid: String; let windows: [AnyWindow] }
-}
-
-/// Minimal gzip via zlib (Compression framework alternative). Placeholder — wire to
-/// `Compression`/`libz` in Xcode; the signing is independent of compression.
-enum Gzip {
-    static func compress(_ data: Data) -> Data? { nil /* TODO: zlib in app target */ }
 }
