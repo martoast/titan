@@ -212,9 +212,14 @@ function b64(buf) {
 function emitFrame(buf, len) {
   if (!state.connected) return; // offline → logged via writeLogFrame(), drop stray T1
   try {
-    Bluetooth.println("T1:" + b64(buf.slice(0, len)));
+    // ArrayBuffer.slice() is NOT implemented in Espruino (2v29) — it throws
+    // "Function slice not found", which the catch below silently swallowed and
+    // killed ALL live PPG streaming (T1 frames) while T5/T6/T7 — which b64() the
+    // whole buffer — kept working. Use a Uint8Array VIEW of the first `len` bytes
+    // (btoa accepts a typed array directly, no copy needed).
+    Bluetooth.println("T1:" + b64(new Uint8Array(buf, 0, len)));
     state.framesSent++;
-  } catch (err) { /* link hiccup — drop this frame */ }
+  } catch (err) { state.lastEmitErr = '' + err; } // surface (don't spam) so a future emit bug isn't invisible
 }
 
 // ----- Overnight log (compact, PPG + activity) ------------------------------
