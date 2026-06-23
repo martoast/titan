@@ -1,0 +1,46 @@
+# XcodeGen spec — generates Titan.xcodeproj with everything wired (sources, TitanCore package,
+# Info.plist, background-BLE, signing). Run:  cd ios/Titan && xcodegen
+#
+# Minimal for the make-or-break test: bluetooth-central background mode works on a real device
+# with a FREE Apple ID (Personal Team) — no paid account needed yet. Push/HealthKit (which need
+# the paid program) are added later by enabling those capabilities in Xcode.
+name: Titan
+options:
+  bundleIdPrefix: com.titan
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  TitanCore:
+    path: ../TitanCore
+
+targets:
+  Titan:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: TitanCore
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Titan
+        UILaunchScreen: {}
+        UIBackgroundModes:
+          - bluetooth-central
+        NSBluetoothAlwaysUsageDescription: "Titan connects to your recovery band to sync your biosignals in the background."
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.titan.app
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"            # iPhone
+        SWIFT_VERSION: "5.9"
+        ENABLE_PREVIEWS: YES
+        # Automatic signing — fill DEVELOPMENT_TEAM (your 10-char Team ID) or set it in Xcode.
+        CODE_SIGN_STYLE: Automatic
+        # DEVELOPMENT_TEAM: XXXXXXXXXX
