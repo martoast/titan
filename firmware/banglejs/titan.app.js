@@ -443,23 +443,13 @@ function writeWorkoutAccelFrame() {
 
 // ----- Workout + GPS gating -------------------------------------------------
 // A WORKOUT (state.workout) drives HR + 3-axis-accel capture. GPS (state.gps) is a battery-
-// hungry SUBSET of a workout — powered only when a fix can plausibly help (outdoors), and dropped
-// indoors. Two ways a workout starts: AUTO (sustained locomotion — running/walking) or MANUAL
-// (long-press BTN for a gym session: lifting isn't locomotion, so the motion gate won't catch it).
+// hungry SUBSET of a workout — powered only when a fix can plausibly help (outdoors), dropped
+// indoors. Workouts are MANUAL ONLY: the user starts/ends every workout by hand (long-press
+// BTN, or the coach priming a typed activity). The band never auto-starts or auto-ends a
+// workout from motion — clearer UX, and no surprise sessions from a brisk walk to the kitchen.
+// The motion gate's sole remaining job is battery: drop GPS indoors when it can't get a fix.
 function updateGpsGate() {
   var now = getTime();
-  if (motionEMA >= CFG.GPS_ON_MOTION) {
-    motionBelowSince = 0;
-    if (!motionAboveSince) motionAboveSince = now;
-    // Sustained locomotion → auto-start a workout (which powers GPS to look for pace).
-    if (!state.workout && (now - motionAboveSince) >= CFG.GPS_ARM_SEC) startWorkout(false);
-  } else {
-    motionAboveSince = 0;
-    if (!motionBelowSince) motionBelowSince = now;
-    // An AUTO workout ends after a motion lull; a MANUAL (gym) one only ends by hand — lifting
-    // has long still gaps between sets that must NOT be read as "workout over".
-    if (state.workout && !state.workoutManual && (now - motionBelowSince) >= CFG.GPS_OFF_SEC) endWorkout();
-  }
   // Indoors (treadmill / weights room): GPS never gets a fix → stop wasting battery on it, but
   // KEEP the workout. The accel still classifies run/walk/lift and logs via T6.
   if (state.gps && !state.gpsFix && (now - gpsArmedT) >= CFG.GPS_FIX_TIMEOUT) powerGps(false);
