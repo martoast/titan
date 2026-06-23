@@ -16,8 +16,8 @@ public struct IngestClient {
 
     public enum Result { case accepted(queued: Int), duplicate, rejected(status: Int, error: String), transport(Error) }
 
-    /// Wrap one window in a batch, sign, gzip if worthwhile, and POST.
-    public func ship(window: PpgWindow) async -> Result {
+    /// Wrap one window (ppg_raw OR workout) in a batch, sign, gzip if worthwhile, and POST.
+    public func ship(window: AnyWindow) async -> Result {
         let batch = Batch(batch_uid: ULID.generate(), windows: [window])
         guard let body = try? JSONEncoder().encode(batch) else {
             return .rejected(status: 0, error: "encode failed")
@@ -54,7 +54,7 @@ public struct IngestClient {
         }
     }
 
-    struct Batch: Encodable { let batch_uid: String; let windows: [PpgWindow] }
+    struct Batch: Encodable { let batch_uid: String; let windows: [AnyWindow] }
 }
 
 /// Minimal gzip via zlib (Compression framework alternative). Placeholder — wire to

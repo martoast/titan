@@ -3,12 +3,14 @@ import TitanCore
 
 /// Turns the raw NUS byte stream into signed, uploaded windows. Mirrors the bridge `_onBytes`
 /// dispatch: reassemble newline-delimited base64 frames, decode `T1…T7` via `TitanCore`, feed the
-/// `PpgWindowBuilder` (live recovery PPG) — finished windows go to the `SyncQueue`. T5 drives the
-/// live bpm display; T2 (overnight burst) is handled the same as T1 for ppg.
+/// `PpgWindowBuilder` (recovery PPG) AND the `WorkoutAssembler` (GPS/accel/HR workout windows) —
+/// finished windows of either kind go to the `SyncQueue`. T5 also drives the live bpm display.
 public final class FrameRouter {
     private var rx = Data()                       // newline accumulator (== bridge's this._rx)
     private let ppg = PpgWindowBuilder()
+    private let wa = WorkoutAssembler()
     private let queue: SyncQueue
+    private var maxDeviceT: UInt64 = 0
     public var onBpm: ((UInt8) -> Void)?          // live HR for the UI
 
     public init(queue: SyncQueue) { self.queue = queue }
@@ -29,18 +31,50 @@ public final class FrameRouter {
         switch s.prefix(3) {
         case "T1:", "T2:":
             let frame = FrameDecoder.decodeT1(payload)
-            for w in ppg.add(frame.samples) { Task { await queue.submit(w) } }
+            for w in ppg.add(frame.samples) { submit(.ppg(w)) }
+            wa.addAccel(frame.samples)                    // buffered only if a workout is open
+            if let last = frame.samples.last?.t {
+                maxDeviceT = max(maxDeviceT, last)
+                if let w = wa.tick(maxDeviceT) { submit(.workout(w)) }   // close a finished workout
+            }
+        case "T4:":
+            if let fix = FrameDecoder.decodeT4(payload), let w = wa.addGps(fix) { submit(.workout(w)) }
         case "T5:":
-            if let hr = FrameDecoder.decodeT5(payload) { onBpm?(hr.bpm) }
-        case "T4:", "T6:", "T7:":
-            break  // workout/baro → WorkoutAssembler port (next); not on the recovery path
+            if let hr = FrameDecoder.decodeT5(payload) { onBpm?(hr.bpm); wa.addHr(hr) }
+        case "T6:":
+            let acc = FrameDecoder.decodeT6(payload)
+            if let w = wa.addWorkoutAccel(acc) { submit(.workout(w)) }
+        case "T7:":
+            break  // ambient baro (floors) — server-side; not on the live upload path yet
         default:
             break
         }
     }
 
-    /// On disconnect / app suspend: flush the trailing partial window so nothing is lost.
+    /// On disconnect / app suspend: flush trailing partial windows so nothing is lost.
     public func flush(live: Bool) {
-        if let w = ppg.flush(live: live) { Task { await queue.submit(w) } }
+        if let w = ppg.flush(live: live) { submit(.ppg(w)) }
+        if let w = wa.flush() { submit(.workout(w)) }
+    }
+
+    private func submit(_ w: AnyWindow) { Task { await queue.submit(w) } }
+}
+
+/// Either window kind the queue can ship. Encodes to the underlying window's JSON (each already
+/// carries its own `kind` field), and round-trips through the persisted queue.
+public enum AnyWindow: Codable {
+    case ppg(PpgWindow), workout(WorkoutWindow)
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .ppg(let w): try c.encode(w)
+        case .workout(let w): try c.encode(w)
+        }
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let w = try? c.decode(WorkoutWindow.self), w.kind == "workout" { self = .workout(w) }
+        else { self = .ppg(try c.decode(PpgWindow.self)) }
     }
 }

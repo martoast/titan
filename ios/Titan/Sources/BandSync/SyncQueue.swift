@@ -10,8 +10,8 @@ import TitanCore
 /// (SQLite). Enqueue is called from `FrameRouter` — including during `willRestoreState` background
 /// wakes — so a relaunch flushes pending windows in the ~10s wake window.
 public protocol WindowStore {
-    func enqueue(_ window: PpgWindow) throws
-    func pending(limit: Int) throws -> [(id: Int64, window: PpgWindow)]
+    func enqueue(_ window: AnyWindow) throws
+    func pending(limit: Int) throws -> [(id: Int64, window: AnyWindow)]
     func remove(id: Int64) throws
     func bumpAttempt(id: Int64) throws
 }
@@ -34,7 +34,7 @@ public actor SyncQueue {
     private func setOnline(_ up: Bool) { online = up; if up { Task { await drain() } } }
 
     /// Persist a window and try to drain. Safe to call from a background wake.
-    public func submit(_ window: PpgWindow) async {
+    public func submit(_ window: AnyWindow) async {
         try? store.enqueue(window)
         await drain()
     }
