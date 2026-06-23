@@ -351,12 +351,16 @@ function onHRMRaw(e) {
 }
 
 function onHRM(e) {
-  // For SLEEP/REST this is UI only — never streamed (averaged BPM has discarded the ms IBI we
-  // need for HRV). But during a WORKOUT (GPS armed) the on-chip bpm IS the signal we want, since
-  // in-motion PPG→IBI is unreliable — so we stream it as a T5 frame.
+  // The on-chip averaged bpm. We use it two ways:
+  //  - whenever a bridge is CONNECTED, stream it (T5) so the live bpm shown in the app
+  //    mirrors exactly what's on the watch face — same value, ~1 Hz, rest or workout.
+  //  - during a WORKOUT even while OFFLINE, log it (emitHrFrame routes to flash) so a
+  //    phone-free run still recovers its HR on morning sync.
+  // This averaged bpm is for HR display only — HRV/recovery is always computed server-side
+  // from the raw PPG (T1) windows, which carry the ms-level IBI the average has discarded.
   state.bpm = e.bpm | 0;
   state.conf = e.confidence | 0;
-  if (state.streaming && state.workout) emitHrFrame(state.bpm, state.conf);
+  if (state.streaming && (state.connected || state.workout)) emitHrFrame(state.bpm, state.conf);
   if (uiVisible) drawUI();
 }
 
