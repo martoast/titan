@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Personal-API-token auth for the assistant/MCP surface (stateless bearer tokens).
         $middleware->alias([
             'auth.token' => \App\Http\Middleware\AuthenticateApiToken::class,
+            'auth.any' => \App\Http\Middleware\AuthenticateSessionOrToken::class,
             'onboarded' => \App\Http\Middleware\EnsureOnboarded::class,
         ]);
     })

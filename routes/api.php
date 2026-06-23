@@ -42,10 +42,23 @@ Route::prefix('devices')->group(function () {
     // Server → device: pending coach commands (buzz to find it, sync now). Drained on read.
     Route::get('/commands', [DeviceIngestionController::class, 'commands']);
 
-    // Owner-operated management (web/session auth).
-    Route::middleware('auth')->group(function () {
+    // Owner-operated management — web session OR native-app bearer token.
+    Route::middleware('auth.any')->group(function () {
         Route::post('/pair', [DeviceIngestionController::class, 'pair']);
         Route::get('/ingestions', [DeviceIngestionController::class, 'ingestions']);
         Route::delete('/{connection}', [DeviceIngestionController::class, 'destroy']);
     });
+});
+
+// Coach — native-app access to the same CoachController the web UI uses (the web keeps its own
+// session routes in routes/titan/coach.php). Bearer-token or session via auth.any.
+Route::middleware('auth.any')->prefix('coach')->group(function () {
+    Route::get('/{conversation}/messages', [\App\Http\Controllers\Coach\CoachController::class, 'messages']);
+    Route::post('/send', [\App\Http\Controllers\Coach\CoachController::class, 'send']);
+    Route::post('/{conversation}/send', [\App\Http\Controllers\Coach\CoachController::class, 'send']);
+    Route::post('/stream', [\App\Http\Controllers\Coach\CoachController::class, 'stream']);
+    Route::post('/{conversation}/stream', [\App\Http\Controllers\Coach\CoachController::class, 'stream']);
+    Route::post('/briefing', [\App\Http\Controllers\Coach\CoachController::class, 'briefing']);
+    Route::post('/scan', [\App\Http\Controllers\Coach\CoachController::class, 'scan']);
+    Route::post('/transcribe', [\App\Http\Controllers\Coach\CoachController::class, 'transcribe']);
 });
