@@ -12,14 +12,23 @@
 
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\DeviceIngestionController;
+use App\Http\Controllers\Api\MobileAuthController;
 use Illuminate\Support\Facades\Route;
 
-// Assistant / MCP surface — personal-API-token auth (Bearer). One generic tool dispatcher gives an
-// external agent full account control; write tools additionally require the token's 'write' ability.
+// Native iOS app auth — email/password → bearer token (reuses the ApiToken system). Throttled.
+Route::post('/login', [MobileAuthController::class, 'login'])->middleware('throttle:10,1');
+
+// Assistant / MCP surface + native-app session — personal-API-token auth (Bearer). One generic
+// tool dispatcher gives an external agent full account control; write tools additionally require
+// the token's 'write' ability. The iOS app authenticates here with its stored bearer token.
 Route::middleware('auth.token')->group(function () {
     Route::get('/me', [AssistantController::class, 'me']);
     Route::get('/tools', [AssistantController::class, 'tools']);
     Route::post('/tool', [AssistantController::class, 'call']);
+
+    // Native-app session management + push registration.
+    Route::post('/logout', [MobileAuthController::class, 'logout']);
+    Route::post('/devices/push-token', [MobileAuthController::class, 'pushToken']);
 });
 
 Route::prefix('devices')->group(function () {
