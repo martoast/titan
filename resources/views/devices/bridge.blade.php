@@ -73,6 +73,21 @@
                         Send test window (no hardware)
                     </button>
                 </div>
+
+                {{-- Auto-sync: hands-off reconnect while this tab is open --}}
+                <label class="mt-3 flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 cursor-pointer">
+                    <input type="checkbox" x-model="autoSync" @change="toggleAutoSync()"
+                           class="h-4 w-4 shrink-0 rounded accent-emerald-500">
+                    <span class="min-w-0">
+                        <span class="block text-sm font-medium text-gray-200">Auto-sync</span>
+                        <span class="block text-[11px] leading-snug text-gray-500" x-text="autoSync
+                            ? 'Reconnects on its own while this tab stays open — keep it pinned and the band syncs whenever it\'s in range.'
+                            : 'Off — connect manually with the button above.'"></span>
+                    </span>
+                    <span class="ml-auto shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full"
+                          :class="autoSync ? 'bg-emerald-500/15 text-emerald-300' : 'bg-gray-500/15 text-gray-500'"
+                          x-text="autoSync ? 'On' : 'Off'"></span>
+                </label>
                 <p x-show="!btSupported" x-cloak class="mt-3 text-xs text-amber-400/90">
                     This browser has no Web Bluetooth. <span class="text-amber-200">On iPhone, open this page in <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener" class="underline">Bluefy</a></span> (a free Web-Bluetooth browser) — or use desktop Chrome/Edge or Android Chrome.
                 </p>
@@ -104,7 +119,7 @@
              live bridge is running the latest push (the runtime image has no .git to read a
              SHA from, so this is a hand-incremented tag). --}}
         <p class="text-center text-[11px] text-gray-600">
-            Titan bridge · build <span class="font-mono text-gray-500">v5 · relative-ingest-url</span>
+            Titan bridge · build <span class="font-mono text-gray-500">v6 · auto-sync</span>
         </p>
     </div>
 
@@ -123,6 +138,15 @@
                 _device: null, _rx: '', _wave: [], waveHasData: false,
                 _samples: [], _trailTimer: null, WINDOW_MS: 120000,
                 log: [],
+                // ---- auto-sync ----
+                // Keeps the band connected with zero clicks while this tab is open: reconnects
+                // on load, on an unexpected drop (band back in range), and when the tab refocuses.
+                // (True background sync — phone in pocket, tab closed — isn't possible with Web
+                // Bluetooth; that needs a native app.)
+                autoSync: true,
+                _userDisconnected: false,   // user hit Disconnect → suppress auto-reconnect until they reconnect
+                _reconnectTimer: null,
+                _reconnecting: false,
 
                 get hasCreds() { return this.deviceId.trim().length > 4 && this.secret.trim().length >= 32; },
 
@@ -135,10 +159,20 @@
                         this.deviceId = localStorage.getItem('titan.bangle.deviceId') || '';
                         this.secret = localStorage.getItem('titan.bangle.secret') || '';
                     }
+                    const pref = localStorage.getItem('titan.bangle.autoSync');
+                    if (pref !== null) this.autoSync = pref === '1';
                     this._initWave();
-                    // Resume streaming after a page reload without making the user re-pick the
-                    // device in the chooser (Web Bluetooth drops the link on every refresh).
-                    this._reconnectKnown();
+                    // Auto-sync: connect on load with no chooser/gesture (Web Bluetooth drops the
+                    // link on every refresh, but Chrome remembers granted devices). If the band
+                    // isn't in range yet it keeps retrying.
+                    this._scheduleReconnect(300);
+                    // Reconnect when the user comes back to this tab (mobile especially suspends
+                    // BLE on a backgrounded tab).
+                    document.addEventListener('visibilitychange', () => {
+                        if (!document.hidden && this.autoSync && !this.connected && !this._userDisconnected) {
+                            this._scheduleReconnect(400);
+                        }
+                    });
                 },
                 saveCreds() {
                     localStorage.setItem('titan.bangle.deviceId', this.deviceId.trim());
@@ -173,6 +207,8 @@
                     await tx.startNotifications();
                     tx.addEventListener('characteristicvaluechanged', (e) => this._onBytes(e.target.value));
                     this.connected = true;
+                    this._userDisconnected = false;
+                    clearTimeout(this._reconnectTimer);
                     this.statusLabel = 'Streaming · ' + (this._device.name || 'Bangle');
                     this._log('ok', 'Connected to ' + (this._device.name || 'Bangle.js'));
                     // Finalize a live workout once its GPS frames stop: T1 keeps the device
@@ -200,18 +236,55 @@
                         this.statusLabel = 'Disconnected';   // out of range / asleep — user can tap Connect
                     }
                 },
+                // ---- auto-sync engine ----
+                // Try to (re)attach to the already-granted band, and keep retrying on a timer
+                // while auto-sync is on and the user hasn't manually disconnected. This is what
+                // makes the band "just sync" whenever it's in range of this open tab.
+                _scheduleReconnect(delay) {
+                    if (!this.autoSync || this._userDisconnected || this.connected) return;
+                    clearTimeout(this._reconnectTimer);
+                    this._reconnectTimer = setTimeout(() => this._autoReconnect(), delay || 5000);
+                },
+                async _autoReconnect() {
+                    if (!this.autoSync || this._userDisconnected || this.connected || this._reconnecting) return;
+                    this._reconnecting = true;
+                    try { await this._reconnectKnown(); } catch (e) {}
+                    this._reconnecting = false;
+                    // Still not connected (band out of range / asleep / not paired yet)? keep trying.
+                    if (!this.connected && this.autoSync && !this._userDisconnected) {
+                        this.statusLabel = 'Auto-sync · waiting for band…';
+                        this._scheduleReconnect(6000);
+                    }
+                },
+                toggleAutoSync() {
+                    localStorage.setItem('titan.bangle.autoSync', this.autoSync ? '1' : '0');
+                    if (this.autoSync) { this._userDisconnected = false; this._scheduleReconnect(200); }
+                    else { clearTimeout(this._reconnectTimer); if (!this.connected) this.statusLabel = 'Disconnected'; }
+                },
                 disconnect() {
+                    this._userDisconnected = true;           // suppress auto-reconnect until the user reconnects
+                    clearTimeout(this._reconnectTimer);
                     try { this._device && this._device.gatt.connected && this._device.gatt.disconnect(); } catch (e) {}
                     this._onDrop();
                 },
                 _onDrop() {
-                    this.connected = false; this.statusLabel = 'Disconnected';
+                    this.connected = false;
                     clearInterval(this._waTimer);
                     clearTimeout(this._woTrail);
                     this._flushWindow(); // ship whatever PPG samples are accumulated
                     const win = this._wa && this._wa.flush(); // ship any in-progress workout
                     if (win) this._ship(win);
-                    this._log('info', 'Disconnected');
+                    // Auto-sync: an UNEXPECTED drop (band walked out of range, tab slept) → keep
+                    // trying to get it back. A user-initiated Disconnect set _userDisconnected, so
+                    // that path stays down until they reconnect.
+                    if (this.autoSync && !this._userDisconnected) {
+                        this.statusLabel = 'Auto-sync · reconnecting…';
+                        this._log('info', 'Link dropped — auto-reconnecting');
+                        this._scheduleReconnect(3000);
+                    } else {
+                        this.statusLabel = 'Disconnected';
+                        this._log('info', 'Disconnected');
+                    }
                 },
 
                 // The firmware sends newline-delimited frames over NUS:
