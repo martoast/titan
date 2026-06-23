@@ -129,6 +129,9 @@
                         this.secret = localStorage.getItem('titan.bangle.secret') || '';
                     }
                     this._initWave();
+                    // Resume streaming after a page reload without making the user re-pick the
+                    // device in the chooser (Web Bluetooth drops the link on every refresh).
+                    this._reconnectKnown();
                 },
                 saveCreds() {
                     localStorage.setItem('titan.bangle.deviceId', this.deviceId.trim());
@@ -140,30 +143,54 @@
                     if (!this.btSupported) return this._log('err', 'Web Bluetooth unavailable in this browser');
                     try {
                         this.statusLabel = 'Requesting device…';
-                        this._device = await navigator.bluetooth.requestDevice({
+                        // requestDevice() needs a user gesture (this click); it shows the chooser.
+                        const device = await navigator.bluetooth.requestDevice({
                             filters: [{ namePrefix: 'Bangle' }],
                             optionalServices: [NUS_SERVICE],
                         });
-                        this._device.addEventListener('gattserverdisconnected', () => this._onDrop());
-                        this.statusLabel = 'Connecting…';
-                        const server = await this._device.gatt.connect();
-                        const svc = await server.getPrimaryService(NUS_SERVICE);
-                        const tx = await svc.getCharacteristic(NUS_TX);
-                        await tx.startNotifications();
-                        tx.addEventListener('characteristicvaluechanged', (e) => this._onBytes(e.target.value));
-                        this.connected = true;
-                        this.statusLabel = 'Streaming · ' + (this._device.name || 'Bangle');
-                        this._log('ok', 'Connected to ' + (this._device.name || 'Bangle.js'));
-                        // Finalize a live workout once its GPS frames stop: T1 keeps the device
-                        // clock advancing, so the assembler sees the end-gap and emits the session.
-                        clearInterval(this._waTimer);
-                        this._waTimer = setInterval(() => {
-                            const win = this._wa && this._wa.tick(this._maxDeviceT);
-                            if (win) this._ship(win);
-                        }, 5000);
+                        await this._attach(device);
                     } catch (err) {
                         this.statusLabel = 'Disconnected';
                         this._log('err', 'Connect failed: ' + (err.message || err));
+                    }
+                },
+                // Wire up a chosen device's GATT/NUS. Shared by manual connect() and the
+                // silent reconnect on load so both paths stay identical.
+                async _attach(device) {
+                    this._device = device;
+                    this._device.addEventListener('gattserverdisconnected', () => this._onDrop());
+                    this.statusLabel = 'Connecting…';
+                    const server = await this._device.gatt.connect();
+                    const svc = await server.getPrimaryService(NUS_SERVICE);
+                    const tx = await svc.getCharacteristic(NUS_TX);
+                    await tx.startNotifications();
+                    tx.addEventListener('characteristicvaluechanged', (e) => this._onBytes(e.target.value));
+                    this.connected = true;
+                    this.statusLabel = 'Streaming · ' + (this._device.name || 'Bangle');
+                    this._log('ok', 'Connected to ' + (this._device.name || 'Bangle.js'));
+                    // Finalize a live workout once its GPS frames stop: T1 keeps the device
+                    // clock advancing, so the assembler sees the end-gap and emits the session.
+                    clearInterval(this._waTimer);
+                    this._waTimer = setInterval(() => {
+                        const win = this._wa && this._wa.tick(this._maxDeviceT);
+                        if (win) this._ship(win);
+                    }, 5000);
+                },
+                // A Web Bluetooth link is bound to the page session, so a refresh drops it.
+                // Chrome remembers granted devices, though — so on load we silently re-attach
+                // to a previously-authorized Bangle (no chooser, no user gesture needed for
+                // gatt.connect on an already-permitted device). Stays quiet if the API is
+                // unavailable, nothing's been paired, or the watch is out of range/asleep.
+                async _reconnectKnown() {
+                    if (!this.btSupported || !navigator.bluetooth.getDevices) return;
+                    try {
+                        const known = await navigator.bluetooth.getDevices();
+                        const dev = known.find((d) => (d.name || '').indexOf('Bangle') === 0);
+                        if (!dev) return;
+                        this.statusLabel = 'Reconnecting…';
+                        await this._attach(dev);
+                    } catch (err) {
+                        this.statusLabel = 'Disconnected';   // out of range / asleep — user can tap Connect
                     }
                 },
                 disconnect() {
