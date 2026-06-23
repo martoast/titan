@@ -36,7 +36,21 @@ Full plan in `00-overview.md` → `05-protocol-port.md`. Detailed phases + DoD i
 3. **Phase 1 on device: prove background BLE** (the make-or-break) — needs Alex + Apple account.
 4. Then UI phases (coach → dashboards) per `04-roadmap.md`.
 
-## Status
-- ✅ Deep research complete (background BLE, deployment, architecture) — all 3 streams synthesized.
-- ✅ Full plan written (this folder).
-- ⏭️ Next autonomous step: backend Sanctum auth + push-token endpoint + the `Signer` golden vectors.
+## Status (2026-06-23 build session)
+- ✅ Deep research (background BLE, deployment, architecture) — synthesized into this folder.
+- ✅ **TitanCore complete + VERIFIED** (golden vectors, standalone `swift` runs): Signer (HMAC),
+  FrameDecoder (T1–T7), Windowing (ULID + ppg_raw windows), WorkoutAssembler.
+- ✅ **App sync backbone authored** (`ios/Titan/Sources/BandSync/`): BandManager (bg BLE +
+  restoration), FrameRouter (→ both window kinds), IngestClient, SyncQueue.
+- ✅ **Backend complete for the app, tested (371 green):** mobile login/logout/push-token;
+  `auth.any` middleware → device + coach routes serve web AND mobile; `GET /api/me/dashboard`
+  read aggregate (readiness + recovery + sleep + activity).
+
+## ⏭️ Remaining (the bulk needs Xcode; backend bits are agent-doable)
+- [ ] **SwiftUI feature modules** — Coach (SSE), Dashboard, Recovery, Sleep, Workouts, Devices
+  (pairing), Onboarding, Profile. Best authored in Xcode (they compile against the iOS SDK);
+  they consume the verified TitanCore + the API above.
+- [ ] APNs sender in Laravel (`laravel-notification-channels/apn`) + a notification for nudges/
+  briefings/"band synced" → the push_tokens table. (Dependency add.)
+- [ ] App-layer impl details: zlib gzip in IngestClient, GRDB-backed WindowStore for SyncQueue.
+- [ ] Then Xcode project assembly + **Phase 1 on device: prove background BLE** (needs Apple acct).
