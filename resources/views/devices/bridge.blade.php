@@ -17,14 +17,23 @@
             </div>
             <p class="text-sm text-gray-500 mt-1">Pair a <span class="text-gray-300">Bangle.js</span> on the <a href="/devices" class="text-indigo-400 hover:underline">Devices</a> page to get a device ID + one-time secret. They're stored only in this browser.</p>
             <div class="mt-3 grid grid-cols-1 gap-2.5">
+                {{-- These are device-signing credentials, NOT a login. We deliberately avoid a
+                     real password field (and tag every major manager's ignore attr) so browser
+                     password autofill can't dump the user's account login into them. The secret
+                     is masked with CSS text-security instead of type=password. --}}
                 <label class="block">
                     <span class="text-[11px] uppercase tracking-wide text-gray-500">Device ID</span>
-                    <input type="text" x-model="deviceId" @input="saveCreds()" placeholder="bangle_01j…"
+                    <input type="text" inputmode="text" x-model="deviceId" @input="saveCreds()" placeholder="bangle_01j…"
+                           name="titan_device_id" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                           data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"
                            class="mt-1 w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-sm text-gray-100 font-mono focus:border-indigo-500 focus:ring-0">
                 </label>
                 <label class="block">
                     <span class="text-[11px] uppercase tracking-wide text-gray-500">Secret</span>
-                    <input :type="showSecret ? 'text' : 'password'" x-model="secret" @input="saveCreds()" placeholder="64-hex one-time secret"
+                    <input type="text" inputmode="text" x-model="secret" @input="saveCreds()" placeholder="64-hex one-time secret"
+                           :style="showSecret ? '' : '-webkit-text-security: disc; text-security: disc;'"
+                           name="titan_device_secret" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                           data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"
                            class="mt-1 w-full h-11 rounded-xl bg-gray-950 border border-white/10 px-3 text-sm text-gray-100 font-mono focus:border-indigo-500 focus:ring-0">
                     <button type="button" @click="showSecret = !showSecret" class="mt-1 text-[11px] text-gray-500 hover:text-gray-300" x-text="showSecret ? 'hide' : 'show'"></button>
                 </label>
