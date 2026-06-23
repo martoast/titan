@@ -560,6 +560,7 @@ function emitGpsFrame(speedKmh, altM, sats) {
 // ----- BLE connection tracking ----------------------------------------------
 
 function onConnect() {
+  if (state.connected) return;   // idempotent: the NRF event and the poll can both fire
   state.connected = true;
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
@@ -571,6 +572,7 @@ function onConnect() {
 }
 
 function onDisconnect() {
+  if (!state.connected) return;  // idempotent (see onConnect)
   state.connected = false;
   // Back to the overnight path: drop accel to 12.5 Hz (actigraphy + power).
   applyAccelRate();
@@ -687,6 +689,19 @@ Bangle.on("GPS", onGPS);
 Bangle.on("pressure", onPressure);
 NRF.on("connect", onConnect);
 NRF.on("disconnect", onDisconnect);
+
+// Source-of-truth connection poll. Web Bluetooth (notably on macOS) can make the NRF
+// 'disconnect' event fire spuriously while the GATT link is actually still up — which made
+// the watch think no central was listening, so it silently routed every live PPG sample to
+// the flash log instead of streaming it (the stream only appeared as a burst on each
+// reconnect, when flushLog dumped the log). NRF.getSecurityStatus().connected reflects the
+// real link state, so we reconcile against it every second and drive on/offConnect from it.
+// The edge events above stay as the fast path; this just heals their flakiness.
+setInterval(function () {
+  var up = NRF.getSecurityStatus().connected;
+  if (up === state.connected) return;
+  if (up) onConnect(); else onDisconnect();
+}, 1000);
 
 // Hardware button toggles capture.
 // Short press toggles capture; LONG press (>1.2 s) starts/stops a manual gym workout — lifting
