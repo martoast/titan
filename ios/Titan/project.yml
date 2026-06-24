@@ -31,6 +31,8 @@ targets:
         UIBackgroundModes:
           - bluetooth-central
         NSBluetoothAlwaysUsageDescription: "Titan connects to your recovery band to sync your biosignals in the background."
+        NSCameraUsageDescription: "Titan uses your camera to snap meals for instant macros and to capture progress photos."
+        NSPhotoLibraryUsageDescription: "Titan lets you choose meal and progress photos from your library."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     settings:

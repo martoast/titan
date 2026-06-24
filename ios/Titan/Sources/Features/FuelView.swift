@@ -1,0 +1,600 @@
+import SwiftUI
+import PhotosUI
+
+/// The "Fuel" tab — nutrition (camera-first macros) + progress photos, both wired to the coach
+/// via the same Meal / ProgressPhoto rows its tools read. Two segments under one tab so macros stay
+/// front-and-center without crowding the tab bar.
+struct FuelView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var segment: Segment = .macros
+    enum Segment: String, CaseIterable { case macros = "Macros", progress = "Progress" }
+
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            Picker("", selection: $segment) {
+                ForEach(Segment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.top, Theme.Space.xs)
+
+            if segment == .macros { MacrosSection() } else { ProgressSection() }
+            Color.clear.frame(height: 8)
+        }
+        .animation(Theme.Motion.snappy, value: segment)
+        .titanScreen("Fuel", glow: segment == .macros ? Theme.Palette.amber : Theme.Palette.violet)
+        .sheet(item: $model.scanResult) { ScanResultSheet(result: $0) }
+    }
+}
+
+// MARK: - Macros
+
+private struct MacrosSection: View {
+    @EnvironmentObject var model: AppModel
+    @State private var editing: Meal?
+
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            // Hero: snap a meal.
+            PhotoSourceButton(onImage: { data in Task { await model.scanMeal(data) } }) {
+                GlassCard(padding: Theme.Space.l) {
+                    HStack(spacing: Theme.Space.m) {
+                        ZStack {
+                            Circle().fill(Theme.Palette.amber.opacity(0.16)).frame(width: 52, height: 52)
+                            Image(systemName: model.scanning ? "sparkles" : "camera.fill")
+                                .font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.Palette.amber)
+                                .symbolEffect(.pulse, options: model.scanning ? .repeating : .nonRepeating)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.scanning ? "Reading your plate…" : "Snap a meal")
+                                .font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                            Text(model.scanning ? "Estimating macros with AI" : "Photo → instant macros, logged for your coach")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer()
+                        if model.scanning { ProgressView().tint(Theme.Palette.amber) }
+                        else { Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint) }
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+            .disabled(model.scanning)
+
+            macrosCard
+            mealsList
+        }
+        .task { await model.loadNutrition() }
+        .sheet(item: $editing) { EditMealSheet(meal: $0) }
+    }
+
+    @ViewBuilder private var macrosCard: some View {
+        if let m = model.nutrition?.macros {
+            GlassCard {
+                VStack(spacing: Theme.Space.m) {
+                    SectionHeader(title: m.title ?? "Today's fuel", trailing: m.footer)
+                    MacroRing(line: m.calories, label: "Calories", unit: "kcal", color: Theme.Palette.cyan, size: 132)
+                    HStack(spacing: Theme.Space.m) {
+                        MacroRing(line: m.protein, label: "Protein", unit: "g", color: Theme.Palette.mint, size: 86)
+                        MacroRing(line: m.carbs, label: "Carbs", unit: "g", color: Theme.Palette.amber, size: 86)
+                        MacroRing(line: m.fat, label: "Fat", unit: "g", color: Theme.Palette.pink, size: 86)
+                    }
+                }
+            }
+        } else {
+            GlassCard { HStack { Text("Loading today's fuel…").font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim); Spacer(); ProgressView().tint(Theme.Palette.textFaint) } }
+        }
+    }
+
+    @ViewBuilder private var mealsList: some View {
+        let meals = model.nutrition?.meals ?? []
+        if meals.isEmpty {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 4) {
+                    SectionHeader(title: "Today's meals")
+                    Text("Nothing logged yet. Snap your first meal — the macros land here and your coach sees them.")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+        } else {
+            GlassCard {
+                VStack(spacing: 0) {
+                    SectionHeader(title: "Today's meals", trailing: "\(meals.count)")
+                    ForEach(meals) { meal in
+                        Button { Haptic.tap(); editing = meal } label: { mealRow(meal) }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button { Haptic.tap(); editing = meal } label: { Label("Edit", systemImage: "slider.horizontal.3") }
+                                Button(role: .destructive) { Task { await model.deleteMeal(meal.id) } } label: { Label("Delete", systemImage: "trash") }
+                            }
+                        if meal.id != meals.last?.id { Divider().overlay(Theme.Palette.cardStroke) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func mealRow(_ meal: Meal) -> some View {
+        HStack(spacing: Theme.Space.m) {
+            RemoteImage(url: meal.photo_url)
+                .frame(width: 50, height: 50).clipShape(RoundedRectangle(cornerRadius: 11))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(meal.name ?? "Meal").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
+                Text("\(meal.calories) kcal · \(Int(meal.protein_g))P · \(Int(meal.carbs_g))C · \(Int(meal.fat_g))F")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+            Spacer()
+            Text(mealTime(meal.eaten_at)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+        }
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Progress photos
+
+private struct ProgressSection: View {
+    @EnvironmentObject var model: AppModel
+    @State private var pendingImage: Data?
+    @State private var viewing: ProgressPhoto?
+
+    private let cols = [GridItem(.flexible(), spacing: Theme.Space.s), GridItem(.flexible(), spacing: Theme.Space.s)]
+
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            PhotoSourceButton(onImage: { pendingImage = $0 }) {
+                GlassCard(padding: Theme.Space.l) {
+                    HStack(spacing: Theme.Space.m) {
+                        ZStack {
+                            Circle().fill(Theme.Palette.violet.opacity(0.16)).frame(width: 52, height: 52)
+                            Image(systemName: "camera.viewfinder").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.Palette.violet)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Add a progress photo").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                            Text("Private. Front, side & back over time.").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer()
+                        if model.progressBusy { ProgressView().tint(Theme.Palette.violet) }
+                        else { Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint) }
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+
+            compareCard
+            gallery
+        }
+        .task { await model.loadProgress() }
+        .sheet(item: Binding(get: { pendingImage.map { ImageData(data: $0) } }, set: { if $0 == nil { pendingImage = nil } })) { wrap in
+            AddProgressSheet(imageData: wrap.data)
+        }
+        .sheet(item: $viewing) { PhotoViewerSheet(photo: $0) }
+    }
+
+    @ViewBuilder private var compareCard: some View {
+        let photos = model.progressPhotos
+        if photos.count >= 2, let newest = photos.first, let oldest = photos.last {
+            GlassCard {
+                VStack(spacing: Theme.Space.s) {
+                    SectionHeader(title: "Then → now")
+                    HStack(spacing: Theme.Space.s) {
+                        comparePane(oldest, tag: "First")
+                        comparePane(newest, tag: "Latest")
+                    }
+                }
+            }
+        }
+    }
+
+    private func comparePane(_ p: ProgressPhoto, tag: String) -> some View {
+        VStack(spacing: 6) {
+            RemoteImage(url: p.photo_url)
+                .frame(height: 200).frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+            Text("\(tag) · \(photoDate(p.taken_at))").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+        }
+    }
+
+    @ViewBuilder private var gallery: some View {
+        let photos = model.progressPhotos
+        if photos.isEmpty {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 4) {
+                    SectionHeader(title: "Gallery")
+                    Text("No photos yet. Snap your first one — same lighting and pose each time makes the comparison honest. Your coach can render your dream physique from it.")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+        } else {
+            LazyVGrid(columns: cols, spacing: Theme.Space.s) {
+                ForEach(photos) { p in
+                    Button { Haptic.tap(); viewing = p } label: {
+                        RemoteImage(url: p.photo_url)
+                            .aspectRatio(0.8, contentMode: .fill)
+                            .frame(maxWidth: .infinity).clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                            .overlay(alignment: .bottomLeading) {
+                                Text(photoDate(p.taken_at)).font(Theme.Font.micro).foregroundStyle(.white)
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(.black.opacity(0.5), in: Capsule()).padding(8)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive) { Task { await model.deleteProgress(p.id) } } label: { Label("Delete", systemImage: "trash") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Macro ring
+
+private struct MacroRing: View {
+    let line: MacroLine
+    let label: String
+    let unit: String
+    let color: Color
+    var size: CGFloat = 86
+    @State private var progress: CGFloat = 0
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                Circle().stroke(Color.white.opacity(0.07), lineWidth: size * 0.085)
+                Circle().trim(from: 0, to: progress)
+                    .stroke(Theme.Grad.ring(color), style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round))
+                    .rotationEffect(.degrees(-90)).shadow(color: color.opacity(0.5), radius: 6)
+                VStack(spacing: 0) {
+                    Text("\(line.value)").font(Theme.Font.num(size * 0.26)).foregroundStyle(.white).monospacedDigit()
+                    Text("/\(line.target)").font(Theme.Font.num(size * 0.12)).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+            .frame(width: size, height: size)
+            Text(label.uppercased()).font(Theme.Font.micro).tracking(0.6).foregroundStyle(Theme.Palette.textDim)
+        }
+        .frame(maxWidth: .infinity)
+        .onAppear { withAnimation(Theme.Motion.ring) { progress = CGFloat(line.fraction) } }
+        .onChange(of: line) { _, l in withAnimation(Theme.Motion.ring) { progress = CGFloat(l.fraction) } }
+    }
+}
+
+// MARK: - Scan result sheet
+
+private struct ScanResultSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let result: MealScanResult
+    @State private var editing: Meal?
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: Theme.Space.m) {
+                        if let url = result.image_url {
+                            RemoteImage(url: url).frame(height: 200).frame(maxWidth: .infinity)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
+                        }
+                        if let meal = result.meal {
+                            GlassCard {
+                                VStack(spacing: Theme.Space.m) {
+                                    HStack {
+                                        Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.Palette.mint)
+                                        Text("Logged").font(Theme.Font.label).foregroundStyle(Theme.Palette.mint)
+                                        Spacer()
+                                    }
+                                    Text(meal.name ?? "Meal").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    HStack(spacing: Theme.Space.m) {
+                                        macroStat("\(meal.calories)", "kcal", Theme.Palette.cyan)
+                                        macroStat("\(Int(meal.protein_g))", "protein", Theme.Palette.mint)
+                                        macroStat("\(Int(meal.carbs_g))", "carbs", Theme.Palette.amber)
+                                        macroStat("\(Int(meal.fat_g))", "fat", Theme.Palette.pink)
+                                    }
+                                    Text("Estimated by AI from your photo. Tap Adjust if it's off.")
+                                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                            Button { editing = meal } label: {
+                                Text("Adjust macros").font(Theme.Font.body.weight(.semibold))
+                                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                    .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                                    .foregroundStyle(Theme.Palette.text)
+                            }
+                        } else {
+                            GlassCard {
+                                VStack(spacing: Theme.Space.s) {
+                                    Image(systemName: result.kind == "physique" ? "figure.stand" : "info.circle")
+                                        .font(.system(size: 30)).foregroundStyle(Theme.Palette.violet)
+                                    Text(result.message ?? "Got it.").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                        .multilineTextAlignment(.center)
+                                }.frame(maxWidth: .infinity)
+                            }
+                        }
+                    }.padding(Theme.Space.m)
+                }
+            }
+            .navigationTitle(result.kind == "meal" ? "Meal logged" : "Scanned")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+        .sheet(item: $editing) { EditMealSheet(meal: $0) }
+    }
+
+    private func macroStat(_ v: String, _ l: String, _ c: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
+            Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+        }.frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Edit meal
+
+private struct EditMealSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let meal: Meal
+    @State private var name: String
+    @State private var calories: String
+    @State private var protein: String
+    @State private var carbs: String
+    @State private var fat: String
+
+    init(meal: Meal) {
+        self.meal = meal
+        _name = State(initialValue: meal.name ?? "")
+        _calories = State(initialValue: "\(meal.calories)")
+        _protein = State(initialValue: "\(Int(meal.protein_g))")
+        _carbs = State(initialValue: "\(Int(meal.carbs_g))")
+        _fat = State(initialValue: "\(Int(meal.fat_g))")
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: Theme.Space.m) {
+                        field("Name", text: $name, keyboard: .default)
+                        field("Calories (kcal)", text: $calories, keyboard: .numberPad)
+                        field("Protein (g)", text: $protein, keyboard: .numberPad)
+                        field("Carbs (g)", text: $carbs, keyboard: .numberPad)
+                        field("Fat (g)", text: $fat, keyboard: .numberPad)
+
+                        Button {
+                            Haptic.success()
+                            Task {
+                                await model.updateMeal(meal.id, name: name,
+                                                       calories: Int(calories) ?? meal.calories,
+                                                       protein: Double(protein) ?? meal.protein_g,
+                                                       carbs: Double(carbs) ?? meal.carbs_g,
+                                                       fat: Double(fat) ?? meal.fat_g)
+                                dismiss()
+                            }
+                        } label: {
+                            Text("Save").font(Theme.Font.body.weight(.semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                .foregroundStyle(.white)
+                        }
+
+                        Button(role: .destructive) {
+                            Haptic.warning(); Task { await model.deleteMeal(meal.id); dismiss() }
+                        } label: {
+                            Text("Delete meal").font(Theme.Font.micro).foregroundStyle(Theme.Palette.pink)
+                        }.frame(maxWidth: .infinity)
+                    }.padding(Theme.Space.m)
+                }
+            }
+            .navigationTitle("Adjust meal").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+    }
+
+    private func field(_ label: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            TextField("", text: text)
+                .font(Theme.Font.body).foregroundStyle(Theme.Palette.text).keyboardType(keyboard)
+                .padding(12).background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+        }
+    }
+}
+
+// MARK: - Add progress photo
+
+private struct AddProgressSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let imageData: Data
+    @State private var pose: String?
+    @State private var weight: String = ""
+    @State private var notes: String = ""
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: Theme.Space.m) {
+                        if let ui = UIImage(data: imageData) {
+                            Image(uiImage: ui).resizable().scaledToFill()
+                                .frame(height: 240).frame(maxWidth: .infinity).clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("POSE").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            Picker("", selection: $pose) {
+                                Text("—").tag(String?.none)
+                                Text("Front").tag(String?.some("front"))
+                                Text("Side").tag(String?.some("side"))
+                                Text("Back").tag(String?.some("back"))
+                            }.pickerStyle(.segmented)
+                        }
+                        labeledField("Weight (kg, optional)", text: $weight, keyboard: .decimalPad)
+                        labeledField("Note (optional)", text: $notes, keyboard: .default)
+
+                        Button {
+                            Haptic.success()
+                            Task {
+                                await model.uploadProgress(imageData, pose: pose,
+                                                           weightKg: Double(weight.replacingOccurrences(of: ",", with: ".")),
+                                                           notes: notes)
+                                dismiss()
+                            }
+                        } label: {
+                            Text(model.progressBusy ? "Saving…" : "Save photo").font(Theme.Font.body.weight(.semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                .foregroundStyle(.white)
+                        }.disabled(model.progressBusy)
+                    }.padding(Theme.Space.m)
+                }
+            }
+            .navigationTitle("New progress photo").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+    }
+
+    private func labeledField(_ label: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            TextField("", text: text)
+                .font(Theme.Font.body).foregroundStyle(Theme.Palette.text).keyboardType(keyboard)
+                .padding(12).background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+        }
+    }
+}
+
+// MARK: - Full-screen photo viewer
+
+private struct PhotoViewerSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let photo: ProgressPhoto
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                RemoteImage(url: photo.photo_url).scaledToFit()
+            }
+            .navigationTitle(photoDate(photo.taken_at)).navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .destructiveAction) {
+                    Button(role: .destructive) { Task { await model.deleteProgress(photo.id); dismiss() } } label: { Image(systemName: "trash") }
+                }
+            }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+    }
+}
+
+// MARK: - Photo source (camera / library) + remote image
+
+/// A button that offers Take Photo / Choose from Library, returning compressed JPEG Data.
+struct PhotoSourceButton<Label: View>: View {
+    let onImage: (Data) -> Void
+    @ViewBuilder var label: Label
+    @State private var ask = false
+    @State private var showCamera = false
+    @State private var showLibrary = false
+    @State private var item: PhotosPickerItem?
+
+    var body: some View {
+        Button { Haptic.tap(); ask = true } label: { label }
+            .confirmationDialog("Add a photo", isPresented: $ask, titleVisibility: .visible) {
+                Button("Take Photo") { showCamera = true }
+                Button("Choose from Library") { showLibrary = true }
+                Button("Cancel", role: .cancel) {}
+            }
+            .sheet(isPresented: $showCamera) {
+                CameraPicker { ui in if let d = ui.jpegData(compressionQuality: 0.7) { onImage(d) } }
+                    .ignoresSafeArea()
+            }
+            .photosPicker(isPresented: $showLibrary, selection: $item, matching: .images)
+            .onChange(of: item) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    if let d = try? await newItem.loadTransferable(type: Data.self),
+                       let ui = UIImage(data: d), let jpeg = ui.jpegData(compressionQuality: 0.7) {
+                        onImage(jpeg)
+                    }
+                    item = nil
+                }
+            }
+    }
+}
+
+/// UIKit camera capture (falls back to the library on devices without a camera, e.g. the simulator).
+struct CameraPicker: UIViewControllerRepresentable {
+    let onImage: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let p = UIImagePickerController()
+        p.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        p.delegate = context.coordinator
+        return p
+    }
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+        init(_ parent: CameraPicker) { self.parent = parent }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let img = info[.originalImage] as? UIImage { parent.onImage(img) }
+            parent.dismiss()
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
+    }
+}
+
+/// Async network image with themed loading/failure states.
+struct RemoteImage: View {
+    let url: String?
+    var body: some View {
+        AsyncImage(url: url.flatMap { URL(string: $0) }) { phase in
+            switch phase {
+            case .success(let img): img.resizable().scaledToFill()
+            case .empty: ZStack { Theme.Palette.bg2; ProgressView().tint(Theme.Palette.textFaint) }
+            default: ZStack { Theme.Palette.bg2; Image(systemName: "photo").foregroundStyle(Theme.Palette.textFaint) }
+            }
+        }
+    }
+}
+
+/// Identifiable wrapper so captured image Data can drive a `.sheet(item:)`.
+private struct ImageData: Identifiable { let id = UUID(); let data: Data }
+
+// MARK: - Date helpers
+
+private func mealTime(_ iso: String?) -> String {
+    guard let iso else { return "" }
+    let parser = ISO8601DateFormatter()
+    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+    guard let date else { return "" }
+    let f = DateFormatter(); f.dateFormat = "h:mm a"
+    return f.string(from: date)
+}
+
+private func photoDate(_ ymd: String?) -> String {
+    guard let ymd else { return "" }
+    let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"
+    guard let date = inF.date(from: ymd) else { return ymd }
+    let out = DateFormatter(); out.dateFormat = "MMM d"
+    return out.string(from: date)
+}

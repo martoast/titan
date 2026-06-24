@@ -89,6 +89,72 @@ struct ChatMessage: Identifiable, Equatable {
     var streaming: Bool = false
 }
 
+// MARK: - Nutrition (the Fuel tab)
+
+/// `GET /api/me/nutrition` — the macro-ring card + today's logged meals.
+struct NutritionToday: Codable, Equatable {
+    let macros: MacroCard
+    let meals: [Meal]
+}
+
+/// Today's fuel card (mirrors Macros::today): each line is value vs target.
+struct MacroCard: Codable, Equatable {
+    let title: String?
+    let calories: MacroLine
+    let protein: MacroLine
+    let carbs: MacroLine
+    let fat: MacroLine
+    let footer: String?
+}
+struct MacroLine: Codable, Equatable {
+    let value: Int
+    let target: Int
+    var fraction: Double { target > 0 ? min(1, Double(value) / Double(target)) : 0 }
+}
+
+struct Meal: Codable, Identifiable, Equatable {
+    let id: Int
+    let name: String?
+    let eaten_at: String?
+    let calories: Int
+    let protein_g: Double
+    let carbs_g: Double
+    let fat_g: Double
+    let photo_url: String?
+    let source: String?
+}
+
+/// `POST /api/me/nutrition/scan` — photo → AI macros (grounded + logged) + updated card.
+struct MealScanResult: Codable, Identifiable {
+    var id = UUID()
+    let kind: String              // meal | physique | bloodwork | other
+    let meal: Meal?
+    let progress_photo_id: Int?
+    let image_url: String?
+    let message: String?
+    let macros: MacroCard
+    enum CodingKeys: String, CodingKey { case kind, meal, progress_photo_id, image_url, message, macros }
+}
+
+/// `POST/PATCH /api/me/meals` → { meal, macros }
+struct MealMutation: Codable { let meal: Meal; let macros: MacroCard }
+/// `DELETE /api/me/meals/{id}` → { ok, macros }
+struct MacrosOnly: Codable { let ok: Bool?; let macros: MacroCard }
+
+// MARK: - Progress photos
+
+struct ProgressPhotosResponse: Codable { let photos: [ProgressPhoto] }
+struct ProgressPhotoResponse: Codable { let photo: ProgressPhoto }
+
+struct ProgressPhoto: Codable, Identifiable, Equatable {
+    let id: Int
+    let taken_at: String?
+    let pose: String?
+    let weight_kg: Double?
+    let notes: String?
+    let photo_url: String?
+}
+
 enum APIError: LocalizedError {
     case http(Int, String), decoding, unauthorized, transport(String)
     var errorDescription: String? {

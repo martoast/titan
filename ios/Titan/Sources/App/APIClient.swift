@@ -26,6 +26,30 @@ final class APIClient {
         return req
     }
 
+    /// Build a multipart/form-data request (text fields + one image part) for photo uploads.
+    private func multipart(_ path: String, fields: [String: String] = [:],
+                           fileField: String, fileData: Data,
+                           fileName: String = "photo.jpg", mime: String = "image/jpeg") -> URLRequest {
+        let boundary = "TitanBoundary-\(UUID().uuidString)"
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        func line(_ s: String) { body.append(Data(s.utf8)) }
+        for (k, v) in fields {
+            line("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n")
+        }
+        line("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(fileField)\"; filename=\"\(fileName)\"\r\n")
+        line("Content-Type: \(mime)\r\n\r\n")
+        body.append(fileData)
+        line("\r\n--\(boundary)--\r\n")
+        req.httpBody = body
+        return req
+    }
+
     private func send<T: Decodable>(_ req: URLRequest, as type: T.Type) async throws -> T {
         do {
             let (data, resp) = try await session.data(for: req)
@@ -62,6 +86,47 @@ final class APIClient {
     func pairDevice(source: String = "bangle") async throws -> PairResponse {
         try await send(request("api/devices/pair", method: "POST", json: ["source": source]),
                        as: PairResponse.self)
+    }
+
+    // MARK: nutrition (Fuel tab)
+
+    func nutritionToday() async throws -> NutritionToday {
+        try await send(request("api/me/nutrition"), as: NutritionToday.self)
+    }
+
+    func scanMeal(_ imageData: Data, caption: String?) async throws -> MealScanResult {
+        var fields: [String: String] = [:]
+        if let caption, !caption.isEmpty { fields["caption"] = caption }
+        return try await send(multipart("api/me/nutrition/scan", fields: fields, fileField: "photo", fileData: imageData),
+                              as: MealScanResult.self)
+    }
+
+    func updateMeal(_ id: Int, fields: [String: Any]) async throws -> MealMutation {
+        try await send(request("api/me/meals/\(id)", method: "PATCH", json: fields), as: MealMutation.self)
+    }
+
+    @discardableResult
+    func deleteMeal(_ id: Int) async throws -> MacrosOnly {
+        try await send(request("api/me/meals/\(id)", method: "DELETE"), as: MacrosOnly.self)
+    }
+
+    // MARK: progress photos
+
+    func progressPhotos() async throws -> [ProgressPhoto] {
+        try await send(request("api/me/progress-photos"), as: ProgressPhotosResponse.self).photos
+    }
+
+    func uploadProgressPhoto(_ imageData: Data, pose: String?, weightKg: Double?, notes: String?) async throws -> ProgressPhoto {
+        var fields: [String: String] = [:]
+        if let pose { fields["pose"] = pose }
+        if let weightKg { fields["weight_kg"] = String(weightKg) }
+        if let notes, !notes.isEmpty { fields["notes"] = notes }
+        return try await send(multipart("api/me/progress-photos", fields: fields, fileField: "photo", fileData: imageData),
+                              as: ProgressPhotoResponse.self).photo
+    }
+
+    func deleteProgressPhoto(_ id: Int) async {
+        _ = try? await session.data(for: request("api/me/progress-photos/\(id)", method: "DELETE"))
     }
 
     func registerPush(token apns: String) async {

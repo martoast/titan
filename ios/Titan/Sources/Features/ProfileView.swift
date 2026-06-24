@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject var model: AppModel
     @State private var confirmLogout = false
+    @State private var showBand = false
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -20,17 +21,22 @@ struct ProfileView: View {
                 }
             }
 
-            GlassCard {
-                HStack {
-                    Label("Band", systemImage: "applewatch").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
-                    Spacer()
-                    HStack(spacing: 7) {
-                        PulseDot(on: model.bandConnected)
-                        Text(model.bandConnected ? "Connected" : (model.isBandPaired ? "Paired" : "Not paired"))
-                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Button { Haptic.tap(); showBand = true } label: {
+                GlassCard {
+                    HStack {
+                        Label("Your Titan band", systemImage: "applewatch").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                        Spacer()
+                        HStack(spacing: 7) {
+                            PulseDot(on: model.bandConnected)
+                            Text(model.bandConnected ? "Connected" : (model.isBandPaired ? "Paired" : "Not paired"))
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+                        }
                     }
                 }
             }
+            .buttonStyle(PressCard())
+            .sheet(isPresented: $showBand) { DevicesView() }
 
             GlassCard {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {

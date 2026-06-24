@@ -46,6 +46,13 @@ final class AppModel: ObservableObject {
     @Published var error: String?
     @Published var loading = false
 
+    // Fuel (nutrition + progress)
+    @Published var nutrition: NutritionToday?
+    @Published var scanResult: MealScanResult?      // drives the post-scan result sheet
+    @Published var scanning = false
+    @Published var progressPhotos: [ProgressPhoto] = []
+    @Published var progressBusy = false
+
     let api: APIClient
 
     private var band: BandManager?
@@ -162,6 +169,54 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.pairCandidates = list }
         }
         self.syncQueue = queue; self.router = router; self.band = band
+    }
+
+    // MARK: nutrition + progress (Fuel tab)
+
+    func loadNutrition() async {
+        do { nutrition = try await api.nutritionToday() }
+        catch { if case APIError.unauthorized = error { await logout() } }
+    }
+
+    /// Snap a meal → AI macros (grounded + logged) → show the result + refresh the rings.
+    func scanMeal(_ imageData: Data, caption: String? = nil) async {
+        scanning = true; defer { scanning = false }
+        do {
+            scanResult = try await api.scanMeal(imageData, caption: caption)
+            await loadNutrition()
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func updateMeal(_ id: Int, name: String, calories: Int, protein: Double, carbs: Double, fat: Double) async {
+        do {
+            _ = try await api.updateMeal(id, fields: [
+                "name": name, "calories": calories, "protein_g": protein, "carbs_g": carbs, "fat_g": fat,
+            ])
+            await loadNutrition()
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func deleteMeal(_ id: Int) async {
+        do { try await api.deleteMeal(id); await loadNutrition() }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func loadProgress() async {
+        do { progressPhotos = try await api.progressPhotos() }
+        catch { if case APIError.unauthorized = error { await logout() } }
+    }
+
+    func uploadProgress(_ imageData: Data, pose: String?, weightKg: Double?, notes: String?) async {
+        progressBusy = true; defer { progressBusy = false }
+        do {
+            let photo = try await api.uploadProgressPhoto(imageData, pose: pose, weightKg: weightKg, notes: notes)
+            progressPhotos.insert(photo, at: 0)
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func deleteProgress(_ id: Int) async {
+        await api.deleteProgressPhoto(id)
+        progressPhotos.removeAll { $0.id == id }
     }
 
     private func deviceName() -> String {

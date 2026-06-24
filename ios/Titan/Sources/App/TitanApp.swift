@@ -25,8 +25,8 @@ struct RootView: View {
                 TabView {
                     CoachView().tabItem { Label("Coach", systemImage: "bubble.left.and.text.bubble.right.fill") }
                     DashboardView().tabItem { Label("Today", systemImage: "circle.hexagongrid.fill") }
+                    FuelView().tabItem { Label("Fuel", systemImage: "fork.knife") }
                     WorkoutsView().tabItem { Label("Train", systemImage: "figure.run") }
-                    DevicesView().tabItem { Label("Band", systemImage: "applewatch.radiowaves.left.and.right") }
                     ProfileView().tabItem { Label("You", systemImage: "person.fill") }
                 }
                 .transition(.opacity)
