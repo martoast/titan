@@ -22,9 +22,11 @@ public actor SyncQueue {
     private let monitor = NWPathMonitor()
     private var online = true
     private var draining = false
+    private let onUploaded: (@Sendable (Int) -> Void)?   // (cumulative windows uploaded) for the UI
+    private var uploadedCount = 0
 
-    public init(store: WindowStore, client: IngestClient) {
-        self.store = store; self.client = client
+    public init(store: WindowStore, client: IngestClient, onUploaded: (@Sendable (Int) -> Void)? = nil) {
+        self.store = store; self.client = client; self.onUploaded = onUploaded
         monitor.pathUpdateHandler = { [weak self] path in
             Task { await self?.setOnline(path.status == .satisfied) }
         }
@@ -48,6 +50,8 @@ public actor SyncQueue {
             switch await client.ship(window: item.window) {
             case .accepted, .duplicate:
                 try? store.remove(id: item.id)
+                uploadedCount += 1
+                onUploaded?(uploadedCount)
             case .rejected(let status, _):
                 // 4xx (except 429) = won't ever succeed → drop so the queue can't wedge.
                 if status == 429 { try? store.bumpAttempt(id: item.id); return }

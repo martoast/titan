@@ -10,6 +10,22 @@ struct DevicesView: View {
         VStack(spacing: Theme.Space.m) {
             hero.padding(.top, Theme.Space.s)
 
+            if model.bandConnected {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: "Live signal", trailing: model.liveHz > 0 ? "\(model.liveHz) Hz" : nil)
+                        WaveformView(samples: model.waveform)
+                        HStack(spacing: Theme.Space.m) {
+                            liveStat("\(model.syncedSamples)", "samples", Theme.Palette.cyan)
+                            divider
+                            liveStat("\(model.windowsUploaded)", "uploaded", Theme.Palette.mint)
+                            divider
+                            liveStat(model.liveBpm.map { "\($0)" } ?? "—", "bpm", Theme.Palette.pink)
+                        }
+                    }
+                }
+            }
+
             if !model.isBandPaired {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
@@ -78,6 +94,15 @@ struct DevicesView: View {
     }
     private var statusSub: String {
         model.bandConnected ? "Syncing in the background." : (model.isBandPaired ? "Reconnects automatically when it's near." : "Pair your Titan band to begin.")
+    }
+
+    private var divider: some View { Rectangle().fill(Theme.Palette.cardStroke).frame(width: 1, height: 30) }
+
+    private func liveStat(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(value).font(Theme.Font.num(20)).foregroundStyle(color).monospacedDigit().contentTransition(.numericText())
+            Text(label.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+        }.frame(maxWidth: .infinity)
     }
 
     private func feature(_ icon: String, _ c: Color, _ title: String, _ sub: String) -> some View {

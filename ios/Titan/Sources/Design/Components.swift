@@ -174,6 +174,34 @@ struct Shimmer: View {
     }
 }
 
+// MARK: - Live PPG waveform (auto-scaled, glowing)
+struct WaveformView: View {
+    let samples: [Double]
+    var color: Color = Theme.Palette.cyan
+    var body: some View {
+        GeometryReader { geo in
+            if samples.count > 1 {
+                let lo = samples.min() ?? 0, hi = samples.max() ?? 1
+                let range = max(1, hi - lo)
+                Path { p in
+                    for (i, v) in samples.enumerated() {
+                        let x = geo.size.width * CGFloat(i) / CGFloat(samples.count - 1)
+                        let y = geo.size.height * (1 - CGFloat((v - lo) / range)) * 0.9 + geo.size.height * 0.05
+                        i == 0 ? p.move(to: CGPoint(x: x, y: y)) : p.addLine(to: CGPoint(x: x, y: y))
+                    }
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .shadow(color: color.opacity(0.6), radius: 5)
+            } else {
+                Text("Waiting for signal…")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(height: 84)
+    }
+}
+
 func minToHrs(_ m: Int?) -> String {
     guard let m, m > 0 else { return "—" }
     let h = m / 60, mm = m % 60

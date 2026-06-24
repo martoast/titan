@@ -36,6 +36,10 @@ final class AppModel: ObservableObject {
     @Published var hrvTrend: [Double] = []
     @Published var bandConnected = false
     @Published var liveBpm: Int?
+    @Published var syncedSamples = 0       // cumulative PPG samples received this session
+    @Published var windowsUploaded = 0     // windows confirmed by the server
+    @Published var liveHz = 0
+    @Published var waveform: [Double] = []  // recent PPG for the live trace
     @Published var error: String?
     @Published var loading = false
 
@@ -108,9 +112,18 @@ final class AppModel: ObservableObject {
               let secret = Keychain.get(Keychain.deviceSecret) else { return }
         let client = IngestClient(baseURL: Self.baseURL, deviceId: id, secret: secret)
         // Durable on-disk queue so the overnight buffer survives an app kill / relaunch.
-        let queue = SyncQueue(store: SqliteWindowStore(), client: client)
+        let queue = SyncQueue(store: SqliteWindowStore(), client: client, onUploaded: { [weak self] count in
+            Task { @MainActor in self?.windowsUploaded = count }
+        })
         let router = FrameRouter(queue: queue)
         router.onBpm = { [weak self] bpm in Task { @MainActor in self?.liveBpm = Int(bpm) } }
+        router.onSamples = { [weak self] total, ppg, hz in
+            Task { @MainActor in
+                self?.syncedSamples = total
+                self?.liveHz = hz
+                self?.waveform = ppg.map { Double($0) }
+            }
+        }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in self?.bandConnected = up } }
         self.syncQueue = queue; self.router = router; self.band = band

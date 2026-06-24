@@ -12,6 +12,11 @@ public final class FrameRouter {
     private let queue: SyncQueue
     private var maxDeviceT: UInt64 = 0
     public var onBpm: ((UInt8) -> Void)?          // live HR for the UI
+    /// Live stream stats for the UI: (cumulative samples, recent PPG for the waveform, ~Hz).
+    public var onSamples: ((Int, [Int16], Int) -> Void)?
+    private var totalSamples = 0
+    private var recentPpg: [Int16] = []
+    private var recentTs: [UInt64] = []
 
     public init(queue: SyncQueue) { self.queue = queue }
 
@@ -31,6 +36,18 @@ public final class FrameRouter {
         switch s.prefix(3) {
         case "T1:", "T2:":
             let frame = FrameDecoder.decodeT1(payload)
+            // Live stats for the UI (waveform + counters).
+            totalSamples += frame.samples.count
+            for s in frame.samples { recentPpg.append(s.ppg); recentTs.append(s.t) }
+            if recentPpg.count > 240 {
+                recentPpg.removeFirst(recentPpg.count - 240)
+                recentTs.removeFirst(recentTs.count - 240)
+            }
+            var hz = 0
+            if recentTs.count > 1, let f = recentTs.first, let l = recentTs.last, l > f {
+                hz = Int((Double(recentTs.count) * 1000 / Double(l - f)).rounded())
+            }
+            onSamples?(totalSamples, recentPpg, hz)
             for w in ppg.add(frame.samples) { submit(.ppg(w)) }
             wa.addAccel(frame.samples)                    // buffered only if a workout is open
             if let last = frame.samples.last?.t {
