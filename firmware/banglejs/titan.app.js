@@ -178,6 +178,7 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
+var page = 0;             // watch face page: 0 = heart/home, 1 = clock, 2 = signals (swipe to change)
 
 // ----- Helpers --------------------------------------------------------------
 
@@ -636,52 +637,114 @@ function toggleStreaming() {
 // ----- On-watch UI ----------------------------------------------------------
 var uiVisible = true;
 
+// ----- Premium watch face --------------------------------------------------
+var C = {                          // palette (matches the app's accents)
+  white: "#ffffff", dim: "#7a7a8c", faint: "#4a4a55",
+  rec: "#ff3355", heart: "#ff3b5b", cyan: "#33d6ff", mint: "#2fe6b0",
+  amber: "#ffb020", violet: "#8b7bff", bg: "#000000",
+};
+
+function battIcon(x, y, pct) {
+  g.setColor(C.dim); g.drawRect(x, y, x + 20, y + 10); g.fillRect(x + 21, y + 3, x + 22, y + 7);
+  g.setColor(pct < 20 ? C.rec : (pct < 50 ? C.amber : C.mint));
+  g.fillRect(x + 2, y + 2, x + 2 + Math.max(0, Math.round(16 * pct / 100)), y + 8);
+}
+
+function heartIcon(cx, cy, s) {
+  g.setColor(C.heart);
+  g.fillCircle(cx - s * 0.42, cy - s * 0.18, s * 0.5);
+  g.fillCircle(cx + s * 0.42, cy - s * 0.18, s * 0.5);
+  g.fillPoly([cx - s * 0.92, cy - s * 0.05, cx + s * 0.92, cy - s * 0.05, cx, cy + s]);
+}
+
+// Page indicator dots (which of the 3 swipeable faces you're on).
+function pageDots() {
+  var W = g.getWidth(), H = g.getHeight(), n = 3, sp = 11, x0 = W / 2 - (n - 1) * sp / 2;
+  for (var i = 0; i < n; i++) {
+    g.setColor(i === page ? C.white : C.faint);
+    g.fillCircle(x0 + i * sp, H - 7, i === page ? 3 : 2);
+  }
+}
+
+// Page 0 — Heart / home: live BPM + capture/sync state.
+function drawHome() {
+  var W = g.getWidth(), H = g.getHeight();
+  g.setFont("6x8", 1); g.setFontAlign(-1, 0);
+  g.setColor(state.streaming ? C.rec : C.faint); g.fillCircle(11, 13, 4);
+  g.setColor(state.streaming ? C.white : C.dim);
+  g.drawString(state.streaming ? "RECORDING" : "IDLE", 21, 13);
+  battIcon(W - 27, 8, state.battery);
+
+  if (state.streaming) {
+    g.setFontAlign(0, 0); g.setFont("6x8", 1);
+    g.setColor(state.connected ? C.cyan : C.amber);
+    g.drawString(state.connected ? "SYNCING LIVE" : "LOGGING TO BAND", W / 2, 40);
+    heartIcon(W / 2, 66, 12);
+    g.setColor(C.white); g.setFont("Vector", 58); g.setFontAlign(0, 0);
+    g.drawString((state.bpm || "--") + "", W / 2, 110);
+    g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("BPM", W / 2, 142);
+    if (state.workout) {
+      g.setColor(C.violet);
+      g.drawString(state.workoutManual ? "GYM" : (state.gps ? (state.gpsFix ? "RUN · GPS" : "RUN") : "WORKOUT"), W / 2, 156);
+    }
+  } else {
+    heartIcon(W / 2, 58, 12);
+    g.setColor(C.white); g.setFont("Vector", 38); g.setFontAlign(0, 0);
+    g.drawString("TITAN", W / 2, 100);
+    g.setColor(C.cyan); g.setFont("6x8", 1); g.drawString("RECOVERY BAND", W / 2, 128);
+    g.setColor(C.faint); g.drawString("tap: start   2x-tap: pair", W / 2, 150);
+  }
+}
+
+// Page 1 — Clock: big time, date, glanceable HR + battery.
+function drawClock() {
+  var W = g.getWidth(), H = g.getHeight(), d = new Date();
+  var hh = ("0" + d.getHours()).substr(-2), mm = ("0" + d.getMinutes()).substr(-2);
+  battIcon(W - 27, 8, state.battery);
+  g.setColor(C.white); g.setFont("Vector", 62); g.setFontAlign(0, 0);
+  g.drawString(hh + ":" + mm, W / 2, 78);
+  var DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  var MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  g.setColor(C.cyan); g.setFont("6x8", 1);
+  g.drawString(DOW[d.getDay()] + "  " + d.getDate() + " " + MON[d.getMonth()], W / 2, 116);
+  if (state.bpm) {
+    heartIcon(W / 2 - 22, 146, 8);
+    g.setColor(C.white); g.setFont("6x8", 2); g.setFontAlign(-1, 0);
+    g.drawString(state.bpm + "", W / 2 - 10, 146);
+  }
+}
+
+// Page 2 — Signals: the live data streams in one place.
+function drawSignals() {
+  var W = g.getWidth();
+  g.setColor(C.white); g.setFont("6x8", 2); g.setFontAlign(0, 0);
+  g.drawString("SIGNALS", W / 2, 16);
+  g.setFont("6x8", 1);
+  var y = 42;
+  function row(label, val, col) {
+    g.setColor(C.dim); g.setFontAlign(-1, 0); g.drawString(label, 10, y);
+    g.setColor(col || C.white); g.setFontAlign(1, 0); g.drawString(val, W - 10, y);
+    y += 18;
+  }
+  row("Heart rate", (state.bpm || "--") + " bpm", C.heart);
+  row("Samples", state.ppgCount + "", C.cyan);
+  row("Frames sent", state.framesSent + "", C.cyan);
+  row("Buffered", (state.logged / 1024).toFixed(1) + " KB", C.amber);
+  row("Link", state.connected ? "live" : "logging", state.connected ? C.mint : C.amber);
+  row("Workout", state.workout ? (state.workoutManual ? "gym" : "auto") : "—", C.violet);
+  row("Battery", state.battery + "%", C.mint);
+}
+
+// Dispatcher: clears, draws the current page, then the page dots. All the existing drawUI()
+// calls on sensor events just redraw whichever face you're on.
 function drawUI() {
   if (!uiVisible) return;
-  if (pairTimer) return;   // pairing screen owns the display while pairing mode is active
-  g.reset();
-  g.clearRect(0, 0, g.getWidth(), g.getHeight());
-
-  // Title
-  g.setFontAlign(0, 0);
-  g.setFont("Vector", 22);
-  g.drawString("TITAN", g.getWidth() / 2, 22);
-
-  // Status line: streaming + link
-  g.setFont("6x8", 2);
-  g.setFontAlign(-1, 0);
-  var statusY = 55;
-  g.drawString(state.streaming ? "REC" : "idle", 6, statusY);
-  g.setFontAlign(1, 0);
-  g.drawString(state.connected ? "BLE ↑" : "log", g.getWidth() - 6, statusY);
-
-  // BPM (UI only)
-  g.setFontAlign(0, 0);
-  g.setFont("Vector", 40);
-  g.drawString((state.bpm || "--") + "", g.getWidth() / 2, 100);
-  g.setFont("6x8", 1);
-  g.drawString("bpm (display only)", g.getWidth() / 2, 128);
-
-  // Counters
-  g.setFontAlign(-1, 0);
-  g.setFont("6x8", 1);
-  var y = 145;
-  g.drawString("samples: " + state.ppgCount, 6, y); y += 12;
-  g.drawString("frames:  " + state.framesSent, 6, y); y += 12;
-  g.drawString("logged:  " + (state.logged / 1024).toFixed(1) + "KB", 6, y); y += 12;
-  // Workout state: gym (manual) vs auto, and whether GPS is searching / has a fix / went indoors.
-  var woTxt = state.workout
-    ? (state.workoutManual ? "GYM " : "auto ") + (state.gps ? (state.gpsFix ? "·gps" : "·sat") : "·indoor")
-    : "—";
-  g.drawString("workout: " + woTxt, 6, y); y += 12;
-  g.drawString("batt:    " + state.battery + "%", 6, y);
-
-  // Footer hint
-  g.setFontAlign(0, 0);
-  g.setFont("6x8", 1);
-  var hint = !state.streaming ? "tap: start  ·  2x tap: pair"
-    : (state.workout && state.workoutManual ? "hold BTN: end gym" : "hold BTN: gym");
-  g.drawString(hint, g.getWidth() / 2, g.getHeight() - 10);
+  if (pairTimer) return;            // pairing screen owns the display
+  g.reset(); g.setColor(C.bg); g.fillRect(0, 0, g.getWidth(), g.getHeight());
+  if (page === 1) drawClock();
+  else if (page === 2) drawSignals();
+  else drawHome();
+  pageDots();
 }
 
 function refreshBattery() {
@@ -698,6 +761,15 @@ Bangle.on("GPS", onGPS);
 Bangle.on("pressure", onPressure);
 NRF.on("connect", onConnect);
 NRF.on("disconnect", onDisconnect);
+
+// Touchscreen — swipe left/right to flip between the Heart, Clock and Signals faces. (Up/down
+// are left to the Bangle OS for widgets/launcher.)
+Bangle.on("swipe", function (lr) {
+  if (pairTimer || !uiVisible || !lr) return;
+  page = (page + (lr > 0 ? 1 : 2)) % 3;   // right = +1, left = -1 (≡ +2 mod 3)
+  try { Bangle.buzz(15); } catch (e) {}
+  drawUI();
+});
 
 // Source-of-truth connection poll. Web Bluetooth (notably on macOS) can make the NRF
 // 'disconnect' event fire spuriously while the GATT link is actually still up — which made
@@ -724,13 +796,17 @@ function pairCode() {
 }
 
 function drawPairing() {
-  g.reset(); g.clearRect(0, 0, g.getWidth(), g.getHeight());
+  var W = g.getWidth(), H = g.getHeight();
+  g.reset(); g.setColor(C.bg); g.fillRect(0, 0, W, H);
   g.setFontAlign(0, 0);
-  g.setFont("6x8", 2); g.drawString("PAIR THIS", g.getWidth() / 2, 30);
-  g.setFont("Vector", 52); g.drawString(pairCode(), g.getWidth() / 2, 90);
-  g.setFont("6x8", 1); g.drawString("tap this code in the app", g.getWidth() / 2, 140);
+  g.setColor(C.cyan); g.setFont("6x8", 2); g.drawString("PAIR THIS BAND", W / 2, 28);
+  // the code in a bordered chip
+  g.setColor("#10203a"); g.fillRect(20, 60, W - 20, 116);
+  g.setColor(C.cyan); g.drawRect(20, 60, W - 20, 116);
+  g.setColor(C.white); g.setFont("Vector", 46); g.drawString(pairCode(), W / 2, 90);
+  g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("tap this code in the app", W / 2, 134);
   var left = Math.max(0, Math.ceil(pairUntil - getTime()));
-  g.drawString(left + "s  ·  press to exit", g.getWidth() / 2, g.getHeight() - 12);
+  g.setColor(C.faint); g.drawString(left + "s left  ·  press to exit", W / 2, H - 14);
 }
 
 function enterPairing() {
