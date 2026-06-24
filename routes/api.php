@@ -41,6 +41,7 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     // Editable macro + sleep targets (also settable by telling the coach).
     Route::get('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'show']);
     Route::patch('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'update']);
+    Route::delete('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'reset']);
 
     Route::get('/nutrition', [\App\Http\Controllers\Api\MobileNutritionController::class, 'index']);
     Route::post('/nutrition/scan', [\App\Http\Controllers\Api\MobileNutritionController::class, 'scan']);

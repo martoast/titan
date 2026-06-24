@@ -33,6 +33,12 @@ class MobileTargetsController extends Controller
         return response()->json(['targets' => TargetSettings::update($this->profile($request), $data)]);
     }
 
+    /** Reset to smart auto targets (recalculated from bodyweight / goal / age). */
+    public function reset(Request $request): JsonResponse
+    {
+        return response()->json(['targets' => TargetSettings::reset($this->profile($request))]);
+    }
+
     private function profile(Request $request): Profile
     {
         return $request->user()->profile ?? $request->user()->ensureProfile();

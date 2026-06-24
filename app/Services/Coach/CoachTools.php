@@ -31,6 +31,7 @@ class CoachTools
         // Niche.
         'cycle_status' => 'cycle', 'log_period' => 'cycle', 'log_cycle' => 'cycle',
         'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
+        'update_food' => 'food',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
         'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device', 'spot_reading' => 'device',
@@ -43,6 +44,7 @@ class CoachTools
         'mesocycle' => ['program', 'plan my training', 'mesocycle', 'meso', 'routine', 'deload', 'periodi', 'split', 'push pull legs', 'ppl', 'hypertrophy', 'grow my', 'bring up', 'lagging', 'specializ', 'playbook', 'go advanced', 'intensity technique', 'peak week', 'volume landmark'],
         'cycle' => ['period', 'cycle', 'menstr', 'pms', 'ovulat', 'fertile', 'cramp', 'luteal', 'follicular', 'flow', 'bbt'],
         'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
+        'food' => ['wrong macros', 'macros are wrong', 'macros are off', 'fix the macros', 'correct the macros', 'update the macros', 'update the food', 'the macros for', 'per 100g', 'per serving', 'actually has', "that's not right", 'thats not right'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
         'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band', 'take a reading', 'spot reading', 'spot check', 'check my hrv', 'read my hrv', 'my hrv now', 'how recovered am i', 'recovered right now', 'live reading', 'check my heart rate', 'take a measurement'],
@@ -395,7 +397,16 @@ class CoachTools
             'carbs_g' => ['type' => 'integer', 'description' => 'Daily carbohydrate target (g).'],
             'fat_g' => ['type' => 'integer', 'description' => 'Daily fat target (g).'],
             'sleep_h' => ['type' => 'number', 'description' => 'Nightly sleep target in hours (e.g. 7.5).'],
+            'reset' => ['type' => 'boolean', 'description' => 'True to clear custom targets and recalculate from bodyweight / goal / age.'],
         ], []);
+        $tools[] = $this->fn('update_food', "Correct a food's macros in the library when the user tells you the real numbers (e.g. \"my Costco ground beef is 250 cal, 22g protein per 100g\"). Pass the food name + the macros for its basis. Overrides the web for future logs.", [
+            'name' => ['type' => 'string', 'description' => 'The food name (e.g. "Costco ground beef").'],
+            'basis' => ['type' => 'string', 'description' => 'What the macros are PER (e.g. "100g", "serving", "1 cup"). Default 100g.'],
+            'calories' => ['type' => 'integer', 'description' => 'Calories for the basis (kcal).'],
+            'protein_g' => ['type' => 'number', 'description' => 'Protein for the basis (g).'],
+            'carbs_g' => ['type' => 'number', 'description' => 'Carbs for the basis (g).'],
+            'fat_g' => ['type' => 'number', 'description' => 'Fat for the basis (g).'],
+        ], ['name']);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -466,6 +477,7 @@ class CoachTools
             'bloodwork_panel' => 'Pulling your bloodwork',
             'macros_today' => 'Tallying your macros',
             'set_targets' => 'Updating your targets',
+            'update_food' => 'Saving your food’s macros',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -551,6 +563,7 @@ class CoachTools
             'bloodwork_panel' => $this->bloodworkPanel(),
             'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
+            'update_food' => $this->updateFood($args),
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
@@ -1232,12 +1245,52 @@ class CoachTools
 
     private function setTargets(array $a): array
     {
-        $targets = \App\Support\TargetSettings::update($this->profile, $a);
+        if (! empty($a['reset'])) {
+            return [
+                'ok' => true,
+                'reset' => true,
+                'targets' => \App\Support\TargetSettings::reset($this->profile),
+                '_show' => 'Confirm their targets are back to auto (protein from bodyweight, age-based sleep) in one short line.',
+            ];
+        }
 
         return [
             'ok' => true,
-            'targets' => $targets,
+            'targets' => \App\Support\TargetSettings::update($this->profile, $a),
             '_show' => 'Confirm the new target(s) in one short line. If calories or a macro changed, follow with the `macros` card (call macros_today) so they see the rings update.',
+        ];
+    }
+
+    private function updateFood(array $a): array
+    {
+        $name = trim((string) ($a['name'] ?? ''));
+        if ($name === '') {
+            return ['error' => 'Need the food name to update.'];
+        }
+        $key = \App\Support\FoodLibrary::normalize($name);
+        $fact = \App\Models\FoodFact::where('name', $key)->first() ?: new \App\Models\FoodFact(['name' => $key, 'hits' => 0]);
+
+        foreach (['calories', 'protein_g', 'carbs_g', 'fat_g'] as $k) {
+            if (isset($a[$k]) && is_numeric($a[$k])) {
+                $fact->{$k} = $k === 'calories' ? (int) round((float) $a[$k]) : round((float) $a[$k], 1);
+            }
+        }
+        $basis = trim((string) ($a['basis'] ?? ''));
+        if ($basis !== '') {
+            $fact->basis = $basis;
+        } elseif (! $fact->exists) {
+            $fact->basis = '100g';
+        }
+        $fact->source = 'user';        // user-corrected → authoritative, never overwritten by a web lookup
+        $fact->save();
+
+        return [
+            'ok' => true,
+            'food' => [
+                'name' => $fact->name, 'basis' => $fact->basis, 'calories' => $fact->calories,
+                'protein_g' => $fact->protein_g, 'carbs_g' => $fact->carbs_g, 'fat_g' => $fact->fat_g,
+            ],
+            '_show' => 'Confirm the saved macros for this food in one line, noting the basis (e.g. per 100 g / per serving). These now override the web for future logs.',
         ];
     }
 

@@ -67,6 +67,29 @@ class MobileTargetsTest extends TestCase
         $h->getJson('/api/me/targets')->assertOk()->assertJsonPath('targets.protein_g', 200);
     }
 
+    public function test_reset_clears_custom_and_recalculates(): void
+    {
+        $profile = User::factory()->create()->ensureProfile();
+        TargetSettings::update($profile, ['calories' => 3500, 'protein_g' => 250]);
+        $this->assertTrue(TargetSettings::resolve($profile->fresh())['custom']);
+
+        $t = TargetSettings::reset($profile->fresh());
+
+        $this->assertFalse($t['custom']);
+        $this->assertSame(200, $t['protein_g']);   // back to the default (no bodyweight on file)
+    }
+
+    public function test_endpoint_reset(): void
+    {
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        TargetSettings::update($profile, ['calories' => 3500]);
+        [, $token] = ApiToken::mint($user, 'ios', ['*']);
+
+        $this->withHeader('Authorization', "Bearer {$token}")->deleteJson('/api/me/targets')
+            ->assertOk()->assertJsonPath('targets.custom', false);
+    }
+
     public function test_targets_require_auth(): void
     {
         $this->getJson('/api/me/targets')->assertStatus(401);

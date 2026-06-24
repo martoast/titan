@@ -79,4 +79,14 @@ class TargetSettings
 
         return self::resolve($profile->fresh());
     }
+
+    /** Drop the custom overrides → back to smart auto targets (protein from bodyweight, age-based sleep). */
+    public static function reset(Profile $profile): array
+    {
+        $settings = $profile->settings ?? [];
+        unset($settings['macro_targets'], $settings['sleep_target_h']);
+        $profile->update(['settings' => $settings]);
+
+        return self::resolve($profile->fresh());
+    }
 }
