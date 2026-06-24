@@ -32,7 +32,7 @@ class CoachTools
         'cycle_status' => 'cycle', 'log_period' => 'cycle', 'log_cycle' => 'cycle',
         'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
         'update_food' => 'food',
-        'log_behavior' => 'journal', 'my_impacts' => 'journal',
+        'log_behavior' => 'journal', 'my_impacts' => 'journal', 'insights' => 'journal',
         'set_goal_weight' => 'weight', 'weight_progress' => 'weight',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
@@ -47,7 +47,7 @@ class CoachTools
         'cycle' => ['period', 'cycle', 'menstr', 'pms', 'ovulat', 'fertile', 'cramp', 'luteal', 'follicular', 'flow', 'bbt'],
         'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
         'food' => ['wrong macros', 'macros are wrong', 'macros are off', 'fix the macros', 'correct the macros', 'update the macros', 'update the food', 'the macros for', 'per 100g', 'per serving', 'actually has', "that's not right", 'thats not right'],
-        'journal' => ['drink', 'drank', 'alcohol', 'beer', 'wine', 'hungover', 'caffeine', 'coffee late', 'stayed up', 'stress', 'anxious', 'meditat', 'sauna', 'cold plunge', 'ice bath', 'journal', 'late meal', 'late dinner', 'ate out', 'takeout', 'screens', 'magnesium', 'napped', 'what affects my', 'what hurts my', 'what helps my', 'my impacts', 'my discoveries', 'how was my day', 'log my day'],
+        'journal' => ['drink', 'drank', 'alcohol', 'beer', 'wine', 'hungover', 'caffeine', 'coffee late', 'stayed up', 'stress', 'anxious', 'meditat', 'sauna', 'cold plunge', 'ice bath', 'journal', 'late meal', 'late dinner', 'ate out', 'takeout', 'screens', 'magnesium', 'napped', 'what affects my', 'what hurts my', 'what helps my', 'my impacts', 'my discoveries', 'how was my day', 'log my day', 'insight', 'what should i know', 'anything i should know', 'my feed'],
         'weight' => ['weigh', 'weight', 'lose', 'losing', 'lost', 'lbs', 'pounds', ' kg', 'goal weight', 'target weight', 'trend', 'scale', 'cut', 'bulk', 'slim', 'get lean', 'leaner', 'drop', 'on track', 'how am i doing'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
@@ -422,6 +422,7 @@ class CoachTools
             'by_date' => ['type' => 'string', 'description' => 'Optional target date, YYYY-MM-DD.'],
         ], ['target_kg']);
         $tools[] = $this->fn('weight_progress', "The user's smoothed weight trend, weekly rate and honest projection to their goal as a `weight` card. Use when they ask about their weight / progress / 'am I on track'.", [], []);
+        $tools[] = $this->fn('insights', "The user's personalized insight feed — the top few things worth their attention right now (anomalies, goal progress, wins, behavior correlations) as `insight` cards. Use for 'what should I know today' / 'any insights'.", [], []);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -497,6 +498,7 @@ class CoachTools
             'my_impacts' => 'Finding what moves your recovery',
             'set_goal_weight' => 'Setting your weight goal',
             'weight_progress' => 'Reading your weight trend',
+            'insights' => 'Pulling your insights',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -587,6 +589,7 @@ class CoachTools
             'my_impacts' => $this->myImpacts(),
             'set_goal_weight' => $this->setGoalWeight($args),
             'weight_progress' => $this->weightProgress(),
+            'insights' => ['feed' => \App\Support\InsightFeed::build($this->profile), '_show' => 'Surface the top 2–3 `insight` cards in plain language (lead with any alert). If the feed is empty, say their data is steady and to keep logging.'],
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };

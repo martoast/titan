@@ -38,6 +38,9 @@ Route::middleware('auth.any')->get('/me/trends', [\App\Http\Controllers\Api\Mobi
 // Native-app nutrition ("Fuel" tab): photo → AI macros (grounded + logged) + the macro-ring card,
 // manual entry, and corrections. Same Meal rows the coach's macros_today / recent_meals tools read.
 Route::middleware('auth.any')->prefix('me')->group(function () {
+    // Personalized insight feed (anomalies, goal progress, wins, behavior correlations).
+    Route::get('/insights', [\App\Http\Controllers\Api\MobileInsightsController::class, 'index']);
+
     // Editable macro + sleep targets (also settable by telling the coach).
     Route::get('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'show']);
     Route::patch('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'update']);
