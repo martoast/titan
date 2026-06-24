@@ -38,6 +38,10 @@ Route::middleware('auth.any')->get('/me/trends', [\App\Http\Controllers\Api\Mobi
 // Native-app nutrition ("Fuel" tab): photo → AI macros (grounded + logged) + the macro-ring card,
 // manual entry, and corrections. Same Meal rows the coach's macros_today / recent_meals tools read.
 Route::middleware('auth.any')->prefix('me')->group(function () {
+    // First-run onboarding (same engine as the web wizard).
+    Route::get('/onboarding', [\App\Http\Controllers\Api\MobileOnboardingController::class, 'status']);
+    Route::post('/onboarding', [\App\Http\Controllers\Api\MobileOnboardingController::class, 'store']);
+
     // Personalized insight feed (anomalies, goal progress, wins, behavior correlations).
     Route::get('/insights', [\App\Http\Controllers\Api\MobileInsightsController::class, 'index']);
 

@@ -49,6 +49,7 @@ class MobileAuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'onboarded' => $user->ensureProfile()->isOnboarded(),
             ],
         ]);
     }
