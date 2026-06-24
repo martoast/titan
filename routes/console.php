@@ -25,6 +25,10 @@ Schedule::command('meals:remind')->everyFifteenMinutes()->withoutOverlapping();
 // Weekly coaching review — the longitudinal "is this working?" arc (Sunday evening).
 Schedule::command('coach:weekly-review')->weeklyOn(0, '18:00')->timezone(config('app.timezone'));
 
+// The correlation engine: learn each user's "what helps/hurts my recovery" overnight (after seals),
+// and fire a one-time Discovery push when a new pattern is confirmed.
+Schedule::command('insights:behavior')->dailyAt('05:30')->timezone(config('app.timezone'));
+
 // Proactive coach through the day — gated by each profile's coaching intensity + per-type prefs.
 Schedule::command('coach:nudge training')->dailyAt('08:30')->timezone(config('app.timezone'));
 Schedule::command('coach:nudge cycle')->dailyAt('07:30')->timezone(config('app.timezone'));

@@ -65,6 +65,17 @@ class Profile extends Model
         return $this->hasMany(Meal::class);
     }
 
+    // --- Behavior journal ---
+    public function behaviorLogs(): HasMany
+    {
+        return $this->hasMany(BehaviorLog::class);
+    }
+
+    public function behaviorImpacts(): HasMany
+    {
+        return $this->hasMany(BehaviorImpact::class);
+    }
+
     // --- Training ---
     public function workouts(): HasMany
     {

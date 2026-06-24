@@ -32,6 +32,7 @@ class CoachTools
         'cycle_status' => 'cycle', 'log_period' => 'cycle', 'log_cycle' => 'cycle',
         'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
         'update_food' => 'food',
+        'log_behavior' => 'journal', 'my_impacts' => 'journal',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
         'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device', 'spot_reading' => 'device',
@@ -45,6 +46,7 @@ class CoachTools
         'cycle' => ['period', 'cycle', 'menstr', 'pms', 'ovulat', 'fertile', 'cramp', 'luteal', 'follicular', 'flow', 'bbt'],
         'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
         'food' => ['wrong macros', 'macros are wrong', 'macros are off', 'fix the macros', 'correct the macros', 'update the macros', 'update the food', 'the macros for', 'per 100g', 'per serving', 'actually has', "that's not right", 'thats not right'],
+        'journal' => ['drink', 'drank', 'alcohol', 'beer', 'wine', 'hungover', 'caffeine', 'coffee late', 'stayed up', 'stress', 'anxious', 'meditat', 'sauna', 'cold plunge', 'ice bath', 'journal', 'late meal', 'late dinner', 'ate out', 'takeout', 'screens', 'magnesium', 'napped', 'what affects my', 'what hurts my', 'what helps my', 'my impacts', 'my discoveries', 'how was my day', 'log my day'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
         'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band', 'take a reading', 'spot reading', 'spot check', 'check my hrv', 'read my hrv', 'my hrv now', 'how recovered am i', 'recovered right now', 'live reading', 'check my heart rate', 'take a measurement'],
@@ -407,6 +409,12 @@ class CoachTools
             'carbs_g' => ['type' => 'number', 'description' => 'Carbs for the basis (g).'],
             'fat_g' => ['type' => 'number', 'description' => 'Fat for the basis (g).'],
         ], ['name']);
+        $tools[] = $this->fn('log_behavior', "Log lifestyle factors in the journal when the user mentions them (\"had a couple drinks\", \"stayed up on my phone\", \"meditated\", \"stressful day\"). These power your behavior→recovery insights. Pass catalog keys in `add` (and `remove` to undo).", [
+            'add' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Behavior keys to log. Valid keys: '.implode(', ', array_keys(\App\Support\Journal::CATALOG))],
+            'remove' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Behavior keys logged by mistake, to remove.'],
+            'date' => ['type' => 'string', 'description' => 'YYYY-MM-DD; default today.'],
+        ], []);
+        $tools[] = $this->fn('my_impacts', "What helps or hurts the user's recovery & sleep — their personal behavior→outcome correlations as an `impacts` card (e.g. \"alcohol −14% recovery\"). Use when they ask what affects them, or to back a behavior nudge.", [], []);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -478,6 +486,8 @@ class CoachTools
             'macros_today' => 'Tallying your macros',
             'set_targets' => 'Updating your targets',
             'update_food' => 'Saving your food’s macros',
+            'log_behavior' => 'Noting your day',
+            'my_impacts' => 'Finding what moves your recovery',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -564,6 +574,8 @@ class CoachTools
             'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
             'update_food' => $this->updateFood($args),
+            'log_behavior' => $this->logBehavior($args),
+            'my_impacts' => $this->myImpacts(),
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
@@ -1306,6 +1318,31 @@ class CoachTools
             ],
             '_show' => 'Confirm the saved macros for this food in one line, noting the basis (e.g. per 100 g / per serving). These now override the web for future logs.',
         ];
+    }
+
+    private function logBehavior(array $a): array
+    {
+        $date = \App\Support\Journal::today($this->profile);
+        if (! empty($a['date'])) {
+            try {
+                $date = \Illuminate\Support\Carbon::parse((string) $a['date'])->toDateString();
+            } catch (\Throwable) {
+            }
+        }
+        $logged = \App\Support\Journal::log($this->profile, $date, (array) ($a['add'] ?? []), (array) ($a['remove'] ?? []));
+
+        return [
+            'ok' => true,
+            'date' => $date,
+            'logged' => array_map(fn ($k) => \App\Support\Journal::label($k), $logged),
+            '_show' => 'Confirm what you noted for the day in one short line. Once they have ~5+ days each of a behavior, mention they can ask "what affects my recovery?".',
+        ];
+    }
+
+    private function myImpacts(): array
+    {
+        return \App\Support\BehaviorCorrelations::card($this->profile)
+            + ['_show' => 'Emit this `impacts` card in a ```titan-card fence, then one line on the biggest helper and hurter. If it is empty, tell them to keep journaling — insights unlock after ~5 days each of a behavior.'];
     }
 
     private function logWeight(array $a): mixed
