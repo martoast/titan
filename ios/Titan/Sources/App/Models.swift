@@ -274,6 +274,10 @@ struct FastingStatus: Codable, Equatable {
     let next_stage_in_h: Double?
 }
 
+/// `GET /api/me/health` · result of `POST /api/me/health/ingest`
+struct HealthStatus: Codable { let connected: Bool; let last_sync_at: String? }
+struct HealthIngestResult: Codable { let ok: Bool; let synced_at: String? }
+
 enum APIError: LocalizedError {
     case http(Int, String), decoding, unauthorized, transport(String)
     var errorDescription: String? {

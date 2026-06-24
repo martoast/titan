@@ -40,6 +40,9 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity)
             .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
 
+            // Connect Apple Health — the unlock for anyone without a band (hidden once connected)
+            HealthConnectCard()
+
             // For You — the ranked insight feed (anomalies, goal progress, wins, behavior correlations)
             if !model.insights.isEmpty {
                 VStack(spacing: Theme.Space.s) {

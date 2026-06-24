@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct TitanApp: App {
     @StateObject private var model = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() { Appearance.apply() }
 
@@ -12,6 +13,12 @@ struct TitanApp: App {
                 .environmentObject(model)
                 .preferredColorScheme(.dark)
                 .tint(Theme.Palette.indigo)
+                .onChange(of: scenePhase) { _, phase in
+                    // Pull fresh Apple Health data whenever the app comes forward (free-team friendly).
+                    if phase == .active && model.isLoggedIn && model.healthConnected {
+                        Task { await model.syncAppleHealth() }
+                    }
+                }
         }
     }
 }

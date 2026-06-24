@@ -130,6 +130,17 @@ final class APIClient {
         try await send(request("api/me/meals/\(id)", method: "DELETE"), as: MacrosOnly.self)
     }
 
+    // MARK: Apple Health sync
+
+    func healthStatus() async throws -> HealthStatus {
+        try await send(request("api/me/health"), as: HealthStatus.self)
+    }
+
+    @discardableResult
+    func ingestHealth(_ payload: [String: Any]) async throws -> HealthIngestResult {
+        try await send(request("api/me/health/ingest", method: "POST", json: payload), as: HealthIngestResult.self)
+    }
+
     // MARK: insights + journal + weight
 
     func insights() async throws -> [Insight] {

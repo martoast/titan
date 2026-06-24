@@ -33,8 +33,15 @@ targets:
         NSBluetoothAlwaysUsageDescription: "Titan connects to your recovery band to sync your biosignals in the background."
         NSCameraUsageDescription: "Titan uses your camera to snap meals for instant macros and to capture progress photos."
         NSPhotoLibraryUsageDescription: "Titan lets you choose meal and progress photos from your library."
+        NSHealthShareUsageDescription: "Titan reads your steps, sleep, heart rate and workouts to compute your recovery, insights and trends — no wearable required."
+        NSHealthUpdateUsageDescription: "Titan does not write to Apple Health; it only reads your data to power your coaching."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+    entitlements:
+      path: Titan.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []   # background-delivery omitted (needs the paid program)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.alexmartos.titan

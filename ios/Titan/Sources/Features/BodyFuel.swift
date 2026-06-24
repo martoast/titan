@@ -1,6 +1,39 @@
 import SwiftUI
 import Charts
 
+// MARK: - Apple Health connect
+
+/// The "Connect Apple Health" CTA (shown until connected). Turns any iPhone/Apple Watch into Titan's
+/// data source — recovery, sleep, steps, weight all flow in, no band required.
+struct HealthConnectCard: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        if !model.healthConnected {
+            Button { Task { await model.connectAppleHealth() } } label: {
+                GlassCard(padding: Theme.Space.l) {
+                    HStack(spacing: Theme.Space.m) {
+                        ZStack {
+                            Circle().fill(Theme.Palette.pink.opacity(0.16)).frame(width: 48, height: 48)
+                            Image(systemName: "heart.fill").font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.Palette.pink)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Connect Apple Health").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                            Text("Sync steps, sleep & heart from your iPhone and Apple Watch — recovery, insights & trends, no band needed.")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer(minLength: 0)
+                        if model.healthSyncing { ProgressView().tint(Theme.Palette.pink) }
+                        else { Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint) }
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+            .disabled(model.healthSyncing)
+            .task { await model.loadHealthStatus() }
+        }
+    }
+}
+
 // MARK: - Reusable gauge ring
 
 /// A progress ring with arbitrary center content — used by hydration & fasting.

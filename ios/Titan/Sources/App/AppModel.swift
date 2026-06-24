@@ -65,6 +65,11 @@ final class AppModel: ObservableObject {
     @Published var hydration: HydrationToday?
     @Published var fasting: FastingStatus?
 
+    // Apple Health
+    @Published var healthConnected = false
+    @Published var healthSyncing = false
+    @Published var lastHealthSync: String?
+
     let api: APIClient
 
     private var band: BandManager?
@@ -85,6 +90,43 @@ final class AppModel: ObservableObject {
         if let d = try? await api.dashboard() { dashboard = d }
         startBandIfPaired()
         bandBound = band?.isBound ?? false
+        await loadHealthStatus()
+        if healthConnected { await syncAppleHealth() }   // keep Apple Health fresh on launch
+    }
+
+    // MARK: Apple Health
+
+    func loadHealthStatus() async {
+        if let s = try? await api.healthStatus() { healthConnected = s.connected; lastHealthSync = s.last_sync_at }
+    }
+
+    /// First connect: request authorization, then backfill ~60 days to seed baselines.
+    func connectAppleHealth() async {
+        guard HealthKitManager.shared.isAvailable else {
+            error = "Apple Health isn't available on this device."; return
+        }
+        Haptic.rigid()
+        _ = await HealthKitManager.shared.requestAuthorization()
+        await syncAppleHealth(days: 60, initial: true)
+    }
+
+    func syncAppleHealth(days: Int = 14, initial: Bool = false) async {
+        guard HealthKitManager.shared.isAvailable, !healthSyncing else { return }
+        healthSyncing = true; defer { healthSyncing = false }
+
+        let payload = await HealthKitManager.shared.collectPayload(days: days)
+        let hasData = ["activity", "recovery", "sleep", "body", "workouts"].contains {
+            (payload[$0] as? [Any])?.isEmpty == false
+        } || payload["vo2max"] != nil
+        guard hasData else {
+            if initial { error = "No Apple Health data yet — allow Titan in Settings → Health → Data Access." }
+            return
+        }
+        if let r = try? await api.ingestHealth(payload) {
+            healthConnected = true
+            lastHealthSync = r.synced_at
+            await refresh(); await loadInsights()       // the engine recomputes off the new data
+        }
     }
 
     /// Submit the onboarding wizard → unlock the app.
