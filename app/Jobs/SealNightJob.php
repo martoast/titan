@@ -364,7 +364,7 @@ class SealNightJob implements ShouldQueue
             ]);
             $metrics = $result['metrics'] ?? [];
 
-            SleepLog::updateOrCreate(
+            $log = SleepLog::updateOrCreate(
                 ['profile_id' => $profile->id, 'slept_at' => $date],
                 array_filter([
                     'duration_min' => isset($metrics['duration_min']) ? (int) round($metrics['duration_min']) : null,
@@ -378,6 +378,9 @@ class SealNightJob implements ShouldQueue
                     'updated_via' => 'biosignal:sealed-ppg',
                 ], fn ($v) => $v !== null),
             );
+
+            // A real night just landed → let the coach react (well-rested win / sleep-debt note).
+            \App\Jobs\ReactToSleepLogged::dispatch($log->id)->afterCommit();
         } catch (\Throwable $e) {
             Log::warning('[Biosignal] ppg sleep staging failed', [
                 'profile_id' => $profile->id, 'night' => $date, 'error' => $e->getMessage(),
@@ -451,6 +454,9 @@ class SealNightJob implements ShouldQueue
                 'algo_version' => $algoVersion,
                 'result_refs' => array_merge((array) $i->result_refs, ['sleep_log_id' => $log->id, 'sealed' => true]),
             ]));
+
+            // A real night just landed → let the coach react (well-rested win / sleep-debt note).
+            \App\Jobs\ReactToSleepLogged::dispatch($log->id)->afterCommit();
         } catch (\Throwable $e) {
             Log::warning('[Biosignal] sleep seal failed', ['profile_id' => $profile->id, 'night' => $date, 'error' => $e->getMessage()]);
             // Seal anyway so a persistently bad night doesn't wedge the queue.

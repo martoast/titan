@@ -63,6 +63,20 @@ class MealProteinNudgeTest extends TestCase
         $this->assertSame('2026-06-24', data_get($profile->fresh()->settings, 'protein_nudged'));
     }
 
+    public function test_celebrates_when_protein_target_is_hit(): void
+    {
+        $this->travelTo(Carbon::parse('2026-06-24 13:00:00', 'UTC'));   // a win isn't evening-gated
+        $profile = $this->profileWithProtein(210);                      // over the 200 g target
+
+        $this->fireNudge($profile);
+
+        $body = $this->briefingBody($profile);
+        $this->assertNotNull($body, 'expected a protein win in Daily Briefings');
+        $this->assertStringContainsString('locked in', $body);
+        $this->assertStringContainsString('200g', $body);
+        $this->assertSame('2026-06-24', data_get($profile->fresh()->settings, 'protein_won'));
+    }
+
     public function test_no_nudge_when_protein_is_on_track(): void
     {
         $this->travelTo(Carbon::parse('2026-06-24 19:00:00', 'UTC'));

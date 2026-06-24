@@ -42,9 +42,12 @@ class Meal extends Model
         // decide whether to nudge on protein. afterCommit so it never fires inside a rolled-back
         // test transaction; the job self-gates (once/day, evening-only, behind-pace, opt-in).
         static::created(function (Meal $meal): void {
-            if (class_exists(\App\Jobs\ReactToMealLogged::class)) {
-                \App\Jobs\ReactToMealLogged::dispatch($meal->id)->afterCommit();
+            // Skip under tests — meal fixtures shouldn't fire proactive nudges; the job's logic is
+            // covered directly in MealProteinNudgeTest.
+            if (app()->runningUnitTests() || ! class_exists(\App\Jobs\ReactToMealLogged::class)) {
+                return;
             }
+            \App\Jobs\ReactToMealLogged::dispatch($meal->id)->afterCommit();
         });
     }
 

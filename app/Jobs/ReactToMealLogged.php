@@ -51,15 +51,6 @@ class ReactToMealLogged implements ShouldQueue
         $now = Carbon::now($tz);
         $today = $now->toDateString();
 
-        // At most one protein nudge per day.
-        if (data_get($profile->settings, 'protein_nudged') === $today) {
-            return;
-        }
-        // Only once the day is winding down.
-        if ($now->hour < self::EVENING_HOUR) {
-            return;
-        }
-
         $macros = rescue(fn () => Macros::today($profile), null, false);
         if (! is_array($macros)) {
             return;
@@ -69,28 +60,60 @@ class ReactToMealLogged implements ShouldQueue
         if ($target <= 0) {
             return;
         }
+        $name = $profile->display_name ? ' '.$profile->display_name : '';
 
-        $remaining = $target - $have;
-        // Not behind enough to be worth a nudge.
-        if ($remaining < self::MIN_GAP_G || ($have / $target) >= self::BEHIND_FRACTION) {
+        // WIN: target hit — celebrate once a day, any time (protein IS the foundation).
+        if ($have >= $target) {
+            if (data_get($profile->settings, 'protein_won') === $today) {
+                return;
+            }
+            $this->announce(
+                $profile, $notifications,
+                title: '💪 Protein locked in',
+                push: "You hit your {$target}g protein target today. Strong.",
+                body: "💪 **Protein locked in{$name}.** You hit your **{$target}g** target ({$have}g logged) — "
+                    ."that's the foundation for recovery and muscle. Strong day.",
+                flag: 'protein_won', today: $today,
+            );
+
             return;
         }
 
-        $title = '🍗 Protein’s running low';
-        $push = "You're at {$have}g of {$target}g today — about {$remaining}g to go before bed.";
-        $notifications->notify($profile, $title, $push, '/coach', 'protein');
+        // NUDGE: behind, late in the day — once a day, evening only.
+        if (data_get($profile->settings, 'protein_nudged') === $today) {
+            return;
+        }
+        if ($now->hour < self::EVENING_HOUR) {
+            return;
+        }
+        $remaining = $target - $have;
+        if ($remaining < self::MIN_GAP_G || ($have / $target) >= self::BEHIND_FRACTION) {
+            return;   // not behind enough to be worth a nudge
+        }
 
-        $name = $profile->display_name ? ' '.$profile->display_name : '';
-        $body = "🍗 **Protein check{$name}.** You're at **{$have}g** of your **{$target}g** target today — "
-            ."about **{$remaining}g** to go before bed.\n\n"
-            ."An easy hit closes it: a scoop of whey, Greek yogurt, cottage cheese, a couple of eggs, "
-            ."or a can of tuna. Want a snack that fits the rest of your macros? Just ask.";
+        $this->announce(
+            $profile, $notifications,
+            title: '🍗 Protein’s running low',
+            push: "You're at {$have}g of {$target}g today — about {$remaining}g to go before bed.",
+            body: "🍗 **Protein check{$name}.** You're at **{$have}g** of your **{$target}g** target today — "
+                ."about **{$remaining}g** to go before bed.\n\n"
+                ."An easy hit closes it: a scoop of whey, Greek yogurt, cottage cheese, a couple of eggs, "
+                ."or a can of tuna. Want a snack that fits the rest of your macros? Just ask.",
+            flag: 'protein_nudged', today: $today,
+        );
+    }
+
+    /** Push + a note in the Daily Briefings thread, then stamp the once-per-day flag. */
+    private function announce(\App\Models\Profile $profile, NotificationService $notifications,
+                              string $title, string $push, string $body, string $flag, string $today): void
+    {
+        $notifications->notify($profile, $title, $push, '/coach', 'protein');
 
         $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
         $convo->messages()->create(['role' => 'assistant', 'content' => $body]);
 
         $settings = $profile->settings ?? [];
-        $settings['protein_nudged'] = $today;
+        $settings[$flag] = $today;
         $profile->update(['settings' => $settings]);
     }
 }
