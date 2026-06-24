@@ -247,6 +247,7 @@
                             @if ($s->duration_min)<span>{{ $s->duration_min }} min</span>@endif
                             @if ($s->distance_km)<span>{{ number_format($s->distance_km, 1) }} km</span>@endif
                             @if ($s->avg_hr)<span>{{ $s->avg_hr }}<span class="text-gray-600">/{{ $s->max_hr }}</span> bpm</span>@endif
+                            @if ($s->avg_hr && $s->hrSourceLabel())<span class="{{ $s->hr_source === 'onchip' ? 'text-gray-600' : 'text-emerald-400/70' }}" title="How this session's heart rate was measured">{{ $s->hrSourceLabel() }}</span>@endif
                             @if ($s->trimp)<span>TRIMP {{ number_format($s->trimp, 0) }}</span>@endif
                             @if ($s->calories_kcal)<span>{{ $s->calories_kcal }} kcal</span>@endif
                             @if ($s->hrr_bpm)<span class="text-cyan-400/80">HRR {{ number_format($s->hrr_bpm, 0) }}</span>@endif

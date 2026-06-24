@@ -47,6 +47,15 @@ class SealActivityJob implements ShouldQueue
     /** Shortest run we bother sealing (filters stray motion blips). */
     public const MIN_SESSION_MIN = 5;
 
+    /** Most raw-PPG windows to pull when recomputing in-motion HR (caps work on a long session). */
+    public const MAX_PPG_WINDOWS = 240;
+
+    /** Minimum in-motion coverage (fraction of trusted windows) to PREFER PPG HR over the on-chip bpm. */
+    public const MIN_HR_COVERAGE = 0.2;
+
+    /** Window hop (s) of the in-motion HR estimator (biosignal STEP_S) — used to expand it to 1 Hz. */
+    public const HR_WINDOW_STEP_S = 2.0;
+
     public int $tries = 2;
 
     public int $backoff = 15;
@@ -170,6 +179,28 @@ class SealActivityJob implements ShouldQueue
             return;
         }
 
+        // HEART RATE source. The on-chip bpm ($hr1) cadence-locks under load (it reports rep/stride
+        // rhythm as HR). When the band streamed raw PPG live, recompute HR server-side from PPG +
+        // accel with motion-artifact suppression (app/core/inmotion_hr.py) and PREFER it. We rebuild
+        // $hr1 as a 1 Hz series from that estimate so every downstream metric (epochs, max, avg, VO2,
+        // HRR) uses the accurate HR with no further changes. Offline workouts (no raw PPG) keep the
+        // on-chip bpm — now far better itself, since the firmware forces sport mode during workouts.
+        $hrSource = $hr1 ? 'onchip' : null;
+        $hrQuality = null;
+        $im = $this->inMotionHr($profile, $start, $end, $biosignal);
+        if ($im !== null) {
+            $cov = (float) ($im['summary']['coverage'] ?? 0.0);
+            $mean = $im['summary']['hr_mean'] ?? null;
+            if ($mean !== null && $cov >= self::MIN_HR_COVERAGE) {
+                $imSeries = $this->expandTo1Hz($im['bpm'] ?? [], self::HR_WINDOW_STEP_S);
+                if ($imSeries !== []) {
+                    $hr1 = $imSeries;
+                    $hrSource = 'ppg_inmotion';
+                    $hrQuality = round($cov, 3);
+                }
+            }
+        }
+
         // Counts per 30-s epoch drive session detection; fall back to a magnitude proxy. HR for
         // the activity endpoint is per-epoch (downsampled from the 1 Hz workout HR).
         if ($counts === []) {
@@ -230,6 +261,8 @@ class SealActivityJob implements ShouldQueue
                 'distance_km' => $distance,
                 'avg_hr' => isset($sess['mean_hr']) ? (int) round($sess['mean_hr']) : ($hr1 ? (int) round(array_sum($hr1) / count($hr1)) : null),
                 'max_hr' => $maxHr,
+                'hr_source' => $hrSource,
+                'hr_quality' => $hrQuality,
                 'trimp' => $sess['trimp'] ?? null,
                 'calories_kcal' => isset($sess['calories_kcal']) ? (int) round($sess['calories_kcal']) : null,
                 'vo2max' => $fitness['vo2max'] ?? null,
@@ -481,6 +514,120 @@ class SealActivityJob implements ShouldQueue
             $chunk = array_filter(array_slice($perSecond, $e * $per, $per), 'is_numeric');
             $out[] = $chunk ? array_sum($chunk) / count($chunk) : 0.0;
         }
+        return $out;
+    }
+
+    /**
+     * Recompute workout HR from the raw PPG the band streamed live (ppg_raw windows overlapping the
+     * session), suppressing the accelerometer's motion frequencies so it doesn't cadence-lock the way
+     * the on-chip bpm does. Returns the biosignal response ({bpm[], confidence[], reliable[], summary})
+     * or null when there isn't enough raw PPG (e.g. an offline workout — those keep the on-chip bpm).
+     *
+     * @return array<string,mixed>|null
+     */
+    private function inMotionHr(Profile $profile, ?string $start, ?string $end, BiosignalClient $biosignal): ?array
+    {
+        if (! $start || ! $end) {
+            return null;
+        }
+        $from = CarbonImmutable::parse($start)->subMinute();
+        $to = CarbonImmutable::parse($end)->addMinute();
+
+        $windows = DeviceIngestion::query()
+            ->where('profile_id', $profile->id)
+            ->where('kind', 'ppg_raw')
+            ->where('window_start', '<', $to)
+            ->where(function ($q) use ($from) {
+                $q->whereNull('window_end')->orWhere('window_end', '>', $from);
+            })
+            ->orderBy('window_start')
+            ->limit(self::MAX_PPG_WINDOWS)
+            ->get();
+        if ($windows->isEmpty()) {
+            return null;
+        }
+
+        $ppg = $ax = $ay = $az = [];
+        $fs = null;
+        $accelAligned = true;
+        foreach ($windows as $w) {
+            $d = $this->loadWindow($w);
+            $samples = $d['ppg'] ?? null;
+            if (! is_array($samples) || $samples === []) {
+                continue;
+            }
+            $this->append($ppg, $samples);
+            $triples = (array) ($d['accel_xyz'] ?? []);
+            if (count($triples) === count($samples)) {
+                foreach ($triples as $t) {
+                    $ax[] = (float) ($t[0] ?? 0);
+                    $ay[] = (float) ($t[1] ?? 0);
+                    $az[] = (float) ($t[2] ?? 0);
+                }
+            } else {
+                $accelAligned = false; // this window had no per-sample accel → can't suppress motion
+            }
+            $fs = $fs ?? (float) ($d['sample_rate_hz'] ?? 25.0);
+        }
+
+        $fs = $fs ?: 25.0;
+        if (count($ppg) < (int) ($fs * 16)) {       // need ~2 analysis windows of PPG to be meaningful
+            return null;
+        }
+        if (! $accelAligned || count($ax) !== count($ppg)) {
+            $ax = $ay = $az = [];                   // motion suppression off rather than misaligned
+        }
+
+        try {
+            return $biosignal->processInMotionHr(array_filter([
+                'ppg' => $ppg,
+                'fs_ppg' => $fs,
+                'accel_x' => $ax ?: null,
+                'accel_y' => $ay ?: null,
+                'accel_z' => $az ?: null,
+                'fs_acc' => $fs,
+            ], fn ($v) => $v !== null));
+        } catch (\Throwable $e) {
+            Log::warning('[Biosignal] in-motion HR failed', [
+                'profile_id' => $profile->id, 'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Expand the estimator's per-window HR (one value every HR_WINDOW_STEP_S seconds, with last-good
+     * hold-fill and possible leading nulls) into a 1 Hz series, so it drops into the rest of the seal
+     * pipeline exactly where the 1 Hz on-chip series did. Leading nulls are back-filled from the first
+     * trusted reading. Returns [] if there's no usable value at all.
+     *
+     * @param  array<int,float|null>  $bpm
+     * @return array<int,float>
+     */
+    private function expandTo1Hz(array $bpm, float $stepS): array
+    {
+        $rep = max(1, (int) round($stepS));
+        $firstFinite = null;
+        foreach ($bpm as $v) {
+            if (is_numeric($v)) {
+                $firstFinite = (float) $v;
+                break;
+            }
+        }
+        if ($firstFinite === null) {
+            return [];
+        }
+        $out = [];
+        $last = $firstFinite;
+        foreach ($bpm as $v) {
+            $val = is_numeric($v) ? (float) $v : $last;
+            $last = $val;
+            for ($i = 0; $i < $rep; $i++) {
+                $out[] = $val;
+            }
+        }
+
         return $out;
     }
 

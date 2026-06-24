@@ -72,6 +72,80 @@ class ActivitySealTest extends TestCase
         Http::assertSent(fn ($r) => str_contains($r->url(), '/process/fitness') && ($r['resting_hr'] ?? null) == 52);
     }
 
+    public function test_in_motion_hr_recomputed_from_raw_ppg_overrides_onchip(): void
+    {
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+
+        // The estimator (faked here; its algorithm is proven in biosignal/tests/test_inmotion_hr.py)
+        // returns a clean HR series peaking at 165 with high coverage — the accurate workout HR.
+        Http::fake([
+            '*/process/inmotion-hr' => Http::response([
+                'algo_version' => 'v1',
+                't' => [1, 3, 5, 7],
+                'bpm' => [150.0, 158.0, 165.0, 160.0],
+                'confidence' => [80.0, 88.0, 92.0, 85.0],
+                'reliable' => [true, true, true, true],
+                'cadence_collision' => [false, false, false, false],
+                'summary' => ['hr_mean' => 158.0, 'hr_max' => 165.0, 'hr_min' => 150.0, 'coverage' => 0.9, 'n_windows' => 4],
+            ]),
+            '*/process/activity' => Http::response(['algo_version' => 'v1', 'metrics' => [
+                'sessions' => [[
+                    'start' => '2026-06-15T12:00:00Z', 'duration_min' => 30.0, 'mean_hr' => 158.0,
+                    'trimp' => 60.0, 'calories_kcal' => 380, 'activity_type' => 'run', 'activity_confidence' => 0.95,
+                ]], 'session_count' => 1,
+            ]]),
+            '*/process/fitness' => Http::response(['algo_version' => 'v1', 'vo2max' => 50.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'high', 'fitness_percentile_band' => 3, 'hrr' => null]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+
+        $this->storeWorkoutWindow($profile->id);   // on-chip HR = flat 150 (the cadence-locked value)
+        $this->storePpgRawWindow($profile->id);     // raw PPG the band streamed live during the workout
+
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($session);
+        // HR was recomputed from raw PPG, not the on-chip register.
+        $this->assertSame('ppg_inmotion', $session->hr_source);
+        $this->assertEqualsWithDelta(0.9, $session->hr_quality, 0.001);
+        $this->assertSame(165, $session->max_hr);   // peak of the in-motion series, not the flat 150 on-chip
+
+        // The raw PPG actually reached the estimator.
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/process/inmotion-hr')
+            && is_array($r['ppg'] ?? null) && count($r['ppg']) > 0);
+    }
+
+    public function test_offline_workout_without_ppg_keeps_onchip_hr(): void
+    {
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 30.0, 'mean_hr' => 150.0, 'trimp' => 58.0, 'calories_kcal' => 370,
+                'activity_type' => 'run', 'activity_confidence' => 0.9,
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 49.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'good', 'fitness_percentile_band' => 2, 'hrr' => null]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        $this->storeWorkoutWindow($profile->id);   // accel + on-chip HR only, no ppg_raw window
+
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertSame('onchip', $session->hr_source);
+        $this->assertNull($session->hr_quality);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/process/inmotion-hr'));
+    }
+
     public function test_recent_unfinished_session_is_left_for_later(): void
     {
         Storage::fake('raw');
@@ -186,6 +260,34 @@ class ActivitySealTest extends TestCase
         DeviceIngestion::create([
             'batch_uid' => 'wtest-'.$profileId.'-'.$endsAgoMin, 'profile_id' => $profileId,
             'source' => 'titan_band', 'kind' => 'workout', 'object_key' => $key,
+            'window_start' => $start, 'window_end' => $end, 'status' => DeviceIngestion::STATUS_QUEUED,
+        ]);
+    }
+
+    /** A raw-PPG (Shape B) window the band streams live during a connected workout: PPG + per-sample
+     *  accel triplets at sample_rate_hz, overlapping the workout session's time range. */
+    private function storePpgRawWindow(int $profileId, int $endsAgoMin = 60): void
+    {
+        $fs = 25;
+        $n = 30 * $fs;                 // ~30 s of raw PPG @ 25 Hz
+        $ppg = $accel = [];
+        for ($i = 0; $i < $n; $i++) {
+            $ppg[] = 200 + (int) round(100 * sin(2 * M_PI * 2.4 * $i / $fs)); // a pulsatile-ish trace
+            $accel[] = [0, 0, 1000];   // milli-g triplets
+        }
+        $end = CarbonImmutable::now()->subMinutes($endsAgoMin);
+        $start = $end->subMinutes(30);
+        $window = [
+            'kind' => 'ppg_raw', 'start' => $start->toIso8601ZuluString(), 'end' => $end->toIso8601ZuluString(),
+            'sample_rate_hz' => $fs, 'ppg' => $ppg, 'accel_xyz' => $accel,
+        ];
+
+        $key = "raw/{$profileId}/ppg-test.ppg.gz";
+        Storage::disk('raw')->put($key, gzencode(json_encode($window)));
+
+        DeviceIngestion::create([
+            'batch_uid' => 'ppgtest-'.$profileId.'-'.$endsAgoMin, 'profile_id' => $profileId,
+            'source' => 'titan_band', 'kind' => 'ppg_raw', 'object_key' => $key,
             'window_start' => $start, 'window_end' => $end, 'status' => DeviceIngestion::STATUS_QUEUED,
         ]);
     }

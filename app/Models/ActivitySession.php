@@ -14,7 +14,7 @@ class ActivitySession extends Model
     protected $fillable = [
         'profile_id', 'source', 'started_at', 'ended_at', 'duration_min',
         'activity_type', 'activity_confidence',
-        'distance_km', 'avg_hr', 'max_hr', 'trimp', 'calories_kcal',
+        'distance_km', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'trimp', 'calories_kcal',
         'vo2max', 'fitness_level', 'hrr_bpm', 'updated_via',
     ];
 
@@ -25,6 +25,7 @@ class ActivitySession extends Model
             'ended_at' => 'datetime',
             'activity_confidence' => 'float',
             'distance_km' => 'float',
+            'hr_quality' => 'float',
             'trimp' => 'float',
             'vo2max' => 'float',
             'hrr_bpm' => 'float',
@@ -34,6 +35,21 @@ class ActivitySession extends Model
     public function profile(): BelongsTo
     {
         return $this->belongsTo(Profile::class);
+    }
+
+    /**
+     * Honest label for how this session's HR was derived — drives the trust badge in the UI.
+     * 'ppg_inmotion' = recomputed from raw PPG with motion-artifact suppression (accurate);
+     * 'chest_strap'  = a paired BLE strap (reference-grade); 'onchip' = the wrist's bare register.
+     */
+    public function hrSourceLabel(): ?string
+    {
+        return match ($this->hr_source) {
+            'chest_strap' => 'chest strap',
+            'ppg_inmotion' => 'motion-corrected',
+            'onchip' => 'wrist',
+            default => null,
+        };
     }
 
     /** A human label for the activity (e.g. "Run", "Ride"). */

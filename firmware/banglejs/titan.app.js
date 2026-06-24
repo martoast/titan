@@ -90,10 +90,24 @@ var CFG = {
   GPS_FIX_TIMEOUT: 90,               // no satellite fix this long → indoors; drop GPS, keep the workout
   GPS_PROTO_VERSION: 4,              // T4 frame: per-fix speed + altitude (+ grade source)
 
-  // During a WORKOUT we also stream the on-chip HR (bpm) — in-motion PPG→IBI is unreliable, so
-  // workout HR uses the watch's hardware bpm register, not server-side peak detection. T5 frames
-  // only flow while a workout is active (GPS armed), so sleep/rest never stream bpm.
-  HR_PROTO_VERSION: 5,               // T5 frame: per-reading bpm + confidence
+  // During a WORKOUT we also stream the on-chip HR (bpm) — but ONLY as a fallback for offline
+  // sessions (no raw PPG reaches the server). When connected, the server recomputes in-motion HR
+  // from the raw PPG (T1) + accel with motion-artifact suppression, which beats the on-chip bpm
+  // that cadence-locks onto rep/grip rhythm. T5 frames flow while a workout is active.
+  HR_PROTO_VERSION: 5,               // T5 frame: per-reading bpm + confidence + sport-mode tag
+
+  // --- HRM tuning (THE heavy-lifting fix) ------------------------------------
+  // The stock Bangle.js HRM algorithm runs in "normal" mode (hrmSportMode 0) by DEFAULT, which is
+  // documented to sit flat (~40-90 bpm) under exertion because it never engages the motion-tolerant
+  // sport path — exactly the "it didn't pick up my heavy set" failure. So during a WORKOUT we force
+  // sport mode, and raise the PPG sample rate to 50 Hz for cleaner raw windows the server's in-motion
+  // estimator can work with. At rest we use 25 Hz (the rate our overnight HRV is validated at) in
+  // normal mode. Bangle.js 2 supports hrmPollInterval ∈ {10,20,40,80,160,200} ms; filtering is tuned
+  // for 20-40 ms. Sport modes: -1 auto, 0 normal, 1 running (general motion), 2 biking.
+  HRM_MS_REST: 40,                   // 25 Hz — overnight HRV's validated rate
+  HRM_MS_WORKOUT: 20,                // 50 Hz — finer raw PPG for the server in-motion HR estimator
+  HRM_SPORT_RUN: 1,                  // general motion-tolerant sport profile (lifting, running, etc.)
+  HRM_SPORT_BIKE: 2,                 // biking sport profile (steadier wrist, different artifact band)
 
   // OFFLINE workouts (a run with no phone, or a gym session): when not connected we log the
   // 3-axis accel to flash as compact T6 frames so the workout still CLASSIFIES on morning sync
@@ -116,6 +130,7 @@ var state = {
   connected: false,    // is a BLE central subscribed to NUS?
   bpm: 0,              // last HRM bpm (UI only)
   conf: 0,             // last HRM confidence (UI only)
+  hrmSport: 0,         // active Bangle sport mode (0 normal / 1 run / 2 bike) — tags T5 frames
   ppgCount: 0,         // samples captured this session (UI counter)
   framesSent: 0,       // BLE frames emitted/flushed
   logged: 0,           // approx bytes in the overnight log file
@@ -391,7 +406,7 @@ function emitHrFrame(bpm, conf) {
   dv.setUint8(0, CFG.HR_PROTO_VERSION);
   dv.setUint8(1, bpm > 255 ? 255 : (bpm < 0 ? 0 : bpm));
   dv.setUint8(2, conf > 100 ? 100 : (conf < 0 ? 0 : conf));
-  dv.setUint8(3, 0);
+  dv.setUint8(3, state.hrmSport & 0xff);  // sport mode this reading came from (0 normal / 1 run / 2 bike)
   dv.setUint32(4, (nowMs - hi * 4294967296) >>> 0, true);
   dv.setUint32(8, hi >>> 0, true);
   var line = "T5:" + b64(buf);
@@ -477,6 +492,7 @@ function startWorkout(manual) {
   state.workout = true;
   state.workoutManual = !!manual;
   powerGps(true);          // try for outdoor pace; dropped after GPS_FIX_TIMEOUT if no fix
+  applyHrmMode();          // force motion-tolerant SPORT mode + 50 Hz PPG (the heavy-lifting fix)
   applyAccelRate();        // 25 Hz accel for the classifier, even offline
   if (manual) { try { Bangle.buzz(120); } catch (e) {} }
   if (uiVisible) drawUI();
@@ -489,6 +505,7 @@ function endWorkout() {
   primed = null;           // clear any coach priming so a later auto-workout doesn't inherit its rate
   powerGps(false);
   if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
+  applyHrmMode();          // back to rest: normal mode + 25 Hz (the HRV-validated rate)
   applyAccelRate();
   if (uiVisible) drawUI();
 }
@@ -621,6 +638,31 @@ function applyAccelRate() {
   try { Bangle.setPollInterval(ms); } catch (e) {}
 }
 
+// Which Bangle sport mode fits the current state: normal (0) at rest, biking (2) for a primed
+// cycle/bike workout, general sport (1) for any other workout (lifting included). Lifting has no
+// dedicated mode; mode 1 is the motion-tolerant general profile and is far better than normal.
+function hrmSportFor() {
+  if (!(state.streaming && state.workout)) return 0;            // rest → normal
+  var t = primed && primed.type;
+  if (t === "bike" || t === "cycle" || t === "cycling") return CFG.HRM_SPORT_BIKE;
+  return CFG.HRM_SPORT_RUN;
+}
+
+// Tune the HRM for rest vs workout: force a motion-tolerant SPORT mode + 50 Hz raw PPG during a
+// workout, normal mode + 25 Hz at rest. This is the single biggest accuracy fix for in-motion HR —
+// the stock default (normal mode) is the documented cause of flat/wrong bpm under load. Called on
+// every state transition that can change rest↔workout. Guarded: pre-2v19 firmware may lack an option.
+function applyHrmMode() {
+  if (!state.streaming) return;
+  state.hrmSport = hrmSportFor();
+  try {
+    Bangle.setOptions({
+      hrmSportMode: state.hrmSport,
+      hrmPollInterval: state.workout ? CFG.HRM_MS_WORKOUT : CFG.HRM_MS_REST
+    });
+  } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
+}
+
 function startStreaming() {
   if (state.streaming) return;
   state.streaming = true;
@@ -628,6 +670,7 @@ function startStreaming() {
   // Power up the heart-rate sensor. Bangle.setHRMPower(1) turns on the VC31
   // LED + AFE; without it no HRM/HRM-raw events fire.
   Bangle.setHRMPower(1, "titan");
+  applyHrmMode();   // baseline HRM tuning (rest: normal mode + 25 Hz)
   // Accel is on by default on Bangle.js 2; setPollInterval tightens cadence.
   applyAccelRate();
   drawUI();
