@@ -910,6 +910,10 @@ function drawPairing() {
 
 function enterPairing() {
   pairUntil = getTime() + 120;          // pairable for 2 minutes
+  // Free the radio so the phone can SEE us: a Bangle stops advertising while another central holds
+  // the connection (very often the Espruino IDE, still connected right after a flash). Dropping it
+  // makes the band advertise again so the app's scan can discover it.
+  try { NRF.disconnect(); } catch (e) {}
   try { Bangle.buzz(200); } catch (e) {}
   if (pairTimer) clearInterval(pairTimer);
   drawPairing();
