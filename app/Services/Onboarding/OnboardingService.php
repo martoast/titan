@@ -148,6 +148,193 @@ class OnboardingService
         return ['route' => $hasWearable ? 'pairing' : 'coach', 'name' => $data['display_name']];
     }
 
+    /** Partial-edit rules (every field optional) — for changing profile info after onboarding. */
+    public static function partialRules(): array
+    {
+        $rules = [];
+        foreach (self::rules() as $field => $constraints) {
+            $rules[$field] = array_values(array_map(fn ($c) => $c === 'required' ? 'sometimes' : $c, $constraints));
+            if (! in_array('sometimes', $rules[$field], true) && ! in_array('nullable', $rules[$field], true)) {
+                array_unshift($rules[$field], 'sometimes');
+            }
+        }
+
+        return $rules;
+    }
+
+    /** The user's editable profile as a flat payload (for pre-filling the edit form). */
+    public static function snapshot(Profile $profile): array
+    {
+        $s = $profile->settings ?? [];
+        $intake = $s['intake'] ?? [];
+        $cycle = $s['cycle'] ?? [];
+        $units = $s['units'] ?? 'metric';
+        $imperial = $units === 'imperial';
+        $heightCm = $profile->height_cm ? (float) $profile->height_cm : null;
+
+        return [
+            'display_name' => $profile->display_name,
+            'birthdate' => optional($profile->birthdate)->toDateString(),
+            'sex' => $profile->sex,
+            'units' => $units,
+            'height' => $heightCm !== null ? ($imperial ? round($heightCm / 2.54, 1) : $heightCm) : null,
+            'activity_level' => $s['activity_level'] ?? null,
+            'primary_goal' => array_search($profile->primary_goal, self::GOALS, true) ?: null,
+            'coach_tone' => $profile->coach_tone,
+            'coaching_intensity' => $s['coaching_intensity'] ?? 'balanced',
+            'meals_per_day' => $s['meal_plan']['meals'] ?? 4,
+            'eat_start' => $s['meal_plan']['start'] ?? '08:00',
+            'eat_end' => $s['meal_plan']['end'] ?? '21:00',
+            'timezone' => $s['timezone'] ?? null,
+            'experience' => $intake['experience'] ?? null,
+            'train_at' => $intake['train_at'] ?? null,
+            'train_days' => $intake['train_days'] ?? 0,
+            'diet' => $intake['diet'] ?? null,
+            'allergies' => $intake['allergies'] ?? null,
+            'avoid_foods' => $intake['avoid_foods'] ?? null,
+            'injuries' => implode('|', $intake['injuries'] ?? []),
+            'health_notes' => $intake['health_notes'] ?? null,
+            'focus_areas' => implode('|', $intake['focus_areas'] ?? []),
+            'motivation' => $intake['motivation'] ?? null,
+            'event_date' => $intake['event_date'] ?? null,
+            'cycle_enabled' => (bool) ($cycle['enabled'] ?? false),
+            'cycle_length' => $cycle['avg_length'] ?? null,
+            'birth_control' => $cycle['birth_control'] ?? 'none',
+            'cycle_intent' => $cycle['intent'] ?? 'tracking',
+        ];
+    }
+
+    /**
+     * Apply a partial edit to an already-onboarded profile (change anything collected in onboarding,
+     * without re-seeding a starting weight or re-anchoring the cycle). Re-seeds coach memory.
+     *
+     * @param  array<string,mixed>  $data
+     */
+    public function updateProfile(User $user, Profile $profile, array $data): void
+    {
+        $settings = $profile->settings ?? [];
+        $units = $data['units'] ?? ($settings['units'] ?? 'metric');
+        $imperial = $units === 'imperial';
+
+        $cols = [];
+        if (isset($data['display_name'])) {
+            $cols['display_name'] = $data['display_name'];
+        }
+        if (isset($data['birthdate'])) {
+            $cols['birthdate'] = $data['birthdate'];
+        }
+        if (isset($data['sex'])) {
+            $cols['sex'] = $data['sex'];
+        }
+        if (isset($data['height'])) {
+            $cols['height_cm'] = $imperial ? round($data['height'] * 2.54, 1) : (float) $data['height'];
+        }
+        if (isset($data['primary_goal'])) {
+            $cols['primary_goal'] = self::GOALS[$data['primary_goal']];
+        }
+        if (isset($data['coach_tone'])) {
+            $cols['coach_tone'] = $data['coach_tone'];
+        }
+
+        foreach (['units', 'timezone', 'activity_level', 'coaching_intensity'] as $k) {
+            if (isset($data[$k])) {
+                $settings[$k] = $data[$k];
+            }
+        }
+        if (isset($data['meals_per_day']) || isset($data['eat_start']) || isset($data['eat_end'])) {
+            $mp = $settings['meal_plan'] ?? ['meals' => 4, 'start' => '08:00', 'end' => '21:00'];
+            if (isset($data['meals_per_day'])) {
+                $mp['meals'] = (int) $data['meals_per_day'];
+            }
+            if (isset($data['eat_start'])) {
+                $mp['start'] = $data['eat_start'];
+            }
+            if (isset($data['eat_end'])) {
+                $mp['end'] = $data['eat_end'];
+            }
+            $settings['meal_plan'] = $mp;
+        }
+
+        $intake = $settings['intake'] ?? [];
+        foreach (['experience', 'train_at', 'diet'] as $k) {
+            if (array_key_exists($k, $data)) {
+                $intake[$k] = $data[$k] ?: null;
+            }
+        }
+        if (array_key_exists('train_days', $data)) {
+            $intake['train_days'] = (int) $data['train_days'];
+        }
+        foreach (['allergies', 'avoid_foods', 'health_notes', 'motivation', 'event_date'] as $k) {
+            if (array_key_exists($k, $data)) {
+                $intake[$k] = trim((string) $data[$k]) ?: null;
+            }
+        }
+        if (array_key_exists('injuries', $data)) {
+            $intake['injuries'] = array_values(array_filter(array_map('trim', explode('|', $data['injuries'] ?? ''))));
+        }
+        if (array_key_exists('focus_areas', $data)) {
+            $intake['focus_areas'] = array_values(array_filter(array_map('trim', explode('|', $data['focus_areas'] ?? ''))));
+        }
+        $settings['intake'] = $intake;
+
+        if (array_key_exists('cycle_enabled', $data)) {
+            $female = ($cols['sex'] ?? $profile->sex) === 'F';
+            if ($female && filter_var($data['cycle_enabled'], FILTER_VALIDATE_BOOL)) {
+                $settings['cycle'] = array_merge($settings['cycle'] ?? ['avg_length' => Cycle::DEFAULT_LENGTH], array_filter([
+                    'enabled' => true,
+                    'avg_length' => $data['cycle_length'] ?? null,
+                    'birth_control' => $data['birth_control'] ?? null,
+                    'intent' => $data['cycle_intent'] ?? null,
+                ], fn ($v) => $v !== null));
+            } else {
+                $settings['cycle']['enabled'] = false;
+            }
+        }
+
+        // Recompute the macro seed from current stats — unless the user has set custom targets.
+        if (($settings['macro_targets']['source'] ?? null) !== 'custom') {
+            $weightKg = (float) ($profile->bodyMetrics()->whereNotNull('weight_kg')->latest('taken_at')->value('weight_kg') ?? 0);
+            $heightCm = $cols['height_cm'] ?? $profile->height_cm;
+            $birthdate = $cols['birthdate'] ?? optional($profile->birthdate)->toDateString();
+            $sex = $cols['sex'] ?? $profile->sex;
+            $goalKey = $data['primary_goal'] ?? (array_search($profile->primary_goal, self::GOALS, true) ?: 'general');
+            if ($weightKg > 0 && $heightCm && $birthdate) {
+                $m = $this->macros($weightKg, (float) $heightCm, Carbon::parse($birthdate)->age, $sex === 'F', $settings['activity_level'] ?? 'light', $goalKey);
+                $settings['macro_targets'] = array_merge($settings['macro_targets'] ?? [], $m);
+            }
+        }
+
+        $profile->update($cols + ['settings' => $settings]);
+        $this->seedCoreMemory($user, $profile->fresh(), $this->memoryCtx($profile->fresh()));
+    }
+
+    /** Build the coach-memory context from a profile's stored settings (so it's always complete). */
+    private function memoryCtx(Profile $p): array
+    {
+        $s = $p->settings ?? [];
+        $intake = $s['intake'] ?? [];
+
+        return [
+            'name' => $p->display_name ?: 'You',
+            'goal' => $p->primary_goal ?: '',
+            'focus_areas' => $intake['focus_areas'] ?? [],
+            'injuries' => $intake['injuries'] ?? [],
+            'data' => [
+                'coach_tone' => $p->coach_tone ?: 'balanced',
+                'coaching_intensity' => $s['coaching_intensity'] ?? 'balanced',
+                'experience' => $intake['experience'] ?? null,
+                'train_at' => $intake['train_at'] ?? null,
+                'train_days' => $intake['train_days'] ?? 0,
+                'diet' => $intake['diet'] ?? null,
+                'allergies' => $intake['allergies'] ?? null,
+                'avoid_foods' => $intake['avoid_foods'] ?? null,
+                'health_notes' => $intake['health_notes'] ?? null,
+                'motivation' => $intake['motivation'] ?? null,
+                'event_date' => $intake['event_date'] ?? null,
+            ],
+        ];
+    }
+
     /**
      * @param  array{name:string,goal:string,focus_areas:array<int,string>,injuries:array<int,string>,data:array<string,mixed>}  $ctx
      */

@@ -42,6 +42,10 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/onboarding', [\App\Http\Controllers\Api\MobileOnboardingController::class, 'status']);
     Route::post('/onboarding', [\App\Http\Controllers\Api\MobileOnboardingController::class, 'store']);
 
+    // Edit the profile info collected at onboarding (change anything later).
+    Route::get('/profile', [\App\Http\Controllers\Api\MobileProfileController::class, 'show']);
+    Route::patch('/profile', [\App\Http\Controllers\Api\MobileProfileController::class, 'update']);
+
     // Personalized insight feed (anomalies, goal progress, wins, behavior correlations).
     Route::get('/insights', [\App\Http\Controllers\Api\MobileInsightsController::class, 'index']);
 
