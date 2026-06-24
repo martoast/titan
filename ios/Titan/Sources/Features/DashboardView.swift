@@ -33,6 +33,32 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity)
             .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
 
+            // Biological Age — the hero "how old is your body" stat
+            if let b = d?.bio_age, let age = b.biological_age {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        SectionHeader(title: "Biological Age", trailing: b.confidence.map { "\($0.capitalized) confidence" })
+                        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
+                            Text(String(format: "%.0f", age))
+                                .font(Theme.Font.num(68))
+                                .foregroundStyle(Theme.Grad.brand)
+                            VStack(alignment: .leading, spacing: 6) {
+                                if let delta = b.delta { deltaBadge(delta) }
+                                if let chrono = b.chronological_age {
+                                    Text("Your real age is \(Int(chrono.rounded()))")
+                                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                }
+                            }
+                            Spacer()
+                        }
+                        if let fit = b.fitness_age {
+                            Label("Fitness age \(Int(fit.rounded())) · from VO₂max", systemImage: "figure.run")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        }
+                    }
+                }
+            }
+
             // Recovery vitals
             NavigationLink { RecoveryView() } label: {
                 GlassCard {
@@ -91,6 +117,18 @@ struct DashboardView: View {
         .titanScreen("Today", glow: Theme.Palette.recovery(model.dashboard?.readiness?.score))
         .refreshable { Haptic.soft(); await model.refresh() }
         .task { await model.refresh(); appeared = true }
+    }
+
+    /// "X.X years younger / older / on pace" — green when younger, amber when older.
+    @ViewBuilder private func deltaBadge(_ delta: Double) -> some View {
+        let younger = delta < -0.4, older = delta > 0.4
+        let color = younger ? Theme.Palette.mint : (older ? Theme.Palette.amber : Theme.Palette.textDim)
+        let text = younger ? String(format: "%.1f yrs younger", -delta)
+                 : (older ? String(format: "%.1f yrs older", delta) : "Right on pace")
+        Label(text, systemImage: younger ? "arrow.down.right" : (older ? "arrow.up.right" : "equal"))
+            .font(Theme.Font.label).foregroundStyle(color)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(color.opacity(0.14), in: Capsule())
     }
 
     private var chevron: String { "›" }

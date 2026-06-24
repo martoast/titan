@@ -36,8 +36,19 @@ class MobileDashboardController extends Controller
             ? $this->safe(fn () => \App\Support\RecoveryConfidence::assess($profile, $rec))
             : null;
 
+        // Biological age — the "how old is your body" hero stat (PhenoAge + Fitness Age combiner).
+        $bio = $this->safe(fn () => \App\Support\BiologicalAge::assess($profile));
+
         return response()->json([
             'readiness' => $readiness,
+            'bio_age' => $bio ? [
+                'biological_age' => $bio['biological_age'] ?? null,
+                'chronological_age' => $bio['chronological_age'] ?? null,
+                'delta' => $bio['delta'] ?? null,
+                'label' => $bio['label'] ?? null,
+                'confidence' => $bio['confidence'] ?? null,
+                'fitness_age' => $bio['fitness_age'] ?? null,
+            ] : null,
             'recovery' => $rec ? [
                 'logged_at' => $rec->logged_at,
                 'hrv_ms' => $rec->hrv_ms,

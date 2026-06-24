@@ -17,9 +17,19 @@ struct LoginResponse: Codable {
 /// `GET /api/me/dashboard`
 struct Dashboard: Codable {
     let readiness: Readiness?
+    let bio_age: BioAge?
     let recovery: Recovery?
     let sleep: Sleep?
     let activity: Activity?
+
+    struct BioAge: Codable {
+        let biological_age: Double?
+        let chronological_age: Double?
+        let delta: Double?           // bio − chrono; negative = younger than your years
+        let label: String?
+        let confidence: String?      // high | medium | low
+        let fitness_age: Double?
+    }
 
     struct Readiness: Codable {
         let score: Int?
