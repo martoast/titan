@@ -179,6 +179,17 @@ extension BandManager: CBPeripheralDelegate {
             if ch.uuid == Self.NUS_TX { p.setNotifyValue(true, for: ch) }
             if ch.uuid == Self.NUS_RX { rxChar = ch }
         }
+        if rxChar != nil { syncTime() }   // push the phone's local time + timezone to the band
+    }
+
+    /// Send the phone's current UTC time + timezone offset so the band's clock is always correct
+    /// (the phone always knows the right zone — more reliable than GPS, which can't derive tz).
+    private func syncTime() {
+        guard let p = band, let rx = rxChar else { return }
+        let t = Int(Date().timeIntervalSince1970)
+        let tz = Double(TimeZone.current.secondsFromGMT()) / 3600.0   // e.g. PDT = -7.0
+        let cmd = "C2:{\"t\":\(t),\"tz\":\(tz)}\n"
+        p.writeValue(Data(cmd.utf8), for: rx, type: .withoutResponse)
     }
 
     /// NUS TX stream — fires in the background and wakes a terminated app. Drain fast.

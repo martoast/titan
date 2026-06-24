@@ -178,7 +178,8 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
-var page = 0;             // watch face page: 0 = heart/home, 1 = clock, 2 = signals (swipe to change)
+var PAGES = 4;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status
+var page = 0;             // current face (swipe to change)
 var clockTickTimer = null; // minute-boundary redraw for the clock face
 
 // ----- Helpers --------------------------------------------------------------
@@ -673,99 +674,101 @@ function arc(cx, cy, r, w, a0, a1, col) {
 function hrColor(bpm) { return bpm >= 140 ? C.rec : (bpm >= 100 ? C.amber : C.mint); }
 function hrFrac(bpm) { return Math.max(0.02, Math.min(1, (bpm - 40) / 150)); }
 
-// Page indicator dots (which of the 3 swipeable faces you're on).
+// Page indicator dots.
 function pageDots() {
-  var W = g.getWidth(), H = g.getHeight(), n = 3, sp = 11, x0 = W / 2 - (n - 1) * sp / 2;
-  for (var i = 0; i < n; i++) {
+  var W = g.getWidth(), H = g.getHeight(), sp = 14, x0 = W / 2 - (PAGES - 1) * sp / 2;
+  for (var i = 0; i < PAGES; i++) {
     g.setColor(i === page ? C.white : C.faint);
-    g.fillCircle(x0 + i * sp, H - 7, i === page ? 3 : 2);
+    g.fillCircle(x0 + i * sp, H - 8, i === page ? 4 : 2);
   }
 }
 
-// Page 0 — Heart / home: live BPM + capture/sync state.
-function drawHome() {
-  var W = g.getWidth(), H = g.getHeight();
-  g.setFont("6x8", 1); g.setFontAlign(-1, 0);
-  g.setColor(state.streaming ? C.rec : C.faint); g.fillCircle(11, 13, 4);
-  g.setColor(state.streaming ? C.white : C.dim);
-  g.drawString(state.streaming ? "RECORDING" : "IDLE", 21, 13);
-  battIcon(W - 27, 8, state.battery);
-
-  g.setFontAlign(0, 0);
-  if (state.streaming) {
-    g.setFont("6x8", 1);
-    g.setColor(state.connected ? C.cyan : C.amber);
-    g.drawString(state.connected ? "SYNCING LIVE" : "LOGGING", W / 2, 34);
-
-    // HR ring (faint full track + colored value arc) with the BPM in the middle.
-    var cx = W / 2, cy = 100, r = 50, bpm = state.bpm || 0, col = hrColor(bpm);
-    arc(cx, cy, r, 7, 0, 1, C.track);
-    if (bpm) arc(cx, cy, r, 7, 0, hrFrac(bpm), col);
-    heartIcon(cx, cy - 22, 9);
-    g.setColor(C.white); g.setFont("Vector", 44); g.drawString((bpm || "--") + "", cx, cy + 6);
-    g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("BPM", cx, cy + 30);
-
-    if (state.workout) {
-      g.setColor(C.violet); g.setFont("6x8", 1);
-      g.drawString(state.workoutManual ? "GYM" : (state.gps ? (state.gpsFix ? "RUN · GPS" : "RUN") : "WORKOUT"), W / 2, 160);
-    }
-  } else {
-    heartIcon(W / 2, 60, 13);
-    g.setColor(C.white); g.setFont("Vector", 40); g.drawString("TITAN", W / 2, 104);
-    g.setColor(C.cyan); g.setFont("6x8", 1); g.drawString("RECOVERY BAND", W / 2, 132);
-    g.setColor(C.faint); g.drawString("tap: start   2x-tap: pair", W / 2, 152);
-  }
+// Shared top bar: REC/IDLE pill (left) + battery (right). High-contrast, no dithered greys.
+function topBar() {
+  var W = g.getWidth();
+  g.setFont("6x8", 2); g.setFontAlign(-1, 0);
+  g.setColor(state.streaming ? C.rec : C.cyan); g.fillCircle(12, 16, 5);
+  g.setColor(state.streaming ? C.white : C.cyan);
+  g.drawString(state.streaming ? "REC" : "IDLE", 24, 16);
+  battIcon(W - 28, 9, state.battery);
 }
 
-// Page 1 — Clock: big time, date, glanceable HR + battery.
+// A centered tab title (big + pure color so it's actually readable on the 3-bit panel).
+function tabTitle(t, col) {
+  g.setFont("6x8", 2); g.setFontAlign(0, 0); g.setColor(col);
+  g.drawString(t, g.getWidth() / 2, 38);
+}
+
+function stepCount() {
+  try { return Bangle.getHealthStatus("day").steps; } catch (e) {}
+  try { return Bangle.getStepCount(); } catch (e) {}
+  return 0;
+}
+
+// Page 0 — HEART RATE: big BPM inside a color-mapped ring.
+function drawHeart() {
+  var W = g.getWidth();
+  topBar();
+  tabTitle("HEART RATE", C.heart);
+  var cx = W / 2, cy = 104, r = 47, bpm = state.bpm || 0;
+  arc(cx, cy, r, 8, 0, 1, C.track);
+  if (bpm) arc(cx, cy, r, 8, 0, hrFrac(bpm), hrColor(bpm));
+  g.setColor(C.white); g.setFont("Vector", 52); g.setFontAlign(0, 0);
+  g.drawString((bpm || "--") + "", cx, cy);
+  g.setColor(state.connected ? C.cyan : (state.streaming ? C.amber : C.cyan)); g.setFont("6x8", 2);
+  g.drawString(state.streaming ? (state.connected ? "SYNCING" : "LOGGING") : "TAP TO START", cx, 160);
+}
+
+// Page 1 — CLOCK: big time + date (timezone synced from the phone).
 function drawClock() {
-  var W = g.getWidth(), H = g.getHeight(), d = new Date();
+  var W = g.getWidth(), d = new Date();
   var hh = ("0" + d.getHours()).substr(-2), mm = ("0" + d.getMinutes()).substr(-2);
-  battIcon(W - 27, 8, state.battery);
-  g.setColor(C.white); g.setFont("Vector", 62); g.setFontAlign(0, 0);
-  g.drawString(hh + ":" + mm, W / 2, 78);
+  battIcon(W - 28, 9, state.battery);
+  g.setColor(C.white); g.setFont("Vector", 68); g.setFontAlign(0, 0);
+  g.drawString(hh + ":" + mm, W / 2, 86);
   var DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
   var MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  g.setColor(C.cyan); g.setFont("6x8", 1);
-  g.drawString(DOW[d.getDay()] + "  " + d.getDate() + " " + MON[d.getMonth()], W / 2, 116);
-  if (state.bpm) {
-    heartIcon(W / 2 - 22, 146, 8);
-    g.setColor(C.white); g.setFont("6x8", 2); g.setFontAlign(-1, 0);
-    g.drawString(state.bpm + "", W / 2 - 10, 146);
-  }
+  g.setColor(C.cyan); g.setFont("6x8", 2);
+  g.drawString(DOW[d.getDay()] + " " + d.getDate() + " " + MON[d.getMonth()], W / 2, 132);
 }
 
-// Page 2 — Signals: the live data streams in one place.
-function drawSignals() {
+// Page 2 — STEPS: big count.
+function drawSteps() {
   var W = g.getWidth();
-  g.setColor(C.white); g.setFont("6x8", 2); g.setFontAlign(0, 0);
-  g.drawString("SIGNALS", W / 2, 16);
-  g.setFont("6x8", 1);
-  var y = 42;
-  function row(label, val, col) {
-    g.setColor(C.dim); g.setFontAlign(-1, 0); g.drawString(label, 10, y);
-    g.setColor(col || C.white); g.setFontAlign(1, 0); g.drawString(val, W - 10, y);
-    y += 18;
-  }
-  row("Heart rate", (state.bpm || "--") + " bpm", C.heart);
-  row("Samples", state.ppgCount + "", C.cyan);
-  row("Frames sent", state.framesSent + "", C.cyan);
-  row("Buffered", (state.logged / 1024).toFixed(1) + " KB", C.amber);
-  row("Link", state.connected ? "live" : "logging", state.connected ? C.mint : C.amber);
-  row("Workout", state.workout ? (state.workoutManual ? "gym" : "auto") : "—", C.violet);
-  row("Battery", state.battery + "%", C.mint);
+  topBar();
+  tabTitle("STEPS", C.mint);
+  g.setColor(C.white); g.setFont("Vector", 54); g.setFontAlign(0, 0);
+  g.drawString(stepCount() + "", W / 2, 104);
+  g.setColor(C.cyan); g.setFont("6x8", 2); g.drawString("TODAY", W / 2, 150);
 }
 
-// Dispatcher: clears, draws the current page, then the page dots. All the existing drawUI()
-// calls on sensor events just redraw whichever face you're on.
+// Page 3 — STATUS: a few big, readable operational rows.
+function drawStatus() {
+  var W = g.getWidth();
+  tabTitle("STATUS", C.cyan);
+  var y = 70;
+  function row(label, val, col) {
+    g.setFont("6x8", 1); g.setFontAlign(-1, 0); g.setColor(C.cyan); g.drawString(label, 14, y - 6);
+    g.setFont("6x8", 2); g.setFontAlign(1, 0); g.setColor(col); g.drawString(val, W - 14, y);
+    y += 28;
+  }
+  row("LINK", state.connected ? "LIVE" : (state.streaming ? "LOGGING" : "OFF"), state.connected ? C.mint : C.amber);
+  row("BATTERY", state.battery + "%", state.battery < 20 ? C.rec : C.mint);
+  row("SAMPLES", state.ppgCount + "", C.white);
+  row("SYNCED", state.framesSent + "", C.cyan);
+}
+
+// Dispatcher: clears, draws the current page + page dots. All sensor-event drawUI() calls
+// just repaint whichever face you're on.
 function drawUI() {
   if (!uiVisible) return;
   if (pairTimer) return;            // pairing screen owns the display
   if (!Bangle.isLCDOn()) return;    // power: don't redraw while the screen is asleep
   g.reset(); g.setColor(C.bg); g.fillRect(0, 0, g.getWidth(), g.getHeight());
   if (page === 1) drawClock();
-  else if (page === 2) drawSignals();
-  else drawHome();
+  else if (page === 2) drawSteps();
+  else if (page === 3) drawStatus();
+  else drawHeart();
   pageDots();
 }
 
@@ -788,7 +791,7 @@ NRF.on("disconnect", onDisconnect);
 // are left to the Bangle OS for widgets/launcher.)
 Bangle.on("swipe", function (lr) {
   if (pairTimer || !uiVisible || !lr) return;
-  page = (page + (lr > 0 ? 1 : 2)) % 3;   // right = +1, left = -1 (≡ +2 mod 3)
+  page = (page + (lr > 0 ? 1 : PAGES - 1)) % PAGES;   // right = +1, left = −1
   try { Bangle.buzz(15); } catch (e) {}
   drawUI();
 });
@@ -918,6 +921,13 @@ Bluetooth.on("data", function (d) {
     } else if (line.substr(0, 2) === "C0") {      // stand down
       primed = null;
       if (state.workout && state.workoutManual) endWorkout();
+    } else if (line.substr(0, 3) === "C2:") {     // set time + timezone from the phone
+      try {
+        var c = JSON.parse(line.substr(3));       // { t: unixSeconds (UTC), tz: hoursOffset }
+        if (typeof c.tz === "number") E.setTimeZone(c.tz);
+        if (typeof c.t === "number") setTime(c.t);
+        if (page === 1) drawUI();
+      } catch (err) { /* malformed — ignore */ }
     }
   }
 });
