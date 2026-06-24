@@ -178,8 +178,9 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
-var PAGES = 4;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status
+var PAGES = 5;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo
 var page = 0;             // current face (swipe to change)
+var photoMin = -2;        // minute currently shown on the Photo face (-2 = needs a full repaint)
 var clockTickTimer = null; // minute-boundary redraw for the clock face
 
 // ----- Helpers --------------------------------------------------------------
@@ -758,12 +759,54 @@ function drawStatus() {
   row("SYNCED", state.framesSent + "", C.cyan);
 }
 
+// Outlined text — stays readable over any photo. The 3-bit panel has no alpha, so we fake a halo
+// by stamping the string in the background colour around the glyphs, then the real colour on top.
+function drawOutlined(s, x, y, fg) {
+  var o = 2;
+  g.setColor(C.bg);
+  g.drawString(s, x - o, y); g.drawString(s, x + o, y);
+  g.drawString(s, x, y - o); g.drawString(s, x, y + o);
+  g.drawString(s, x - o, y - o); g.drawString(s, x + o, y + o);
+  g.drawString(s, x - o, y + o); g.drawString(s, x + o, y - o);
+  g.setColor(fg); g.drawString(s, x, y);
+}
+
+// Page 4 — PHOTO: a full-screen picture stored in flash as "titan.gf", with the time floating over
+// it (a little screensaver). Upload your own once via titan-photo-upload.js in the IDE — it lives in
+// flash and survives firmware reflashes. Falls back to a hint until you do.
+function drawPhoto() {
+  var W = g.getWidth(), H = g.getHeight(), img = null;
+  try { img = require("Storage").read("titan.gf"); } catch (e) {}
+  if (img) { try { g.drawImage(img, 0, 0); } catch (e) { img = null; } }
+  if (!img) {
+    g.setColor(C.bg); g.fillRect(0, 0, W, H);
+    g.setColor(C.violet); g.setFont("6x8", 2); g.setFontAlign(0, 0);
+    g.drawString("PHOTO", W / 2, 64);
+    g.setColor(C.dim); g.setFont("6x8", 1);
+    g.drawString("upload a picture once", W / 2, 92);
+    g.drawString("titan-photo-upload.js", W / 2, 106);
+  }
+  var d = new Date();
+  var hh = ("0" + d.getHours()).substr(-2), mm = ("0" + d.getMinutes()).substr(-2);
+  g.setFont("Vector", 38); g.setFontAlign(0, 0);
+  drawOutlined(hh + ":" + mm, W / 2, 140, C.white);
+}
+
 // Dispatcher: clears, draws the current page + page dots. All sensor-event drawUI() calls
 // just repaint whichever face you're on.
 function drawUI() {
   if (!uiVisible) return;
   if (pairTimer) return;            // pairing screen owns the display
   if (!Bangle.isLCDOn()) return;    // power: don't redraw while the screen is asleep
+  if (page === 4) {                 // Photo face is a heavy full-screen draw — only repaint when the
+    var m = new Date().getMinutes();// minute changes, so 1 Hz sensor ticks don't thrash it.
+    if (m === photoMin) return;
+    photoMin = m;
+    drawPhoto();
+    pageDots();
+    return;
+  }
+  photoMin = -2;                    // off the photo face → force a fresh photo draw when we return
   g.reset(); g.setColor(C.bg); g.fillRect(0, 0, g.getWidth(), g.getHeight());
   if (page === 1) drawClock();
   else if (page === 2) drawSteps();
@@ -797,7 +840,7 @@ Bangle.on("swipe", function (lr) {
 });
 
 // Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep).
-Bangle.on("lcdPower", function (on) { if (on) drawUI(); });
+Bangle.on("lcdPower", function (on) { if (on) { photoMin = -2; drawUI(); } });
 
 // Keep the clock face honest: redraw on each minute boundary (only repaints if you're on the
 // clock page and the screen is on — drawUI() guards both), instead of a wasteful 1 s interval.
@@ -805,7 +848,7 @@ function queueClockTick() {
   if (clockTickTimer) clearTimeout(clockTickTimer);
   clockTickTimer = setTimeout(function () {
     clockTickTimer = null;
-    if (page === 1) drawUI();
+    if (page === 1 || page === 4) drawUI();   // clock + photo faces show the time
     queueClockTick();
   }, 60000 - (Date.now() % 60000) + 50);
 }
