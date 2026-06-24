@@ -784,16 +784,23 @@ function drawOutlined(s, x, y, fg) {
 // it (a little screensaver). Upload your own once via titan-photo-upload.js in the IDE — it lives in
 // flash and survives firmware reflashes. Falls back to a hint until you do.
 function drawPhoto() {
-  var W = g.getWidth(), H = g.getHeight(), img = null;
-  try { img = require("Storage").read("titan.gf"); } catch (e) {}
-  if (img) { try { g.drawImage(img, 0, 0); } catch (e) { img = null; } }
-  if (!img) {
+  var W = g.getWidth(), H = g.getHeight();
+  // Prefer the picture hardcoded straight into this build (TITAN_PHOTO) — no flash-write step that
+  // can silently fail. Fall back to a flash copy ("titan.gf"), then to a hint / on-screen error.
+  var img = (typeof TITAN_PHOTO !== "undefined" && TITAN_PHOTO) ? TITAN_PHOTO : null;
+  if (!img) { try { img = require("Storage").read("titan.gf") || null; } catch (e) {} }
+  var drawn = false, err = "";
+  if (img) { try { g.drawImage(img, 0, 0); drawn = true; } catch (e) { err = "" + e; } }
+  if (!drawn) {
     g.setColor(C.bg); g.fillRect(0, 0, W, H);
-    g.setColor(C.violet); g.setFont("6x8", 2); g.setFontAlign(0, 0);
-    g.drawString("PHOTO", W / 2, 64);
-    g.setColor(C.dim); g.setFont("6x8", 1);
-    g.drawString("upload a picture once", W / 2, 92);
-    g.drawString("titan-photo-upload.js", W / 2, 106);
+    g.setFontAlign(0, 0);
+    if (err) {
+      g.setColor(C.rec); g.setFont("6x8", 2); g.drawString("PHOTO ERR", W / 2, 70);
+      g.setColor(C.dim); g.setFont("6x8", 1); g.drawString(err.substr(0, 28), W / 2, 96);
+    } else {
+      g.setColor(C.violet); g.setFont("6x8", 2); g.drawString("PHOTO", W / 2, 70);
+      g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("no picture in this build", W / 2, 96);
+    }
   }
   var d = new Date();
   var hh = ("0" + d.getHours()).substr(-2), mm = ("0" + d.getMinutes()).substr(-2);
