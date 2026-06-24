@@ -599,7 +599,7 @@ class CoachTools
             return ['error' => 'Food lookup is not available.'];
         }
 
-        $r = app(\App\Support\FoodLibrary::class)->lookup($food);
+        $r = app(\App\Support\FoodLibrary::class)->lookup($food, $this->profile);
         if (! ($r['ok'] ?? false)) {
             return ['note' => "Couldn't find reliable data for \"{$food}\" — estimate from similar foods and tell them it's approximate."];
         }
@@ -1268,7 +1268,23 @@ class CoachTools
             return ['error' => 'Need the food name to update.'];
         }
         $key = \App\Support\FoodLibrary::normalize($name);
-        $fact = \App\Models\FoodFact::where('name', $key)->first() ?: new \App\Models\FoodFact(['name' => $key, 'hits' => 0]);
+        $pid = $this->profile->id;
+
+        // The correction is THIS profile's own (never touches the shared cache or another user).
+        $fact = \App\Models\FoodFact::where('profile_id', $pid)->where('name', $key)->first();
+        if (! $fact) {
+            // Seed a new personal override from the current effective value (shared cache) so a
+            // partial correction ("the protein's actually 25") keeps the other macros.
+            $base = \App\Models\FoodFact::findForProfile($key, $pid);
+            $fact = new \App\Models\FoodFact([
+                'profile_id' => $pid, 'name' => $key, 'hits' => 0,
+                'basis' => $base->basis ?? '100g',
+                'calories' => $base->calories ?? 0,
+                'protein_g' => $base->protein_g ?? 0,
+                'carbs_g' => $base->carbs_g ?? 0,
+                'fat_g' => $base->fat_g ?? 0,
+            ]);
+        }
 
         foreach (['calories', 'protein_g', 'carbs_g', 'fat_g'] as $k) {
             if (isset($a[$k]) && is_numeric($a[$k])) {
@@ -1277,9 +1293,7 @@ class CoachTools
         }
         $basis = trim((string) ($a['basis'] ?? ''));
         if ($basis !== '') {
-            $fact->basis = $basis;
-        } elseif (! $fact->exists) {
-            $fact->basis = '100g';
+            $fact->basis = $basis;     // else keep the seeded/existing basis
         }
         $fact->source = 'user';        // user-corrected → authoritative, never overwritten by a web lookup
         $fact->save();

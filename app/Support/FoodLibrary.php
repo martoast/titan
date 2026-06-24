@@ -18,15 +18,15 @@ class FoodLibrary
     /**
      * @return array{ok:bool,food?:string,basis?:string,calories?:int,protein_g?:float,carbs_g?:float,fat_g?:float,source?:?string,cached?:bool,reason?:string}
      */
-    public function lookup(string $food): array
+    public function lookup(string $food, ?\App\Models\Profile $profile = null): array
     {
         $base = self::normalize($food);
         if ($base === '') {
             return ['ok' => false, 'reason' => 'empty'];
         }
 
-        // 1. Cache hit → zero web/AI cost.
-        $fact = FoodFact::findFuzzy($base);
+        // 1. Cache hit → zero web/AI cost. The profile's own correction wins over the shared cache.
+        $fact = FoodFact::findForProfile($base, $profile?->id);
         if ($fact) {
             $fact->increment('hits');
 

@@ -63,8 +63,9 @@ class ScanService
         $kind = $data['kind'] ?? 'other';
 
         if ($kind === 'meal' && ! empty($data['meal']) && is_array($data['meal'])) {
-            // Ground the macros in REAL web nutrition data instead of trusting the vision guess.
-            return $this->logMeal($profile, $this->groundMeal($data['meal']), $path, $imageUrl);
+            // Ground the macros in REAL nutrition data instead of trusting the vision guess
+            // (the user's own food corrections win over the shared web cache).
+            return $this->logMeal($profile, $this->groundMeal($data['meal'], $profile), $path, $imageUrl);
         }
         if ($kind === 'bloodwork' && ! empty($data['bloodwork']) && is_array($data['bloodwork'])) {
             return $this->logBloodwork($profile, $data['bloodwork'], $imageUrl);
@@ -108,7 +109,7 @@ class ScanService
      * snapped meal logs true calories/macros, not invented ones. Best-effort: keeps the vision estimate
      * if the web has nothing useful.
      */
-    private function groundMeal(array $m): array
+    private function groundMeal(array $m, Profile $profile): array
     {
         if (! class_exists(\App\Support\FoodLibrary::class)) {
             return $m;
@@ -119,7 +120,7 @@ class ScanService
         }
 
         // Cache-first base macros (per 100g) -- only researches the web the first time this food is seen.
-        $lib = app(\App\Support\FoodLibrary::class)->lookup($name);
+        $lib = app(\App\Support\FoodLibrary::class)->lookup($name, $profile);
         if (! ($lib['ok'] ?? false)) {
             return $m;
         }
