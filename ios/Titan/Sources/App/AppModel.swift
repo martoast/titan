@@ -59,6 +59,11 @@ final class AppModel: ObservableObject {
     @Published var journalCatalog: [JournalItem] = []
     @Published var journalLogged: Set<String> = []
 
+    // Body + intake
+    @Published var weightCard: WeightCard?
+    @Published var hydration: HydrationToday?
+    @Published var fasting: FastingStatus?
+
     let api: APIClient
 
     private var band: BandManager?
@@ -195,6 +200,30 @@ final class AppModel: ObservableObject {
             let logged = try await api.logJournal(add: wasOn ? [] : [key], remove: wasOn ? [key] : [])
             journalLogged = Set(logged)
         } catch { await loadJournal() }
+    }
+
+    // MARK: body + intake (weight / hydration / fasting)
+
+    func loadWeight() async { if let w = try? await api.weight() { weightCard = w } }
+    func logWeight(_ kg: Double) async {
+        do { weightCard = try await api.logWeight(kg: kg) }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func loadHydration() async { if let h = try? await api.hydration() { hydration = h } }
+    func addWater(_ ml: Int) async {
+        Haptic.soft()
+        if let h = try? await api.logWater(ml: ml) { hydration = h }
+    }
+
+    func loadFasting() async { if let f = try? await api.fasting() { fasting = f } }
+    func startFast(_ goalHours: Double) async {
+        Haptic.rigid()
+        if let f = try? await api.startFast(goalHours: goalHours) { fasting = f }
+    }
+    func endFast() async {
+        Haptic.success()
+        if let f = try? await api.endFast() { fasting = f }
     }
 
     // MARK: nutrition + progress (Fuel tab)

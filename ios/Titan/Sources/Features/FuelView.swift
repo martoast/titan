@@ -8,7 +8,7 @@ struct FuelView: View {
     @EnvironmentObject var model: AppModel
     @State private var segment: Segment = .macros
     @State private var showTargets = false
-    enum Segment: String, CaseIterable { case macros = "Macros", progress = "Progress" }
+    enum Segment: String, CaseIterable { case macros = "Macros", body = "Body" }
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -18,7 +18,7 @@ struct FuelView: View {
             .pickerStyle(.segmented)
             .padding(.top, Theme.Space.xs)
 
-            if segment == .macros { MacrosSection() } else { ProgressSection() }
+            if segment == .macros { MacrosSection() } else { BodySection() }
             Color.clear.frame(height: 8)
         }
         .animation(Theme.Motion.snappy, value: segment)
@@ -69,6 +69,8 @@ private struct MacrosSection: View {
 
             macrosCard
             mealsList
+            HydrationCard()
+            FastingCard()
         }
         .task { await model.loadNutrition() }
         .sheet(item: $editing) { EditMealSheet(meal: $0) }
@@ -138,6 +140,17 @@ private struct MacrosSection: View {
 }
 
 // MARK: - Progress photos
+
+// MARK: - Body (weight trend + progress photos)
+
+private struct BodySection: View {
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            WeightSection()
+            ProgressSection()
+        }
+    }
+}
 
 private struct ProgressSection: View {
     @EnvironmentObject var model: AppModel

@@ -136,6 +136,29 @@ final class APIClient {
         try await send(request("api/me/weight", method: "POST", json: ["weight_kg": kg]), as: WeightCard.self)
     }
 
+    func hydration() async throws -> HydrationToday {
+        try await send(request("api/me/hydration"), as: HydrationToday.self)
+    }
+
+    @discardableResult
+    func logWater(ml: Int) async throws -> HydrationToday {
+        try await send(request("api/me/hydration", method: "POST", json: ["ml": ml]), as: HydrationToday.self)
+    }
+
+    func fasting() async throws -> FastingStatus {
+        try await send(request("api/me/fasting"), as: FastingStatus.self)
+    }
+
+    @discardableResult
+    func startFast(goalHours: Double) async throws -> FastingStatus {
+        try await send(request("api/me/fasting/start", method: "POST", json: ["goal_hours": goalHours]), as: FastingStatus.self)
+    }
+
+    @discardableResult
+    func endFast() async throws -> FastingStatus {
+        try await send(request("api/me/fasting/end", method: "POST"), as: FastingStatus.self)
+    }
+
     // MARK: targets
 
     func targets() async throws -> Targets {

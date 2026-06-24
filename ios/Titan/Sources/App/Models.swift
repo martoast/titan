@@ -216,6 +216,28 @@ struct WeightCard: Codable {
     struct WeightPoint: Codable { let date: String; let weight: Double?; let trend: Double }
 }
 
+/// `GET/POST /api/me/hydration`
+struct HydrationToday: Codable, Equatable {
+    let total_ml: Int
+    let target_ml: Int
+    let pct: Int
+    let date: String?
+    var litres: Double { Double(total_ml) / 1000 }
+    var targetLitres: Double { Double(target_ml) / 1000 }
+}
+
+/// `GET /api/me/fasting`, `POST /api/me/fasting/{start,end}`
+struct FastingStatus: Codable, Equatable {
+    let active: Bool
+    let started_at: String?
+    let elapsed_h: Double?
+    let goal_h: Double?
+    let pct: Int?
+    let stage: String?
+    let stage_blurb: String?
+    let next_stage_in_h: Double?
+}
+
 enum APIError: LocalizedError {
     case http(Int, String), decoding, unauthorized, transport(String)
     var errorDescription: String? {
