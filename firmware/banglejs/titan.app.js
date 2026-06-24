@@ -679,7 +679,7 @@ function drawUI() {
   // Footer hint
   g.setFontAlign(0, 0);
   g.setFont("6x8", 1);
-  var hint = !state.streaming ? "tap: start  ·  hold 3s: pair"
+  var hint = !state.streaming ? "tap: start  ·  2x tap: pair"
     : (state.workout && state.workoutManual ? "hold BTN: end gym" : "hold BTN: gym");
   g.drawString(hint, g.getWidth() / 2, g.getHeight() - 10);
 }
@@ -750,16 +750,30 @@ function exitPairing() {
   drawUI();
 }
 
-// Button: while pairing, any press exits. Otherwise short press = start/stop capture; a >1.2 s
-// hold while streaming = manual gym workout; a >3 s hold from IDLE = enter pairing mode.
-var btnDownT = 0;
+// Button gestures. NOTE: a long button HOLD is reserved by the Bangle OS (it resets/reboots the
+// watch), so we must NOT use a hold for our own actions beyond the brief gym toggle. Instead,
+// pairing uses a DOUBLE-TAP — exactly like Whoop's "double-tap like a heartbeat" — which the OS
+// never intercepts. Single tap = start/stop capture; double tap = enter pairing mode.
+var btnDownT = 0, lastTapT = 0;
 setWatch(function () { btnDownT = getTime(); }, BTN1, { repeat: true, edge: "rising" });
 setWatch(function () {
   var held = getTime() - btnDownT;
-  if (pairTimer) { exitPairing(); return; }
-  if (held > 3 && !state.streaming) { enterPairing(); }
-  else if (held > 1.2) { if (state.streaming) toggleManualWorkout(); }
-  else toggleStreaming();
+  if (pairTimer) { exitPairing(); return; }      // in pairing → any press exits
+  if (held > 1.2) {                               // a (short) hold while streaming = gym toggle
+    if (state.streaming) toggleManualWorkout();
+    lastTapT = 0;
+    return;
+  }
+  // Short tap: a quick second tap (<0.5 s) is a DOUBLE-TAP → pairing mode.
+  var now = getTime();
+  if (now - lastTapT < 0.5) {
+    lastTapT = 0;
+    if (state.streaming) stopStreaming();         // back to idle, then show the pairing code
+    enterPairing();
+    return;
+  }
+  lastTapT = now;
+  toggleStreaming();                              // single tap acts immediately
 }, BTN1, { repeat: true, edge: "falling" });
 
 function toggleManualWorkout() {
