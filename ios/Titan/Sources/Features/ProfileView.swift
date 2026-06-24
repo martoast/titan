@@ -52,6 +52,30 @@ struct ProfileView: View {
             .buttonStyle(PressCard())
             .sheet(isPresented: $showBand) { DevicesView() }
 
+            // Apple Health
+            Button { Haptic.tap(); Task { model.healthConnected ? await model.syncAppleHealth(days: 30) : await model.connectAppleHealth() } } label: {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: model.healthConnected ? 6 : 0) {
+                        HStack {
+                            Label("Apple Health", systemImage: "heart.text.square.fill").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            Spacer()
+                            HStack(spacing: 7) {
+                                if model.healthSyncing { ProgressView().controlSize(.mini).tint(Theme.Palette.pink) }
+                                else { PulseDot(on: model.healthConnected) }
+                                Text(model.healthConnected ? "Synced" : "Connect").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+                            }
+                        }
+                        if model.healthConnected {
+                            Text("Tip: enable Health → Heart → AFib History to record HRV through the night — it makes your recovery score far more accurate.")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        }
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+            .task { await model.loadHealthStatus() }
+
             GlassCard {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
                     Label("Open-source · free forever", systemImage: "heart.fill").font(Theme.Font.body).foregroundStyle(Theme.Palette.pink)

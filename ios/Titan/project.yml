@@ -35,6 +35,7 @@ targets:
         NSPhotoLibraryUsageDescription: "Titan lets you choose meal and progress photos from your library."
         NSHealthShareUsageDescription: "Titan reads your steps, sleep, heart rate and workouts to compute your recovery, insights and trends — no wearable required."
         NSHealthUpdateUsageDescription: "Titan does not write to Apple Health; it only reads your data to power your coaching."
+        NSMotionUsageDescription: "Titan uses motion data to count your steps, distance and flights climbed — live, with no wearable."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     entitlements:

@@ -34,6 +34,48 @@ struct HealthConnectCard: View {
     }
 }
 
+// MARK: - Live steps (phone-only, instant)
+
+/// A live "steps today" ring from CoreMotion — works on any iPhone with no permission prompt.
+struct LiveStepsCard: View {
+    @StateObject private var tracker = StepTracker()
+    private let goal = 10000
+
+    var body: some View {
+        Group {
+            if tracker.available {
+                GlassCard {
+                    HStack(spacing: Theme.Space.l) {
+                        FuelRing(pct: Double(tracker.steps) / Double(goal), color: Theme.Palette.mint, size: 92) {
+                            VStack(spacing: 0) {
+                                Text("\(tracker.steps)").font(Theme.Font.num(20)).foregroundStyle(.white).monospacedDigit()
+                                    .contentTransition(.numericText())
+                                Text("steps").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: Theme.Space.s) {
+                            SectionHeader(title: "Move", trailing: "live")
+                            stat(String(format: "%.1f km", tracker.distanceKm), "Distance", Theme.Palette.cyan)
+                            stat("\(tracker.flights)", "Flights", Theme.Palette.amber)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .animation(Theme.Motion.snappy, value: tracker.steps)
+                }
+            }
+        }
+        .task { tracker.start() }
+        .onDisappear { tracker.stop() }
+    }
+
+    private func stat(_ value: String, _ label: String, _ color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(value).font(Theme.Font.num(15)).foregroundStyle(color).monospacedDigit()
+            Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+        }
+    }
+}
+
 // MARK: - Reusable gauge ring
 
 /// A progress ring with arbitrary center content — used by hydration & fasting.

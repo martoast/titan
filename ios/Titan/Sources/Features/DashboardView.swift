@@ -40,7 +40,8 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity)
             .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
 
-            // Connect Apple Health — the unlock for anyone without a band (hidden once connected)
+            // Live steps from the iPhone (instant, no permission) + connect Apple Health for the rest
+            LiveStepsCard()
             HealthConnectCard()
 
             // For You — the ranked insight feed (anomalies, goal progress, wins, behavior correlations)
