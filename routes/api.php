@@ -55,6 +55,10 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/weight', [\App\Http\Controllers\Api\MobileWeightController::class, 'show']);
     Route::post('/weight', [\App\Http\Controllers\Api\MobileWeightController::class, 'store']);
 
+    // Live Apple HealthKit sync (works without a band — iPhone/Apple Watch data → Titan's engine).
+    Route::get('/health', [\App\Http\Controllers\Api\MobileHealthController::class, 'status']);
+    Route::post('/health/ingest', [\App\Http\Controllers\Api\MobileHealthController::class, 'ingest']);
+
     // Hydration + fasting.
     Route::get('/hydration', [\App\Http\Controllers\Api\MobileHydrationController::class, 'show']);
     Route::post('/hydration', [\App\Http\Controllers\Api\MobileHydrationController::class, 'store']);
