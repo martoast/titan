@@ -42,16 +42,30 @@ Smart haptic alarm (needs band-side wake logic), mindfulness/breathwork sessions
 barcode food scanning (needs a UPC DB), cuffless BP / ECG (needs MG-class hardware + FDA exposure),
 "Pace of Aging" 30d-vs-180d (nice enhancement on existing bio-age).
 
-## Build order & status
-- [ ] A1 backend — journal (BehaviorLog + catalog + coach tool)
-- [ ] A1 backend — correlation engine (Stats + DailyOutcomes + BehaviorImpact + nightly job + tool + Discovery push)
-- [ ] A1 iOS — Journal + Impacts
-- [ ] A2 — weight EWMA trend + Goals + forecast (backend + coach + iOS)
-- [ ] A3 — insight feed (backend + coach + iOS)
-- [ ] B1 hydration · B2 fasting · B3 adaptive TDEE · B4 monthly report
+## Build order & status — autonomous session 2026-06-24
+- [x] **A1 — behavior journal + correlation engine** (the moat). Stats (Mann–Whitney/Cliff's δ/BH),
+  BehaviorCorrelations, nightly `insights:behavior` command + Discovery push, coach `log_behavior` /
+  `my_impacts`, iOS journal toggles + impacts. Tested (planted-effect detection). ✅ backend + iOS.
+- [x] **A2 — true-weight EWMA trend + Goals + forecast** (the fat-loss engine). WeightTrend (α=0.10,
+  interpolation, slope→ETA, kcal deficit), Goal model, coach `set_goal_weight` / `weight_progress`,
+  `GET/POST /me/weight`. Tested. ✅ backend + coach + API (iOS chart = follow-up).
+- [x] **A3 — insight feed** (anomaly/goal/win/correlation, ranked, capped). Coach `insights` +
+  `GET /me/insights`, iOS "FOR YOU" feed on Today. Tested. ✅ backend + coach + iOS.
+- [x] **B1 — hydration** (bodyweight target, log_water/hydration_today, `/me/hydration`). ✅ backend
+  + coach + API (iOS ring = follow-up).
+- [x] **B2 — fasting** (editable timer + metabolic stage timeline; start_fast/end_fast/fasting_status,
+  `/me/fasting*`). ✅ backend + coach + API (iOS timer = follow-up).
 
-Each item ships fully (backend + tests + iOS where relevant) and is committed green so `master`
-stays deployable throughout.
+### Remaining (clear next steps)
+- iOS surfaces for weight chart, hydration ring, fasting timer (backends + endpoints are live now).
+- B3 adaptive TDEE (algorithm captured in §research: `TDEE = mean_intake − Δtrend·3500/days`, 30-day
+  recency-weighted) — auto-adjust the macro target from the weight trend.
+- B4 monthly report (extend the weekly review + month-over-month deltas + top correlations).
+- Tier-2 correlation: ridge regression for confounder-isolated effects (WHOOP-parity upgrade).
+- Phase C (hardware/scope): smart haptic alarm, mindfulness/breathwork, social/teams, barcode
+  scanning (Open Food Facts), CGM Zone Score (Levels), Pace-of-Aging, cuffless BP/ECG.
+
+Every shipped item is committed green; `master` stayed deployable throughout (full suite 426 passing).
 
 ## Research source notes
 Whoop journal/correlation: ≥5-yes & ≥5-no in trailing 90d gate; Tier-1 mean(yes)−mean(no); Tier-2
