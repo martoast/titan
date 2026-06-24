@@ -110,6 +110,16 @@ final class APIClient {
         try await send(request("api/me/meals/\(id)", method: "DELETE"), as: MacrosOnly.self)
     }
 
+    // MARK: targets
+
+    func targets() async throws -> Targets {
+        try await send(request("api/me/targets"), as: TargetsResponse.self).targets
+    }
+
+    func updateTargets(_ fields: [String: Any]) async throws -> Targets {
+        try await send(request("api/me/targets", method: "PATCH", json: fields), as: TargetsResponse.self).targets
+    }
+
     // MARK: progress photos
 
     func progressPhotos() async throws -> [ProgressPhoto] {

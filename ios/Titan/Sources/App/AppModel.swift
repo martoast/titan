@@ -52,6 +52,7 @@ final class AppModel: ObservableObject {
     @Published var scanning = false
     @Published var progressPhotos: [ProgressPhoto] = []
     @Published var progressBusy = false
+    @Published var targets: Targets?
 
     let api: APIClient
 
@@ -199,6 +200,20 @@ final class AppModel: ObservableObject {
     func deleteMeal(_ id: Int) async {
         do { try await api.deleteMeal(id); await loadNutrition() }
         catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func loadTargets() async {
+        do { targets = try await api.targets() }
+        catch { if case APIError.unauthorized = error { await logout() } }
+    }
+
+    func saveTargets(calories: Int, protein: Int, carbs: Int, fat: Int, sleepH: Double) async {
+        do {
+            targets = try await api.updateTargets([
+                "calories": calories, "protein_g": protein, "carbs_g": carbs, "fat_g": fat, "sleep_h": sleepH,
+            ])
+            await loadNutrition()   // rings reflect the new targets
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
     func loadProgress() async {

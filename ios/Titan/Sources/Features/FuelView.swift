@@ -7,6 +7,7 @@ import PhotosUI
 struct FuelView: View {
     @EnvironmentObject var model: AppModel
     @State private var segment: Segment = .macros
+    @State private var showTargets = false
     enum Segment: String, CaseIterable { case macros = "Macros", progress = "Progress" }
 
     var body: some View {
@@ -22,7 +23,14 @@ struct FuelView: View {
         }
         .animation(Theme.Motion.snappy, value: segment)
         .titanScreen("Fuel", glow: segment == .macros ? Theme.Palette.amber : Theme.Palette.violet)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { Haptic.tap(); showTargets = true } label: { Image(systemName: "slider.horizontal.3") }
+                    .tint(Theme.Palette.textDim)
+            }
+        }
         .sheet(item: $model.scanResult) { ScanResultSheet(result: $0) }
+        .sheet(isPresented: $showTargets) { TargetsSheet() }
     }
 }
 
@@ -498,6 +506,95 @@ private struct PhotoViewerSheet: View {
             }
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
+    }
+}
+
+// MARK: - Targets editor
+
+private struct TargetsSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var calories = ""
+    @State private var protein = ""
+    @State private var carbs = ""
+    @State private var fat = ""
+    @State private var sleep = ""
+    @State private var loaded = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: Theme.Space.m) {
+                        GlassCard {
+                            VStack(spacing: Theme.Space.s) {
+                                SectionHeader(title: "Daily macros")
+                                row("Calories", "kcal", $calories)
+                                row("Protein", "g", $protein)
+                                row("Carbs", "g", $carbs)
+                                row("Fat", "g", $fat)
+                            }
+                        }
+                        GlassCard {
+                            VStack(spacing: Theme.Space.s) {
+                                SectionHeader(title: "Sleep")
+                                row("Sleep target", "hours", $sleep, decimal: true)
+                            }
+                        }
+                        Button(action: save) {
+                            Text("Save targets").font(Theme.Font.body.weight(.semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                .foregroundStyle(.white)
+                        }
+                        Text("Or just tell your coach — “set my protein to 180”, “target 7.5 hours of sleep.”")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                            .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+                    }.padding(Theme.Space.m)
+                }
+            }
+            .navigationTitle("Your targets").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .task {
+                if model.targets == nil { await model.loadTargets() }
+                if let t = model.targets, !loaded { prime(t); loaded = true }
+            }
+            .onChange(of: model.targets) { _, t in if let t, !loaded { prime(t); loaded = true } }
+        }
+    }
+
+    private func prime(_ t: Targets) {
+        calories = "\(t.calories)"; protein = "\(t.protein_g)"; carbs = "\(t.carbs_g)"; fat = "\(t.fat_g)"
+        sleep = t.sleep_h.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(t.sleep_h))" : "\(t.sleep_h)"
+    }
+
+    private func save() {
+        Haptic.success()
+        let t = model.targets
+        Task {
+            await model.saveTargets(
+                calories: Int(calories) ?? t?.calories ?? 2800,
+                protein: Int(protein) ?? t?.protein_g ?? 200,
+                carbs: Int(carbs) ?? t?.carbs_g ?? 280,
+                fat: Int(fat) ?? t?.fat_g ?? 84,
+                sleepH: Double(sleep.replacingOccurrences(of: ",", with: ".")) ?? t?.sleep_h ?? 8)
+            dismiss()
+        }
+    }
+
+    private func row(_ label: String, _ unit: String, _ text: Binding<String>, decimal: Bool = false) -> some View {
+        HStack {
+            Text(label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+            Spacer()
+            TextField("", text: text)
+                .font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.text)
+                .keyboardType(decimal ? .decimalPad : .numberPad)
+                .multilineTextAlignment(.trailing).frame(width: 84)
+            Text(unit).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).frame(width: 38, alignment: .leading)
+        }
+        .padding(.vertical, 3)
     }
 }
 

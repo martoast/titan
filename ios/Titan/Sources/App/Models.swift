@@ -155,6 +155,20 @@ struct ProgressPhoto: Codable, Identifiable, Equatable {
     let photo_url: String?
 }
 
+// MARK: - Editable targets
+
+struct TargetsResponse: Codable { let targets: Targets }
+
+/// `GET/PATCH /api/me/targets` — daily macro + nightly sleep targets (also settable via the coach).
+struct Targets: Codable, Equatable {
+    var calories: Int
+    var protein_g: Int
+    var carbs_g: Int
+    var fat_g: Int
+    var sleep_h: Double
+    var custom: Bool
+}
+
 enum APIError: LocalizedError {
     case http(Int, String), decoding, unauthorized, transport(String)
     var errorDescription: String? {
