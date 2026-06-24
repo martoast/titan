@@ -38,6 +38,10 @@ Route::middleware('auth.any')->get('/me/trends', [\App\Http\Controllers\Api\Mobi
 // Native-app nutrition ("Fuel" tab): photo → AI macros (grounded + logged) + the macro-ring card,
 // manual entry, and corrections. Same Meal rows the coach's macros_today / recent_meals tools read.
 Route::middleware('auth.any')->prefix('me')->group(function () {
+    // Editable macro + sleep targets (also settable by telling the coach).
+    Route::get('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'show']);
+    Route::patch('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'update']);
+
     Route::get('/nutrition', [\App\Http\Controllers\Api\MobileNutritionController::class, 'index']);
     Route::post('/nutrition/scan', [\App\Http\Controllers\Api\MobileNutritionController::class, 'scan']);
     Route::post('/meals', [\App\Http\Controllers\Api\MobileNutritionController::class, 'store']);

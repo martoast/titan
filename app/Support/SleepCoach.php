@@ -77,8 +77,20 @@ class SleepCoach
         ];
     }
 
+    /** The nightly sleep target (hours) — a user override wins, else an age-based default. */
+    public static function targetHours(Profile $profile): float
+    {
+        return self::baselineFor($profile);
+    }
+
     private static function baselineFor(Profile $profile): float
     {
+        // User-set target wins (app Targets sheet / coach set_targets).
+        $override = $profile->settings['sleep_target_h'] ?? null;
+        if (is_numeric($override) && $override > 0) {
+            return (float) $override;
+        }
+
         // Age nudge: teens/young adults need a touch more; older adults a touch less.
         $age = $profile->birthdate ? Carbon::parse($profile->birthdate)->diffInYears(now()) : 35;
 

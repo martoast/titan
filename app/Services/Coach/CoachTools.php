@@ -389,6 +389,13 @@ class CoachTools
         if (class_exists(\App\Models\Meal::class)) {
             $tools[] = $this->fn('macros_today', "Today's macros — calories + protein / carbs / fat vs targets — as a ready-made `macros` card. Use whenever the user asks about their macros / calories / what's left to eat. (log_meal already shows this after logging.)", [], []);
         }
+        $tools[] = $this->fn('set_targets', "Set the user's daily macro and/or sleep targets when they ask (e.g. \"protein to 180\", \"3000 calories\", \"7.5 h sleep\"). Pass ONLY the fields they mention; the rest hold. Drives the macro rings + the protein/sleep nudges.", [
+            'calories' => ['type' => 'integer', 'description' => 'Daily calorie target (kcal).'],
+            'protein_g' => ['type' => 'integer', 'description' => 'Daily protein target (g).'],
+            'carbs_g' => ['type' => 'integer', 'description' => 'Daily carbohydrate target (g).'],
+            'fat_g' => ['type' => 'integer', 'description' => 'Daily fat target (g).'],
+            'sleep_h' => ['type' => 'number', 'description' => 'Nightly sleep target in hours (e.g. 7.5).'],
+        ], []);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -458,6 +465,7 @@ class CoachTools
             'strain_status' => 'Checking your strain',
             'bloodwork_panel' => 'Pulling your bloodwork',
             'macros_today' => 'Tallying your macros',
+            'set_targets' => 'Updating your targets',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -542,6 +550,7 @@ class CoachTools
             'strain_status' => $this->strainStatus(),
             'bloodwork_panel' => $this->bloodworkPanel(),
             'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
+            'set_targets' => $this->setTargets($args),
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
@@ -1219,6 +1228,17 @@ class CoachTools
     private function macrosCard(): array
     {
         return \App\Support\Macros::today($this->profile);
+    }
+
+    private function setTargets(array $a): array
+    {
+        $targets = \App\Support\TargetSettings::update($this->profile, $a);
+
+        return [
+            'ok' => true,
+            'targets' => $targets,
+            '_show' => 'Confirm the new target(s) in one short line. If calories or a macro changed, follow with the `macros` card (call macros_today) so they see the rings update.',
+        ];
     }
 
     private function logWeight(array $a): mixed

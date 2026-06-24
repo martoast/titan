@@ -23,18 +23,14 @@ class Macros
         $end = $start->copy()->addDay();
         $meals = $profile->meals()->where('eaten_at', '>=', $start)->where('eaten_at', '<', $end)->get();
 
-        $calT = 2800;
-        $proT = 200;
-        if (class_exists(MealCoach::class)) {
-            $t = rescue(fn () => MealCoach::targets($profile), null, false);
-            if ($t) {
-                $calT = (int) $t['calories'];
-                $proT = (int) $t['protein_g'];
-            }
-        }
-        // Sensible carb/fat targets from the calorie budget (fat ~27% of kcal, the rest carbs).
-        $fatT = (int) round($calT * 0.27 / 9);
-        $carbT = (int) max(0, round(($calT - $proT * 4 - $fatT * 9) / 4));
+        // One source of truth for all four targets (honours the user's custom overrides; carb/fat
+        // default to a sensible split of the calorie budget when not customised).
+        $t = rescue(fn () => TargetSettings::resolve($profile), null, false)
+            ?? ['calories' => 2800, 'protein_g' => 200, 'carbs_g' => 280, 'fat_g' => 84];
+        $calT = (int) $t['calories'];
+        $proT = (int) $t['protein_g'];
+        $carbT = (int) $t['carbs_g'];
+        $fatT = (int) $t['fat_g'];
 
         $logged = $meals->count();
         $next = null;

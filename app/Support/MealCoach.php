@@ -36,6 +36,16 @@ class MealCoach
     public static function targets(Profile $profile): array
     {
         $set = $profile->settings['macro_targets'] ?? [];
+
+        // User-set targets are authoritative — return them verbatim (no bodyweight recompute, no
+        // cycle bump). They customise via the app's Targets sheet or the coach's set_targets tool.
+        if (($set['source'] ?? null) === 'custom') {
+            return [
+                'calories' => (int) ($set['calories'] ?? self::DEFAULT_TARGETS['calories']),
+                'protein_g' => (int) ($set['protein_g'] ?? self::DEFAULT_TARGETS['protein_g']),
+            ];
+        }
+
         $calories = (int) ($set['calories'] ?? self::DEFAULT_TARGETS['calories']);
 
         // Protein is recomputed from CURRENT bodyweight + goal every time (evidence-based: ~1 g/lb
