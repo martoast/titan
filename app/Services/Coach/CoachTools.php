@@ -33,6 +33,7 @@ class CoachTools
         'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
         'update_food' => 'food',
         'log_behavior' => 'journal', 'my_impacts' => 'journal',
+        'set_goal_weight' => 'weight', 'weight_progress' => 'weight',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
         'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device', 'spot_reading' => 'device',
@@ -47,6 +48,7 @@ class CoachTools
         'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
         'food' => ['wrong macros', 'macros are wrong', 'macros are off', 'fix the macros', 'correct the macros', 'update the macros', 'update the food', 'the macros for', 'per 100g', 'per serving', 'actually has', "that's not right", 'thats not right'],
         'journal' => ['drink', 'drank', 'alcohol', 'beer', 'wine', 'hungover', 'caffeine', 'coffee late', 'stayed up', 'stress', 'anxious', 'meditat', 'sauna', 'cold plunge', 'ice bath', 'journal', 'late meal', 'late dinner', 'ate out', 'takeout', 'screens', 'magnesium', 'napped', 'what affects my', 'what hurts my', 'what helps my', 'my impacts', 'my discoveries', 'how was my day', 'log my day'],
+        'weight' => ['weigh', 'weight', 'lose', 'losing', 'lost', 'lbs', 'pounds', ' kg', 'goal weight', 'target weight', 'trend', 'scale', 'cut', 'bulk', 'slim', 'get lean', 'leaner', 'drop', 'on track', 'how am i doing'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
         'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band', 'take a reading', 'spot reading', 'spot check', 'check my hrv', 'read my hrv', 'my hrv now', 'how recovered am i', 'recovered right now', 'live reading', 'check my heart rate', 'take a measurement'],
@@ -415,6 +417,11 @@ class CoachTools
             'date' => ['type' => 'string', 'description' => 'YYYY-MM-DD; default today.'],
         ], []);
         $tools[] = $this->fn('my_impacts', "What helps or hurts the user's recovery & sleep — their personal behavior→outcome correlations as an `impacts` card (e.g. \"alcohol −14% recovery\"). Use when they ask what affects them, or to back a behavior nudge.", [], []);
+        $tools[] = $this->fn('set_goal_weight', "Set the user's target bodyweight goal when they state one (\"get to 180 lb\", \"80 kg by August\"). Pass target_kg (convert from lb: kg = lb/2.2046) + optional by_date. Drives the weight-trend projection.", [
+            'target_kg' => ['type' => 'number', 'description' => 'Target bodyweight in KILOGRAMS.'],
+            'by_date' => ['type' => 'string', 'description' => 'Optional target date, YYYY-MM-DD.'],
+        ], ['target_kg']);
+        $tools[] = $this->fn('weight_progress', "The user's smoothed weight trend, weekly rate and honest projection to their goal as a `weight` card. Use when they ask about their weight / progress / 'am I on track'.", [], []);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -488,6 +495,8 @@ class CoachTools
             'update_food' => 'Saving your food’s macros',
             'log_behavior' => 'Noting your day',
             'my_impacts' => 'Finding what moves your recovery',
+            'set_goal_weight' => 'Setting your weight goal',
+            'weight_progress' => 'Reading your weight trend',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -576,6 +585,8 @@ class CoachTools
             'update_food' => $this->updateFood($args),
             'log_behavior' => $this->logBehavior($args),
             'my_impacts' => $this->myImpacts(),
+            'set_goal_weight' => $this->setGoalWeight($args),
+            'weight_progress' => $this->weightProgress(),
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
@@ -1343,6 +1354,70 @@ class CoachTools
     {
         return \App\Support\BehaviorCorrelations::card($this->profile)
             + ['_show' => 'Emit this `impacts` card in a ```titan-card fence, then one line on the biggest helper and hurter. If it is empty, tell them to keep journaling — insights unlock after ~5 days each of a behavior.'];
+    }
+
+    private function setGoalWeight(array $a): array
+    {
+        $target = isset($a['target_kg']) && is_numeric($a['target_kg']) ? round((float) $a['target_kg'], 1) : null;
+        if ($target === null || $target <= 0) {
+            return ['error' => 'Need a target weight in kilograms.'];
+        }
+        $cur = \App\Support\WeightTrend::current($this->profile);
+        $start = $cur['trend'] ?? $this->profile->bodyMetrics()->whereNotNull('weight_kg')->latest('taken_at')->value('weight_kg');
+        $start = $start !== null ? (float) $start : $target;
+
+        $date = null;
+        if (! empty($a['by_date'])) {
+            try {
+                $date = \Illuminate\Support\Carbon::parse((string) $a['by_date'])->toDateString();
+            } catch (\Throwable) {
+            }
+        }
+
+        $this->profile->goals()->where('metric', 'weight')->where('status', 'active')->update(['status' => 'archived']);
+        $this->profile->goals()->create([
+            'metric' => 'weight', 'direction' => $target < $start ? 'down' : 'up',
+            'start_value' => $start, 'target_value' => $target, 'target_date' => $date, 'unit' => 'kg', 'status' => 'active',
+        ]);
+
+        return [
+            'ok' => true, 'target_kg' => $target, 'by' => $date,
+            '_show' => 'Confirm the goal in one line, then show the `weight` card (call weight_progress) so they see the projection.',
+        ];
+    }
+
+    private function weightProgress(): array
+    {
+        return $this->weightCard()
+            + ['_show' => 'Emit this `weight` card in a ```titan-card fence, then one line: are they on track vs goal, and the current weekly rate. If trend_kg is null, tell them to log a few weigh-ins.'];
+    }
+
+    /** @return array<string,mixed> the `weight` card */
+    private function weightCard(): array
+    {
+        $cur = \App\Support\WeightTrend::current($this->profile);
+        $card = [
+            'type' => 'weight',
+            'trend_kg' => $cur['trend'] ?? null,
+            'latest_kg' => $cur['weight'] ?? ($cur['trend'] ?? null),
+            'rate_kg_wk' => \App\Support\WeightTrend::weeklyRateKg($this->profile),
+        ];
+        if ($goal = \App\Support\WeightTrend::activeGoal($this->profile)) {
+            $proj = \App\Support\WeightTrend::projection($this->profile, $goal->target_value);
+            $card['goal_kg'] = $goal->target_value;
+            $card['target_date'] = optional($goal->target_date)->toDateString();
+            $card['on_track'] = $proj['on_track'];
+            $card['projected_date'] = $proj['projected_date'];
+            $card['eta_days'] = $proj['eta_days'];
+            $card['daily_kcal'] = $proj['daily_kcal'];
+            if ($goal->target_date && $proj['projected_date']) {
+                // negative = ahead of the goal date, positive = behind
+                $card['vs_goal_days'] = \Illuminate\Support\Carbon::parse($proj['projected_date'])
+                    ->diffInDays(\Illuminate\Support\Carbon::parse($goal->target_date), false);
+            }
+        }
+
+        return $card;
     }
 
     private function logWeight(array $a): mixed

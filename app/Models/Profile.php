@@ -76,6 +76,11 @@ class Profile extends Model
         return $this->hasMany(BehaviorImpact::class);
     }
 
+    public function goals(): HasMany
+    {
+        return $this->hasMany(Goal::class);
+    }
+
     // --- Training ---
     public function workouts(): HasMany
     {
