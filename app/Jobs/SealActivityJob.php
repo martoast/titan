@@ -211,6 +211,10 @@ class SealActivityJob implements ShouldQueue
 
         $profileBits = $this->profileBits($profile, $maxHr);
 
+        // Time in each HR zone (% of HRmax) — the stat that captures a hard LIFTING day, where the
+        // average is dragged down by inter-set rest but the peak + minutes in the red tell the truth.
+        $hrZones = $this->zonesFromHr($hr1, (int) ($profileBits['hr_max'] ?? 0));
+
         // GPS pace (+ baro grade) is per-second; the activity pass works on 30-s epochs aligned to
         // $counts → downsample so it can swap the MET calorie proxy for grade-aware cost-of-transport.
         $speedEpoch = $this->toEpochs($speed, count($counts));
@@ -263,6 +267,7 @@ class SealActivityJob implements ShouldQueue
                 'max_hr' => $maxHr,
                 'hr_source' => $hrSource,
                 'hr_quality' => $hrQuality,
+                'hr_zones' => $hrZones,
                 'trimp' => $sess['trimp'] ?? null,
                 'calories_kcal' => isset($sess['calories_kcal']) ? (int) round($sess['calories_kcal']) : null,
                 'vo2max' => $fitness['vo2max'] ?? null,
@@ -284,7 +289,12 @@ class SealActivityJob implements ShouldQueue
             'result_refs' => array_merge((array) $i->result_refs, ['activity_session_id' => $log->id, 'sealed' => true]),
         ]));
 
-        $this->notify($profile, $log);
+        // Celebrate it: a push summary + a coach message (congrats, recovery, a follow-up). The session
+        // is already logged above, so the coach sees it and it counts. Guarded in tests (the reaction
+        // is exercised directly in WorkoutReactionTest) to keep seal tests hermetic.
+        if (! app()->runningUnitTests()) {
+            ReactToWorkoutSealed::dispatch($log->id)->afterCommit();
+        }
 
         Log::info('[Biosignal] activity sealed', [
             'profile_id' => $profile->id, 'activity_session_id' => $log->id,
@@ -629,6 +639,45 @@ class SealActivityJob implements ShouldQueue
         }
 
         return $out;
+    }
+
+    /**
+     * Minutes spent in each HR zone (% of HRmax) over the ~1 Hz workout HR series. Zones: Z1 50-60,
+     * Z2 60-70, Z3 70-80, Z4 80-90, Z5 90+ %. Below 50% counts as rest (not a zone). Returns
+     * ['z1'..'z5' => minutes] or null when there's no usable HR / HRmax.
+     *
+     * @param  array<int,float>  $hr  per-second HR series
+     * @return array<string,float>|null
+     */
+    private function zonesFromHr(array $hr, int $hrMax): ?array
+    {
+        if ($hr === [] || $hrMax < 100) {
+            return null;
+        }
+        $sec = [0, 0, 0, 0, 0];           // seconds in Z1..Z5
+        foreach ($hr as $v) {
+            if (! is_numeric($v) || $v <= 0) {
+                continue;
+            }
+            $pct = $v / $hrMax;
+            if ($pct >= 0.90) {
+                $sec[4]++;
+            } elseif ($pct >= 0.80) {
+                $sec[3]++;
+            } elseif ($pct >= 0.70) {
+                $sec[2]++;
+            } elseif ($pct >= 0.60) {
+                $sec[1]++;
+            } elseif ($pct >= 0.50) {
+                $sec[0]++;
+            }
+        }
+        $mins = array_map(fn ($s) => round($s / 60, 1), $sec);
+        if (array_sum($mins) <= 0) {
+            return null;
+        }
+
+        return ['z1' => $mins[0], 'z2' => $mins[1], 'z3' => $mins[2], 'z4' => $mins[3], 'z5' => $mins[4]];
     }
 
     /**

@@ -114,6 +114,8 @@ class ActivitySealTest extends TestCase
         $this->assertSame('ppg_inmotion', $session->hr_source);
         $this->assertEqualsWithDelta(0.9, $session->hr_quality, 0.001);
         $this->assertSame(165, $session->max_hr);   // peak of the in-motion series, not the flat 150 on-chip
+        $this->assertNotNull($session->hr_zones);   // time-in-zone computed from the HR series
+        $this->assertGreaterThan(0, $session->hardZoneMin());  // those 150-165 bpm reads land in the hard zones
 
         // The raw PPG actually reached the estimator.
         Http::assertSent(fn ($r) => str_contains($r->url(), '/process/inmotion-hr')

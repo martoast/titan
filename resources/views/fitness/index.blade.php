@@ -246,7 +246,8 @@
                         <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-gray-400 nums">
                             @if ($s->duration_min)<span>{{ $s->duration_min }} min</span>@endif
                             @if ($s->distance_km)<span>{{ number_format($s->distance_km, 1) }} km</span>@endif
-                            @if ($s->avg_hr)<span>{{ $s->avg_hr }}<span class="text-gray-600">/{{ $s->max_hr }}</span> bpm</span>@endif
+                            @if ($s->max_hr)<span><span class="text-pink-400/90">{{ $s->max_hr }} peak</span><span class="text-gray-600">@if ($s->avg_hr) · {{ $s->avg_hr }} avg @endif</span> bpm</span>@elseif ($s->avg_hr)<span>{{ $s->avg_hr }} avg bpm</span>@endif
+                            @if ($s->hardZoneMin() >= 0.5)<span class="text-rose-400/80" title="Minutes at ≥80% of your max HR — the hard zones">{{ rtrim(rtrim(number_format($s->hardZoneMin(), 1), '0'), '.') }} min hard</span>@endif
                             @if ($s->avg_hr && $s->hrSourceLabel())<span class="{{ $s->hr_source === 'onchip' ? 'text-gray-600' : 'text-emerald-400/70' }}" title="How this session's heart rate was measured">{{ $s->hrSourceLabel() }}</span>@endif
                             @if ($s->trimp)<span>TRIMP {{ number_format($s->trimp, 0) }}</span>@endif
                             @if ($s->calories_kcal)<span>{{ $s->calories_kcal }} kcal</span>@endif

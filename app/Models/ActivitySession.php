@@ -14,7 +14,7 @@ class ActivitySession extends Model
     protected $fillable = [
         'profile_id', 'source', 'started_at', 'ended_at', 'duration_min',
         'activity_type', 'activity_confidence',
-        'distance_km', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'trimp', 'calories_kcal',
+        'distance_km', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'hr_zones', 'trimp', 'calories_kcal',
         'vo2max', 'fitness_level', 'hrr_bpm', 'updated_via',
     ];
 
@@ -26,6 +26,7 @@ class ActivitySession extends Model
             'activity_confidence' => 'float',
             'distance_km' => 'float',
             'hr_quality' => 'float',
+            'hr_zones' => 'array',
             'trimp' => 'float',
             'vo2max' => 'float',
             'hrr_bpm' => 'float',
@@ -50,6 +51,14 @@ class ActivitySession extends Model
             'onchip' => 'wrist',
             default => null,
         };
+    }
+
+    /** Minutes in the hard zones (Z4+Z5, ≥80% HRmax) — what a strong lifting day actually shows. */
+    public function hardZoneMin(): float
+    {
+        $z = $this->hr_zones ?? [];
+
+        return round((float) ($z['z4'] ?? 0) + (float) ($z['z5'] ?? 0), 1);
     }
 
     /** A human label for the activity (e.g. "Run", "Ride"). */
