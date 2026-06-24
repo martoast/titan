@@ -22,19 +22,24 @@ struct RootView: View {
     var body: some View {
         ZStack {
             if model.isLoggedIn {
-                TabView {
-                    CoachView().tabItem { Label("Coach", systemImage: "bubble.left.and.text.bubble.right.fill") }
-                    DashboardView().tabItem { Label("Today", systemImage: "circle.hexagongrid.fill") }
-                    FuelView().tabItem { Label("Fuel", systemImage: "fork.knife") }
-                    WorkoutsView().tabItem { Label("Train", systemImage: "figure.run") }
-                    ProfileView().tabItem { Label("You", systemImage: "person.fill") }
+                if model.onboarded {
+                    TabView {
+                        CoachView().tabItem { Label("Coach", systemImage: "bubble.left.and.text.bubble.right.fill") }
+                        DashboardView().tabItem { Label("Today", systemImage: "circle.hexagongrid.fill") }
+                        FuelView().tabItem { Label("Fuel", systemImage: "fork.knife") }
+                        WorkoutsView().tabItem { Label("Train", systemImage: "figure.run") }
+                        ProfileView().tabItem { Label("You", systemImage: "person.fill") }
+                    }
+                    .transition(.opacity)
+                } else {
+                    OnboardingView().transition(.move(edge: .trailing))
                 }
-                .transition(.opacity)
             } else {
                 LoginView().transition(.opacity)
             }
         }
         .animation(Theme.Motion.spring, value: model.isLoggedIn)
+        .animation(Theme.Motion.spring, value: model.onboarded)
     }
 }
 

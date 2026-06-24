@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     static let baseURL = URL(string: "https://titan.fullstacklabs.org")!
 
     @Published var user: AuthUser?
+    @Published var onboarded = true        // gate: false → show the onboarding wizard
     @Published var dashboard: Dashboard?
     @Published var hrvTrend: [Double] = []
     @Published var bandConnected = false
@@ -80,9 +81,29 @@ final class AppModel: ObservableObject {
 
     /// Restore a logged-in session (token already in Keychain): load data + resume band sync.
     func bootstrap() async {
+        onboarded = (try? await api.onboardingStatus()) ?? true
         if let d = try? await api.dashboard() { dashboard = d }
         startBandIfPaired()
         bandBound = band?.isBound ?? false
+    }
+
+    /// Submit the onboarding wizard → unlock the app.
+    func completeOnboarding(_ fields: [String: Any]) async -> Bool {
+        do {
+            onboarded = try await api.submitOnboarding(fields).onboarded
+            await bootstrap()
+            return true
+        } catch {
+            self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
+    func loadProfileSnapshot() async -> ProfileSnapshot? { try? await api.profileSnapshot() }
+
+    func saveProfile(_ fields: [String: Any]) async -> Bool {
+        do { _ = try await api.updateProfile(fields); return true }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
     }
 
     // MARK: auth
@@ -94,6 +115,7 @@ final class AppModel: ObservableObject {
             api.token = res.token
             Keychain.set(res.token, for: Keychain.userToken)
             user = res.user
+            onboarded = res.user.onboarded ?? true
             await bootstrap()
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }

@@ -75,6 +75,26 @@ final class APIClient {
 
     func logout() async { _ = try? await session.data(for: request("api/logout", method: "POST")) }
 
+    // MARK: onboarding + profile edit
+
+    func onboardingStatus() async throws -> Bool {
+        try await send(request("api/me/onboarding"), as: OnboardingStatus.self).onboarded
+    }
+
+    @discardableResult
+    func submitOnboarding(_ fields: [String: Any]) async throws -> OnboardingResult {
+        try await send(request("api/me/onboarding", method: "POST", json: fields), as: OnboardingResult.self)
+    }
+
+    func profileSnapshot() async throws -> ProfileSnapshot {
+        try await send(request("api/me/profile"), as: ProfileResponse.self).profile
+    }
+
+    @discardableResult
+    func updateProfile(_ fields: [String: Any]) async throws -> ProfileSnapshot {
+        try await send(request("api/me/profile", method: "PATCH", json: fields), as: ProfileResponse.self).profile
+    }
+
     func dashboard() async throws -> Dashboard {
         try await send(request("api/me/dashboard"), as: Dashboard.self)
     }

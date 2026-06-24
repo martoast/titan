@@ -7,7 +7,43 @@ struct AuthUser: Codable, Identifiable, Equatable {
     let id: Int
     let name: String?
     let email: String?
+    let onboarded: Bool?
 }
+
+/// `GET /api/me/profile` (and `/me/onboarding`) — the editable onboarding profile, for pre-fill.
+struct ProfileSnapshot: Codable, Equatable {
+    var display_name: String?
+    var birthdate: String?
+    var sex: String?
+    var units: String?
+    var height: Double?
+    var activity_level: String?
+    var primary_goal: String?
+    var coach_tone: String?
+    var coaching_intensity: String?
+    var meals_per_day: Int?
+    var eat_start: String?
+    var eat_end: String?
+    var timezone: String?
+    var experience: String?
+    var train_at: String?
+    var train_days: Int?
+    var diet: String?
+    var allergies: String?
+    var avoid_foods: String?
+    var injuries: String?
+    var health_notes: String?
+    var focus_areas: String?
+    var motivation: String?
+    var event_date: String?
+    var cycle_enabled: Bool?
+    var cycle_length: Int?
+    var birth_control: String?
+    var cycle_intent: String?
+}
+struct ProfileResponse: Codable { let profile: ProfileSnapshot }
+struct OnboardingStatus: Codable { let onboarded: Bool }
+struct OnboardingResult: Codable { let onboarded: Bool; let route: String? }
 
 struct LoginResponse: Codable {
     let token: String

@@ -4,6 +4,7 @@ struct ProfileView: View {
     @EnvironmentObject var model: AppModel
     @State private var confirmLogout = false
     @State private var showBand = false
+    @State private var showEditProfile = false
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -20,6 +21,19 @@ struct ProfileView: View {
                     Spacer()
                 }
             }
+
+            Button { Haptic.tap(); showEditProfile = true } label: {
+                GlassCard {
+                    HStack {
+                        Label("Edit profile", systemImage: "person.text.rectangle").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                        Spacer()
+                        Text("Goal · coaching · diet · cycle").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+            .sheet(isPresented: $showEditProfile) { EditProfileView() }
 
             Button { Haptic.tap(); showBand = true } label: {
                 GlassCard {
