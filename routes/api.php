@@ -35,6 +35,21 @@ Route::middleware('auth.token')->group(function () {
 Route::middleware('auth.any')->get('/me/dashboard', [\App\Http\Controllers\Api\MobileDashboardController::class, 'dashboard']);
 Route::middleware('auth.any')->get('/me/trends', [\App\Http\Controllers\Api\MobileDashboardController::class, 'trends']);
 
+// Native-app nutrition ("Fuel" tab): photo → AI macros (grounded + logged) + the macro-ring card,
+// manual entry, and corrections. Same Meal rows the coach's macros_today / recent_meals tools read.
+Route::middleware('auth.any')->prefix('me')->group(function () {
+    Route::get('/nutrition', [\App\Http\Controllers\Api\MobileNutritionController::class, 'index']);
+    Route::post('/nutrition/scan', [\App\Http\Controllers\Api\MobileNutritionController::class, 'scan']);
+    Route::post('/meals', [\App\Http\Controllers\Api\MobileNutritionController::class, 'store']);
+    Route::patch('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'update']);
+    Route::delete('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'destroy']);
+
+    // Progress photos (private physique gallery the coach's physique tools read).
+    Route::get('/progress-photos', [\App\Http\Controllers\Api\MobileProgressController::class, 'index']);
+    Route::post('/progress-photos', [\App\Http\Controllers\Api\MobileProgressController::class, 'store']);
+    Route::delete('/progress-photos/{photo}', [\App\Http\Controllers\Api\MobileProgressController::class, 'destroy']);
+});
+
 Route::prefix('devices')->group(function () {
     // Device → server: signed biosignal batches (HMAC auth, no session).
     Route::post('/ingest', [DeviceIngestionController::class, 'ingest']);

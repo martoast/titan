@@ -472,6 +472,23 @@ class CoachService
             $prompt .= "\n\n--- PINNED in their Brain (titles only -- call search_knowledge to read any before relevant advice) ---\n".$core;
         }
 
+        // Today's fuel + physique-photo cadence — so the coach proactively references where they are
+        // on macros and nudges progress photos. The native app's Fuel tab logs straight into these.
+        $fuel = class_exists(\App\Support\Macros::class) ? rescue(fn () => \App\Support\Macros::today($profile), null, false) : null;
+        if (is_array($fuel)) {
+            $c = $fuel['calories'] ?? ['value' => 0, 'target' => 0];
+            $p = $fuel['protein'] ?? ['value' => 0, 'target' => 0];
+            $prompt .= "\n\n--- TODAY'S FUEL (so far) ---\n"
+                ."Calories {$c['value']}/{$c['target']} · protein {$p['value']}/{$p['target']} g. ".($fuel['footer'] ?? '')
+                ."\nWhen nutrition is relevant, say where they are vs target and call macros_today / recent_meals for detail. They snap meals from the app's Fuel tab.";
+        }
+        $lastPhoto = rescue(fn () => $profile->progressPhotos()->latest('taken_at')->first(), null, false);
+        if ($lastPhoto && $lastPhoto->taken_at) {
+            $prompt .= "\n\n--- PROGRESS PHOTOS ---\n"
+                ."Latest progress photo: {$lastPhoto->taken_at->diffForHumans()}. They snap these from the app's Fuel → Progress tab; "
+                ."use physique_progress / render_dream_physique when they ask how they're tracking, and nudge a fresh photo if it's been a while.";
+        }
+
         return $prompt;
     }
 

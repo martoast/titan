@@ -172,7 +172,7 @@ class ScanService
         $reply = \App\Support\Macros::fenced($profile)
             ."\n\nLogged **{$meal->name}** -- {$meal->calories} kcal · {$meal->protein_g}g protein.{$hedge}";
 
-        return ['kind' => 'meal', 'logged' => true, 'image_url' => $imageUrl, 'reply' => $reply, 'data' => $m];
+        return ['kind' => 'meal', 'logged' => true, 'meal_id' => $meal->id, 'image_url' => $imageUrl, 'reply' => $reply, 'data' => $m];
     }
 
     /** @param  array<int,array<string,mixed>>  $markers */
