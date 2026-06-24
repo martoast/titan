@@ -1398,29 +1398,7 @@ class CoachTools
     /** @return array<string,mixed> the `weight` card */
     private function weightCard(): array
     {
-        $cur = \App\Support\WeightTrend::current($this->profile);
-        $card = [
-            'type' => 'weight',
-            'trend_kg' => $cur['trend'] ?? null,
-            'latest_kg' => $cur['weight'] ?? ($cur['trend'] ?? null),
-            'rate_kg_wk' => \App\Support\WeightTrend::weeklyRateKg($this->profile),
-        ];
-        if ($goal = \App\Support\WeightTrend::activeGoal($this->profile)) {
-            $proj = \App\Support\WeightTrend::projection($this->profile, $goal->target_value);
-            $card['goal_kg'] = $goal->target_value;
-            $card['target_date'] = optional($goal->target_date)->toDateString();
-            $card['on_track'] = $proj['on_track'];
-            $card['projected_date'] = $proj['projected_date'];
-            $card['eta_days'] = $proj['eta_days'];
-            $card['daily_kcal'] = $proj['daily_kcal'];
-            if ($goal->target_date && $proj['projected_date']) {
-                // negative = ahead of the goal date, positive = behind
-                $card['vs_goal_days'] = \Illuminate\Support\Carbon::parse($proj['projected_date'])
-                    ->diffInDays(\Illuminate\Support\Carbon::parse($goal->target_date), false);
-            }
-        }
-
-        return $card;
+        return \App\Support\WeightTrend::card($this->profile);
     }
 
     private function logWeight(array $a): mixed

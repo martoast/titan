@@ -159,4 +159,41 @@ class WeightTrend
     {
         return $profile->goals()->where('metric', 'weight')->where('status', 'active')->latest('id')->first();
     }
+
+    /**
+     * The `weight` card: current trend, weekly rate, and (if a goal is set) the projection.
+     * Shared by the coach's weight_progress tool and the mobile /me/weight endpoint.
+     *
+     * @return array<string,mixed>
+     */
+    public static function card(Profile $profile): array
+    {
+        $cur = self::current($profile);
+        $card = [
+            'type' => 'weight',
+            'trend_kg' => $cur['trend'] ?? null,
+            'latest_kg' => $cur['weight'] ?? ($cur['trend'] ?? null),
+            'rate_kg_wk' => self::weeklyRateKg($profile),
+            'goal' => null,
+        ];
+        if ($goal = self::activeGoal($profile)) {
+            $proj = self::projection($profile, $goal->target_value);
+            $vsGoal = null;
+            if ($goal->target_date && $proj['projected_date']) {
+                $vsGoal = Carbon::parse($proj['projected_date'])
+                    ->diffInDays(Carbon::parse($goal->target_date), false);   // <0 = ahead, >0 = behind
+            }
+            $card['goal'] = [
+                'target_kg' => $goal->target_value,
+                'target_date' => optional($goal->target_date)->toDateString(),
+                'on_track' => $proj['on_track'],
+                'projected_date' => $proj['projected_date'],
+                'eta_days' => $proj['eta_days'],
+                'daily_kcal' => $proj['daily_kcal'],
+                'vs_goal_days' => $vsGoal,
+            ];
+        }
+
+        return $card;
+    }
 }

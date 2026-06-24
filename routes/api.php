@@ -41,6 +41,12 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     // Personalized insight feed (anomalies, goal progress, wins, behavior correlations).
     Route::get('/insights', [\App\Http\Controllers\Api\MobileInsightsController::class, 'index']);
 
+    // Behavior journal (feeds the correlation engine) + weight trend / goal projection.
+    Route::get('/journal', [\App\Http\Controllers\Api\MobileJournalController::class, 'index']);
+    Route::post('/journal', [\App\Http\Controllers\Api\MobileJournalController::class, 'store']);
+    Route::get('/weight', [\App\Http\Controllers\Api\MobileWeightController::class, 'show']);
+    Route::post('/weight', [\App\Http\Controllers\Api\MobileWeightController::class, 'store']);
+
     // Editable macro + sleep targets (also settable by telling the coach).
     Route::get('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'show']);
     Route::patch('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'update']);

@@ -91,7 +91,7 @@ class WeightTrendTest extends TestCase
 
         $card = $tools->dispatch('weight_progress', []);
         $this->assertSame('weight', $card['type']);
-        $this->assertEqualsWithDelta(80, $card['goal_kg'], 0.01);
+        $this->assertEqualsWithDelta(80, $card['goal']['target_kg'], 0.01);
         $this->assertNotNull($card['trend_kg']);
     }
 
