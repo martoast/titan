@@ -115,7 +115,7 @@ struct HydrationCard: View {
                 HStack(spacing: Theme.Space.l) {
                     FuelRing(pct: Double(h?.pct ?? 0) / 100, color: Theme.Palette.cyan, size: 100) {
                         VStack(spacing: 0) {
-                            Text(String(format: "%.1f", h?.litres ?? 0)).font(Theme.Font.num(24)).foregroundStyle(.white).monospacedDigit()
+                            Text(String(format: "%.1f", h?.litres ?? 0.0)).font(Theme.Font.num(24)).foregroundStyle(.white).monospacedDigit()
                             Text("of \(String(format: "%.1f", h?.targetLitres ?? 2.5))L").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
                         }
                     }

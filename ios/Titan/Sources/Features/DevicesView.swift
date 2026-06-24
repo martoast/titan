@@ -4,6 +4,7 @@ import SwiftUI
 /// the band synced in the background; no Bluefy, no manual connect.
 struct DevicesView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -96,6 +97,7 @@ struct DevicesView: View {
             }
             Color.clear.frame(height: 8)
         }
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         .titanScreen("Band", glow: model.bandConnected ? Theme.Palette.mint : Theme.Palette.indigo)
     }
 
