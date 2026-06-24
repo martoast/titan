@@ -68,9 +68,9 @@ private struct MacrosSection: View {
             .disabled(model.scanning)
 
             macrosCard
-            mealsList
             HydrationCard()
             FastingCard()
+            mealsList
         }
         .task { await model.loadNutrition() }
         .sheet(item: $editing) { EditMealSheet(meal: $0) }

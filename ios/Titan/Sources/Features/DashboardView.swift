@@ -11,6 +11,12 @@ struct DashboardView: View {
         VStack(spacing: Theme.Space.m) {
             let d = model.dashboard
 
+            // Warm, time-aware greeting — sets a human tone before the data.
+            Text(greeting)
+                .font(Theme.Font.body.weight(.medium)).foregroundStyle(Theme.Palette.textDim)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(appeared ? 1 : 0)
+
             // Hero: recovery ring + headline
             VStack(spacing: Theme.Space.m) {
                 MetricRing(score: d?.readiness?.score, label: "Recovery", size: 200)
@@ -166,6 +172,13 @@ struct DashboardView: View {
             .font(Theme.Font.label).foregroundStyle(color)
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(color.opacity(0.14), in: Capsule())
+    }
+
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let part = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
+        if let first = model.user?.name?.split(separator: " ").first { return "\(part), \(first)." }
+        return part + "."
     }
 
     private var chevron: String { "›" }
