@@ -2,33 +2,81 @@ import Foundation
 import CoreBluetooth
 
 /// Always-on background BLE connection to the Titan band (Bangle.js / Nordic UART Service).
-/// Implements the Whoop-style pattern verified in research: `bluetooth-central` background mode +
-/// State Preservation & Restoration (relaunches a terminated app) + no-timeout reconnect
-/// re-armed on every disconnect. Decoded data is handed to `FrameRouter`.
+/// Whoop-style pattern: `bluetooth-central` background mode + State Preservation & Restoration
+/// (relaunches a terminated app) + no-timeout reconnect re-armed on every disconnect.
 /// Design + citations: tasks/native-ios/01-background-ble.md.
 ///
-/// Requires (Xcode): UIBackgroundModes `bluetooth-central`, `NSBluetoothAlwaysUsageDescription`.
+/// Per-device binding: at pair time we lock onto the CLOSEST band (you hold yours to the phone)
+/// and remember its peripheral identifier. Afterward the phone reconnects ONLY to that band — so
+/// two people wearing Titan bands side by side never cross-connect.
 public final class BandManager: NSObject {
     public static let NUS_SERVICE = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
     public static let NUS_TX = CBUUID(string: "6E400003-B5A3-F393-E0A9-E50E24DCCA9E") // notify
     public static let NUS_RX = CBUUID(string: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E") // write
     private static let restoreId = "com.titan.band.central"
+    private static let boundKey = "titan.band.peripheralUUID"
 
     private var central: CBCentralManager!
     private var band: CBPeripheral?
     private var rxChar: CBCharacteristic?
     private let router: FrameRouter
 
+    /// The specific band this phone is bound to (nil until first pairing).
+    private var boundId: UUID?
+    /// True only during a fresh pair: collect nearby bands and pick the closest.
+    private var pairing = false
+    private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int)] = [:]
+
     public var onConnectionChange: ((Bool) -> Void)?
+    /// Pairing finished binding to a band (or timed out finding one: false).
+    public var onPaired: ((Bool) -> Void)?
 
     public init(router: FrameRouter) {
         self.router = router
         super.init()
+        if let s = UserDefaults.standard.string(forKey: Self.boundKey) { boundId = UUID(uuidString: s) }
         central = CBCentralManager(delegate: self, queue: nil,
             options: [CBCentralManagerOptionRestoreIdentifierKey: Self.restoreId])
     }
 
-    /// Re-arm a forever-pending connect (survives out-of-range + termination).
+    public var isBound: Bool { boundId != nil }
+
+    /// Start a fresh pairing: scan briefly and bind to the nearest band (hold yours to the phone).
+    public func startPairing() {
+        pairing = true
+        candidates = [:]
+        boundId = nil
+        UserDefaults.standard.removeObject(forKey: Self.boundKey)
+        if central.state == .poweredOn { central.scanForPeripherals(withServices: nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in self?.finishPairing() }
+    }
+
+    private func finishPairing() {
+        guard pairing else { return }
+        pairing = false
+        guard let best = candidates.values.max(by: { $0.rssi < $1.rssi }) else {
+            central.stopScan()
+            onPaired?(false)               // none in range — band asleep? user can retry
+            return
+        }
+        boundId = best.peripheral.identifier
+        UserDefaults.standard.set(boundId!.uuidString, forKey: Self.boundKey)
+        band = best.peripheral
+        best.peripheral.delegate = self
+        central.stopScan()
+        reconnect(best.peripheral)
+        onPaired?(true)
+    }
+
+    /// Forget the bound band (used when re-pairing).
+    public func unbind() {
+        boundId = nil
+        UserDefaults.standard.removeObject(forKey: Self.boundKey)
+        if let b = band, b.state != .disconnected { central.cancelPeripheralConnection(b) }
+        band = nil
+    }
+
+    /// No-timeout connect (survives out-of-range + termination); system wakes us on events.
     private func reconnect(_ p: CBPeripheral) {
         central.connect(p, options: [
             CBConnectPeripheralOptionNotifyOnConnectionKey: true,
@@ -36,22 +84,34 @@ public final class BandManager: NSObject {
             CBConnectPeripheralOptionNotifyOnNotificationKey: true,
         ])
     }
+
+    /// True if `adv`/peripheral looks like a Titan band.
+    private func looksLikeBand(_ p: CBPeripheral, _ adv: [String: Any]) -> Bool {
+        let name = p.name ?? (adv[CBAdvertisementDataLocalNameKey] as? String) ?? ""
+        let uuids = adv[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
+        return name.hasPrefix("Bangle") || uuids.contains(Self.NUS_SERVICE)
+    }
 }
 
 extension BandManager: CBCentralManagerDelegate {
     public func centralManagerDidUpdateState(_ c: CBCentralManager) {
         guard c.state == .poweredOn else { return }
-        if band == nil {
-            // Background scan REQUIRES an explicit service UUID.
-            c.scanForPeripherals(withServices: [Self.NUS_SERVICE])
-        } else if band?.state != .connected {
-            reconnect(band!)
+        if pairing { c.scanForPeripherals(withServices: nil); return }
+        guard let id = boundId else { return }           // not paired yet — wait for startPairing()
+        // Re-arm a pending connect to the known peripheral (works in the background, no scan).
+        if let p = c.retrievePeripherals(withIdentifiers: [id]).first {
+            band = p; p.delegate = self
+            if p.state != .connected { reconnect(p) }
         }
+        // Also scan (foreground) so we catch the band the moment it advertises; didDiscover only
+        // accepts our bound identifier.
+        c.scanForPeripherals(withServices: nil)
     }
 
     /// FIRST callback when iOS relaunches a terminated app for a BLE event.
     public func centralManager(_ c: CBCentralManager, willRestoreState dict: [String: Any]) {
-        if let p = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral])?.first {
+        if let p = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral])?
+            .first(where: { boundId == nil || $0.identifier == boundId }) {
             band = p
             p.delegate = self
             if p.state != .connected { reconnect(p) }
@@ -60,6 +120,12 @@ extension BandManager: CBCentralManagerDelegate {
 
     public func centralManager(_ c: CBCentralManager, didDiscover p: CBPeripheral,
                                advertisementData: [String: Any], rssi: NSNumber) {
+        guard looksLikeBand(p, advertisementData) else { return }
+        if pairing {
+            candidates[p.identifier] = (p, rssi.intValue)   // collect; finishPairing() picks closest
+            return
+        }
+        guard p.identifier == boundId else { return }       // ONLY our bound band — never a stranger's
         band = p; p.delegate = self
         c.stopScan()
         reconnect(p)
@@ -73,7 +139,7 @@ extension BandManager: CBCentralManagerDelegate {
     public func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         onConnectionChange?(false)
         router.flush(live: false)
-        reconnect(p)  // re-arm forever
+        if p.identifier == boundId { reconnect(p) }         // re-arm forever (only our band)
     }
 }
 

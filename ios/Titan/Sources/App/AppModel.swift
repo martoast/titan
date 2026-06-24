@@ -35,6 +35,8 @@ final class AppModel: ObservableObject {
     @Published var dashboard: Dashboard?
     @Published var hrvTrend: [Double] = []
     @Published var bandConnected = false
+    @Published var bandBound = false       // bound to a specific band's BLE identity
+    @Published var pairing = false         // BLE pairing in progress ("hold your band close")
     @Published var liveBpm: Int?
     @Published var syncedSamples = 0       // cumulative PPG samples received this session
     @Published var windowsUploaded = 0     // windows confirmed by the server
@@ -61,6 +63,7 @@ final class AppModel: ObservableObject {
     func bootstrap() async {
         if let d = try? await api.dashboard() { dashboard = d }
         startBandIfPaired()
+        bandBound = band?.isBound ?? false
     }
 
     // MARK: auth
@@ -94,17 +97,24 @@ final class AppModel: ObservableObject {
 
     // MARK: band
 
-    /// Pair a fresh band: server mints a one-time secret → store it → start the BLE sync.
+    /// Pair a fresh band: server mints a one-time secret, then bind to the CLOSEST band over BLE
+    /// (hold yours to the phone) so two nearby bands never cross-connect.
     func pairBand() async {
         do {
             let p = try await api.pairDevice()
             Keychain.set(p.device_id, for: Keychain.deviceId)
             Keychain.set(p.secret, for: Keychain.deviceSecret)
-            startBandIfPaired()
-        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+            startBandIfPaired()                    // ensures `band` (BandManager) exists
+            pairing = true
+            band?.startPairing()                   // scan ~3s, bind the nearest band, connect
+        } catch {
+            pairing = false
+            self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
-    var isBandPaired: Bool { Keychain.get(Keychain.deviceId) != nil && Keychain.get(Keychain.deviceSecret) != nil }
+    /// Paired = we have server creds AND a band bound to this phone's BLE identity.
+    var isBandPaired: Bool { bandBound && Keychain.get(Keychain.deviceId) != nil }
 
     private func startBandIfPaired() {
         guard band == nil,
@@ -126,6 +136,13 @@ final class AppModel: ObservableObject {
         }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in self?.bandConnected = up } }
+        band.onPaired = { [weak self] ok in
+            Task { @MainActor in
+                self?.pairing = false
+                self?.bandBound = ok
+                if !ok { self?.error = "Couldn't find your band. Wake it (tap its button) and try Pair again." }
+            }
+        }
         self.syncQueue = queue; self.router = router; self.band = band
     }
 

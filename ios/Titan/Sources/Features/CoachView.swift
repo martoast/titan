@@ -65,6 +65,9 @@ struct CoachView: View {
                         }
                         .scrollIndicators(.hidden)
                         .scrollDismissesKeyboard(.interactively)
+                        // Tap anywhere in the conversation to dismiss the keyboard (buttons/chips
+                        // still get their taps first).
+                        .onTapGesture { focused = false }
                         .onChange(of: vm.messages.last?.text) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) } }
                         .onChange(of: vm.toolStatus) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
                     }

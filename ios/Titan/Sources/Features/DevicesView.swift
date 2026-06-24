@@ -4,7 +4,6 @@ import SwiftUI
 /// the band synced in the background; no Bluefy, no manual connect.
 struct DevicesView: View {
     @EnvironmentObject var model: AppModel
-    @State private var pairing = false
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -30,20 +29,22 @@ struct DevicesView: View {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
                         SectionHeader(title: "Pair your band")
-                        Text("One tap pairs your Titan band and starts background sync. Wake the band (tap its button) and keep it close.")
+                        Text(model.pairing
+                             ? "Hold YOUR band right against the phone so we bind to the correct one — then it'll only ever connect to this band."
+                             : "Wake your band (tap its button), hold it against the phone, then pair. We lock onto the nearest band so it never grabs someone else's nearby.")
                             .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
                         Button {
-                            Haptic.rigid(); pairing = true
-                            Task { await model.pairBand(); pairing = false; Haptic.success() }
+                            Haptic.rigid()
+                            Task { await model.pairBand() }
                         } label: {
                             HStack {
-                                if pairing { ProgressView().tint(.white) }
-                                Text(pairing ? "Pairing…" : "Pair Titan band").font(Theme.Font.body.weight(.semibold))
+                                if model.pairing { ProgressView().tint(.white) }
+                                Text(model.pairing ? "Hold band close…" : "Pair Titan band").font(Theme.Font.body.weight(.semibold))
                             }
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
                             .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
                             .foregroundStyle(.white)
-                        }.disabled(pairing)
+                        }.disabled(model.pairing)
                     }
                 }
             } else {
