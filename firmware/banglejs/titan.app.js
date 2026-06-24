@@ -176,6 +176,8 @@ var ppgFieldCode = 0;     // which PPG_FIELDS index we settled on
 // top-level var ahead of its statement, so referencing it early throws ReferenceError.
 var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
+var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
+var pairTimer = null;     // pairing-screen redraw interval, or null
 
 // ----- Helpers --------------------------------------------------------------
 
@@ -636,6 +638,7 @@ var uiVisible = true;
 
 function drawUI() {
   if (!uiVisible) return;
+  if (pairTimer) return;   // pairing screen owns the display while pairing mode is active
   g.reset();
   g.clearRect(0, 0, g.getWidth(), g.getHeight());
 
@@ -676,7 +679,7 @@ function drawUI() {
   // Footer hint
   g.setFontAlign(0, 0);
   g.setFont("6x8", 1);
-  var hint = !state.streaming ? "BTN: start"
+  var hint = !state.streaming ? "tap: start  ·  hold 3s: pair"
     : (state.workout && state.workoutManual ? "hold BTN: end gym" : "hold BTN: gym");
   g.drawString(hint, g.getWidth() / 2, g.getHeight() - 10);
 }
@@ -710,13 +713,52 @@ setInterval(function () {
 }, 1000);
 
 // Hardware button toggles capture.
-// Short press toggles capture; LONG press (>1.2 s) starts/stops a manual gym workout — lifting
-// isn't locomotion so the motion gate won't catch it, and a treadmill/weights room has no GPS.
+// ----- Pairing mode (Whoop-style: a deliberate gesture puts the band in a pairable state and
+// shows a CODE on its own screen, so the app can list nearby bands by code and the user taps the
+// one that matches what's on their wrist — unambiguous even with two bands side by side). The
+// code is the BLE address suffix, which is exactly the "Bangle.js XXXX" advertised-name suffix.
+// (pairUntil / pairTimer are declared in the globals block near the top.)
+function pairCode() {
+  try { return NRF.getAddress().substr(-5).replace(":", "").toUpperCase(); } // "7C3F"
+  catch (e) { return "----"; }
+}
+
+function drawPairing() {
+  g.reset(); g.clearRect(0, 0, g.getWidth(), g.getHeight());
+  g.setFontAlign(0, 0);
+  g.setFont("6x8", 2); g.drawString("PAIR THIS", g.getWidth() / 2, 30);
+  g.setFont("Vector", 52); g.drawString(pairCode(), g.getWidth() / 2, 90);
+  g.setFont("6x8", 1); g.drawString("tap this code in the app", g.getWidth() / 2, 140);
+  var left = Math.max(0, Math.ceil(pairUntil - getTime()));
+  g.drawString(left + "s  ·  press to exit", g.getWidth() / 2, g.getHeight() - 12);
+}
+
+function enterPairing() {
+  pairUntil = getTime() + 120;          // pairable for 2 minutes
+  try { Bangle.buzz(200); } catch (e) {}
+  if (pairTimer) clearInterval(pairTimer);
+  drawPairing();
+  pairTimer = setInterval(function () {
+    if (getTime() >= pairUntil) { exitPairing(); return; }
+    drawPairing();
+  }, 1000);
+}
+
+function exitPairing() {
+  if (pairTimer) { clearInterval(pairTimer); pairTimer = null; }
+  pairUntil = 0;
+  drawUI();
+}
+
+// Button: while pairing, any press exits. Otherwise short press = start/stop capture; a >1.2 s
+// hold while streaming = manual gym workout; a >3 s hold from IDLE = enter pairing mode.
 var btnDownT = 0;
 setWatch(function () { btnDownT = getTime(); }, BTN1, { repeat: true, edge: "rising" });
 setWatch(function () {
   var held = getTime() - btnDownT;
-  if (held > 1.2) { if (state.streaming) toggleManualWorkout(); }
+  if (pairTimer) { exitPairing(); return; }
+  if (held > 3 && !state.streaming) { enterPairing(); }
+  else if (held > 1.2) { if (state.streaming) toggleManualWorkout(); }
   else toggleStreaming();
 }, BTN1, { repeat: true, edge: "falling" });
 

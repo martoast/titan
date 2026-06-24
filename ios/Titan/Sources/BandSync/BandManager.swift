@@ -23,13 +23,23 @@ public final class BandManager: NSObject {
 
     /// The specific band this phone is bound to (nil until first pairing).
     private var boundId: UUID?
-    /// True only during a fresh pair: collect nearby bands and pick the closest.
+    /// True only during a fresh pair: collect nearby bands so the user picks theirs by code.
     private var pairing = false
-    private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int)] = [:]
+    private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int, code: String)] = [:]
+    private var pairTimeout: Timer?
+
+    /// A nearby band shown in the pairing picker. `code` matches what's on the band's screen.
+    public struct PairCandidate: Identifiable, Equatable {
+        public let id: UUID
+        public let code: String   // e.g. "7C3F"
+        public let rssi: Int
+    }
 
     public var onConnectionChange: ((Bool) -> Void)?
-    /// Pairing finished binding to a band (or timed out finding one: false).
+    /// Pairing bound to a band (true) or timed out with no pick (false).
     public var onPaired: ((Bool) -> Void)?
+    /// Live list of nearby bands during pairing (closest first) for the picker UI.
+    public var onCandidates: (([PairCandidate]) -> Void)?
 
     public init(router: FrameRouter) {
         self.router = router
@@ -41,31 +51,42 @@ public final class BandManager: NSObject {
 
     public var isBound: Bool { boundId != nil }
 
-    /// Start a fresh pairing: scan briefly and bind to the nearest band (hold yours to the phone).
+    /// Start a fresh pairing: scan and surface nearby bands by code; the user taps theirs (the one
+    /// whose code matches the band's screen). Times out after 2 minutes with no pick.
     public func startPairing() {
         pairing = true
         candidates = [:]
         boundId = nil
         UserDefaults.standard.removeObject(forKey: Self.boundKey)
+        onCandidates?([])
         if central.state == .poweredOn { central.scanForPeripherals(withServices: nil) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in self?.finishPairing() }
+        pairTimeout?.invalidate()
+        pairTimeout = Timer.scheduledTimer(withTimeInterval: 120, repeats: false) { [weak self] _ in
+            guard let self, self.pairing else { return }
+            self.pairing = false
+            self.central.stopScan()
+            self.onPaired?(false)
+        }
     }
 
-    private func finishPairing() {
-        guard pairing else { return }
+    /// User tapped a band in the picker → bind to that exact peripheral forever.
+    public func bind(to id: UUID) {
+        guard let c = candidates[id] else { return }
         pairing = false
-        guard let best = candidates.values.max(by: { $0.rssi < $1.rssi }) else {
-            central.stopScan()
-            onPaired?(false)               // none in range — band asleep? user can retry
-            return
-        }
-        boundId = best.peripheral.identifier
-        UserDefaults.standard.set(boundId!.uuidString, forKey: Self.boundKey)
-        band = best.peripheral
-        best.peripheral.delegate = self
+        pairTimeout?.invalidate()
+        boundId = id
+        UserDefaults.standard.set(id.uuidString, forKey: Self.boundKey)
+        band = c.peripheral
+        c.peripheral.delegate = self
         central.stopScan()
-        reconnect(best.peripheral)
+        reconnect(c.peripheral)
         onPaired?(true)
+    }
+
+    public func cancelPairing() {
+        pairing = false
+        pairTimeout?.invalidate()
+        central.stopScan()
     }
 
     /// Forget the bound band (used when re-pairing).
@@ -122,7 +143,12 @@ extension BandManager: CBCentralManagerDelegate {
                                advertisementData: [String: Any], rssi: NSNumber) {
         guard looksLikeBand(p, advertisementData) else { return }
         if pairing {
-            candidates[p.identifier] = (p, rssi.intValue)   // collect; finishPairing() picks closest
+            let name = p.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? ""
+            let code = String(name.replacingOccurrences(of: " ", with: "").suffix(4)).uppercased()
+            candidates[p.identifier] = (p, rssi.intValue, code)
+            onCandidates?(candidates.values
+                .map { PairCandidate(id: $0.peripheral.identifier, code: $0.code, rssi: $0.rssi) }
+                .sorted { $0.rssi > $1.rssi })
             return
         }
         guard p.identifier == boundId else { return }       // ONLY our bound band — never a stranger's

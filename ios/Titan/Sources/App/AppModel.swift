@@ -36,7 +36,8 @@ final class AppModel: ObservableObject {
     @Published var hrvTrend: [Double] = []
     @Published var bandConnected = false
     @Published var bandBound = false       // bound to a specific band's BLE identity
-    @Published var pairing = false         // BLE pairing in progress ("hold your band close")
+    @Published var pairing = false         // BLE pairing in progress (picker open)
+    @Published var pairCandidates: [BandManager.PairCandidate] = []  // nearby bands, by code
     @Published var liveBpm: Int?
     @Published var syncedSamples = 0       // cumulative PPG samples received this session
     @Published var windowsUploaded = 0     // windows confirmed by the server
@@ -105,12 +106,25 @@ final class AppModel: ObservableObject {
             Keychain.set(p.device_id, for: Keychain.deviceId)
             Keychain.set(p.secret, for: Keychain.deviceSecret)
             startBandIfPaired()                    // ensures `band` (BandManager) exists
+            pairCandidates = []
             pairing = true
-            band?.startPairing()                   // scan ~3s, bind the nearest band, connect
+            band?.startPairing()                   // scan + surface nearby bands by code
         } catch {
             pairing = false
             self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription
         }
+    }
+
+    /// User tapped the band whose code matches their band's screen → bind to it.
+    func bindBand(_ id: UUID) {
+        Haptic.success()
+        band?.bind(to: id)
+    }
+
+    func cancelPairing() {
+        band?.cancelPairing()
+        pairing = false
+        pairCandidates = []
     }
 
     /// Paired = we have server creds AND a band bound to this phone's BLE identity.
@@ -139,9 +153,13 @@ final class AppModel: ObservableObject {
         band.onPaired = { [weak self] ok in
             Task { @MainActor in
                 self?.pairing = false
+                self?.pairCandidates = []
                 self?.bandBound = ok
-                if !ok { self?.error = "Couldn't find your band. Wake it (tap its button) and try Pair again." }
+                if !ok { self?.error = "Couldn't find your band. Put it in pairing mode (hold its button 3s) and try again." }
             }
+        }
+        band.onCandidates = { [weak self] list in
+            Task { @MainActor in self?.pairCandidates = list }
         }
         self.syncQueue = queue; self.router = router; self.band = band
     }

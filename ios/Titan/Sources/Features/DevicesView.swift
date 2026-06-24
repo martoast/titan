@@ -26,25 +26,58 @@ struct DevicesView: View {
             }
 
             if !model.isBandPaired {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        SectionHeader(title: "Pair your band")
-                        Text(model.pairing
-                             ? "Hold YOUR band right against the phone so we bind to the correct one — then it'll only ever connect to this band."
-                             : "Wake your band (tap its button), hold it against the phone, then pair. We lock onto the nearest band so it never grabs someone else's nearby.")
-                            .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
-                        Button {
-                            Haptic.rigid()
-                            Task { await model.pairBand() }
-                        } label: {
-                            HStack {
-                                if model.pairing { ProgressView().tint(.white) }
-                                Text(model.pairing ? "Hold band close…" : "Pair Titan band").font(Theme.Font.body.weight(.semibold))
+                if model.pairing {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: Theme.Space.m) {
+                            SectionHeader(title: "Pick your band", trailing: "code on screen")
+                            Text("Your band is showing a 4-character code. Tap the matching one below — this binds the app to YOUR band only.")
+                                .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+                            if model.pairCandidates.isEmpty {
+                                HStack(spacing: Theme.Space.s) {
+                                    ProgressView().tint(Theme.Palette.indigo)
+                                    Text("Searching… make sure the band shows a code (hold its button 3s).")
+                                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                                }.padding(.vertical, 6)
+                            } else {
+                                ForEach(model.pairCandidates) { cand in
+                                    Button { model.bindBand(cand.id) } label: {
+                                        HStack(spacing: Theme.Space.m) {
+                                            Text(cand.code).font(Theme.Font.num(22)).foregroundStyle(Theme.Palette.cyan).monospaced()
+                                            Spacer()
+                                            SignalBars(rssi: cand.rssi)
+                                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+                                        }
+                                        .padding(.vertical, 11).padding(.horizontal, Theme.Space.m)
+                                        .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                                    }.buttonStyle(PressCard())
+                                }
                             }
-                            .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
-                            .foregroundStyle(.white)
-                        }.disabled(model.pairing)
+                            Button { model.cancelPairing() } label: {
+                                Text("Cancel").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            }.frame(maxWidth: .infinity)
+                        }
+                    }
+                } else {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: Theme.Space.m) {
+                            SectionHeader(title: "Pair your band")
+                            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                                pairStep("1", "On the band, hold the button ~3 seconds until it shows PAIR + a code.")
+                                pairStep("2", "Tap Pair below, then pick that code in the app.")
+                            }
+                            Text("We bind to the exact band you pick — so two bands side by side never cross-connect.")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                            Button {
+                                Haptic.rigid()
+                                Task { await model.pairBand() }
+                            } label: {
+                                Text("Pair Titan band").font(Theme.Font.body.weight(.semibold))
+                                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                    .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                    .foregroundStyle(.white)
+                            }
+                        }
                     }
                 }
             } else {
@@ -95,6 +128,14 @@ struct DevicesView: View {
     }
     private var statusSub: String {
         model.bandConnected ? "Syncing in the background." : (model.isBandPaired ? "Reconnects automatically when it's near." : "Pair your Titan band to begin.")
+    }
+
+    private func pairStep(_ n: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Space.s) {
+            Text(n).font(Theme.Font.micro).foregroundStyle(.white)
+                .frame(width: 20, height: 20).background(Theme.Palette.indigo, in: Circle())
+            Text(text).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+        }
     }
 
     private var divider: some View { Rectangle().fill(Theme.Palette.cardStroke).frame(width: 1, height: 30) }

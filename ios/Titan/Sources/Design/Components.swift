@@ -174,6 +174,20 @@ struct Shimmer: View {
     }
 }
 
+// MARK: - BLE signal strength bars
+struct SignalBars: View {
+    let rssi: Int   // dBm: ~ -30 (touching) … -100 (far)
+    private var bars: Int { rssi > -55 ? 4 : (rssi > -67 ? 3 : (rssi > -80 ? 2 : 1)) }
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(1...4, id: \.self) { i in
+                Capsule().fill(i <= bars ? Theme.Palette.mint : Theme.Palette.cardStroke)
+                    .frame(width: 3, height: CGFloat(4 + i * 3))
+            }
+        }
+    }
+}
+
 // MARK: - Live PPG waveform (auto-scaled, glowing)
 struct WaveformView: View {
     let samples: [Double]
