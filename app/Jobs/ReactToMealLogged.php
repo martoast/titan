@@ -1,0 +1,96 @@
+<?php
+
+namespace App\Jobs;
+
+use App\Models\Meal;
+use App\Services\Notifications\NotificationService;
+use App\Support\Macros;
+use App\Support\Reminders;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Carbon;
+
+/**
+ * Proactive protein nudge. When a meal is logged and the day is winding down but protein is still
+ * meaningfully short of target, the coach reaches out on its own — a push + a note in the chat with
+ * the gap and a quick way to close it. Once per day, and only if the user wants meal nudges. Like a
+ * coach who notices you're behind and says something before it's too late to fix.
+ */
+class ReactToMealLogged implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 1;
+
+    /** Don't bother before this local hour — earlier there's plenty of day left to catch up. */
+    private const EVENING_HOUR = 17;
+    /** Nudge only when at least this many grams short… */
+    private const MIN_GAP_G = 25;
+    /** …and below this fraction of the daily target. */
+    private const BEHIND_FRACTION = 0.8;
+
+    public function __construct(public int $mealId) {}
+
+    public function handle(NotificationService $notifications): void
+    {
+        $meal = Meal::find($this->mealId);
+        $profile = $meal?->profile;
+        if (! $profile) {
+            return;
+        }
+
+        // Respect their coaching preference (meal nudges are on for "balanced" and up).
+        if (class_exists(Reminders::class) && ! Reminders::enabled($profile, 'meals')) {
+            return;
+        }
+
+        $tz = $profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $now = Carbon::now($tz);
+        $today = $now->toDateString();
+
+        // At most one protein nudge per day.
+        if (data_get($profile->settings, 'protein_nudged') === $today) {
+            return;
+        }
+        // Only once the day is winding down.
+        if ($now->hour < self::EVENING_HOUR) {
+            return;
+        }
+
+        $macros = rescue(fn () => Macros::today($profile), null, false);
+        if (! is_array($macros)) {
+            return;
+        }
+        $have = (int) data_get($macros, 'protein.value', 0);
+        $target = (int) data_get($macros, 'protein.target', 0);
+        if ($target <= 0) {
+            return;
+        }
+
+        $remaining = $target - $have;
+        // Not behind enough to be worth a nudge.
+        if ($remaining < self::MIN_GAP_G || ($have / $target) >= self::BEHIND_FRACTION) {
+            return;
+        }
+
+        $title = '🍗 Protein’s running low';
+        $push = "You're at {$have}g of {$target}g today — about {$remaining}g to go before bed.";
+        $notifications->notify($profile, $title, $push, '/coach', 'protein');
+
+        $name = $profile->display_name ? ' '.$profile->display_name : '';
+        $body = "🍗 **Protein check{$name}.** You're at **{$have}g** of your **{$target}g** target today — "
+            ."about **{$remaining}g** to go before bed.\n\n"
+            ."An easy hit closes it: a scoop of whey, Greek yogurt, cottage cheese, a couple of eggs, "
+            ."or a can of tuna. Want a snack that fits the rest of your macros? Just ask.";
+
+        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
+        $convo->messages()->create(['role' => 'assistant', 'content' => $body]);
+
+        $settings = $profile->settings ?? [];
+        $settings['protein_nudged'] = $today;
+        $profile->update(['settings' => $settings]);
+    }
+}
