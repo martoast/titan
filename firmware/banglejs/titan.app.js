@@ -179,6 +179,7 @@ var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
 var page = 0;             // watch face page: 0 = heart/home, 1 = clock, 2 = signals (swipe to change)
+var clockTickTimer = null; // minute-boundary redraw for the clock face
 
 // ----- Helpers --------------------------------------------------------------
 
@@ -638,8 +639,8 @@ function toggleStreaming() {
 var uiVisible = true;
 
 // ----- Premium watch face --------------------------------------------------
-var C = {                          // palette (matches the app's accents)
-  white: "#ffffff", dim: "#7a7a8c", faint: "#4a4a55",
+var C = {                          // palette — pure colors for text/icons; dithered for fills/ring
+  white: "#ffffff", dim: "#7a7a8c", faint: "#4a4a55", track: "#23232e",
   rec: "#ff3355", heart: "#ff3b5b", cyan: "#33d6ff", mint: "#2fe6b0",
   amber: "#ffb020", violet: "#8b7bff", bg: "#000000",
 };
@@ -656,6 +657,21 @@ function heartIcon(cx, cy, s) {
   g.fillCircle(cx + s * 0.42, cy - s * 0.18, s * 0.5);
   g.fillPoly([cx - s * 0.92, cy - s * 0.05, cx + s * 0.92, cy - s * 0.05, cx, cy + s]);
 }
+
+// A thick ring arc (the app's signature ring, drawn with stamped circles — sharp at any size).
+// a0/a1 in turns (0..1) clockwise from top. Used as a full faint track + a colored value arc.
+function arc(cx, cy, r, w, a0, a1, col) {
+  g.setColor(col);
+  var step = 0.9 / r;                       // ~1px spacing → smooth, no gaps
+  for (var t = a0; t <= a1; t += step) {
+    var a = t * 6.2832;
+    g.fillCircle(cx + r * Math.sin(a), cy - r * Math.cos(a), w / 2);
+  }
+}
+
+// HR → color + ring fraction (resting green → elevated amber → high red).
+function hrColor(bpm) { return bpm >= 140 ? C.rec : (bpm >= 100 ? C.amber : C.mint); }
+function hrFrac(bpm) { return Math.max(0.02, Math.min(1, (bpm - 40) / 150)); }
 
 // Page indicator dots (which of the 3 swipeable faces you're on).
 function pageDots() {
@@ -675,24 +691,29 @@ function drawHome() {
   g.drawString(state.streaming ? "RECORDING" : "IDLE", 21, 13);
   battIcon(W - 27, 8, state.battery);
 
+  g.setFontAlign(0, 0);
   if (state.streaming) {
-    g.setFontAlign(0, 0); g.setFont("6x8", 1);
+    g.setFont("6x8", 1);
     g.setColor(state.connected ? C.cyan : C.amber);
-    g.drawString(state.connected ? "SYNCING LIVE" : "LOGGING TO BAND", W / 2, 40);
-    heartIcon(W / 2, 66, 12);
-    g.setColor(C.white); g.setFont("Vector", 58); g.setFontAlign(0, 0);
-    g.drawString((state.bpm || "--") + "", W / 2, 110);
-    g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("BPM", W / 2, 142);
+    g.drawString(state.connected ? "SYNCING LIVE" : "LOGGING", W / 2, 34);
+
+    // HR ring (faint full track + colored value arc) with the BPM in the middle.
+    var cx = W / 2, cy = 100, r = 50, bpm = state.bpm || 0, col = hrColor(bpm);
+    arc(cx, cy, r, 7, 0, 1, C.track);
+    if (bpm) arc(cx, cy, r, 7, 0, hrFrac(bpm), col);
+    heartIcon(cx, cy - 22, 9);
+    g.setColor(C.white); g.setFont("Vector", 44); g.drawString((bpm || "--") + "", cx, cy + 6);
+    g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("BPM", cx, cy + 30);
+
     if (state.workout) {
-      g.setColor(C.violet);
-      g.drawString(state.workoutManual ? "GYM" : (state.gps ? (state.gpsFix ? "RUN · GPS" : "RUN") : "WORKOUT"), W / 2, 156);
+      g.setColor(C.violet); g.setFont("6x8", 1);
+      g.drawString(state.workoutManual ? "GYM" : (state.gps ? (state.gpsFix ? "RUN · GPS" : "RUN") : "WORKOUT"), W / 2, 160);
     }
   } else {
-    heartIcon(W / 2, 58, 12);
-    g.setColor(C.white); g.setFont("Vector", 38); g.setFontAlign(0, 0);
-    g.drawString("TITAN", W / 2, 100);
-    g.setColor(C.cyan); g.setFont("6x8", 1); g.drawString("RECOVERY BAND", W / 2, 128);
-    g.setColor(C.faint); g.drawString("tap: start   2x-tap: pair", W / 2, 150);
+    heartIcon(W / 2, 60, 13);
+    g.setColor(C.white); g.setFont("Vector", 40); g.drawString("TITAN", W / 2, 104);
+    g.setColor(C.cyan); g.setFont("6x8", 1); g.drawString("RECOVERY BAND", W / 2, 132);
+    g.setColor(C.faint); g.drawString("tap: start   2x-tap: pair", W / 2, 152);
   }
 }
 
@@ -740,6 +761,7 @@ function drawSignals() {
 function drawUI() {
   if (!uiVisible) return;
   if (pairTimer) return;            // pairing screen owns the display
+  if (!Bangle.isLCDOn()) return;    // power: don't redraw while the screen is asleep
   g.reset(); g.setColor(C.bg); g.fillRect(0, 0, g.getWidth(), g.getHeight());
   if (page === 1) drawClock();
   else if (page === 2) drawSignals();
@@ -770,6 +792,21 @@ Bangle.on("swipe", function (lr) {
   try { Bangle.buzz(15); } catch (e) {}
   drawUI();
 });
+
+// Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep).
+Bangle.on("lcdPower", function (on) { if (on) drawUI(); });
+
+// Keep the clock face honest: redraw on each minute boundary (only repaints if you're on the
+// clock page and the screen is on — drawUI() guards both), instead of a wasteful 1 s interval.
+function queueClockTick() {
+  if (clockTickTimer) clearTimeout(clockTickTimer);
+  clockTickTimer = setTimeout(function () {
+    clockTickTimer = null;
+    if (page === 1) drawUI();
+    queueClockTick();
+  }, 60000 - (Date.now() % 60000) + 50);
+}
+queueClockTick();
 
 // Source-of-truth connection poll. Web Bluetooth (notably on macOS) can make the NRF
 // 'disconnect' event fire spuriously while the GATT link is actually still up — which made
