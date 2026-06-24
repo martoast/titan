@@ -51,6 +51,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"            # iPhone
         SWIFT_VERSION: "5.9"
         ENABLE_PREVIEWS: YES
-        # Automatic signing — fill DEVELOPMENT_TEAM (your 10-char Team ID) or set it in Xcode.
+        # Automatic signing — DEVELOPMENT_TEAM is your 10-char Team ID (Apple Development cert OU).
+        # A free personal Apple ID team works for on-device dev builds (7-day provisioning).
         CODE_SIGN_STYLE: Automatic
-        # DEVELOPMENT_TEAM: XXXXXXXXXX
+        DEVELOPMENT_TEAM: AM886483DX
