@@ -1,8 +1,0 @@
-version: "Apple Swift version 5.10 (swiftlang-5.10.0.13 clang-1500.3.9.4)"
-options: "d6c5737d5517bdc2ca7ea2781e46d5fd"
-build_time: [1782254915, 197578000]
-inputs:
-  "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/FrameDecoder.swift": [1782249068, 691466892]
-  "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Signer.swift": [1782248138, 58762732]
-  "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/Windowing.swift": [1782249504, 195146080]
-  "/Users/alex/Documents/alex/fitness-ai/ios/TitanCore/Sources/TitanCore/WorkoutAssembler.swift": [1782252607, 716692809]
