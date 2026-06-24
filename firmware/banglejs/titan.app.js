@@ -183,6 +183,15 @@ var page = 0;             // current face (swipe to change)
 var photoMin = -2;        // minute currently shown on the Photo face (-2 = needs a full repaint)
 var clockTickTimer = null; // minute-boundary redraw for the clock face
 
+// Default timezone so the clock reads correctly out of the box without a phone: Tijuana / Baja
+// California (PST/PDT). The app's time-sync (C2:) overrides this with the device's exact current
+// offset — including DST — the moment it connects, so this is only the cold-boot fallback.
+try { E.setTimeZone(-7); } catch (e) {}
+
+// [[TITAN_PHOTO_EMBED]] — a local single-file flash build injects the screensaver photo here, so
+// it's baked into the one file you flash. Kept OUT of git (the photo is personal; this repo is open
+// source). The committed firmware just reads "titan.gf" from flash if present.
+
 // ----- Helpers --------------------------------------------------------------
 
 // Clamp a number into signed int16 range so DataView.setInt16 never wraps
