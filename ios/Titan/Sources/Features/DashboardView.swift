@@ -5,6 +5,7 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject var model: AppModel
     @State private var appeared = false
+    @State private var showJournal = false
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -32,6 +33,37 @@ struct DashboardView: View {
             }
             .frame(maxWidth: .infinity)
             .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
+
+            // For You — the ranked insight feed (anomalies, goal progress, wins, behavior correlations)
+            if !model.insights.isEmpty {
+                VStack(spacing: Theme.Space.s) {
+                    HStack { Text("FOR YOU").font(Theme.Font.label).tracking(1.2).foregroundStyle(Theme.Palette.textDim); Spacer() }
+                    ForEach(model.insights) { InsightCard(insight: $0) }
+                }
+            }
+
+            // Log your day → feeds the correlation engine
+            Button { Haptic.tap(); showJournal = true } label: {
+                GlassCard {
+                    HStack(spacing: Theme.Space.m) {
+                        ZStack {
+                            Circle().fill(Theme.Palette.violet.opacity(0.16)).frame(width: 40, height: 40)
+                            Image(systemName: "square.and.pencil").foregroundStyle(Theme.Palette.violet).font(.system(size: 17, weight: .semibold))
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Log your day").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            Text(model.journalLogged.isEmpty
+                                 ? "Alcohol, caffeine, stress… learn what moves your recovery"
+                                 : "\(model.journalLogged.count) logged today")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+            .sheet(isPresented: $showJournal) { JournalSheet() }
 
             // Biological Age — the hero "how old is your body" stat
             if let b = d?.bio_age, let age = b.biological_age {
@@ -115,8 +147,13 @@ struct DashboardView: View {
         }
         .animation(Theme.Motion.spring, value: appeared)
         .titanScreen("Today", glow: Theme.Palette.recovery(model.dashboard?.readiness?.score))
-        .refreshable { Haptic.soft(); await model.refresh() }
-        .task { await model.refresh(); appeared = true }
+        .refreshable { Haptic.soft(); await model.refresh(); await model.loadInsights(); await model.loadJournal() }
+        .task {
+            await model.refresh()
+            appeared = true
+            await model.loadInsights()
+            await model.loadJournal()
+        }
     }
 
     /// "X.X years younger / older / on pace" — green when younger, amber when older.

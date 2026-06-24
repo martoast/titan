@@ -169,6 +169,53 @@ struct Targets: Codable, Equatable {
     var custom: Bool
 }
 
+// MARK: - Insight feed + journal (Whoop/Oura-parity)
+
+struct InsightsResponse: Codable { let insights: [Insight] }
+
+/// `GET /api/me/insights` — a ranked personalized card.
+struct Insight: Codable, Identifiable {
+    var id = UUID()
+    let kind: String        // anomaly | goal | win | correlation
+    let tone: String        // good | bad | neutral | alert
+    let icon: String?
+    let title: String
+    let detail: String
+    enum CodingKeys: String, CodingKey { case kind, tone, icon, title, detail }
+}
+
+/// `GET /api/me/journal`
+struct JournalResponse: Codable { let date: String; let catalog: [JournalItem]; let logged: [String] }
+/// `POST /api/me/journal`
+struct JournalLogResponse: Codable { let date: String; let logged: [String] }
+
+struct JournalItem: Codable, Identifiable {
+    var id: String { key }
+    let key: String
+    let label: String
+    let polarity: String    // good | bad | neutral
+    let category: String
+}
+
+/// `GET /api/me/weight`
+struct WeightCard: Codable {
+    let trend_kg: Double?
+    let latest_kg: Double?
+    let rate_kg_wk: Double?
+    let goal: WeightGoal?
+    let series: [WeightPoint]?
+    struct WeightGoal: Codable {
+        let target_kg: Double?
+        let target_date: String?
+        let on_track: Bool?
+        let projected_date: String?
+        let eta_days: Int?
+        let daily_kcal: Int?
+        let vs_goal_days: Int?
+    }
+    struct WeightPoint: Codable { let date: String; let weight: Double?; let trend: Double }
+}
+
 enum APIError: LocalizedError {
     case http(Int, String), decoding, unauthorized, transport(String)
     var errorDescription: String? {

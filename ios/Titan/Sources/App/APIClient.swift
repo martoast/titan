@@ -110,6 +110,32 @@ final class APIClient {
         try await send(request("api/me/meals/\(id)", method: "DELETE"), as: MacrosOnly.self)
     }
 
+    // MARK: insights + journal + weight
+
+    func insights() async throws -> [Insight] {
+        try await send(request("api/me/insights"), as: InsightsResponse.self).insights
+    }
+
+    func journal() async throws -> JournalResponse {
+        try await send(request("api/me/journal"), as: JournalResponse.self)
+    }
+
+    func logJournal(add: [String], remove: [String]) async throws -> [String] {
+        var body: [String: Any] = [:]
+        if !add.isEmpty { body["add"] = add }
+        if !remove.isEmpty { body["remove"] = remove }
+        return try await send(request("api/me/journal", method: "POST", json: body), as: JournalLogResponse.self).logged
+    }
+
+    func weight() async throws -> WeightCard {
+        try await send(request("api/me/weight"), as: WeightCard.self)
+    }
+
+    @discardableResult
+    func logWeight(kg: Double) async throws -> WeightCard {
+        try await send(request("api/me/weight", method: "POST", json: ["weight_kg": kg]), as: WeightCard.self)
+    }
+
     // MARK: targets
 
     func targets() async throws -> Targets {

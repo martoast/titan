@@ -54,6 +54,11 @@ final class AppModel: ObservableObject {
     @Published var progressBusy = false
     @Published var targets: Targets?
 
+    // Insights + journal (the moat, surfaced)
+    @Published var insights: [Insight] = []
+    @Published var journalCatalog: [JournalItem] = []
+    @Published var journalLogged: Set<String> = []
+
     let api: APIClient
 
     private var band: BandManager?
@@ -170,6 +175,26 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.pairCandidates = list }
         }
         self.syncQueue = queue; self.router = router; self.band = band
+    }
+
+    // MARK: insights + journal
+
+    func loadInsights() async {
+        if let i = try? await api.insights() { insights = i }
+    }
+
+    func loadJournal() async {
+        if let j = try? await api.journal() { journalCatalog = j.catalog; journalLogged = Set(j.logged) }
+    }
+
+    /// Optimistic toggle, then reconcile with the server's truth.
+    func toggleBehavior(_ key: String) async {
+        let wasOn = journalLogged.contains(key)
+        if wasOn { journalLogged.remove(key) } else { journalLogged.insert(key) }
+        do {
+            let logged = try await api.logJournal(add: wasOn ? [] : [key], remove: wasOn ? [key] : [])
+            journalLogged = Set(logged)
+        } catch { await loadJournal() }
     }
 
     // MARK: nutrition + progress (Fuel tab)
