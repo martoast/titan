@@ -548,6 +548,12 @@ private struct TargetsSheet: View {
                                 .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
                                 .foregroundStyle(.white)
                         }
+                        if model.targets?.custom == true {
+                            Button(action: resetToAuto) {
+                                Label("Recalculate from my bodyweight", systemImage: "arrow.counterclockwise")
+                                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.cyan)
+                            }.frame(maxWidth: .infinity).padding(.vertical, 2)
+                        }
                         Text("Or just tell your coach — “set my protein to 180”, “target 7.5 hours of sleep.”")
                             .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
                             .multilineTextAlignment(.center).frame(maxWidth: .infinity)
@@ -581,6 +587,14 @@ private struct TargetsSheet: View {
                 fat: Int(fat) ?? t?.fat_g ?? 84,
                 sleepH: Double(sleep.replacingOccurrences(of: ",", with: ".")) ?? t?.sleep_h ?? 8)
             dismiss()
+        }
+    }
+
+    private func resetToAuto() {
+        Haptic.tap()
+        Task {
+            await model.resetTargets()
+            if let t = model.targets { prime(t) }   // show the recalculated auto values
         }
     }
 

@@ -216,6 +216,13 @@ final class AppModel: ObservableObject {
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
+    func resetTargets() async {
+        do {
+            targets = try await api.resetTargets()
+            await loadNutrition()
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
     func loadProgress() async {
         do { progressPhotos = try await api.progressPhotos() }
         catch { if case APIError.unauthorized = error { await logout() } }

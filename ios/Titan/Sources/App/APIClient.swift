@@ -120,6 +120,11 @@ final class APIClient {
         try await send(request("api/me/targets", method: "PATCH", json: fields), as: TargetsResponse.self).targets
     }
 
+    @discardableResult
+    func resetTargets() async throws -> Targets {
+        try await send(request("api/me/targets", method: "DELETE"), as: TargetsResponse.self).targets
+    }
+
     // MARK: progress photos
 
     func progressPhotos() async throws -> [ProgressPhoto] {
