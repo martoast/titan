@@ -34,6 +34,8 @@ class CoachTools
         'update_food' => 'food',
         'log_behavior' => 'journal', 'my_impacts' => 'journal', 'insights' => 'journal',
         'set_goal_weight' => 'weight', 'weight_progress' => 'weight',
+        'log_water' => 'hydration', 'hydration_today' => 'hydration',
+        'start_fast' => 'fasting', 'end_fast' => 'fasting', 'fasting_status' => 'fasting',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
         'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device', 'spot_reading' => 'device',
@@ -49,6 +51,8 @@ class CoachTools
         'food' => ['wrong macros', 'macros are wrong', 'macros are off', 'fix the macros', 'correct the macros', 'update the macros', 'update the food', 'the macros for', 'per 100g', 'per serving', 'actually has', "that's not right", 'thats not right'],
         'journal' => ['drink', 'drank', 'alcohol', 'beer', 'wine', 'hungover', 'caffeine', 'coffee late', 'stayed up', 'stress', 'anxious', 'meditat', 'sauna', 'cold plunge', 'ice bath', 'journal', 'late meal', 'late dinner', 'ate out', 'takeout', 'screens', 'magnesium', 'napped', 'what affects my', 'what hurts my', 'what helps my', 'my impacts', 'my discoveries', 'how was my day', 'log my day', 'insight', 'what should i know', 'anything i should know', 'my feed'],
         'weight' => ['weigh', 'weight', 'lose', 'losing', 'lost', 'lbs', 'pounds', ' kg', 'goal weight', 'target weight', 'trend', 'scale', 'cut', 'bulk', 'slim', 'get lean', 'leaner', 'drop', 'on track', 'how am i doing'],
+        'hydration' => ['water', 'hydrate', 'hydration', 'thirsty', 'glass of', 'bottle of', 'how much water', ' oz ', 'fluids', 'drank water'],
+        'fasting' => ['fast', 'fasting', 'eating window', '16:8', '18:6', 'omad', 'broke my fast', 'break my fast', 'started fasting', 'intermittent'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
         'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band', 'take a reading', 'spot reading', 'spot check', 'check my hrv', 'read my hrv', 'my hrv now', 'how recovered am i', 'recovered right now', 'live reading', 'check my heart rate', 'take a measurement'],
@@ -423,6 +427,15 @@ class CoachTools
         ], ['target_kg']);
         $tools[] = $this->fn('weight_progress', "The user's smoothed weight trend, weekly rate and honest projection to their goal as a `weight` card. Use when they ask about their weight / progress / 'am I on track'.", [], []);
         $tools[] = $this->fn('insights', "The user's personalized insight feed — the top few things worth their attention right now (anomalies, goal progress, wins, behavior correlations) as `insight` cards. Use for 'what should I know today' / 'any insights'.", [], []);
+        $tools[] = $this->fn('log_water', "Log water/fluid intake when the user mentions drinking water (\"had a glass\", \"500 ml\", \"a bottle\"). Pass ml (glass≈250, bottle≈500, large bottle≈750, cup≈240, oz×30).", [
+            'ml' => ['type' => 'integer', 'description' => 'Amount in millilitres.'],
+        ], ['ml']);
+        $tools[] = $this->fn('hydration_today', "Today's hydration vs the user's daily target as a `hydration` card. Use when they ask about water / hydration.", [], []);
+        $tools[] = $this->fn('start_fast', "Start a fast when the user begins one (\"starting my fast\", \"16:8\", \"done eating for the day\"). Optional goal_hours (default 16).", [
+            'goal_hours' => ['type' => 'number', 'description' => 'Target fast length in hours (e.g. 16, 18, 24). Default 16.'],
+        ], []);
+        $tools[] = $this->fn('end_fast', 'End the user\'s active fast when they break it ("breaking my fast", "just ate").', [], []);
+        $tools[] = $this->fn('fasting_status', "The user's current fast — elapsed, target, % and the metabolic stage — as a `fasting` card. Use when they ask about their fast / fasting window.", [], []);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -499,6 +512,11 @@ class CoachTools
             'set_goal_weight' => 'Setting your weight goal',
             'weight_progress' => 'Reading your weight trend',
             'insights' => 'Pulling your insights',
+            'log_water' => 'Logging your water',
+            'hydration_today' => 'Checking your hydration',
+            'start_fast' => 'Starting your fast',
+            'end_fast' => 'Ending your fast',
+            'fasting_status' => 'Checking your fast',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -590,6 +608,11 @@ class CoachTools
             'set_goal_weight' => $this->setGoalWeight($args),
             'weight_progress' => $this->weightProgress(),
             'insights' => ['feed' => \App\Support\InsightFeed::build($this->profile), '_show' => 'Surface the top 2–3 `insight` cards in plain language (lead with any alert). If the feed is empty, say their data is steady and to keep logging.'],
+            'log_water' => \App\Support\Hydration::add($this->profile, (int) round((float) ($args['ml'] ?? 0))) + ['_show' => 'Confirm and show the `hydration` card with progress to target.'],
+            'hydration_today' => \App\Support\Hydration::today($this->profile) + ['_show' => 'Emit this `hydration` card in a ```titan-card fence with one line on progress to target.'],
+            'start_fast' => $this->startFast($args),
+            'end_fast' => $this->endFast(),
+            'fasting_status' => \App\Support\Fasting::card($this->profile) + ['_show' => 'Emit this `fasting` card in a ```titan-card fence; one line on elapsed vs goal + the current stage. If not active, suggest starting one.'],
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };
@@ -1351,6 +1374,25 @@ class CoachTools
             'logged' => array_map(fn ($k) => \App\Support\Journal::label($k), $logged),
             '_show' => 'Confirm what you noted for the day in one short line. Once they have ~5+ days each of a behavior, mention they can ask "what affects my recovery?".',
         ];
+    }
+
+    private function startFast(array $a): array
+    {
+        \App\Support\Fasting::start($this->profile, isset($a['goal_hours']) ? (float) $a['goal_hours'] : null);
+
+        return \App\Support\Fasting::card($this->profile)
+            + ['_show' => 'Confirm the fast started and the goal, then show the `fasting` card.'];
+    }
+
+    private function endFast(): array
+    {
+        $fast = \App\Support\Fasting::end($this->profile);
+        if (! $fast) {
+            return ['ok' => false, 'message' => 'No active fast to end.', '_show' => 'Gently note they had no fast running, and offer to start one.'];
+        }
+        $hours = round($fast->started_at->diffInMinutes($fast->ended_at) / 60, 1);
+
+        return ['ok' => true, 'fasted_hours' => $hours, '_show' => "Congratulate them on a {$hours}-hour fast and one line on what to eat to break it well (protein + fibre)."];
     }
 
     private function myImpacts(): array

@@ -81,6 +81,16 @@ class Profile extends Model
         return $this->hasMany(Goal::class);
     }
 
+    public function hydrationLogs(): HasMany
+    {
+        return $this->hasMany(HydrationLog::class);
+    }
+
+    public function fasts(): HasMany
+    {
+        return $this->hasMany(Fast::class);
+    }
+
     // --- Training ---
     public function workouts(): HasMany
     {

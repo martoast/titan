@@ -47,6 +47,13 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/weight', [\App\Http\Controllers\Api\MobileWeightController::class, 'show']);
     Route::post('/weight', [\App\Http\Controllers\Api\MobileWeightController::class, 'store']);
 
+    // Hydration + fasting.
+    Route::get('/hydration', [\App\Http\Controllers\Api\MobileHydrationController::class, 'show']);
+    Route::post('/hydration', [\App\Http\Controllers\Api\MobileHydrationController::class, 'store']);
+    Route::get('/fasting', [\App\Http\Controllers\Api\MobileFastingController::class, 'show']);
+    Route::post('/fasting/start', [\App\Http\Controllers\Api\MobileFastingController::class, 'start']);
+    Route::post('/fasting/end', [\App\Http\Controllers\Api\MobileFastingController::class, 'end']);
+
     // Editable macro + sleep targets (also settable by telling the coach).
     Route::get('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'show']);
     Route::patch('/targets', [\App\Http\Controllers\Api\MobileTargetsController::class, 'update']);
