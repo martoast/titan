@@ -130,7 +130,23 @@ var CFG = {
   // the running day total periodically while connected + on connect, so a walk taken with the phone
   // left behind still lands the moment the band reconnects. The server upserts DailyActivity.steps.
   STEP_PROTO_VERSION: 8,            // T8 frame: { day-step total, local YYYY-MM-DD }
-  STEP_SUMMARY_MS: 60000           // stream the step total once a minute while connected
+  STEP_SUMMARY_MS: 60000,          // stream the step total once a minute while connected
+
+  // --- AUTO workout detection (Whoop-style: no button) -----------------------
+  // Watch motion energy (the accel EMA) + HR-above-resting and auto-start/stop a workout so you
+  // never have to tap. The hard case is LIFTING (long inter-set rests): HR stays elevated THROUGH the
+  // rest, so we gate the END on HR returning to baseline AND motion going quiet for a long hold — a
+  // still wrist with a high HR is "resting between sets", not "done". This is Whoop's exact trick.
+  // Numbers seeded from the NHANES/actigraphy + Whoop/Apple literature; tune on real device data.
+  AUTO_DETECT: true,               // master switch for hands-free workout detection
+  AUTO_TICK_MS: 5000,              // evaluate the detector once every 5 s (one "epoch")
+  AUTO_MOTION_HI: 0.20,            // motion-EMA above this = vigorous activity → start candidate (cardio)
+  AUTO_MOTION_LO: 0.09,            // below this = "quiet" (the HI/LO gap is hysteresis → no flapping)
+  AUTO_START_SEC: 90,             // sustained ACTIVE this long → auto-start (Apple/Whoop feel)
+  AUTO_END_SEC: 300,              // sustained QUIET+recovered this long → auto-end (≥ longest lifting rest)
+  AUTO_HR_START_DELTA: 25,        // HR > resting + this (sustained) corroborates a workout — catches lifting
+  AUTO_HR_END_DELTA: 10,          // HR back within resting + this = recovered (half of the end gate)
+  REST_HR_ALPHA: 0.02             // slow EMA for the personal resting-HR baseline (low-motion windows only)
 };
 
 // ----- State ----------------------------------------------------------------
@@ -140,6 +156,7 @@ var state = {
   bpm: 0,              // last HRM bpm (UI only)
   conf: 0,             // last HRM confidence (UI only)
   hrmSport: 0,         // active Bangle sport mode (0 normal / 1 run / 2 bike) — tags T5 frames
+  restHr: null,        // personal resting-HR baseline (EMA from low-motion windows) — gates auto-detect
   ppgCount: 0,         // samples captured this session (UI counter)
   framesSent: 0,       // BLE frames emitted/flushed
   logged: 0,           // approx bytes in the overnight log file
@@ -158,8 +175,8 @@ var state = {
 // On-watch locomotion gate for GPS (battery). A slow EMA of per-sample |Δaccel| (g);
 // when it stays above CFG.GPS_ON_MOTION we arm GPS, when it stays below we stand down.
 var motionEMA = 0;
-var motionAboveSince = 0;   // getTime() when motion first crossed the on-threshold (0 = below)
-var motionBelowSince = 0;   // getTime() when motion first dropped below it (0 = above)
+var activeSince = 0;        // getTime() the auto-detect ACTIVE condition first held (0 = not active)
+var quietSince = 0;        // getTime() the auto-detect QUIET+recovered condition first held (0 = not quiet)
 var gpsArmedT = 0;          // getTime() when GPS was last powered (for the indoor fix-timeout)
 var lastAltitude = null;    // last barometric altitude (m), GPS-scoped, for grade
 var ambientAlt = null;      // last barometric altitude (m), always-on, for floors (T7)
@@ -482,18 +499,69 @@ function writeWorkoutAccelFrame() {
   woAccel = [];
 }
 
-// ----- Workout + GPS gating -------------------------------------------------
-// A WORKOUT (state.workout) drives HR + 3-axis-accel capture. GPS (state.gps) is a battery-
-// hungry SUBSET of a workout — powered only when a fix can plausibly help (outdoors), dropped
-// indoors. Workouts are MANUAL ONLY: the user starts/ends every workout by hand (long-press
-// BTN, or the coach priming a typed activity). The band never auto-starts or auto-ends a
-// workout from motion — clearer UX, and no surprise sessions from a brisk walk to the kitchen.
-// The motion gate's sole remaining job is battery: drop GPS indoors when it can't get a fix.
+// ----- Workout detection + GPS gating ---------------------------------------
+// A WORKOUT (state.workout) drives sport-mode HR + 3-axis-accel capture. It can begin two ways:
+//   - AUTO (Whoop-style, the default): updateAutoDetect() sees sustained activity and starts it —
+//     no button. An auto workout can auto-END on a long quiet+HR-recovered lull.
+//   - MANUAL (double-tap, or the coach priming a typed activity): pinned (workoutManual) so a still
+//     gap between sets never ends it — only a second double-tap / a coach stand-down ends it.
+// GPS (state.gps) is a battery-hungry SUBSET of a workout — powered only when a fix can plausibly
+// help (outdoors), dropped indoors after GPS_FIX_TIMEOUT.
 function updateGpsGate() {
   var now = getTime();
   // Indoors (treadmill / weights room): GPS never gets a fix → stop wasting battery on it, but
   // KEEP the workout. The accel still classifies run/walk/lift and logs via T6.
   if (state.gps && !state.gpsFix && (now - gpsArmedT) >= CFG.GPS_FIX_TIMEOUT) powerGps(false);
+}
+
+// Maintain a personal resting-HR baseline from LOW-MOTION windows only (the documented method — a
+// resting HR measured while you're actually moving is meaningless). Drives the HR gates below.
+function updateRestHr() {
+  if (motionEMA < CFG.AUTO_MOTION_LO && state.bpm >= 40 && state.bpm <= 120) {
+    state.restHr = (state.restHr === null) ? state.bpm
+                 : state.restHr * (1 - CFG.REST_HR_ALPHA) + state.bpm * CFG.REST_HR_ALPHA;
+  }
+}
+
+// The Whoop-style hands-free detector. Runs once per AUTO_TICK epoch. ACTIVE = vigorous motion OR
+// elevated HR (the HR arm is what catches bursty lifting between reps). QUIET = low motion AND HR
+// recovered to baseline — the conjunction is the whole trick: during an inter-set rest the wrist is
+// still but HR is still high, so QUIET is false and the session stays open. Start/end each require a
+// SUSTAINED hold (hysteresis + min-bout), so it never flaps. Manual workouts are left alone.
+function updateAutoDetect() {
+  if (!CFG.AUTO_DETECT || !state.streaming) return;
+  updateRestHr();
+  var now = getTime();
+  var rhr = state.restHr;
+  var hrElevated = rhr !== null && state.bpm > rhr + CFG.AUTO_HR_START_DELTA;
+  var hrRecovered = rhr === null || state.bpm <= rhr + CFG.AUTO_HR_END_DELTA;
+  var active = motionEMA > CFG.AUTO_MOTION_HI || hrElevated;
+  var quiet = motionEMA < CFG.AUTO_MOTION_LO && hrRecovered;
+
+  if (!state.workout) {
+    quietSince = 0;
+    if (active) {
+      if (activeSince === 0) activeSince = now;
+      if (now - activeSince >= CFG.AUTO_START_SEC) {
+        activeSince = 0;
+        startWorkout(false);                                   // AUTO → may auto-end on a sustained lull
+        try { Bangle.buzz(80); setTimeout(function () { try { Bangle.buzz(80); } catch (e) {} }, 160); } catch (e) {}
+      }
+    } else {
+      activeSince = 0;
+    }
+  } else if (!state.workoutManual) {                            // only AUTO workouts auto-end
+    activeSince = 0;
+    if (quiet) {
+      if (quietSince === 0) quietSince = now;
+      if (now - quietSince >= CFG.AUTO_END_SEC) {
+        quietSince = 0;
+        endWorkout();
+      }
+    } else {
+      quietSince = 0;                                           // motion OR still-elevated HR (a rest) keeps it open
+    }
+  }
 }
 
 function startWorkout(manual) {
@@ -634,6 +702,9 @@ function emitStepFrame() {
 function onConnect() {
   if (state.connected) return;   // idempotent: the NRF event and the poll can both fire
   state.connected = true;
+  // Whoop-style always-on: once the app is paired/connected, stream automatically so HR flows and the
+  // auto-detector can see your workouts without a tap. (One tap still stops it if you want it off.)
+  if (!state.streaming) startStreaming();
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
   // Sync today's step total right away (captures a walk taken while the phone was left behind).
@@ -717,7 +788,7 @@ function stopStreaming() {
   Bangle.setHRMPower(0, "titan");
   endWorkout(); // close any workout (flushes T6, powers GPS down)
   motionEMA = 0;
-  motionAboveSince = motionBelowSince = 0;
+  activeSince = quietSince = 0;
   drawUI();
 }
 
@@ -809,8 +880,13 @@ function drawHeart() {
   if (bpm) arc(cx, cy, r, 8, 0, hrFrac(bpm), hrColor(bpm));
   g.setColor(C.white); g.setFont("Vector", 52); g.setFontAlign(0, 0);
   g.drawString((bpm || "--") + "", cx, cy);
-  g.setColor(state.connected ? C.cyan : (state.streaming ? C.amber : C.cyan)); g.setFont("6x8", 2);
-  g.drawString(state.streaming ? (state.connected ? "SYNCING" : "LOGGING") : "TAP TO START", cx, 160);
+  // Bottom status. A WORKOUT (sport-mode HR engaged) is the headline state — show it in red so you
+  // can SEE the motion-tolerant mode is on before a heavy set.
+  var hlabel = !state.streaming ? "TAP TO START"
+             : state.workout ? "WORKOUT" + (state.connected ? "" : " ·LOG")
+             : (state.connected ? "SYNCING" : "LOGGING");
+  g.setColor(state.workout ? C.rec : (state.connected ? C.cyan : C.amber)); g.setFont("6x8", 2);
+  g.drawString(hlabel, cx, 160);
 }
 
 // Page 1 — CLOCK: big time + date (timezone synced from the phone).
@@ -1041,30 +1117,44 @@ function exitPairing() {
   drawUI();
 }
 
-// Button gestures. NOTE: a long button HOLD is reserved by the Bangle OS (it resets/reboots the
-// watch), so we must NOT use a hold for our own actions beyond the brief gym toggle. Instead,
-// pairing uses a DOUBLE-TAP — exactly like Whoop's "double-tap like a heartbeat" — which the OS
-// never intercepts. Single tap = start/stop capture; double tap = enter pairing mode.
-var btnDownT = 0, lastTapT = 0;
-setWatch(function () { btnDownT = getTime(); }, BTN1, { repeat: true, edge: "rising" });
-setWatch(function () {
-  var held = getTime() - btnDownT;
-  if (pairTimer) { exitPairing(); return; }      // in pairing → any press exits
-  if (held > 1.2) {                               // a (short) hold while streaming = gym toggle
-    if (state.streaming) toggleManualWorkout();
-    lastTapT = 0;
-    return;
-  }
-  // Short tap: a quick second tap (<0.5 s) is a DOUBLE-TAP → pairing mode.
-  var now = getTime();
-  if (now - lastTapT < 0.5) {
-    lastTapT = 0;
-    if (state.streaming) stopStreaming();         // back to idle, then show the pairing code
+// Button gestures — CLICK BURSTS ONLY. A long button HOLD is reserved by the Bangle OS (it REBOOTS
+// the watch) and cannot be intercepted, so we never use holds for anything. Instead we count taps in
+// a quick burst and act once it settles:
+//   1 tap  → start/stop streaming (capture)
+//   2 taps → start/stop a WORKOUT (engages sport-mode HR + 50 Hz PPG — the gym gesture, every session)
+//   3 taps → enter pairing mode (rare, one-time setup)
+// (Whoop-style "tap like a heartbeat", and it sidesteps the reboot-on-hold entirely.)
+var tapCount = 0, tapTimer = null;
+var TAP_GAP = 0.45;   // seconds; a new tap within this window extends the burst
+
+function handleTaps(n) {
+  try { Bangle.buzz(n === 1 ? 40 : 80); } catch (e) {}   // haptic ack so you know the burst registered
+  if (n <= 1) {
+    toggleStreaming();
+  } else if (n === 2) {
+    if (!state.streaming) startStreaming();       // ensure the HR sensor is powered before the workout
+    toggleManualWorkout();                         // start/stop the workout → sport-mode HR
+  } else {
+    if (state.streaming) stopStreaming();          // back to idle, then show the pairing code
     enterPairing();
+  }
+}
+
+setWatch(function () {
+  if (pairTimer) {                                 // in pairing → any press exits, swallow the burst
+    exitPairing();
+    tapCount = 0;
+    if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
     return;
   }
-  lastTapT = now;
-  toggleStreaming();                              // single tap acts immediately
+  tapCount++;
+  if (tapTimer) clearTimeout(tapTimer);
+  tapTimer = setTimeout(function () {
+    var n = tapCount;
+    tapCount = 0;
+    tapTimer = null;
+    handleTaps(n);
+  }, TAP_GAP * 1000);
 }, BTN1, { repeat: true, edge: "falling" });
 
 function toggleManualWorkout() {
@@ -1132,6 +1222,7 @@ state.connected = NRF.getSecurityStatus().connected;
 // can go stale and battery needs polling).
 var uiTimer = setInterval(function () {
   refreshBattery();
+  updateAutoDetect();   // Whoop-style hands-free workout start/stop (one 5 s epoch)
 }, 5000);
 
 // Continuous ambient barometer for all-day floors (its own power owner, so dropping GPS doesn't

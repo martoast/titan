@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Workouts are captured by the band (hold the button) or logged via the coach, then classified
+/// Workouts are captured by the band (double-tap the button) or logged via the coach, then classified
 /// server-side. v1 surfaces live state + guidance; a history list lands with the workouts read API.
 struct WorkoutsView: View {
     @EnvironmentObject var model: AppModel
@@ -27,7 +27,7 @@ struct WorkoutsView: View {
             GlassCard {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
                     SectionHeader(title: "Start a workout")
-                    row("hand.tap.fill", Theme.Palette.cyan, "Hold the band button", "Begins a session — hold again to end it.")
+                    row("hand.tap.fill", Theme.Palette.cyan, "Double-tap the band button", "Starts a session (engages workout HR) — double-tap again to end it.")
                     row("bubble.left.and.text.bubble.right.fill", Theme.Palette.indigo, "Or tell the coach", "\u{201C}starting a run\u{201D} · \u{201C}log my lift\u{201D}")
                 }
             }

@@ -63,7 +63,7 @@ struct DevicesView: View {
                         VStack(alignment: .leading, spacing: Theme.Space.m) {
                             SectionHeader(title: "Pair your band")
                             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                                pairStep("1", "On the band, double-tap the button until it shows PAIR + a code.")
+                                pairStep("1", "On the band, triple-tap the button until it shows PAIR + a code.")
                                 pairStep("2", "Tap Pair below, then pick that code in the app.")
                             }
                             Text("We bind to the exact band you pick — so two bands side by side never cross-connect.")
