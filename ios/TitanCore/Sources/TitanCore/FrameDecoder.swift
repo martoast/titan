@@ -104,7 +104,10 @@ struct Reader {
     let b: [UInt8]
     var count: Int { b.count }
     init?(_ b64: String) {
-        guard let d = Data(base64Encoded: b64) else { return nil }
+        // Tolerate stray whitespace (notably the trailing "\r" from Espruino's "\r\n" line endings)
+        // exactly like JS atob does — strict Swift base64 returns nil on a single CR, which would
+        // silently drop every live frame. The web bridge worked only because atob is forgiving.
+        guard let d = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) else { return nil }
         b = [UInt8](d)
     }
     func u8(_ o: Int) -> UInt8 { b[o] }

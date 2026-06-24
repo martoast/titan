@@ -17,6 +17,17 @@ final class FrameDecoderTests: XCTestCase {
         ])
     }
 
+    // Regression: the live NUS transport delivers each base64 line with Espruino's trailing "\r"
+    // (from "\r\n"). Strict base64 returns nil on a stray CR, which silently dropped every live
+    // frame on-device. The decoder must tolerate trailing whitespace, like JS atob.
+    func testT1ToleratesTrailingCarriageReturn() {
+        let clean = "AQADAEC+InSXAQAAAAAAAAAAAADSBPb/FADoAygAAADS6QUA1P7eA1AAAAAAfQAAAAAAgw=="
+        for suffix in ["\r", "\r\n", "\n", "  "] {
+            XCTAssertEqual(FrameDecoder.decodeT1(clean + suffix).samples.count, 3,
+                           "frame with suffix \(suffix.debugDescription) should still decode")
+        }
+    }
+
     func testT4() {
         let f = FrameDecoder.decodeT4("AQniBEDpI3SXAQAA0gQAAAAAAAA=")
         XCTAssertEqual(f, GpsFix(t: 1750000200000, sats: 9, speedKmh: 12.5, alt: 123.4))
