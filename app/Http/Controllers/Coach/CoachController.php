@@ -213,8 +213,11 @@ class CoachController extends Controller
         }
 
         // Release the session lock so this long-lived request doesn't block the user's
-        // other tabs/requests while the stream is open.
-        $request->session()->save();
+        // other tabs/requests while the stream is open. The native app authenticates with a
+        // bearer token (no session), so only do this when a session actually exists.
+        if ($request->hasSession()) {
+            $request->session()->save();
+        }
 
         return response()->stream(function () use ($conversation, $profile, $data) {
             $emit = function (string $event, array $payload): void {
