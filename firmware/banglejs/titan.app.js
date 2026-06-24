@@ -122,6 +122,8 @@ var state = {
   logFull: false,      // hit LOG_MAX_BYTES → stop appending (preserve the night)
   lastAccel: { x: 0, y: 0, z: 0 }, // most recent accel reading (g)
   battery: 0,
+  charging: false,     // is it on the charge cradle right now? (drives the bolt + buzz cue)
+  fullBuzzed: false,   // already nudged "unplug, I'm full" this charge session?
   workout: false,      // a workout is in progress (drives HR/accel capture + 25 Hz rate)
   workoutManual: false,// started by hand (a gym session) → only ends by hand, not on a motion lull
   gps: false,          // is the GPS receiver powered right now? (a subset of a workout)
@@ -656,10 +658,15 @@ var C = {                          // palette — pure colors for text/icons; di
   amber: "#ffb020", violet: "#8b7bff", bg: "#000000",
 };
 
-function battIcon(x, y, pct) {
+function battIcon(x, y, pct, charging) {
   g.setColor(C.dim); g.drawRect(x, y, x + 20, y + 10); g.fillRect(x + 21, y + 3, x + 22, y + 7);
-  g.setColor(pct < 20 ? C.rec : (pct < 50 ? C.amber : C.mint));
+  g.setColor(charging ? C.cyan : (pct < 20 ? C.rec : (pct < 50 ? C.amber : C.mint)));
   g.fillRect(x + 2, y + 2, x + 2 + Math.max(0, Math.round(16 * pct / 100)), y + 8);
+  if (charging) {                       // lightning bolt over the cell — the universal charging cue
+    var bx = x + 10, by = y + 5;        // (community parity: widbatpc draws a bolt glyph too)
+    g.setColor(C.amber);
+    g.fillPoly([bx + 1, by - 5, bx - 3, by + 1, bx, by + 1, bx - 1, by + 5, bx + 3, by - 1, bx, by - 1]);
+  }
 }
 
 function heartIcon(cx, cy, s) {
@@ -700,7 +707,7 @@ function topBar() {
   g.setColor(state.streaming ? C.rec : C.cyan); g.fillCircle(12, 16, 5);
   g.setColor(state.streaming ? C.white : C.cyan);
   g.drawString(state.streaming ? "REC" : "IDLE", 24, 16);
-  battIcon(W - 28, 9, state.battery);
+  battIcon(W - 28, 9, state.battery, state.charging);
 }
 
 // A centered tab title (big + pure color so it's actually readable on the 3-bit panel).
@@ -733,7 +740,7 @@ function drawHeart() {
 function drawClock() {
   var W = g.getWidth(), d = new Date();
   var hh = ("0" + d.getHours()).substr(-2), mm = ("0" + d.getMinutes()).substr(-2);
-  battIcon(W - 28, 9, state.battery);
+  battIcon(W - 28, 9, state.battery, state.charging);
   g.setColor(C.white); g.setFont("Vector", 68); g.setFontAlign(0, 0);
   g.drawString(hh + ":" + mm, W / 2, 86);
   var DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -763,7 +770,8 @@ function drawStatus() {
     y += 28;
   }
   row("LINK", state.connected ? "LIVE" : (state.streaming ? "LOGGING" : "OFF"), state.connected ? C.mint : C.amber);
-  row("BATTERY", state.battery + "%", state.battery < 20 ? C.rec : C.mint);
+  row("BATTERY", state.battery + "%" + (state.charging ? (state.battery >= 100 ? " FULL" : " CHG") : ""),
+      state.charging ? C.cyan : (state.battery < 20 ? C.rec : C.mint));
   row("SAMPLES", state.ppgCount + "", C.white);
   row("SYNCED", state.framesSent + "", C.cyan);
 }
@@ -833,6 +841,20 @@ function drawUI() {
 
 function refreshBattery() {
   state.battery = E.getBattery();
+  var chg = false;
+  try { chg = Bangle.isCharging(); } catch (e) {}
+  state.charging = chg;
+  // Overcharge: the watch's charge IC already stops at full — there's NO software hook to limit it.
+  // The smart move for LiPo longevity is to not LEAVE it at 100% on the cradle, so we buzz once when
+  // it tops out to nudge a unplug. One nudge per charge session.
+  if (chg && state.battery >= 100) {
+    if (!state.fullBuzzed) {
+      state.fullBuzzed = true;
+      try { Bangle.buzz(150); setTimeout(function () { try { Bangle.buzz(150); } catch (e) {} }, 220); } catch (e) {}
+    }
+  } else if (!chg) {
+    state.fullBuzzed = false;          // reset for the next charge session
+  }
   if (uiVisible) drawUI();
 }
 
@@ -857,6 +879,19 @@ Bangle.on("swipe", function (lr) {
 
 // Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep).
 Bangle.on("lcdPower", function (on) { if (on) { photoMin = -2; drawUI(); } });
+
+// Charging cue: buzz the moment it's plugged in (a firm double-pulse) or unplugged (a short blip),
+// and redraw so the battery shows the bolt. Community parity: widbatpc uses this same 'charging'
+// event + Bangle.isCharging() + a lightning-bolt glyph (espruino/BangleApps widgets/widbatpc).
+Bangle.on("charging", function (charging) {
+  state.charging = charging;
+  if (!charging) state.fullBuzzed = false;
+  try {
+    Bangle.buzz(charging ? 200 : 60);
+    if (charging) setTimeout(function () { try { Bangle.buzz(200); } catch (e) {} }, 280);
+  } catch (e) {}
+  if (uiVisible) { drawUI(); try { g.flip(); } catch (e) {} }
+});
 
 // Keep the clock face honest: redraw on each minute boundary (only repaints if you're on the
 // clock page and the screen is on — drawUI() guards both), instead of a wasteful 1 s interval.
