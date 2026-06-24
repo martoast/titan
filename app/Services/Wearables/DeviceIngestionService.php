@@ -209,8 +209,11 @@ class DeviceIngestionService
                 'weight_kg' => $summary['weight_kg'] ?? null,
                 'body_fat_pct' => $summary['body_fat_pct'] ?? null,
             ], fn ($v) => $v !== null)),
-            'activity' => (bool) DailyActivity::updateOrCreate(
-                ['profile_id' => $pid, 'date' => $this->dateOf($summary['date'] ?? null, $tz)],
+            // Merge (per-day MAX) rather than overwrite, so the band's steps and the phone's never
+            // double-count or clobber each other — see DailyActivity::mergeDaily.
+            'activity' => (bool) DailyActivity::mergeDaily(
+                $pid,
+                $this->dateOf($summary['date'] ?? null, $tz),
                 array_filter([
                     'steps' => isset($summary['steps']) ? (int) round($summary['steps']) : null,
                     'mvpa_min' => isset($summary['mvpa_min']) ? (int) round($summary['mvpa_min']) : null,
@@ -219,9 +222,8 @@ class DeviceIngestionService
                     'distance_km' => $summary['distance_km'] ?? null,
                     'hourly' => (isset($summary['hourly']) && is_array($summary['hourly']) && count($summary['hourly']) === 24)
                         ? array_map('intval', $summary['hourly']) : null,
-                    'source' => $connection->source,
-                    'updated_via' => 'device:summary',
                 ], fn ($v) => $v !== null),
+                ['source' => $connection->source, 'updated_via' => 'device:summary'],
             ),
             default => false,
         };

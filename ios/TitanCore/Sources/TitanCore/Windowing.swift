@@ -54,6 +54,16 @@ public struct PpgWindow: Codable, Equatable {
     public let src: String           // "banglejs2"
 }
 
+/// A `kind=activity` daily summary — the band's step total for a day, sent in the ingest batch's
+/// `summaries[]` (NOT `windows[]`). The server's `DeviceIngestionService::writeSummary` 'activity'
+/// arm upserts it into `DailyActivity` via the per-day MAX merge, so it coexists with phone steps.
+public struct StepDailySummary: Codable, Equatable {
+    public let kind: String          // "activity"
+    public let date: String          // "YYYY-MM-DD" (the watch's local day)
+    public let steps: Int
+    public init(date: String, steps: Int) { self.kind = "activity"; self.date = date; self.steps = steps }
+}
+
 /// Accumulates decoded PPG samples and emits 120s `ppg_raw` windows — ports the bridge's
 /// `_drainWindows` / `_flushWindow` / `_shipSamples`. Pure: the caller does the actual POST.
 public final class PpgWindowBuilder {

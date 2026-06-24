@@ -121,7 +121,16 @@ var CFG = {
   // streams the trace, staying a dumb sensor. Sampled slowly (floors only need ~1 Hz).
   ALT_PROTO_VERSION: 7,              // T7 frame: ambient barometric altitude batch
   ALT_SAMPLE_MS: 1000,              // 1 Hz ambient altitude sampling (oversampled BMP280)
-  ALT_FRAME_SAMPLES: 60             // one T7 per minute (60 samples; ~136 B, well under the MTU)
+  ALT_FRAME_SAMPLES: 60,            // one T7 per minute (60 samples; ~136 B, well under the MTU)
+
+  // --- STEPS → server (capture a phone-free walk) ----------------------------
+  // The on-watch step count comes from Espruino's built-in pedometer (Oxford C-Step-Counter port,
+  // ~1% on real walks) — we DON'T reinvent it; we just relay it. The server merges it with the
+  // phone's step count as a per-day MAX (never a sum), so band+phone never double-count. We stream
+  // the running day total periodically while connected + on connect, so a walk taken with the phone
+  // left behind still lands the moment the band reconnects. The server upserts DailyActivity.steps.
+  STEP_PROTO_VERSION: 8,            // T8 frame: { day-step total, local YYYY-MM-DD }
+  STEP_SUMMARY_MS: 60000           // stream the step total once a minute while connected
 };
 
 // ----- State ----------------------------------------------------------------
@@ -597,6 +606,29 @@ function emitGpsFrame(speedKmh, altM, sats) {
   }
 }
 
+// ----- Steps → server (T8) --------------------------------------------------
+
+// T8 frame: the built-in pedometer's running day total + the watch's LOCAL calendar date, so the
+// server attributes the steps to the right day in the user's timezone and merges them with the
+// phone's count as a per-day MAX. 12 bytes: [ver u8, year-2000 u8, month u8, day u8, steps u32,
+// epochSec u32]. Only streamed live (steps self-accumulate on the watch; on reconnect the current
+// total already includes any phone-free walk taken since the last sync).
+function emitStepFrame() {
+  if (!state.connected) return;
+  var steps = stepCount();
+  if (!isFinite(steps) || steps < 0) return;
+  var d = new Date();
+  var buf = new ArrayBuffer(12);
+  var dv = new DataView(buf);
+  dv.setUint8(0, CFG.STEP_PROTO_VERSION);
+  dv.setUint8(1, (d.getFullYear() - 2000) & 0xff);
+  dv.setUint8(2, (d.getMonth() + 1) & 0xff);
+  dv.setUint8(3, d.getDate() & 0xff);
+  dv.setUint32(4, steps >>> 0, true);
+  dv.setUint32(8, Math.round(getTime()) >>> 0, true);
+  try { Bluetooth.println("T8:" + b64(buf)); state.framesSent++; } catch (e) {}
+}
+
 // ----- BLE connection tracking ----------------------------------------------
 
 function onConnect() {
@@ -604,6 +636,8 @@ function onConnect() {
   state.connected = true;
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
+  // Sync today's step total right away (captures a walk taken while the phone was left behind).
+  setTimeout(emitStepFrame, 1800);
   // Entering the live/workout path: sample accel at 25 Hz for the classifier.
   applyAccelRate();
   // Give the link a beat to settle, then sync the overnight log (morning sync).
@@ -1105,10 +1139,15 @@ var uiTimer = setInterval(function () {
 try { if (Bangle.setBarometerPower) Bangle.setBarometerPower(1, "titan-alt"); } catch (e) {}
 var altTimer = setInterval(sampleAltitude, CFG.ALT_SAMPLE_MS);
 
+// Relay the built-in pedometer's day total to the server once a minute while connected (the server
+// merges it with the phone's count as a per-day MAX). No-op when offline.
+var stepTimer = setInterval(emitStepFrame, CFG.STEP_SUMMARY_MS);
+
 // Clean up if the app is unloaded by the launcher.
 E.on("kill", function () {
   if (uiTimer) clearInterval(uiTimer);
   if (altTimer) clearInterval(altTimer);
+  if (stepTimer) clearInterval(stepTimer);
   if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
   try {

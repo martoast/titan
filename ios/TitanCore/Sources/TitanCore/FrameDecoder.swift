@@ -26,6 +26,11 @@ public struct AccelSample: Equatable {
 public struct AltSample: Equatable {
     public let t: UInt64; public let alt: Double
 }
+public struct StepSummary: Equatable {
+    public let steps: UInt32        // the built-in pedometer's running day total
+    public let date: String         // the watch's LOCAL calendar date "YYYY-MM-DD"
+    public let epochSec: UInt32     // when the reading was taken (provenance)
+}
 
 public enum FrameDecoder {
 
@@ -78,6 +83,18 @@ public enum FrameDecoder {
             out.append(AccelSample(t: t, ax: r.i16(o), ay: r.i16(o + 2), az: r.i16(o + 4)))
         }
         return out
+    }
+
+    /// T8 — step summary: [ver u8, year-2000 u8, month u8, day u8, steps u32, epochSec u32] (12 B).
+    /// The watch's built-in pedometer day total + its LOCAL date; the server merges it with the
+    /// phone's step count as a per-day MAX (see DailyActivity::mergeDaily).
+    public static func decodeT8(_ b64: String) -> StepSummary? {
+        guard let r = Reader(b64), r.count >= 12 else { return nil }
+        let year = 2000 + Int(r.u8(1)), month = Int(r.u8(2)), day = Int(r.u8(3))
+        guard (1...12).contains(month), (1...31).contains(day) else { return nil }
+        return StepSummary(steps: r.u32(4),
+                           date: String(format: "%04d-%02d-%02d", year, month, day),
+                           epochSec: r.u32(8))
     }
 
     /// T7 — ambient baro altitude batch: 16-B header [ver u8, count u8, ts u64, intervalMs u16,

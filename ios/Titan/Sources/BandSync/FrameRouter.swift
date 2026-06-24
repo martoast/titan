@@ -63,6 +63,11 @@ public final class FrameRouter {
             if let w = wa.addWorkoutAccel(acc) { submit(.workout(w)) }
         case "T7:":
             break  // ambient baro (floors) — server-side; not on the live upload path yet
+        case "T8:":
+            // Step total → a daily-activity summary (server merges with the phone's count, per-day MAX).
+            if let s = FrameDecoder.decodeT8(payload) {
+                submit(.steps(StepDailySummary(date: s.date, steps: Int(s.steps))))
+            }
         default:
             break
         }
@@ -77,21 +82,24 @@ public final class FrameRouter {
     private func submit(_ w: AnyWindow) { Task { await queue.submit(w) } }
 }
 
-/// Either window kind the queue can ship. Encodes to the underlying window's JSON (each already
-/// carries its own `kind` field), and round-trips through the persisted queue.
+/// Either window kind the queue can ship, plus a daily step summary. Encodes to the underlying
+/// JSON (each already carries its own `kind` field), and round-trips through the persisted queue.
+/// `.steps` ships in the batch's `summaries[]`; the windows ship in `windows[]` (see IngestClient).
 public enum AnyWindow: Codable {
-    case ppg(PpgWindow), workout(WorkoutWindow)
+    case ppg(PpgWindow), workout(WorkoutWindow), steps(StepDailySummary)
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
         switch self {
         case .ppg(let w): try c.encode(w)
         case .workout(let w): try c.encode(w)
+        case .steps(let s): try c.encode(s)
         }
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
-        if let w = try? c.decode(WorkoutWindow.self), w.kind == "workout" { self = .workout(w) }
+        if let s = try? c.decode(StepDailySummary.self), s.kind == "activity" { self = .steps(s) }
+        else if let w = try? c.decode(WorkoutWindow.self), w.kind == "workout" { self = .workout(w) }
         else { self = .ppg(try c.decode(PpgWindow.self)) }
     }
 }

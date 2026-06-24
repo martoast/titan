@@ -16,9 +16,16 @@ public struct IngestClient {
 
     public enum Result { case accepted(queued: Int), duplicate, rejected(status: Int, error: String), transport(Error) }
 
-    /// Wrap one window (ppg_raw OR workout) in a batch, sign, gzip if worthwhile, and POST.
+    /// Wrap one item in a batch, sign, gzip if worthwhile, and POST. A raw window (ppg_raw/workout)
+    /// goes in `windows[]`; a daily step summary goes in `summaries[]` (the server routes by array,
+    /// not by inspecting kind inside windows).
     public func ship(window: AnyWindow) async -> Result {
-        let batch = Batch(batch_uid: ULID.generate(), windows: [window])
+        let batch: Batch
+        if case .steps = window {
+            batch = Batch(batch_uid: ULID.generate(), windows: [], summaries: [window])
+        } else {
+            batch = Batch(batch_uid: ULID.generate(), windows: [window], summaries: [])
+        }
         guard let body = try? JSONEncoder().encode(batch) else {
             return .rejected(status: 0, error: "encode failed")
         }
@@ -51,5 +58,5 @@ public struct IngestClient {
         }
     }
 
-    struct Batch: Encodable { let batch_uid: String; let windows: [AnyWindow] }
+    struct Batch: Encodable { let batch_uid: String; let windows: [AnyWindow]; let summaries: [AnyWindow] }
 }

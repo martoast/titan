@@ -54,11 +54,18 @@ final class FrameDecoderTests: XCTestCase {
         XCTAssertEqual(f.map { $0.t }, [1750000400000, 1750000401000, 1750000402000, 1750000403000, 1750000404000])
     }
 
+    func testT8() {
+        // [ver 8, year-2000 26, month 6, day 24, steps 8000 u32, epoch 1719230400 u32] → 2026-06-24.
+        let f = FrameDecoder.decodeT8("CBoGGEAfAADAX3lm")
+        XCTAssertEqual(f, StepSummary(steps: 8000, date: "2026-06-24", epochSec: 1719230400))
+    }
+
     func testShortFramesAreSafe() {
         XCTAssertEqual(FrameDecoder.decodeT1("AQ==").samples.count, 0)
         XCTAssertNil(FrameDecoder.decodeT4("AQ=="))
         XCTAssertNil(FrameDecoder.decodeT5("AQ=="))
         XCTAssertEqual(FrameDecoder.decodeT6("AQ=="), [])
         XCTAssertEqual(FrameDecoder.decodeT7("AQ=="), [])
+        XCTAssertNil(FrameDecoder.decodeT8("AQ=="))
     }
 }

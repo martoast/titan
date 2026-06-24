@@ -83,7 +83,9 @@ class HealthIngestService
             if ($fields === []) {
                 continue;
             }
-            DailyActivity::updateOrCreate(['profile_id' => $pid, 'date' => $date], $fields + ['source' => self::SOURCE, 'updated_via' => self::SOURCE]);
+            // Per-day MAX merge (not overwrite) so phone steps and any band steps coexist without
+            // double-counting or clobbering — see DailyActivity::mergeDaily.
+            DailyActivity::mergeDaily($pid, $date, $fields, ['source' => self::SOURCE, 'updated_via' => self::SOURCE]);
             $c['activity']++;
         }
 
