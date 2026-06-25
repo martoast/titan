@@ -171,6 +171,7 @@ var state = {
   restHr: null,        // personal resting-HR baseline (EMA from low-motion windows) — gates auto-detect
   swMode: "idle",      // Stopwatch face: "idle" | "watch" (plain timer) | "sleep" (logs as a sleep session)
   swStartMs: 0,        // unix-ms the running timer started
+  count: 0,            // Counter face: a plain tally (tap +1, double-click button resets) — RAM only
   ppgCount: 0,         // samples captured this session (UI counter)
   framesSent: 0,       // BLE frames emitted/flushed
   logged: 0,           // approx bytes held in the overnight log ring (UI counter)
@@ -234,8 +235,9 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
-var PAGES = 6;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo · 5 Stopwatch
+var PAGES = 7;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo · 5 Stopwatch · 6 Counter
 var STOPWATCH_PAGE = 5;   // the Stopwatch face (tap = plain timer; double-click button = log as sleep)
+var COUNTER_PAGE = 6;     // the Counter face (tap = +1; double-click button = reset to zero)
 var page = 0;             // current face (swipe to change)
 var lastSwipeT = 0;       // getTime() of the last page swipe — so the tap that ends a swipe isn't a sleep toggle
 var photoMin = -2;        // minute currently shown on the Photo face (-2 = needs a full repaint)
@@ -983,6 +985,21 @@ function drawStopwatch() {
   }
 }
 
+// Page 6 — COUNTER: a dead-simple tally. Tap the screen to add 1; double-click the button to reset
+// to zero. Lives in RAM (resets on reboot) — it's a quick rep/set/round/lap counter, not a logged
+// metric, so it never writes flash or emits a frame.
+function drawCounter() {
+  var W = g.getWidth(), cx = W / 2;
+  topBar();
+  tabTitle("COUNTER", C.amber);
+  g.setColor(C.white); g.setFont("Vector", 64); g.setFontAlign(0, 0);
+  g.drawString((state.count || 0) + "", cx, 102);
+  g.setColor(C.cyan); g.setFont("6x8", 1);
+  g.drawString("tap: +1", cx, 150);
+  g.setColor(C.amber);
+  g.drawString("double-click button: reset", cx, 166);
+}
+
 // Outlined text — stays readable over any photo. The 3-bit panel has no alpha, so we fake a halo
 // by stamping the string in the background colour around the glyphs, then the real colour on top.
 function drawOutlined(s, x, y, fg) {
@@ -1043,6 +1060,7 @@ function drawUI() {
   else if (page === 2) drawSteps();
   else if (page === 3) drawStatus();
   else if (page === STOPWATCH_PAGE) drawStopwatch();
+  else if (page === COUNTER_PAGE) drawCounter();
   else drawHeart();
   pageDots();
 }
@@ -1086,12 +1104,13 @@ Bangle.on("swipe", function (lr) {
   drawUI();
 });
 
-// Tap the Stopwatch face to start/stop the plain timer (a running sleep session logs on stop). We
-// ignore a tap that lands right after a swipe (so flipping to the face doesn't fire it).
+// Screen taps act on the two interactive faces: the Stopwatch (start/stop the timer) and the Counter
+// (+1). We ignore a tap that lands right after a swipe (so flipping to the face doesn't fire it).
 Bangle.on("touch", function () {
-  if (pairTimer || !uiVisible || page !== STOPWATCH_PAGE) return;
+  if (pairTimer || !uiVisible) return;
   if (getTime() - lastSwipeT < 0.4) return;
-  swTap();
+  if (page === STOPWATCH_PAGE) swTap();
+  else if (page === COUNTER_PAGE) bumpCounter();
 });
 
 // Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep).
@@ -1184,29 +1203,39 @@ function exitPairing() {
 // Button gestures — CLICK BURSTS ONLY. A long button HOLD is reserved by the Bangle OS (it REBOOTS
 // the watch) and cannot be intercepted, so we never use holds for anything. Instead we count taps in
 // a quick burst and act once it settles:
-//   1 tap  → start/stop streaming (capture)
-//   2 taps → start/stop a WORKOUT (engages sport-mode HR + 50 Hz PPG — the gym gesture, every session)
-//   3 taps → enter pairing mode (rare, one-time setup)
+// 1- and 2-tap are FACE-SCOPED so you never start a recording by accident from the clock/steps/photo:
+//   1 tap  → start/stop streaming (capture) — ONLY on the Heart face
+//   2 taps → context-aware: Heart = start/stop a WORKOUT · Stopwatch = sleep · Counter = reset
+//   3 taps → enter pairing mode — works from ANY face (the one global gesture, rare one-time setup)
 // (Whoop-style "tap like a heartbeat", and it sidesteps the reboot-on-hold entirely.)
 var tapCount = 0, tapTimer = null;
 var TAP_GAP = 0.45;   // seconds; a new tap within this window extends the burst
 
 function handleTaps(n) {
-  try { Bangle.buzz(n === 1 ? 40 : 80); } catch (e) {}   // haptic ack so you know the burst registered
-  if (n <= 1) {
-    toggleStreaming();
-  } else if (n === 2) {
-    // On the Stopwatch face a double-click means SLEEP (time it as a logged sleep session); anywhere
-    // else it means WORKOUT. Same gesture, context-aware.
-    if (page === STOPWATCH_PAGE) {
-      swSleepToggle();
-    } else {
+  if (n >= 3) {
+    // Triple-tap = pairing. The only gesture that works from every face.
+    try { Bangle.buzz(120); } catch (e) {}
+    if (state.streaming) stopStreaming();          // back to idle, then show the pairing code
+    enterPairing();
+    return;
+  }
+  if (n === 2) {
+    // Double-click, context-aware per face. Each branch buzzes its own ack; an unhandled face stays
+    // silent so a stray double-tap there does nothing.
+    if (page === STOPWATCH_PAGE) { try { Bangle.buzz(80); } catch (e) {} swSleepToggle(); }
+    else if (page === COUNTER_PAGE) { resetCounter(); }   // resetCounter() buzzes
+    else if (page === 0) {                                 // Heart face → manual WORKOUT
+      try { Bangle.buzz(80); } catch (e) {}
       if (!state.streaming) startStreaming();     // ensure the HR sensor is powered before the workout
       toggleManualWorkout();                       // start/stop the workout → sport-mode HR
     }
-  } else {
-    if (state.streaming) stopStreaming();          // back to idle, then show the pairing code
-    enterPairing();
+    return;
+  }
+  // Single tap → start/stop HR recording, but ONLY on the Heart face. Everywhere else it's ignored so
+  // you can't kick off a recording just by bumping the button while checking the time or your steps.
+  if (page === 0) {
+    try { Bangle.buzz(40); } catch (e) {}
+    toggleStreaming();
   }
 }
 
@@ -1275,6 +1304,20 @@ function swTap() {
 function swSleepToggle() {
   if (state.swMode === "sleep") stopTimer();
   else startSleepSession();
+}
+
+// ----- Counter (the Counter face) -------------------------------------------
+// A plain tally: screen tap adds 1, double-click of the button resets to zero. RAM only.
+function bumpCounter() {
+  state.count = (state.count || 0) + 1;
+  try { Bangle.buzz(20); } catch (e) {}
+  if (uiVisible) drawUI();
+}
+
+function resetCounter() {
+  state.count = 0;
+  try { Bangle.buzz(60); } catch (e) {}
+  if (uiVisible) drawUI();
 }
 
 // T9 frame: [ver u8, confirmed u8, rsvd u16, bedtime u32 (epoch s), wake u32 (epoch s)] (12 B). Sent
