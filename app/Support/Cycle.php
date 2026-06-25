@@ -178,6 +178,48 @@ class Cycle
     }
 
     /**
+     * A per-day calendar projected forward (and back) from the last logged period — for the app's
+     * calendar view, so you can plan ahead. Each day is classified by the same phase model as status(),
+     * repeating every avg_length. Past logged-period accuracy is a future refinement; this is the
+     * standard period-app prediction.
+     *
+     * @return array<int,array{date:string,cycle_day:int,phase:string,period:bool,fertile:bool,ovulation:bool}>
+     */
+    public static function calendar(Profile $profile, Carbon $from, int $days): array
+    {
+        $start = $profile->menstrualCycles()->orderByDesc('start_date')->value('start_date');
+        if (! $start) {
+            return [];
+        }
+        $cfg = self::config($profile);
+        $anchor = Carbon::parse($start)->startOfDay();
+        $len = $cfg['avg_length'];
+        $period = $cfg['avg_period'];
+        $ovDay = max(1, $len - $cfg['luteal_length']);
+        $fStart = max(1, $ovDay - self::FERTILE_PRE);
+        $fEnd = $ovDay + self::FERTILE_POST;
+        $hormonalBc = self::hormonalBirthControl($cfg['birth_control']);
+
+        $out = [];
+        for ($i = 0; $i < $days; $i++) {
+            $d = $from->copy()->addDays($i)->startOfDay();
+            $delta = (int) $anchor->diffInDays($d, false);           // signed days from the anchor
+            $cd = ((($delta % $len) + $len) % $len) + 1;             // 1..len, wrapping each cycle
+            [$phase] = self::phaseFor($cd, $period, $ovDay, $fStart, $fEnd, $len);
+            $out[] = [
+                'date' => $d->toDateString(),
+                'cycle_day' => $cd,
+                'phase' => $phase,
+                'period' => $cd <= $period,
+                'fertile' => ! $hormonalBc && $cd >= $fStart && $cd <= $fEnd,
+                'ovulation' => ! $hormonalBc && $cd === $ovDay,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Wellness guidance for a phase -- how it tends to shape training, nutrition, body/energy and intimacy.
      * Supportive and evidence-informed, never clinical. @return array{training:string,nutrition:string,body:string,vibe:string}
      */

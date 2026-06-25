@@ -156,6 +156,21 @@ struct CycleResponse: Codable {
     }
 }
 
+/// `GET /api/me/cycle/calendar` — projected per-day classification for the calendar view.
+struct CycleCalendarResponse: Codable {
+    let available: Bool
+    let days: [Day]
+    struct Day: Codable, Identifiable {
+        var id: String { date }
+        let date: String
+        let cycle_day: Int?
+        let phase: String?
+        let period: Bool?
+        let fertile: Bool?
+        let ovulation: Bool?
+    }
+}
+
 /// One coach chat message (local model; history comes from `/api/coach/{id}/messages`).
 struct ChatMessage: Identifiable, Equatable {
     enum Role: String { case user, assistant }

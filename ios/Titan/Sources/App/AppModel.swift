@@ -315,6 +315,10 @@ final class AppModel: ObservableObject {
     }
     static func ymd(_ d: Date) -> String { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d) }
 
+    func cycleCalendar(from: Date, days: Int) async -> [CycleCalendarResponse.Day] {
+        (try? await api.cycleCalendar(from: Self.ymd(from), days: days))?.days ?? []
+    }
+
     /// Snap a meal → AI macros (grounded + logged) → show the result + refresh the rings.
     func scanMeal(_ imageData: Data, caption: String? = nil) async {
         scanning = true; defer { scanning = false }

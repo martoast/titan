@@ -142,41 +142,23 @@ private struct CycleSection: View {
     @State private var todayFlow: String?
     @State private var todaySymptoms: Set<String> = []
     @State private var saving = false
+    @State private var showCalendar = false
 
     private let chipCols = [GridItem(.adaptive(minimum: 96), spacing: 8)]
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
             if let c = model.cycle?.cycle, c.cycle_day != nil {
-                let (label, color) = chance(c.conception?.likelihood)
+                Picker("", selection: $showCalendar) {
+                    Text("Overview").tag(false); Text("Calendar").tag(true)
+                }.pickerStyle(.segmented)
 
-                // Front-and-center: chance of pregnancy today.
-                GlassCard(padding: Theme.Space.l) {
-                    VStack(spacing: Theme.Space.s) {
-                        Text("CHANCE OF PREGNANCY TODAY").font(Theme.Font.micro).tracking(0.8).foregroundStyle(Theme.Palette.textDim)
-                        Text(label).font(Theme.Font.num(40)).foregroundStyle(color)
-                        if let note = c.conception?.note, !note.isEmpty {
-                            Text(note).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
-                        }
-                    }.frame(maxWidth: .infinity)
+                if showCalendar {
+                    CycleCalendarView()
+                    logPeriodButton
+                } else {
+                    overview(c)
                 }
-
-                GlassCard {
-                    VStack(alignment: .leading, spacing: Theme.Space.s) {
-                        SectionHeader(title: c.phase_label ?? "Cycle", trailing: c.cycle_day.map { "Day \($0)" })
-                        if let blurb = c.phase_blurb, !blurb.isEmpty {
-                            Text(blurb).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                        }
-                        HStack(spacing: Theme.Space.l) {
-                            if let np = c.next_period?.in_days { stat(daysLabel(np), c.late == true ? "Late" : "Next period", Theme.Palette.pink) }
-                            if let ov = c.ovulation?.in_days { stat(daysLabel(ov), "Ovulation", Theme.Palette.violet) }
-                            if let f = c.fertile_window, f.active == true { stat("Now", "Fertile", Theme.Palette.cyan) }
-                        }
-                    }
-                }
-
-                logPeriodButton
-                todayCard
                 disclaimer
             } else {
                 // Empty: the period log IS the primary action (like a dedicated period app).
@@ -194,6 +176,35 @@ private struct CycleSection: View {
         }
         .task { await model.loadCycle() }
         .sheet(isPresented: $showLogPeriod) { logPeriodSheet }
+    }
+
+    @ViewBuilder private func overview(_ c: CycleResponse.Cycle) -> some View {
+        let (label, color) = chance(c.conception?.likelihood)
+        // Front-and-center: chance of pregnancy today.
+        GlassCard(padding: Theme.Space.l) {
+            VStack(spacing: Theme.Space.s) {
+                Text("CHANCE OF PREGNANCY TODAY").font(Theme.Font.micro).tracking(0.8).foregroundStyle(Theme.Palette.textDim)
+                Text(label).font(Theme.Font.num(40)).foregroundStyle(color)
+                if let note = c.conception?.note, !note.isEmpty {
+                    Text(note).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
+                }
+            }.frame(maxWidth: .infinity)
+        }
+        GlassCard {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                SectionHeader(title: c.phase_label ?? "Cycle", trailing: c.cycle_day.map { "Day \($0)" })
+                if let blurb = c.phase_blurb, !blurb.isEmpty {
+                    Text(blurb).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+                HStack(spacing: Theme.Space.l) {
+                    if let np = c.next_period?.in_days { stat(daysLabel(np), c.late == true ? "Late" : "Next period", Theme.Palette.pink) }
+                    if let ov = c.ovulation?.in_days { stat(daysLabel(ov), "Ovulation", Theme.Palette.violet) }
+                    if let f = c.fertile_window, f.active == true { stat("Now", "Fertile", Theme.Palette.cyan) }
+                }
+            }
+        }
+        logPeriodButton
+        todayCard
     }
 
     private var logPeriodButton: some View {
@@ -289,5 +300,93 @@ private struct CycleSection: View {
             Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
             Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
         }.frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Cycle calendar (plan ahead)
+
+/// A projected month calendar — each day colored by phase (period / fertile / ovulation / follicular /
+/// luteal), so you can see the whole cycle and plan ahead. Read-only; logging stays on the overview.
+private struct CycleCalendarView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var month: Date = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
+    @State private var days: [String: CycleCalendarResponse.Day] = [:]
+
+    private let cal = Calendar.current
+    private let cols = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
+    private let key: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
+    private let monthFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; return f }()
+
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            GlassCard {
+                VStack(spacing: Theme.Space.s) {
+                    HStack {
+                        Button { shift(-1) } label: { Image(systemName: "chevron.left") }.foregroundStyle(Theme.Palette.textDim)
+                        Spacer()
+                        Text(monthFmt.string(from: month)).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                        Spacer()
+                        Button { shift(1) } label: { Image(systemName: "chevron.right") }.foregroundStyle(Theme.Palette.textDim)
+                    }
+                    HStack(spacing: 4) {
+                        ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, d in
+                            Text(d).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).frame(maxWidth: .infinity)
+                        }
+                    }
+                    LazyVGrid(columns: cols, spacing: 4) {
+                        ForEach(gridDates, id: \.self) { cell($0) }
+                    }
+                }
+            }
+            GlassCard {
+                HStack(spacing: Theme.Space.m) {
+                    legend(Theme.Palette.pink, "Period")
+                    legend(Theme.Palette.cyan.opacity(0.5), "Fertile")
+                    legend(Theme.Palette.violet, "Ovulation")
+                    Spacer()
+                }
+            }
+        }
+        .task(id: month) { await load() }
+    }
+
+    private func cell(_ date: Date) -> some View {
+        let day = days[key.string(from: date)]
+        let inMonth = cal.isDate(date, equalTo: month, toGranularity: .month)
+        let (bg, fg) = style(day)
+        return ZStack {
+            Circle().fill(bg)
+            if day?.ovulation == true { Circle().strokeBorder(Theme.Palette.violet, lineWidth: 2) }
+            if cal.isDateInToday(date) { Circle().strokeBorder(Theme.Palette.text, lineWidth: 1.5) }
+            Text("\(cal.component(.day, from: date))").font(Theme.Font.micro).foregroundStyle(fg)
+        }
+        .frame(height: 36).opacity(inMonth ? 1 : 0.3)
+    }
+
+    private func style(_ d: CycleCalendarResponse.Day?) -> (Color, Color) {
+        guard let d else { return (.clear, Theme.Palette.textDim) }
+        if d.period == true { return (Theme.Palette.pink, .white) }
+        if d.ovulation == true { return (Theme.Palette.violet.opacity(0.3), .white) }
+        if d.fertile == true { return (Theme.Palette.cyan.opacity(0.22), Theme.Palette.text) }
+        switch d.phase {
+        case "follicular": return (Theme.Palette.mint.opacity(0.13), Theme.Palette.text)
+        case "luteal": return (Theme.Palette.amber.opacity(0.13), Theme.Palette.text)
+        default: return (.clear, Theme.Palette.textDim)
+        }
+    }
+
+    private func legend(_ c: Color, _ t: String) -> some View {
+        HStack(spacing: 5) { Circle().fill(c).frame(width: 10, height: 10); Text(t).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+    }
+
+    private var gridStart: Date {
+        let wd = cal.component(.weekday, from: month)   // 1 = Sunday
+        return cal.date(byAdding: .day, value: -(wd - 1), to: month) ?? month
+    }
+    private var gridDates: [Date] { (0..<42).compactMap { cal.date(byAdding: .day, value: $0, to: gridStart) } }
+    private func shift(_ n: Int) { if let m = cal.date(byAdding: .month, value: n, to: month) { month = m } }
+    private func load() async {
+        let list = await model.cycleCalendar(from: gridStart, days: 42)
+        days = Dictionary(list.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
     }
 }

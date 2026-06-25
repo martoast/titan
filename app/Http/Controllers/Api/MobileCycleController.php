@@ -50,6 +50,25 @@ class MobileCycleController extends Controller
         return response()->json(['ok' => true, 'cycle' => Cycle::status($profile)]);
     }
 
+    /** A projected per-day calendar for the calendar view (plan ahead). */
+    public function calendar(Request $request): JsonResponse
+    {
+        $profile = $request->user()->profile ?? $request->user()->ensureProfile();
+        if (! Cycle::available($profile)) {
+            return response()->json(['available' => false, 'days' => []]);
+        }
+        $data = $request->validate([
+            'from' => ['nullable', 'date'],
+            'days' => ['nullable', 'integer', 'min:1', 'max:62'],
+        ]);
+        $from = isset($data['from']) ? Carbon::parse($data['from']) : Carbon::now()->startOfMonth();
+
+        return response()->json([
+            'available' => true,
+            'days' => Cycle::calendar($profile, $from, $data['days'] ?? 42),
+        ]);
+    }
+
     /** Log a day: flow, symptoms, mood/energy, BBT. */
     public function logDay(Request $request): JsonResponse
     {

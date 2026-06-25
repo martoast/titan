@@ -82,6 +82,23 @@ class MobileDailyEndpointsTest extends TestCase
             ->assertJsonStructure(['symptoms', 'flows', 'cycle' => ['conception' => ['likelihood']]]);
     }
 
+    public function test_cycle_calendar_projects_period_and_fertile_days(): void
+    {
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['sex' => 'F']);
+        $profile->menstrualCycles()->create(['start_date' => now()->startOfMonth()->toDateString()]);
+
+        $res = $this->auth($user)->getJson('/api/me/cycle/calendar?from=' . now()->startOfMonth()->toDateString() . '&days=28')
+            ->assertOk()->assertJsonPath('available', true);
+
+        $days = $res->json('days');
+        $this->assertCount(28, $days);
+        $this->assertTrue($days[0]['period']);                                  // day 1 = period
+        $this->assertTrue(collect($days)->contains(fn ($d) => $d['fertile']));  // a fertile window exists
+        $this->assertTrue(collect($days)->contains(fn ($d) => $d['ovulation'])); // and an ovulation day
+    }
+
     public function test_cycle_endpoint_unavailable_for_men(): void
     {
         $user = User::factory()->create();

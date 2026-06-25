@@ -122,6 +122,10 @@ final class APIClient {
         try await send(request("api/me/cycle"), as: CycleResponse.self)
     }
 
+    func cycleCalendar(from: String, days: Int) async throws -> CycleCalendarResponse {
+        try await send(request("api/me/cycle/calendar?from=\(from)&days=\(days)"), as: CycleCalendarResponse.self)
+    }
+
     func logCyclePeriod(date: String) async throws {
         _ = try await session.data(for: request("api/me/cycle/period", method: "POST", json: ["date": date]))
     }
