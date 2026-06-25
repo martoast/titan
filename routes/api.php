@@ -42,6 +42,10 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/onboarding', [\App\Http\Controllers\Api\MobileOnboardingController::class, 'status']);
     Route::post('/onboarding', [\App\Http\Controllers\Api\MobileOnboardingController::class, 'store']);
 
+    // "Daily" hub: sleep breakdown + the women's cycle view (phase, fertile window, pregnancy chance).
+    Route::get('/sleep', [\App\Http\Controllers\Api\MobileSleepController::class, 'show']);
+    Route::get('/cycle', [\App\Http\Controllers\Api\MobileCycleController::class, 'show']);
+
     // Edit the profile info collected at onboarding (change anything later).
     Route::get('/profile', [\App\Http\Controllers\Api\MobileProfileController::class, 'show']);
     Route::patch('/profile', [\App\Http\Controllers\Api\MobileProfileController::class, 'update']);
