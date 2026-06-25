@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\Profile;
-use App\Models\PushSubscription;
 use App\Services\Notifications\NotificationService;
 use App\Support\CoachNudge;
 use App\Support\Reminders;
@@ -52,7 +51,11 @@ class CoachNudgeCommand extends Command
                     continue;
                 }
 
-                $notifications->notify($profile, $nudge['title'], $nudge['body'], $nudge['url'], 'nudge');
+                // Push AND email -- email is what reaches native-app users (no APNs/web-push without a
+                // paid Apple account), so the day-through nudges (e.g. the midday low-step "time to
+                // move") actually land. Deduped per window above, so this is at most one email per
+                // nudge per window.
+                $notifications->notify($profile, $nudge['title'], $nudge['body'], $nudge['url'], 'nudge', email: true);
 
                 $settings = $profile->settings ?? [];
                 $settings['nudge_sent'][$type] = $nudge['key'];
@@ -68,14 +71,19 @@ class CoachNudgeCommand extends Command
         return self::SUCCESS;
     }
 
-    /** Push-enabled profiles (those with a subscription want the buzz). */
+    /**
+     * Every profile -- not just push-subscribed ones. We now also email the nudge, which is the only
+     * channel that reaches native-app users (they have no web-push subscription), so limiting to
+     * push subscribers would silently skip exactly the people who need the email. `user` is eager
+     * loaded for the email address; per-profile gating (Reminders::enabled) still applies in handle().
+     */
     private function resolveProfiles()
     {
         if ($id = $this->option('profile')) {
-            return Profile::where('id', $id)->get();
+            return Profile::with('user')->where('id', $id)->get();
         }
 
-        return Profile::whereIn('id', PushSubscription::query()->distinct()->pluck('profile_id'))->get();
+        return Profile::with('user')->orderBy('id')->get();
     }
 
     /** @return array<int,string> schedule lines for routes/console.php */
