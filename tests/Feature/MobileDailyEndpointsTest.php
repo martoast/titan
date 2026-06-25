@@ -82,6 +82,21 @@ class MobileDailyEndpointsTest extends TestCase
             ->assertJsonStructure(['symptoms', 'flows', 'cycle' => ['conception' => ['likelihood']]]);
     }
 
+    public function test_logging_an_earlier_date_corrects_a_stale_today_entry(): void
+    {
+        $user = User::factory()->create();
+        $user->ensureProfile()->update(['sex' => 'F']);
+
+        // Accidentally logged today first (the default) → day 1.
+        $this->auth($user)->postJson('/api/me/cycle/period', ['date' => now()->toDateString()])
+            ->assertOk()->assertJsonPath('cycle.cycle_day', 1);
+
+        // Now correct it to the real start, 5 days ago. It should ANCHOR there → today is day 6,
+        // not still day 1 from the stale "today" entry.
+        $this->auth($user)->postJson('/api/me/cycle/period', ['date' => now()->subDays(5)->toDateString()])
+            ->assertOk()->assertJsonPath('cycle.cycle_day', 6);
+    }
+
     public function test_cycle_calendar_projects_period_and_fertile_days(): void
     {
         $user = User::factory()->create();

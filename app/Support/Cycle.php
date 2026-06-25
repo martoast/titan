@@ -431,6 +431,16 @@ class Cycle
             ['source' => $source],
         );
 
+        // Two periods can't start within one cycle of each other. So when you log a start, drop any
+        // LATER start that falls inside this cycle — that's almost always a stale/mis-logged entry
+        // you're CORRECTING (e.g. an accidental "today", now fixed to the real earlier date). Without
+        // this, the chronologically-latest start keeps winning and your correction is ignored. A genuine
+        // back-fill of an OLDER period is safe (its window ends before the existing newer start).
+        $profile->menstrualCycles()
+            ->whereDate('start_date', '>', $date->toDateString())
+            ->whereDate('start_date', '<', $date->copy()->addDays(self::config($profile)['avg_length'])->toDateString())
+            ->delete();
+
         // Set the PRIOR cycle's length now that we know when the next one began.
         $prev = $profile->menstrualCycles()
             ->whereDate('start_date', '<', $date->toDateString())
