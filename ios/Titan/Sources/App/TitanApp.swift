@@ -14,11 +14,28 @@ struct TitanApp: App {
                 .preferredColorScheme(.dark)
                 .tint(Theme.Palette.indigo)
                 .onChange(of: scenePhase) { _, phase in
-                    // Pull fresh Apple Health data whenever the app comes forward (free-team friendly).
-                    if phase == .active && model.isLoggedIn && model.healthConnected {
-                        Task { await model.syncAppleHealth() }
+                    switch phase {
+                    case .active:
+                        // Pull fresh Apple Health data whenever the app comes forward (free-team friendly).
+                        if model.isLoggedIn && model.healthConnected {
+                            Task { await model.syncAppleHealth() }
+                        }
+                        // Burst-sync: hold a live band link while we're up front (workouts / checking stats).
+                        model.holdConnection()
+                    case .background:
+                        // Idle in the background → release the link so the band saves battery; line up a
+                        // background burst so the day still syncs without opening the app.
+                        model.releaseConnectionAfterGrace()
+                        model.scheduleBackgroundSync()
+                    default:
+                        break
                     }
                 }
+        }
+        // Opportunistic background sync (Scene-level modifier): iOS wakes us a few times a day to pull
+        // the band's buffered trend, then we release the link again.
+        .backgroundTask(.appRefresh(AppModel.bgSyncId)) {
+            await model.backgroundSyncBurst()
         }
     }
 }

@@ -168,10 +168,16 @@ struct DevicesView: View {
     }
 
     private var statusTitle: String {
-        model.bandConnected ? "Band connected" : (model.isBandPaired ? "Searching…" : "No band yet")
+        if model.bandConnected { return "Band connected" }
+        if !model.isBandPaired { return "No band yet" }
+        return model.bandIdle ? "Power-saving" : "Searching…"
     }
     private var statusSub: String {
-        model.bandConnected ? "Syncing in the background." : (model.isBandPaired ? "Reconnects automatically when it's near." : "Pair your Titan band to begin.")
+        if model.bandConnected { return "Live — syncing in real time." }
+        if !model.isBandPaired { return "Pair your Titan band to begin." }
+        return model.bandIdle
+            ? "Band's on its own, saving battery. It syncs in bursts and the moment you open the app."
+            : "Reconnects automatically when it's near."
     }
 
     private func pairStep(_ n: String, _ text: String) -> some View {

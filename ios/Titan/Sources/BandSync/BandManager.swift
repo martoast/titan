@@ -23,6 +23,11 @@ public final class BandManager: NSObject {
 
     /// The specific band this phone is bound to (nil until first pairing).
     private var boundId: UUID?
+    /// Burst-sync policy: do we currently WANT a live link? Foreground / workout / an explicit sync →
+    /// true (hold + auto-reconnect). Idle in the background → false (disconnect and stop re-arming, so
+    /// the band drops to its low-power offline duty-cycle). Every auto-connect path is gated on this.
+    /// Defaults true so first launch + a background relaunch connect; AppModel drives it from there.
+    private var wantsConnection = true
     /// True only during a fresh pair: collect nearby bands so the user picks theirs by code.
     private var pairing = false
     private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int, code: String)] = [:]
@@ -99,10 +104,32 @@ public final class BandManager: NSObject {
 
     public var isConnected: Bool { band?.state == .connected }
 
+    /// Burst-sync control. `on=true` → hold/establish the live link (foreground, workout, a sync burst).
+    /// `on=false` → drop it and stop re-arming, so the band falls into its low-power offline duty-cycle.
+    /// The firmware auto-flushes its buffered trend on every reconnect, so each time we come back the
+    /// day's data syncs itself — no held connection needed. This is what makes all-day wear practical.
+    public func setDesiredConnection(_ on: Bool) {
+        guard on != wantsConnection else { return }
+        wantsConnection = on
+        guard central.state == .poweredOn, let id = boundId else { return }
+        if on {
+            if band?.state != .connected {
+                if let p = central.retrievePeripherals(withIdentifiers: [id]).first {
+                    band = p; p.delegate = self; reconnect(p)
+                }
+                central.scanForPeripherals(withServices: nil)   // catch it the moment it advertises
+            }
+        } else {
+            central.stopScan()
+            if let b = band, b.state != .disconnected { central.cancelPeripheralConnection(b) }
+        }
+    }
+
     /// Manual "Sync now" (for free accounts with no background BLE): if the band is connected, ask it
     /// to flush its overnight ring buffer right now (C3); otherwise kick a connect to the bound band —
     /// the firmware auto-flushes on connect. Either way the whole night transfers on demand.
     public func syncNow() {
+        wantsConnection = true   // an explicit sync overrides idle power-saving
         guard central.state == .poweredOn, let id = boundId else { return }
         if let p = band, p.state == .connected, let rx = rxChar {
             p.writeValue(Data("C3:\n".utf8), for: rx, type: .withoutResponse)
@@ -119,6 +146,7 @@ public final class BandManager: NSObject {
     /// bound band, drops the cached write char, then re-arms connect AND restarts a scan so we catch
     /// the band the instant it advertises again. This is the "Reconnect" button's muscle.
     public func reconnectKick() {
+        wantsConnection = true   // the user asked to reconnect — override idle power-saving
         guard central.state == .poweredOn, let id = boundId else { return }
         if let b = band, b.state != .disconnected { central.cancelPeripheralConnection(b) }
         rxChar = nil
@@ -150,6 +178,7 @@ extension BandManager: CBCentralManagerDelegate {
         guard c.state == .poweredOn else { return }
         if pairing { c.scanForPeripherals(withServices: nil); return }
         guard let id = boundId else { return }           // not paired yet — wait for startPairing()
+        guard wantsConnection else { return }            // idle power-saving — don't auto-connect
         // Re-arm a pending connect to the known peripheral (works in the background, no scan).
         if let p = c.retrievePeripherals(withIdentifiers: [id]).first {
             band = p; p.delegate = self
@@ -166,7 +195,7 @@ extension BandManager: CBCentralManagerDelegate {
             .first(where: { boundId == nil || $0.identifier == boundId }) {
             band = p
             p.delegate = self
-            if p.state != .connected { reconnect(p) }
+            if p.state != .connected && wantsConnection { reconnect(p) }
         }
     }
 
@@ -182,7 +211,7 @@ extension BandManager: CBCentralManagerDelegate {
                 .sorted { $0.rssi > $1.rssi })
             return
         }
-        guard p.identifier == boundId else { return }       // ONLY our bound band — never a stranger's
+        guard p.identifier == boundId, wantsConnection else { return }   // our band, and only if we want a link
         band = p; p.delegate = self
         c.stopScan()
         reconnect(p)
@@ -196,7 +225,7 @@ extension BandManager: CBCentralManagerDelegate {
     public func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         onConnectionChange?(false)
         router.flush(live: false)
-        if p.identifier == boundId { reconnect(p) }         // re-arm forever (only our band)
+        if p.identifier == boundId && wantsConnection { reconnect(p) }   // re-arm only while we want a link
     }
 }
 

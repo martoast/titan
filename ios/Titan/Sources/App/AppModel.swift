@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import TitanCore
+#if canImport(BackgroundTasks)
+import BackgroundTasks
+#endif
 
 /// In-memory `WindowStore` so the sync queue runs out of the box. Swap for a GRDB/SQLite-backed
 /// store for crash-durable offline buffering (tasks/native-ios todo).
@@ -45,6 +48,7 @@ final class AppModel: ObservableObject {
     @Published var liveHz = 0
     @Published var bandSyncing = false     // a manual "Sync now" is in flight
     @Published var lastBandSyncAt: Date?   // when the last manual sync completed
+    @Published var bandIdle = false        // power-saving: we released the live link, band is duty-cycling
     @Published var waveform: [Double] = []  // recent PPG for the live trace
     @Published var error: String?
     @Published var loading = false
@@ -188,6 +192,7 @@ final class AppModel: ObservableObject {
     /// flush; the live counters show frames arriving. We clear the spinner after a short window.
     func syncBand() {
         startBandIfPaired()        // ensure the BandManager exists
+        bandIdle = false
         band?.syncNow()
         bandSyncing = true
         Task {
@@ -195,6 +200,59 @@ final class AppModel: ObservableObject {
             bandSyncing = false
             lastBandSyncAt = Date()
         }
+    }
+
+    // MARK: burst-sync connection policy
+    // The band runs heavy (continuous + streaming) only while we hold a live BLE link. So we hold it
+    // when it's worth it — app foreground (workouts, checking stats) — and RELEASE it when the app
+    // sits idle in the background, dropping the band into its low-power offline duty-cycle. The
+    // firmware auto-flushes its buffered trend on every reconnect, so each foreground/burst catches up
+    // the whole day with no held connection. This is what makes real all-day wear viable on the band.
+
+    static let bgSyncId = "com.alexmartos.titan.sync"
+    private var connectionReleaseTask: Task<Void, Never>?
+
+    /// App came forward (or a workout/sync) → hold a live link.
+    func holdConnection() {
+        connectionReleaseTask?.cancel(); connectionReleaseTask = nil
+        startBandIfPaired()
+        bandIdle = false
+        band?.setDesiredConnection(true)
+    }
+
+    /// App went to the background → after a short grace (survives quick app switches), release the link
+    /// so the band starts saving battery. Cancelled if we come forward again first.
+    func releaseConnectionAfterGrace() {
+        guard band != nil else { return }
+        connectionReleaseTask?.cancel()
+        connectionReleaseTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000_000)   // 2-min grace
+            guard let self, !Task.isCancelled else { return }
+            self.band?.setDesiredConnection(false)
+            self.bandIdle = true
+        }
+    }
+
+    /// One opportunistic background burst (BGAppRefresh): connect briefly, let the firmware flush the
+    /// buffered trend, then release — so the day's data lands even without opening the app.
+    func backgroundSyncBurst() async {
+        startBandIfPaired()
+        guard band != nil else { scheduleBackgroundSync(); return }
+        bandIdle = false
+        band?.setDesiredConnection(true)
+        try? await Task.sleep(nanoseconds: 25_000_000_000)   // connect + flushLog dump
+        band?.setDesiredConnection(false)
+        bandIdle = true
+        scheduleBackgroundSync()
+    }
+
+    /// Ask iOS to wake us for another burst later (it decides exactly when, a few times a day).
+    func scheduleBackgroundSync() {
+        #if canImport(BackgroundTasks)
+        let req = BGAppRefreshTaskRequest(identifier: Self.bgSyncId)
+        req.earliestBeginDate = Date(timeIntervalSinceNow: 2 * 3600)
+        try? BGTaskScheduler.shared.submit(req)
+        #endif
     }
 
     /// (hold yours to the phone) so two nearby bands never cross-connect.
