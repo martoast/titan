@@ -302,4 +302,27 @@ final class APIClient {
     }
 
     enum CoachEvent { case delta(String), tool(String), done(Int?) }
+
+    // MARK: coach — voice + photo (mirror the web app's mic + snap-to-coach)
+
+    /// Upload a recorded clip → Whisper (`/api/coach/transcribe`). Returns the text to drop into the
+    /// composer (we don't auto-send, exactly like the web app).
+    func transcribe(_ audioData: Data, fileName: String = "voice.m4a", mime: String = "audio/m4a") async throws -> String {
+        let res = try await send(multipart("api/coach/transcribe", fileField: "audio",
+                                           fileData: audioData, fileName: fileName, mime: mime),
+                                 as: TranscribeResult.self)
+        let text = res.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard res.ok, !text.isEmpty else { throw APIError.transport("Couldn't transcribe that — try again.") }
+        return text
+    }
+
+    /// Send a photo to the coach (`/api/coach[/{id}]/scan`). The server runs vision, auto-logs what it
+    /// recognizes (meal/bloodwork/physique), and always returns a `reply`. Optional caption goes in `message`.
+    func coachScan(_ imageData: Data, message: String?, conversationId: Int?) async throws -> CoachScanResult {
+        let path = conversationId.map { "api/coach/\($0)/scan" } ?? "api/coach/scan"
+        var fields: [String: String] = [:]
+        if let message, !message.isEmpty { fields["message"] = message }
+        return try await send(multipart(path, fields: fields, fileField: "photo", fileData: imageData),
+                              as: CoachScanResult.self)
+    }
 }

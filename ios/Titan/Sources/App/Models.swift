@@ -195,6 +195,22 @@ struct ChatMessage: Identifiable, Equatable {
     var role: Role
     var text: String
     var streaming: Bool = false
+    var imageData: Data? = nil      // a photo attached to a user message — shown inline in its bubble
+}
+
+/// `POST /api/coach/transcribe` → { ok, text } — Whisper transcription of a recorded voice clip.
+struct TranscribeResult: Codable { let ok: Bool; let text: String? }
+
+/// `POST /api/coach[/{id}]/scan` → the coach's reply to a photo. The server runs vision and
+/// auto-logs meals/bloodwork/physique when it recognizes them; `reply` is always the chat answer.
+struct CoachScanResult: Codable {
+    let ok: Bool
+    let conversation_id: Int?
+    let reply: String?
+    let image_url: String?
+    let kind: String?
+    let logged: Bool?
+    let offline: Bool?
 }
 
 // MARK: - Nutrition (the Fuel tab)
