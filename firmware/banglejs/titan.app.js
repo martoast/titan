@@ -60,9 +60,13 @@ var CFG = {
   // the server reconstructs the timeline). ~2.8 B/sample vs ~16 B/sample for live
   // T1, so a full 8 h night (~720k samples) is ~2 MB and fits the 8 MB flash. On
   // connect, the whole log streams out then erases — the morning sync.
-  LOG_FILE: "titan.log",
+  LOG_FILE: "titan.log",             // legacy single-file name (erased on boot; superseded by the ring)
   LOG_FRAME_SAMPLES: 125,            // ~5 s @ 25 Hz per compact frame (low overhead)
-  LOG_MAX_BYTES: 4 * 1024 * 1024,    // ~16 h ceiling; STOP appending (never wipe the night)
+  // RING BUFFER: worn 24/7, the band can't keep filling flash when it isn't syncing. The log is a ring
+  // of fixed-size segments; when full we evict the OLDEST segment to make room, so flash always holds
+  // the most-recent capture (~LOG_SEGMENTS × LOG_SEG_BYTES ≈ a night), and old un-synced data is dropped.
+  LOG_SEGMENTS: 6,                   // number of ring segments (more = finer eviction, less lost per wrap)
+  LOG_SEG_BYTES: 700 * 1024,         // ~700 KB each → ~4.1 MB total (~16 h of overnight PPG)
   LOG_PROTO_VERSION: 2,
 
   // --- Accel cadence (poll interval, ms) -------------------------------------
@@ -132,6 +136,14 @@ var CFG = {
   STEP_PROTO_VERSION: 8,            // T8 frame: { day-step total, local YYYY-MM-DD }
   STEP_SUMMARY_MS: 60000,          // stream the step total once a minute while connected
 
+  // --- SLEEP session markers (user-toggled, like a workout) ------------------
+  // Sleep is logged overnight (T2 PPG + actigraphy) and staged server-side. The Sleep FACE lets the
+  // user explicitly mark bedtime (start) and wake (end). On "mark awake" we emit a T9 marker with the
+  // confirmed sleep window; on the morning sync the server seals THAT window and — only because the
+  // user confirmed it — fires the coach's sleep summary. No marker = no sleep notification (so a nap
+  // or a still evening never triggers a wrong-time push).
+  SLEEP_PROTO_VERSION: 9,          // T9 frame: { confirmed flag, bedtime epoch, wake epoch }
+
   // --- AUTO workout detection (Whoop-style: no button) -----------------------
   // Watch motion energy (the accel EMA) + HR-above-resting and auto-start/stop a workout so you
   // never have to tap. The hard case is LIFTING (long inter-set rests): HR stays elevated THROUGH the
@@ -157,10 +169,11 @@ var state = {
   conf: 0,             // last HRM confidence (UI only)
   hrmSport: 0,         // active Bangle sport mode (0 normal / 1 run / 2 bike) — tags T5 frames
   restHr: null,        // personal resting-HR baseline (EMA from low-motion windows) — gates auto-detect
+  swMode: "idle",      // Stopwatch face: "idle" | "watch" (plain timer) | "sleep" (logs as a sleep session)
+  swStartMs: 0,        // unix-ms the running timer started
   ppgCount: 0,         // samples captured this session (UI counter)
   framesSent: 0,       // BLE frames emitted/flushed
-  logged: 0,           // approx bytes in the overnight log file
-  logFull: false,      // hit LOG_MAX_BYTES → stop appending (preserve the night)
+  logged: 0,           // approx bytes held in the overnight log ring (UI counter)
   lastAccel: { x: 0, y: 0, z: 0 }, // most recent accel reading (g)
   battery: 0,
   charging: false,     // is it on the charge cradle right now? (drives the bolt + buzz cue)
@@ -221,8 +234,10 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
-var PAGES = 5;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo
+var PAGES = 6;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo · 5 Stopwatch
+var STOPWATCH_PAGE = 5;   // the Stopwatch face (tap = plain timer; double-click button = log as sleep)
 var page = 0;             // current face (swipe to change)
+var lastSwipeT = 0;       // getTime() of the last page swipe — so the tap that ends a swipe isn't a sleep toggle
 var photoMin = -2;        // minute currently shown on the Photo face (-2 = needs a full repaint)
 var clockTickTimer = null; // minute-boundary redraw for the clock face
 
@@ -290,9 +305,31 @@ var logAccum = [];    // pending PPG samples for the current compact frame
 var logEpochMs = 0;   // unix-ms of the first sample in the current frame
 var logMotion = 0;    // accumulated movement (sum |Δaccel|, g) for the current frame
 var lastAccelV = null; // previous accel sample, for the delta
+var logSeg = 0;       // current ring segment index (0..LOG_SEGMENTS-1)
+var logSegBytes = 0;  // bytes written to the current segment
+
+// One ring segment's StorageFile name.
+function logName(i) { return "titan.l" + i; }
+
+// Append one line to the overnight log RING. When the current segment is full, advance and ERASE the
+// next segment first — that segment holds the OLDEST data, so this evicts it to make room. The ring
+// therefore never overflows and always keeps the most recent ~LOG_SEGMENTS×LOG_SEG_BYTES of capture.
+function appendLog(line) {
+  var data = line + "\n";
+  var len = data.length;
+  if (logSegBytes + len > CFG.LOG_SEG_BYTES) {
+    logSeg = (logSeg + 1) % CFG.LOG_SEGMENTS;
+    try { require("Storage").open(logName(logSeg), "r").erase(); } catch (e) {}   // evict the oldest
+    logSegBytes = 0;
+  }
+  try {
+    require("Storage").open(logName(logSeg), "a").write(data);
+    logSegBytes += len;
+    state.logged += len;
+  } catch (err) { /* storage unavailable — drop */ }
+}
 
 function logSample(ppg) {
-  if (state.logFull) return;
   // During a workout we log 3-axis accel (T6), not PPG — PPG in motion is noise, and dropping
   // it saves the flash for the accel the classifier actually needs.
   if (state.workout) return;
@@ -321,35 +358,33 @@ function writeLogFrame() {
   if (activity > 4294967295) activity = 4294967295;
   dv.setUint32(16, activity >>> 0, true);
   for (var i = 0; i < n; i++) dv.setInt16(20 + i * 2, logAccum[i], true);
-  var line = "T2:" + b64(buf);
-  try {
-    require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n");
-    state.logged += line.length + 1;
-    if (state.logged >= CFG.LOG_MAX_BYTES) state.logFull = true; // preserve, never wipe
-  } catch (err) { /* storage unavailable — drop */ }
+  appendLog("T2:" + b64(buf));
   logAccum = [];
   logMotion = 0;
 }
 
-// Morning sync: stream the whole overnight log over NUS, then erase it.
+// Morning sync: stream the whole ring (oldest segment → newest), erasing each as it's sent, then reset.
 function flushLog() {
   if (!state.connected) return;
-  writeLogFrame(); // flush any partial frame first
-  var sf;
-  try { sf = require("Storage").open(CFG.LOG_FILE, "r"); } catch (err) { return; }
-  var line = sf.readLine();
-  while (line !== undefined) {
-    var trimmed = line.charCodeAt(line.length - 1) === 10
-      ? line.substr(0, line.length - 1) : line;
-    if (trimmed.length) {
-      try { Bluetooth.println(trimmed); state.framesSent++; }
-      catch (err) { return; } // link died mid-sync — keep the log, retry next connect
+  writeLogFrame(); // flush any partial T2 frame first
+  for (var k = 1; k <= CFG.LOG_SEGMENTS; k++) {
+    var seg = (logSeg + k) % CFG.LOG_SEGMENTS;   // (logSeg+1) is the oldest; logSeg itself is newest
+    var sf;
+    try { sf = require("Storage").open(logName(seg), "r"); } catch (err) { continue; }
+    var line = sf.readLine();
+    while (line !== undefined) {
+      var trimmed = line.charCodeAt(line.length - 1) === 10 ? line.substr(0, line.length - 1) : line;
+      if (trimmed.length) {
+        try { Bluetooth.println(trimmed); state.framesSent++; }
+        catch (err) { return; } // link died mid-sync — keep what's left, retry next connect
+      }
+      line = sf.readLine();
     }
-    line = sf.readLine();
+    try { require("Storage").open(logName(seg), "r").erase(); } catch (e) {}
   }
-  try { require("Storage").open(CFG.LOG_FILE, "r").erase(); } catch (e) {}
+  logSeg = 0;
+  logSegBytes = 0;
   state.logged = 0;
-  state.logFull = false;
   if (uiVisible) drawUI();
 }
 
@@ -438,8 +473,8 @@ function emitHrFrame(bpm, conf) {
   var line = "T5:" + b64(buf);
   if (state.connected) {
     try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
-  } else if (!state.logFull) {
-    try { require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n"); state.logged += line.length + 1; } catch (e) {}
+  } else {
+    appendLog(line);
   }
 }
 
@@ -465,7 +500,6 @@ function onAccel(a) {
 
 // Append one accel sample to the current T6 frame; flush when full.
 function logWorkoutAccel(a) {
-  if (state.logFull) return;
   if (woAccel.length === 0) woAccelEpochMs = Math.round(getTime() * 1000);
   woAccel.push(clampI16(Math.round(a.x * CFG.ACCEL_SCALE)),
                clampI16(Math.round(a.y * CFG.ACCEL_SCALE)),
@@ -490,12 +524,7 @@ function writeWorkoutAccelFrame() {
   dv.setUint32(8, hi >>> 0, true);
   dv.setUint32(12, durMs >>> 0, true);
   for (var i = 0; i < woAccel.length; i++) dv.setInt16(16 + i * 2, woAccel[i], true);
-  var line = "T6:" + b64(buf);
-  try {
-    require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n");
-    state.logged += line.length + 1;
-    if (state.logged >= CFG.LOG_MAX_BYTES) state.logFull = true;
-  } catch (err) { /* storage unavailable — drop */ }
+  appendLog("T6:" + b64(buf));
   woAccel = [];
 }
 
@@ -529,7 +558,7 @@ function updateRestHr() {
 // still but HR is still high, so QUIET is false and the session stays open. Start/end each require a
 // SUSTAINED hold (hysteresis + min-bout), so it never flaps. Manual workouts are left alone.
 function updateAutoDetect() {
-  if (!CFG.AUTO_DETECT || !state.streaming) return;
+  if (!CFG.AUTO_DETECT || !state.streaming || state.swMode === "sleep") return;   // never auto-start a workout mid-sleep
   updateRestHr();
   var now = getTime();
   var rhr = state.restHr;
@@ -647,8 +676,8 @@ function emitAltFrame() {
   var line = "T7:" + b64(buf);
   if (state.connected) {
     try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
-  } else if (!state.logFull) {
-    try { require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n"); state.logged += line.length + 1; } catch (e) {}
+  } else {
+    appendLog(line);
   }
 }
 
@@ -669,8 +698,8 @@ function emitGpsFrame(speedKmh, altM, sats) {
   var line = "T4:" + b64(buf);
   if (state.connected) {
     try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
-  } else if (!state.logFull) {
-    try { require("Storage").open(CFG.LOG_FILE, "a").write(line + "\n"); state.logged += line.length + 1; } catch (e) {}
+  } else {
+    appendLog(line);
   }
 }
 
@@ -929,6 +958,31 @@ function drawStatus() {
   row("SYNCED", state.framesSent + "", C.cyan);
 }
 
+// Page 5 — STOPWATCH (doubles as the sleep timer). Tap = plain timer; double-click button = run it as
+// a logged SLEEP session. Shows the elapsed time big, with the mode + how to stop.
+function drawStopwatch() {
+  var W = g.getWidth(), cx = W / 2;
+  topBar();
+  var sleep = state.swMode === "sleep";
+  tabTitle(sleep ? "SLEEP" : "STOPWATCH", sleep ? C.violet : C.cyan);
+  if (state.swMode === "idle") {
+    g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
+    g.drawString("00:00", cx, 100);
+    g.setColor(C.cyan); g.setFont("6x8", 1);
+    g.drawString("tap: start timer", cx, 150);
+    g.setColor(C.violet);
+    g.drawString("double-click button: sleep", cx, 166);
+  } else {
+    var s = Math.floor((getTime() * 1000 - state.swStartMs) / 1000);
+    var hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
+    var t = (hh > 0 ? hh + ":" + ("0" + mm).substr(-2) : mm) + ":" + ("0" + ss).substr(-2);
+    g.setColor(sleep ? C.violet : C.white); g.setFont("Vector", 48); g.setFontAlign(0, 0);
+    g.drawString(t, cx, 102);
+    g.setColor(C.dim); g.setFont("6x8", 1);
+    g.drawString(sleep ? "sleeping · tap when you wake" : "tap to stop", cx, 152);
+  }
+}
+
 // Outlined text — stays readable over any photo. The 3-bit panel has no alpha, so we fake a halo
 // by stamping the string in the background colour around the glyphs, then the real colour on top.
 function drawOutlined(s, x, y, fg) {
@@ -988,6 +1042,7 @@ function drawUI() {
   if (page === 1) drawClock();
   else if (page === 2) drawSteps();
   else if (page === 3) drawStatus();
+  else if (page === STOPWATCH_PAGE) drawStopwatch();
   else drawHeart();
   pageDots();
 }
@@ -1025,9 +1080,18 @@ NRF.on("disconnect", onDisconnect);
 // are left to the Bangle OS for widgets/launcher.)
 Bangle.on("swipe", function (lr) {
   if (pairTimer || !uiVisible || !lr) return;
+  lastSwipeT = getTime();
   page = (page + (lr > 0 ? 1 : PAGES - 1)) % PAGES;   // right = +1, left = −1
   try { Bangle.buzz(15); } catch (e) {}
   drawUI();
+});
+
+// Tap the Stopwatch face to start/stop the plain timer (a running sleep session logs on stop). We
+// ignore a tap that lands right after a swipe (so flipping to the face doesn't fire it).
+Bangle.on("touch", function () {
+  if (pairTimer || !uiVisible || page !== STOPWATCH_PAGE) return;
+  if (getTime() - lastSwipeT < 0.4) return;
+  swTap();
 });
 
 // Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep).
@@ -1132,8 +1196,14 @@ function handleTaps(n) {
   if (n <= 1) {
     toggleStreaming();
   } else if (n === 2) {
-    if (!state.streaming) startStreaming();       // ensure the HR sensor is powered before the workout
-    toggleManualWorkout();                         // start/stop the workout → sport-mode HR
+    // On the Stopwatch face a double-click means SLEEP (time it as a logged sleep session); anywhere
+    // else it means WORKOUT. Same gesture, context-aware.
+    if (page === STOPWATCH_PAGE) {
+      swSleepToggle();
+    } else {
+      if (!state.streaming) startStreaming();     // ensure the HR sensor is powered before the workout
+      toggleManualWorkout();                       // start/stop the workout → sport-mode HR
+    }
   } else {
     if (state.streaming) stopStreaming();          // back to idle, then show the pairing code
     enterPairing();
@@ -1160,6 +1230,68 @@ setWatch(function () {
 function toggleManualWorkout() {
   if (state.workout && state.workoutManual) endWorkout();
   else startWorkout(true);
+}
+
+// ----- Stopwatch + sleep (the Stopwatch face) -------------------------------
+// One face, two uses. TAP the screen = a plain stopwatch (general timer, nothing logged). DOUBLE-CLICK
+// the button on this face = run the timer as a SLEEP session: starting marks bedtime + ensures the
+// night logs (PPG + actigraphy → server staging); stopping emits the confirmed T9 window, which on the
+// next sync triggers the server seal + the coach's sleep summary push.
+function startStopwatch() {                 // plain timer (tap from idle)
+  state.swMode = "watch";
+  state.swStartMs = Math.round(getTime() * 1000);
+  try { Bangle.buzz(40); } catch (e) {}
+  if (uiVisible) drawUI();
+}
+
+function startSleepSession() {              // double-click button → time it AS sleep
+  state.swMode = "sleep";
+  state.swStartMs = Math.round(getTime() * 1000);
+  if (state.workout) endWorkout();          // sleep isn't a workout → log T2 PPG (not T6 accel)
+  if (!state.streaming) startStreaming();   // guarantee the night is captured for HRV + staging
+  applyHrmMode();                           // rest mode: 25 Hz, the overnight-HRV-validated rate
+  try { Bangle.buzz(80); setTimeout(function () { try { Bangle.buzz(80); } catch (e) {} }, 150); } catch (e) {}
+  if (uiVisible) drawUI();
+}
+
+function stopTimer() {                       // stop either mode; a SLEEP session gets logged
+  if (state.swMode === "sleep") {
+    var bedSec = Math.round(state.swStartMs / 1000);
+    var wakeSec = Math.round(getTime());
+    emitSleepFrame(bedSec, wakeSec, 1);      // confirmed window → the morning sync fires the sleep summary
+  }
+  state.swMode = "idle";
+  try { Bangle.buzz(60); } catch (e) {}
+  if (uiVisible) drawUI();
+}
+
+// A screen tap on the Stopwatch face: idle → start plain timer; running → stop (sleep logs, plain doesn't).
+function swTap() {
+  if (state.swMode === "idle") startStopwatch();
+  else stopTimer();
+}
+
+// Double-click of the button while on the Stopwatch face: start a SLEEP session, or stop+log one.
+function swSleepToggle() {
+  if (state.swMode === "sleep") stopTimer();
+  else startSleepSession();
+}
+
+// T9 frame: [ver u8, confirmed u8, rsvd u16, bedtime u32 (epoch s), wake u32 (epoch s)] (12 B). Sent
+// live when connected, else appended to the overnight log so it flushes on the morning sync.
+function emitSleepFrame(bedSec, wakeSec, confirmed) {
+  var buf = new ArrayBuffer(12);
+  var dv = new DataView(buf);
+  dv.setUint8(0, CFG.SLEEP_PROTO_VERSION);
+  dv.setUint8(1, confirmed ? 1 : 0);
+  dv.setUint32(4, bedSec >>> 0, true);
+  dv.setUint32(8, wakeSec >>> 0, true);
+  var line = "T9:" + b64(buf);
+  if (state.connected) {
+    try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
+  } else {
+    appendLog(line);
+  }
 }
 
 // ----- Inbound command channel (coach activity priming) ---------------------
@@ -1225,6 +1357,12 @@ var uiTimer = setInterval(function () {
   updateAutoDetect();   // Whoop-style hands-free workout start/stop (one 5 s epoch)
 }, 5000);
 
+// Tick the stopwatch once a second, but ONLY while you're actually looking at a running timer
+// (right page + running + screen on) — so it never wastes battery when idle or while you sleep.
+var swTimer = setInterval(function () {
+  if (page === STOPWATCH_PAGE && state.swMode !== "idle" && uiVisible && Bangle.isLCDOn()) drawUI();
+}, 1000);
+
 // Continuous ambient barometer for all-day floors (its own power owner, so dropping GPS doesn't
 // stop it). The 'pressure' events keep `ambientAlt` fresh; a slow timer batches them into T7.
 try { if (Bangle.setBarometerPower) Bangle.setBarometerPower(1, "titan-alt"); } catch (e) {}
@@ -1239,6 +1377,7 @@ E.on("kill", function () {
   if (uiTimer) clearInterval(uiTimer);
   if (altTimer) clearInterval(altTimer);
   if (stepTimer) clearInterval(stepTimer);
+  if (swTimer) clearInterval(swTimer);
   if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
   try {
@@ -1246,6 +1385,9 @@ E.on("kill", function () {
     if (Bangle.setBarometerPower) { Bangle.setBarometerPower(0, "titan"); Bangle.setBarometerPower(0, "titan-alt"); }
   } catch (e) {}
 });
+
+// One-time: reclaim the legacy single-file log from pre-ring firmware (superseded by titan.l0..N).
+try { require("Storage").open(CFG.LOG_FILE, "r").erase(); } catch (e) {}
 
 // Initial paint.
 refreshBattery();
