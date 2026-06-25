@@ -15,7 +15,7 @@ final class APIClient {
     // MARK: requests
 
     private func request(_ path: String, method: String = "GET", json: [String: Any]? = nil) -> URLRequest {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: Self.url(baseURL, path))
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
@@ -26,12 +26,22 @@ final class APIClient {
         return req
     }
 
+    /// Build a request URL, preserving any `?query` (appendingPathComponent would percent-encode the
+    /// `?`, silently dropping query params — that broke /me/cycle/calendar and /me/trends).
+    static func url(_ base: URL, _ path: String) -> URL {
+        guard let q = path.firstIndex(of: "?") else { return base.appendingPathComponent(path) }
+        let p = base.appendingPathComponent(String(path[path.startIndex..<q]))
+        var comps = URLComponents(url: p, resolvingAgainstBaseURL: false)
+        comps?.percentEncodedQuery = String(path[path.index(after: q)...])
+        return comps?.url ?? base.appendingPathComponent(path)
+    }
+
     /// Build a multipart/form-data request (text fields + one image part) for photo uploads.
     private func multipart(_ path: String, fields: [String: String] = [:],
                            fileField: String, fileData: Data,
                            fileName: String = "photo.jpg", mime: String = "image/jpeg") -> URLRequest {
         let boundary = "TitanBoundary-\(UUID().uuidString)"
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: Self.url(baseURL, path))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }

@@ -347,7 +347,8 @@ private struct CycleCalendarView: View {
                 }
             }
         }
-        .task(id: month) { await load() }
+        // Reload on month change AND whenever the cycle data changes (e.g. you just logged a period).
+        .task(id: "\(month.timeIntervalSinceReferenceDate)-\(model.cycle?.cycle?.cycle_day ?? -1)") { await load() }
     }
 
     private func cell(_ date: Date) -> some View {
