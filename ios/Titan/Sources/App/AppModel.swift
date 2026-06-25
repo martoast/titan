@@ -297,6 +297,14 @@ final class AppModel: ObservableObject {
         catch { if case APIError.unauthorized = error { await logout() } }
     }
 
+    @Published var sleepDetail: SleepResponse?
+    @Published var cycle: CycleResponse?
+    /// Whether to show the women's Cycle segment (server gates on sex/cycle config).
+    var showsCycle: Bool { cycle?.available == true }
+
+    func loadSleepDetail() async { sleepDetail = try? await api.sleepDetail() }
+    func loadCycle() async { cycle = try? await api.cycle() }
+
     /// Snap a meal → AI macros (grounded + logged) → show the result + refresh the rings.
     func scanMeal(_ imageData: Data, caption: String? = nil) async {
         scanning = true; defer { scanning = false }

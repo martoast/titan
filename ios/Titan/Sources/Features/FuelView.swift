@@ -1,33 +1,13 @@
 import SwiftUI
 import PhotosUI
 
-/// The "Fuel" tab — purely nutrition (camera-first macros, hydration, fasting), wired to the coach
-/// via the same Meal rows its tools read. Body tracking (weight trend + progress photos) lives under
-/// the You tab in `BodyView`, so this page stays just about food.
-struct FuelView: View {
-    @EnvironmentObject var model: AppModel
-    @State private var showTargets = false
+// MARK: - Fuel (a segment of the Daily hub)
 
-    var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            MacrosSection()          // Fuel is purely food now — weight + progress photos live in You › Body
-            Color.clear.frame(height: 8)
-        }
-        .titanScreen("Fuel", glow: Theme.Palette.amber)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { Haptic.tap(); showTargets = true } label: { Image(systemName: "slider.horizontal.3") }
-                    .tint(Theme.Palette.textDim)
-            }
-        }
-        .sheet(item: $model.scanResult) { ScanResultSheet(result: $0) }
-        .sheet(isPresented: $showTargets) { TargetsSheet() }
-    }
-}
-
-// MARK: - Macros
-
-private struct MacrosSection: View {
+/// The Fuel content — camera-first macros, hydration, fasting, meals. Lives as a segment of the
+/// `Daily` hub (DailyView), which owns the scan-result + targets sheets. Body tracking (weight +
+/// progress photos) lives under You › Body. `ScanResultSheet`, `TargetsSheet`, `EditMealSheet`,
+/// `TargetsSheet` and `RemoteImage` below are shared by the hub.
+struct FuelSection: View {
     @EnvironmentObject var model: AppModel
     @State private var editing: Meal?
 
@@ -163,7 +143,7 @@ private struct MacroRing: View {
 
 // MARK: - Scan result sheet
 
-private struct ScanResultSheet: View {
+struct ScanResultSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let result: MealScanResult
@@ -313,7 +293,7 @@ private struct EditMealSheet: View {
 
 // MARK: - Targets editor
 
-private struct TargetsSheet: View {
+struct TargetsSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var calories = ""

@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Workouts are captured by the band (double-tap the button) or logged via the coach, then classified
-/// server-side. v1 surfaces live state + guidance; a history list lands with the workouts read API.
-struct WorkoutsView: View {
+/// Train — a segment of the Daily hub. Workouts are captured by the band (double-tap the button) or
+/// logged via the coach, then classified server-side; this surfaces live state + guidance.
+struct TrainSection: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
@@ -45,9 +45,7 @@ struct WorkoutsView: View {
                     .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
                 }
             }
-            Color.clear.frame(height: 8)
         }
-        .titanScreen("Train", glow: Theme.Palette.cyan)
     }
 
     private func row(_ icon: String, _ c: Color, _ title: String, _ sub: String) -> some View {

@@ -114,6 +114,14 @@ final class APIClient {
         try await send(request("api/me/nutrition"), as: NutritionToday.self)
     }
 
+    func sleepDetail() async throws -> SleepResponse {
+        try await send(request("api/me/sleep"), as: SleepResponse.self)
+    }
+
+    func cycle() async throws -> CycleResponse {
+        try await send(request("api/me/cycle"), as: CycleResponse.self)
+    }
+
     func scanMeal(_ imageData: Data, caption: String?) async throws -> MealScanResult {
         var fields: [String: String] = [:]
         if let caption, !caption.isEmpty { fields["caption"] = caption }

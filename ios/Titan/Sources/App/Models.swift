@@ -116,6 +116,44 @@ struct PairResponse: Codable {
     let connection_id: Int?
 }
 
+/// `GET /api/me/sleep`
+struct SleepResponse: Codable {
+    let assess: Assess?
+    let nights: [Night]
+    struct Assess: Codable {
+        let need_h: Double?; let debt_h: Double?; let last_h: Double?
+        let performance_pct: Int?; let band: String?; let label: String?; let advice: String?
+    }
+    struct Night: Codable, Identifiable {
+        var id: String { date ?? "" }
+        let date: String?; let duration_min: Int?; let quality: Int?
+        let deep_min: Int?; let rem_min: Int?; let light_min: Int?; let awake_min: Int?
+    }
+}
+
+/// `GET /api/me/cycle` — the women's Cycle view (phase, fertile window, Flo-style pregnancy chance).
+struct CycleResponse: Codable {
+    let available: Bool
+    let cycle: Cycle?
+    struct Cycle: Codable {
+        let cycle_day: Int?
+        let phase: String?
+        let phase_label: String?
+        let phase_blurb: String?
+        let avg_length: Int?
+        let period_length: Int?
+        let late: Bool?
+        let conception: Conception?
+        let fertile_window: Fertile?
+        let next_period: NextPeriod?
+        let ovulation: Ovulation?
+        struct Conception: Codable { let likelihood: String?; let note: String? }
+        struct Fertile: Codable { let start: String?; let end: String?; let active: Bool? }
+        struct NextPeriod: Codable { let date: String?; let in_days: Int? }
+        struct Ovulation: Codable { let date: String?; let in_days: Int?; let day: Int? }
+    }
+}
+
 /// One coach chat message (local model; history comes from `/api/coach/{id}/messages`).
 struct ChatMessage: Identifiable, Equatable {
     enum Role: String { case user, assistant }
