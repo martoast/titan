@@ -8,14 +8,14 @@ struct DailyView: View {
     @State private var seg: Seg = .sleep
     @State private var showTargets = false
 
-    enum Seg: String, CaseIterable { case sleep = "Sleep", fuel = "Fuel", train = "Train", cycle = "Cycle" }
+    enum Seg: String, CaseIterable { case sleep = "Sleep", fuel = "Fuel", train = "Train", heart = "Heart", cycle = "Cycle" }
 
     private var segs: [Seg] {
-        model.showsCycle ? [.sleep, .fuel, .train, .cycle] : [.sleep, .fuel, .train]
+        model.showsCycle ? [.sleep, .fuel, .train, .heart, .cycle] : [.sleep, .fuel, .train, .heart]
     }
     private var glow: Color {
         switch seg { case .sleep: return Theme.Palette.indigo; case .fuel: return Theme.Palette.amber
-        case .train: return Theme.Palette.cyan; case .cycle: return Theme.Palette.pink }
+        case .train: return Theme.Palette.cyan; case .heart, .cycle: return Theme.Palette.pink }
     }
 
     var body: some View {
@@ -30,6 +30,7 @@ struct DailyView: View {
             case .sleep: SleepSection()
             case .fuel: FuelSection()
             case .train: TrainSection()
+            case .heart: HrSection()
             case .cycle: CycleSection()
             }
             Color.clear.frame(height: 8)
@@ -493,5 +494,98 @@ private struct CycleCalendarView: View {
     private func load() async {
         let list = await model.cycleCalendar(from: gridStart, days: 42)
         days = Dictionary(list.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+}
+
+// MARK: - Heart segment
+
+/// The 24/7 all-day HR graph — the band's continuous + duty-cycled heart rate, synced from the cloud.
+/// Resting HR (the day's ~5th percentile) is the headline: it's your floor, and it trends down as you
+/// get fitter.
+private struct HrSection: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            let hr = model.hrDay
+            GlassCard(padding: Theme.Space.l) {
+                VStack(spacing: Theme.Space.m) {
+                    if let hr, hr.count > 0 {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text("\(hr.resting_hr ?? hr.min ?? 0)").font(Theme.Font.num(46)).foregroundStyle(.white)
+                            Text("resting bpm").font(Theme.Font.body).foregroundStyle(Theme.Palette.pink)
+                            Spacer()
+                            Image(systemName: "heart.fill").foregroundStyle(Theme.Palette.pink).font(.title3)
+                                .symbolEffect(.pulse, options: .repeating)
+                        }
+                        HrGraph(points: hr.points, color: Theme.Palette.pink).frame(height: 130)
+                        HStack(spacing: Theme.Space.l) {
+                            stat("\(hr.resting_hr ?? 0)", "Resting", Theme.Palette.mint)
+                            stat("\(hr.avg ?? 0)", "Avg", Theme.Palette.cyan)
+                            stat("\(hr.min ?? 0)", "Min", Theme.Palette.indigo)
+                            stat("\(hr.max ?? 0)", "Max", Theme.Palette.pink)
+                        }
+                    } else {
+                        VStack(spacing: 6) {
+                            Image(systemName: "heart").font(.system(size: 30)).foregroundStyle(Theme.Palette.textFaint)
+                            Text("No heart rate yet today").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            Text("Wear the band — it tracks HR 24/7 and syncs the whole day when your phone's near.")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
+                        }.frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
+                    }
+                }
+            }
+            Text("Your all-day heart rate. Resting HR is your daily floor — it trends down as you get fitter.")
+                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task { await model.loadHr() }
+    }
+
+    private func stat(_ v: String, _ l: String, _ c: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
+            Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+        }.frame(maxWidth: .infinity)
+    }
+}
+
+/// A lightweight line+area HR chart over the day's points (x = time of day, y = bpm, auto-scaled).
+private struct HrGraph: View {
+    let points: [HrResponse.Point]
+    let color: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            if points.count >= 2 {
+                let bpms = points.map { Double($0.bpm) }
+                let lo = max(35, (bpms.min() ?? 50) - 5)
+                let hi = (bpms.max() ?? 120) + 5
+                let span = max(1, hi - lo)
+                let t0 = Double(points.first!.t), t1 = Double(points.last!.t)
+                let tSpan = max(1, t1 - t0)
+                let pt: (HrResponse.Point) -> CGPoint = { p in
+                    CGPoint(x: CGFloat((Double(p.t) - t0) / tSpan) * w,
+                            y: h - CGFloat((Double(p.bpm) - lo) / span) * h)
+                }
+                ZStack {
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: h))
+                        for p in points { path.addLine(to: pt(p)) }
+                        path.addLine(to: CGPoint(x: w, y: h))
+                        path.closeSubpath()
+                    }.fill(LinearGradient(colors: [color.opacity(0.28), color.opacity(0.02)],
+                                          startPoint: .top, endPoint: .bottom))
+                    Path { path in
+                        path.move(to: pt(points[0]))
+                        for p in points.dropFirst() { path.addLine(to: pt(p)) }
+                    }.stroke(color, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
+                }
+            } else {
+                Text("Not enough data yet").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    .frame(width: w, height: h)
+            }
+        }
     }
 }

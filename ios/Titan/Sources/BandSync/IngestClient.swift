@@ -21,7 +21,7 @@ public struct IngestClient {
     /// not by inspecting kind inside windows).
     public func ship(window: AnyWindow) async -> Result {
         let isSummary: Bool
-        switch window { case .steps, .sleep: isSummary = true; default: isSummary = false }
+        switch window { case .steps, .sleep, .hrTrend: isSummary = true; default: isSummary = false }
         let batch = isSummary
             ? Batch(batch_uid: ULID.generate(), windows: [], summaries: [window])
             : Batch(batch_uid: ULID.generate(), windows: [window], summaries: [])

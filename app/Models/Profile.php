@@ -118,6 +118,11 @@ class Profile extends Model
         return $this->hasMany(DailyActivity::class);
     }
 
+    public function hrSamples(): HasMany
+    {
+        return $this->hasMany(HrSample::class);
+    }
+
     // --- Physique: progress photos + the living goal image ---
     public function progressPhotos(): HasMany
     {

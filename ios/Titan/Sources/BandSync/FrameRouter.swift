@@ -9,6 +9,7 @@ public final class FrameRouter {
     private var rx = Data()                       // newline accumulator (== bridge's this._rx)
     private let ppg = PpgWindowBuilder()
     private let wa = WorkoutAssembler()
+    private let hrTrend = HrTrendBuilder()         // 24/7 HR graph — per-minute points from every T5
     private let queue: SyncQueue
     private var maxDeviceT: UInt64 = 0
     public var onBpm: ((UInt8) -> Void)?          // live HR for the UI
@@ -57,7 +58,12 @@ public final class FrameRouter {
         case "T4:":
             if let fix = FrameDecoder.decodeT4(payload), let w = wa.addGps(fix) { submit(.workout(w)) }
         case "T5:":
-            if let hr = FrameDecoder.decodeT5(payload) { onBpm?(hr.bpm); wa.addHr(hr) }
+            if let hr = FrameDecoder.decodeT5(payload) {
+                onBpm?(hr.bpm)
+                wa.addHr(hr)        // workout HR (only kept if a session is open)
+                // ...and the 24/7 trend, which keeps EVERY reading (rest or active) for the all-day graph.
+                if let w = hrTrend.add(t: hr.t, bpm: hr.bpm, conf: hr.conf) { submit(.hrTrend(w)) }
+            }
         case "T6:":
             let acc = FrameDecoder.decodeT6(payload)
             if let w = wa.addWorkoutAccel(acc) { submit(.workout(w)) }
@@ -82,6 +88,7 @@ public final class FrameRouter {
     public func flush(live: Bool) {
         if let w = ppg.flush(live: live) { submit(.ppg(w)) }
         if let w = wa.flush() { submit(.workout(w)) }
+        if let w = hrTrend.flush() { submit(.hrTrend(w)) }
     }
 
     private func submit(_ w: AnyWindow) { Task { await queue.submit(w) } }
@@ -92,6 +99,7 @@ public final class FrameRouter {
 /// `.steps` ships in the batch's `summaries[]`; the windows ship in `windows[]` (see IngestClient).
 public enum AnyWindow: Codable {
     case ppg(PpgWindow), workout(WorkoutWindow), steps(StepDailySummary), sleep(SleepSessionSummary)
+    case hrTrend(HrTrendWindow)
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
@@ -100,12 +108,14 @@ public enum AnyWindow: Codable {
         case .workout(let w): try c.encode(w)
         case .steps(let s): try c.encode(s)
         case .sleep(let s): try c.encode(s)
+        case .hrTrend(let w): try c.encode(w)
         }
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
         if let s = try? c.decode(SleepSessionSummary.self), s.kind == "sleep_session" { self = .sleep(s) }
         else if let s = try? c.decode(StepDailySummary.self), s.kind == "activity" { self = .steps(s) }
+        else if let w = try? c.decode(HrTrendWindow.self), w.kind == "hr_trend" { self = .hrTrend(w) }
         else if let w = try? c.decode(WorkoutWindow.self), w.kind == "workout" { self = .workout(w) }
         else { self = .ppg(try c.decode(PpgWindow.self)) }
     }

@@ -131,6 +131,23 @@ struct SleepResponse: Codable {
     }
 }
 
+/// `GET /api/me/hr` — the 24/7 all-day HR graph: per-minute points + the day's resting/min/max/avg.
+struct HrResponse: Codable {
+    let date: String?
+    let points: [Point]
+    let resting_hr: Int?
+    let min: Int?
+    let max: Int?
+    let avg: Int?
+    let count: Int
+    struct Point: Codable, Identifiable {
+        var id: Int { t }
+        let t: Int          // epoch seconds
+        let bpm: Int
+        let conf: Int?
+    }
+}
+
 /// `GET /api/me/cycle` — the women's Cycle view (phase, fertile window, Flo-style pregnancy chance).
 struct CycleResponse: Codable {
     let available: Bool

@@ -336,11 +336,13 @@ final class AppModel: ObservableObject {
 
     @Published var sleepDetail: SleepResponse?
     @Published var cycle: CycleResponse?
+    @Published var hrDay: HrResponse?
     /// Whether to show the women's Cycle segment (server gates on sex/cycle config).
     var showsCycle: Bool { cycle?.available == true }
 
     func loadSleepDetail() async { sleepDetail = try? await api.sleepDetail() }
     func loadCycle() async { cycle = try? await api.cycle() }
+    func loadHr() async { hrDay = try? await api.hr() }
 
     func logPeriod(_ date: Date) async {
         try? await api.logCyclePeriod(date: Self.ymd(date))

@@ -51,4 +51,30 @@ final class WindowingTests: XCTestCase {
         XCTAssertEqual(obj["sample_rate_hz"] as? Int, 25)
         XCTAssertNotNil(obj["accel_mag_cg"])
     }
+
+    // MARK: HrTrendBuilder — per-minute aggregation for the 24/7 graph
+
+    func testHrTrendBucketsByMinuteWithMedian() throws {
+        let b = HrTrendBuilder()
+        let m0: UInt64 = 1_750_000_000_000              // some epoch ms
+        // Minute 0: three readings → median 64. Confidence keeps the max.
+        XCTAssertNil(b.add(t: m0 + 1_000, bpm: 60, conf: 80))
+        XCTAssertNil(b.add(t: m0 + 2_000, bpm: 64, conf: 95))
+        XCTAssertNil(b.add(t: m0 + 3_000, bpm: 70, conf: 90))
+        // A reading in minute 1 closes minute 0; flush() then closes minute 1.
+        XCTAssertNil(b.add(t: m0 + 61_000, bpm: 50, conf: 99))
+        let w = try XCTUnwrap(b.flush())
+        XCTAssertEqual(w.kind, "hr_trend")
+        XCTAssertEqual(w.samples.count, 2)
+        XCTAssertEqual(w.samples[0].bpm, 64)            // median of 60,64,70
+        XCTAssertEqual(w.samples[0].conf, 95)           // max conf in the bucket
+        XCTAssertEqual(w.samples[0].t, Int((m0 / 60_000) * 60))  // bucket start, epoch SECONDS
+        XCTAssertEqual(w.samples[1].bpm, 50)
+    }
+
+    func testHrTrendIgnoresZeroBpmAndEmptyFlush() {
+        let b = HrTrendBuilder()
+        XCTAssertNil(b.add(t: 1_750_000_000_000, bpm: 0, conf: 0))  // no valid reading
+        XCTAssertNil(b.flush())                                      // nothing to ship
+    }
 }

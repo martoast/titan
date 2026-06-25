@@ -6,6 +6,7 @@ use App\Jobs\ProcessWindowJob;
 use App\Models\BodyMetric;
 use App\Models\DailyActivity;
 use App\Models\DeviceIngestion;
+use App\Models\HrSample;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Models\SleepLog;
@@ -225,6 +226,8 @@ class DeviceIngestionService
             // The band's "I'm awake" marker (T9): seal that night and fire the coach's sleep summary,
             // BECAUSE the user confirmed it. (No marker → the cron still computes the data, silently.)
             'sleep_session' => $this->triggerSleepSummary($connection, $summary, $tz),
+            // The 24/7 HR trend (≈1 point/minute) → time-series rows for the all-day HR graph.
+            'hr_trend' => $this->writeHrTrend($connection, $summary, $tz),
             'body' => (bool) BodyMetric::create(array_filter([
                 'profile_id' => $pid,
                 'taken_at' => $this->dateOf($summary['taken_at'] ?? null, $tz),
@@ -249,6 +252,52 @@ class DeviceIngestionService
             ),
             default => false,
         };
+    }
+
+    /**
+     * Persist a batch of HR trend points (the 24/7 graph). Each point is {t: epoch-seconds, bpm,
+     * conf?}; we store recorded_at as the owner's local wall-clock so day-grouping matches the rest
+     * of the app. insertOrIgnore dedups on the (profile_id, recorded_at) unique key, so re-sending
+     * the same window (a retry, or overlap from the offline ring) never double-counts.
+     *
+     * @param  array<string,mixed>  $summary
+     */
+    private function writeHrTrend(WearableConnection $connection, array $summary, string $tz): bool
+    {
+        $samples = $summary['samples'] ?? null;
+        if (! is_array($samples) || count($samples) === 0) {
+            return false;
+        }
+
+        $now = now();
+        $rows = [];
+        foreach ($samples as $s) {
+            if (! is_array($s)) {
+                continue;
+            }
+            $t = (int) ($s['t'] ?? 0);
+            $bpm = (int) ($s['bpm'] ?? 0);
+            if ($t <= 0 || $bpm <= 0 || $bpm > 255) {
+                continue;   // garbage point — skip, don't poison the series
+            }
+            $conf = isset($s['conf']) ? max(0, min(100, (int) $s['conf'])) : null;
+            $rows[] = [
+                'profile_id' => $connection->profile_id,
+                'recorded_at' => CarbonImmutable::createFromTimestamp($t, 'UTC')->setTimezone($tz)->toDateTimeString(),
+                'bpm' => $bpm,
+                'confidence' => $conf,
+                'source' => $connection->source,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        if (count($rows) === 0) {
+            return false;
+        }
+
+        HrSample::insertOrIgnore($rows);
+
+        return true;
     }
 
     /** Resolve a wire date/timestamp to the device-owner's local calendar date. */

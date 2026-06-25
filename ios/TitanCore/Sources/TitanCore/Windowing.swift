@@ -76,6 +76,62 @@ public struct SleepSessionSummary: Codable, Equatable {
     }
 }
 
+/// One point on the 24/7 HR trend — a per-minute aggregate (median bpm). `t` is epoch SECONDS.
+public struct HrTrendPoint: Codable, Equatable {
+    public let t: Int
+    public let bpm: Int
+    public let conf: Int
+    public init(t: Int, bpm: Int, conf: Int) { self.t = t; self.bpm = bpm; self.conf = conf }
+}
+
+/// A `kind=hr_trend` summary — a batch of per-minute HR points for the all-day graph. Sent in
+/// `summaries[]`; the server's `writeHrTrend` inserts each point into `hr_samples` (deduped).
+public struct HrTrendWindow: Codable, Equatable {
+    public let kind: String          // "hr_trend"
+    public let samples: [HrTrendPoint]
+    public init(samples: [HrTrendPoint]) { self.kind = "hr_trend"; self.samples = samples }
+}
+
+/// Aggregates the band's HR readings (T5) into ONE point per wall-clock minute (median bpm, max
+/// confidence) so the cloud series stays light whatever the source rate — ~1 Hz live when connected
+/// and 1/min from the offline duty-cycle both collapse to 1/min. Emits an `hr_trend` window once
+/// enough minutes have closed; `flush()` ships the tail on disconnect/suspend.
+public final class HrTrendBuilder {
+    private static let FLUSH_AT = 30          // upload after ~30 closed minutes (or on flush)
+
+    private var bucketMin: UInt64 = 0         // current minute bucket (epoch minutes), 0 = none yet
+    private var bpms: [Int] = []
+    private var confMax = 0
+    private var pending: [HrTrendPoint] = []  // closed buckets awaiting upload
+
+    public init() {}
+
+    /// Feed one T5 reading (`t` in ms). Returns a window once enough minutes have accumulated.
+    public func add(t: UInt64, bpm: UInt8, conf: UInt8) -> HrTrendWindow? {
+        let minute = t / 60_000
+        if bucketMin == 0 { bucketMin = minute }
+        if minute != bucketMin { closeBucket(); bucketMin = minute }
+        if bpm > 0 { bpms.append(Int(bpm)); confMax = max(confMax, Int(conf)) }
+        return pending.count >= Self.FLUSH_AT ? drain() : nil
+    }
+
+    public func flush() -> HrTrendWindow? { closeBucket(); return drain() }
+
+    private func closeBucket() {
+        guard !bpms.isEmpty else { return }
+        let sorted = bpms.sorted()
+        pending.append(HrTrendPoint(t: Int(bucketMin * 60), bpm: sorted[sorted.count / 2], conf: confMax))
+        bpms = []; confMax = 0
+    }
+
+    private func drain() -> HrTrendWindow? {
+        guard !pending.isEmpty else { return nil }
+        let w = HrTrendWindow(samples: pending)
+        pending = []
+        return w
+    }
+}
+
 /// Accumulates decoded PPG samples and emits 120s `ppg_raw` windows — ports the bridge's
 /// `_drainWindows` / `_flushWindow` / `_shipSamples`. Pure: the caller does the actual POST.
 public final class PpgWindowBuilder {
