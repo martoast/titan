@@ -113,6 +113,18 @@ var CFG = {
   HRM_SPORT_RUN: 1,                  // general motion-tolerant sport profile (lifting, running, etc.)
   HRM_SPORT_BIKE: 2,                 // biking sport profile (steadier wrist, different artifact band)
 
+  // --- 24/7 OFFLINE REST MODE (battery + light buffer) -----------------------
+  // Worn all day with NO phone in range, running the HRM continuously at 25 Hz AND logging raw PPG
+  // would drain the battery and fill the flash ring in ~16 h. So while OFFLINE + at REST (no workout,
+  // no sleep session) we DUTY-CYCLE the HRM: power it on just long enough to read a stable bpm, then
+  // off — and log ONE lightweight T5 HR-trend point per cycle (no raw PPG). ~20 B/min → the ring
+  // holds WEEKS and the reconnect sync is a quick trickle. Continuous capture + raw PPG resume the
+  // instant a workout or a sleep session starts, or a phone connects (the real-time path). This is
+  // the Whoop trick: sample sparsely when still, densely when it matters.
+  REST_DUTY: true,                   // master switch for offline-rest duty-cycling
+  REST_DUTY_ON_MS: 15000,            // measure window — long enough for the VC31 to settle + average
+  REST_DUTY_PERIOD_MS: 60000,        // one reading per minute (25% duty → ~4x the HRM battery life)
+
   // OFFLINE workouts (a run with no phone, or a gym session): when not connected we log the
   // 3-axis accel to flash as compact T6 frames so the workout still CLASSIFIES on morning sync
   // (the overnight T2 log is PPG-only and can't). During a workout we log T6 instead of T2 PPG
@@ -419,7 +431,8 @@ function flushFrame() {
 // T2 logging to flash while offline (overnight → morning sync).
 function pushSample(ppg) {
   state.ppgCount++;
-  if (state.connected) pushLiveSample(ppg); else logSample(ppg);
+  if (state.connected) pushLiveSample(ppg);
+  else if (!restModeActive()) logSample(ppg);   // rest+offline logs a light T5 trend, not raw PPG
 }
 
 // Append one (ppg, accel, timestamp) sample into the current live T1 frame.
@@ -600,7 +613,7 @@ function startWorkout(manual) {
   state.workout = true;
   state.workoutManual = !!manual;
   powerGps(true);          // try for outdoor pace; dropped after GPS_FIX_TIMEOUT if no fix
-  applyHrmMode();          // force motion-tolerant SPORT mode + 50 Hz PPG (the heavy-lifting fix)
+  reconcileHrm();          // continuous HRM + motion-tolerant SPORT mode + 50 Hz PPG (heavy-lifting fix)
   applyAccelRate();        // 25 Hz accel for the classifier, even offline
   if (manual) { try { Bangle.buzz(120); } catch (e) {} }
   if (uiVisible) drawUI();
@@ -613,7 +626,7 @@ function endWorkout() {
   primed = null;           // clear any coach priming so a later auto-workout doesn't inherit its rate
   powerGps(false);
   if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
-  applyHrmMode();          // back to rest: normal mode + 25 Hz (the HRV-validated rate)
+  reconcileHrm();          // back to rest: continuous if connected, else duty-cycle the HRM
   applyAccelRate();
   if (uiVisible) drawUI();
 }
@@ -736,6 +749,7 @@ function onConnect() {
   // Whoop-style always-on: once the app is paired/connected, stream automatically so HR flows and the
   // auto-detector can see your workouts without a tap. (One tap still stops it if you want it off.)
   if (!state.streaming) startStreaming();
+  reconcileHrm();   // a phone is here now → leave any duty-cycle, go continuous for real-time data
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
   // Sync today's step total right away (captures a walk taken while the phone was left behind).
@@ -757,6 +771,7 @@ function onDisconnect() {
   logAccum = [];
   logMotion = 0;
   lastAccelV = null;
+  reconcileHrm();   // no phone → if we're idle, drop into the battery-saving HR duty cycle
   if (uiVisible) drawUI();
 }
 
@@ -799,14 +814,63 @@ function applyHrmMode() {
   } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
 }
 
+// ----- 24/7 HRM power: continuous when it matters, duty-cycled when idle+offline ----------
+// Offline rest = streaming, no central, no workout, no sleep session. THE battery-critical 24/7 case.
+var restDutyTimer = null;    // the per-minute "take a reading" interval (null = not duty-cycling)
+var restDutyOnTimer = null;  // the "measure window done → read + power off" timeout
+
+function restModeActive() {
+  return state.streaming && !state.connected && !state.workout && state.swMode !== "sleep";
+}
+
+// One duty cycle: power the HRM on, let it settle for REST_DUTY_ON_MS, then log the bpm as a light
+// T5 trend point and power back off. Skips itself if we've since left rest mode.
+function restDutyTick() {
+  if (!restModeActive()) { stopRestDuty(); return; }
+  try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
+  if (restDutyOnTimer) clearTimeout(restDutyOnTimer);
+  restDutyOnTimer = setTimeout(function () {
+    restDutyOnTimer = null;
+    if (state.bpm > 0) emitHrFrame(state.bpm, state.conf);   // → ring (offline), a tiny HR-trend point
+    if (restModeActive()) { try { Bangle.setHRMPower(0, "titan"); } catch (e) {} }
+  }, CFG.REST_DUTY_ON_MS);
+}
+
+function startRestDuty() {
+  if (!CFG.REST_DUTY || restDutyTimer) return;
+  restDutyTimer = setInterval(restDutyTick, CFG.REST_DUTY_PERIOD_MS);
+  restDutyTick();   // take the first reading immediately
+}
+
+function stopRestDuty() {
+  if (restDutyTimer) { clearInterval(restDutyTimer); restDutyTimer = null; }
+  if (restDutyOnTimer) { clearTimeout(restDutyOnTimer); restDutyOnTimer = null; }
+}
+
+// Single source of truth for HRM power, called on every state transition. Rest+offline → duty-cycle;
+// everything else (connected live, workout, sleep) → continuous HRM at the right sport mode + rate.
+function reconcileHrm() {
+  if (!state.streaming) { stopRestDuty(); return; }   // stopStreaming() owns the power-off
+  if (restModeActive()) {
+    startRestDuty();
+  } else {
+    stopRestDuty();
+    try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
+    applyHrmMode();
+  }
+}
+
+// Persist the run state so a watch-only wearer keeps recording across a reboot (no app to re-arm it).
+function setStreamPref(on) { try { require("Storage").write("titan.run", on ? "1" : "0"); } catch (e) {} }
+
 function startStreaming() {
   if (state.streaming) return;
   state.streaming = true;
+  setStreamPref(true);
   resetFrame();
-  // Power up the heart-rate sensor. Bangle.setHRMPower(1) turns on the VC31
-  // LED + AFE; without it no HRM/HRM-raw events fire.
-  Bangle.setHRMPower(1, "titan");
-  applyHrmMode();   // baseline HRM tuning (rest: normal mode + 25 Hz)
+  // reconcileHrm() powers the VC31 LED+AFE — continuously when connected/working out/sleeping, or in
+  // a per-minute duty cycle when idle+offline. Without power no HRM/HRM-raw events fire.
+  reconcileHrm();
   // Accel is on by default on Bangle.js 2; setPollInterval tightens cadence.
   applyAccelRate();
   drawUI();
@@ -815,7 +879,9 @@ function startStreaming() {
 function stopStreaming() {
   if (!state.streaming) return;
   state.streaming = false;
+  setStreamPref(false);
   flushFrame(); // emit whatever partial frame we have
+  stopRestDuty();
   Bangle.setHRMPower(0, "titan");
   endWorkout(); // close any workout (flushes T6, powers GPS down)
   motionEMA = 0;
@@ -1113,8 +1179,15 @@ Bangle.on("touch", function () {
   else if (page === COUNTER_PAGE) bumpCounter();
 });
 
-// Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep).
-Bangle.on("lcdPower", function (on) { if (on) { photoMin = -2; drawUI(); } });
+// Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep). If we're
+// in the offline HR duty cycle, also kick an immediate reading so a glance shows a fresh bpm, not a
+// minute-old one.
+Bangle.on("lcdPower", function (on) {
+  if (!on) return;
+  photoMin = -2;
+  drawUI();
+  if (restModeActive() && !restDutyOnTimer) restDutyTick();
+});
 
 // Charging cue: buzz the moment it's plugged in (a firm double-pulse) or unplugged (a short blip),
 // and redraw so the battery shows the bolt. Community parity: widbatpc uses this same 'charging'
@@ -1278,7 +1351,7 @@ function startSleepSession() {              // double-click button → time it A
   state.swStartMs = Math.round(getTime() * 1000);
   if (state.workout) endWorkout();          // sleep isn't a workout → log T2 PPG (not T6 accel)
   if (!state.streaming) startStreaming();   // guarantee the night is captured for HRV + staging
-  applyHrmMode();                           // rest mode: 25 Hz, the overnight-HRV-validated rate
+  reconcileHrm();                           // sleep → continuous 25 Hz + raw PPG (HRV needs it), no duty-cycle
   try { Bangle.buzz(80); setTimeout(function () { try { Bangle.buzz(80); } catch (e) {} }, 150); } catch (e) {}
   if (uiVisible) drawUI();
 }
@@ -1290,6 +1363,7 @@ function stopTimer() {                       // stop either mode; a SLEEP sessio
     emitSleepFrame(bedSec, wakeSec, 1);      // confirmed window → the morning sync fires the sleep summary
   }
   state.swMode = "idle";
+  reconcileHrm();   // sleep ended → if still offline + idle, drop back into the HR duty cycle
   try { Bangle.buzz(60); } catch (e) {}
   if (uiVisible) drawUI();
 }
@@ -1424,6 +1498,7 @@ E.on("kill", function () {
   if (altTimer) clearInterval(altTimer);
   if (stepTimer) clearInterval(stepTimer);
   if (swTimer) clearInterval(swTimer);
+  stopRestDuty();
   if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
   try {
@@ -1434,6 +1509,10 @@ E.on("kill", function () {
 
 // One-time: reclaim the legacy single-file log from pre-ring firmware (superseded by titan.l0..N).
 try { require("Storage").open(CFG.LOG_FILE, "r").erase(); } catch (e) {}
+
+// Watch-only resume: if recording was on before a reboot, bring it back — there's no app to re-arm it,
+// and a 24/7 wearer shouldn't silently stop capturing because the watch restarted.
+try { if (require("Storage").read("titan.run") === "1") startStreaming(); } catch (e) {}
 
 // Initial paint.
 refreshBattery();
