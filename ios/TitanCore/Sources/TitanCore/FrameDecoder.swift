@@ -31,6 +31,11 @@ public struct StepSummary: Equatable {
     public let date: String         // the watch's LOCAL calendar date "YYYY-MM-DD"
     public let epochSec: UInt32     // when the reading was taken (provenance)
 }
+public struct SleepSession: Equatable {
+    public let bedtime: UInt32      // epoch seconds the sleep session started
+    public let wake: UInt32         // epoch seconds the user marked awake
+    public let confirmed: Bool      // user ended it on the band → fire the morning summary
+}
 
 public enum FrameDecoder {
 
@@ -95,6 +100,12 @@ public enum FrameDecoder {
         return StepSummary(steps: r.u32(4),
                            date: String(format: "%04d-%02d-%02d", year, month, day),
                            epochSec: r.u32(8))
+    }
+
+    /// T9 — sleep session marker: [ver u8, confirmed u8, rsvd u16, bedtime u32 (epoch s), wake u32] (12 B).
+    public static func decodeT9(_ b64: String) -> SleepSession? {
+        guard let r = Reader(b64), r.count >= 12 else { return nil }
+        return SleepSession(bedtime: r.u32(4), wake: r.u32(8), confirmed: r.u8(1) == 1)
     }
 
     /// T7 — ambient baro altitude batch: 16-B header [ver u8, count u8, ts u64, intervalMs u16,

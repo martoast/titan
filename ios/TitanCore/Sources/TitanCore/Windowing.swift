@@ -64,6 +64,18 @@ public struct StepDailySummary: Codable, Equatable {
     public init(date: String, steps: Int) { self.kind = "activity"; self.date = date; self.steps = steps }
 }
 
+/// A `kind=sleep_session` marker — the band's "I'm awake" confirmation. Sent in `summaries[]`; the
+/// server seals that night and fires the coach's morning sleep summary (only because it's confirmed).
+public struct SleepSessionSummary: Codable, Equatable {
+    public let kind: String          // "sleep_session"
+    public let confirmed: Bool
+    public let bedtime: Int          // epoch seconds
+    public let wake: Int
+    public init(bedtime: Int, wake: Int, confirmed: Bool) {
+        self.kind = "sleep_session"; self.confirmed = confirmed; self.bedtime = bedtime; self.wake = wake
+    }
+}
+
 /// Accumulates decoded PPG samples and emits 120s `ppg_raw` windows — ports the bridge's
 /// `_drainWindows` / `_flushWindow` / `_shipSamples`. Pure: the caller does the actual POST.
 public final class PpgWindowBuilder {

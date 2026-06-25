@@ -68,6 +68,11 @@ public final class FrameRouter {
             if let s = FrameDecoder.decodeT8(payload) {
                 submit(.steps(StepDailySummary(date: s.date, steps: Int(s.steps))))
             }
+        case "T9:":
+            // "I'm awake" marker → a sleep-session summary (server seals the night + fires the summary).
+            if let s = FrameDecoder.decodeT9(payload), s.confirmed {
+                submit(.sleep(SleepSessionSummary(bedtime: Int(s.bedtime), wake: Int(s.wake), confirmed: true)))
+            }
         default:
             break
         }
@@ -86,7 +91,7 @@ public final class FrameRouter {
 /// JSON (each already carries its own `kind` field), and round-trips through the persisted queue.
 /// `.steps` ships in the batch's `summaries[]`; the windows ship in `windows[]` (see IngestClient).
 public enum AnyWindow: Codable {
-    case ppg(PpgWindow), workout(WorkoutWindow), steps(StepDailySummary)
+    case ppg(PpgWindow), workout(WorkoutWindow), steps(StepDailySummary), sleep(SleepSessionSummary)
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
@@ -94,11 +99,13 @@ public enum AnyWindow: Codable {
         case .ppg(let w): try c.encode(w)
         case .workout(let w): try c.encode(w)
         case .steps(let s): try c.encode(s)
+        case .sleep(let s): try c.encode(s)
         }
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
-        if let s = try? c.decode(StepDailySummary.self), s.kind == "activity" { self = .steps(s) }
+        if let s = try? c.decode(SleepSessionSummary.self), s.kind == "sleep_session" { self = .sleep(s) }
+        else if let s = try? c.decode(StepDailySummary.self), s.kind == "activity" { self = .steps(s) }
         else if let w = try? c.decode(WorkoutWindow.self), w.kind == "workout" { self = .workout(w) }
         else { self = .ppg(try c.decode(PpgWindow.self)) }
     }

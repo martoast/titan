@@ -20,12 +20,11 @@ public struct IngestClient {
     /// goes in `windows[]`; a daily step summary goes in `summaries[]` (the server routes by array,
     /// not by inspecting kind inside windows).
     public func ship(window: AnyWindow) async -> Result {
-        let batch: Batch
-        if case .steps = window {
-            batch = Batch(batch_uid: ULID.generate(), windows: [], summaries: [window])
-        } else {
-            batch = Batch(batch_uid: ULID.generate(), windows: [window], summaries: [])
-        }
+        let isSummary: Bool
+        switch window { case .steps, .sleep: isSummary = true; default: isSummary = false }
+        let batch = isSummary
+            ? Batch(batch_uid: ULID.generate(), windows: [], summaries: [window])
+            : Batch(batch_uid: ULID.generate(), windows: [window], summaries: [])
         guard let body = try? JSONEncoder().encode(batch) else {
             return .rejected(status: 0, error: "encode failed")
         }
