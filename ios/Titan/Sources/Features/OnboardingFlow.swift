@@ -223,6 +223,7 @@ struct EditProfileView: View {
     @StateObject private var form = OnboardingForm()
     @State private var loaded = false
     @State private var saving = false
+    @State private var saveTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -276,23 +277,32 @@ struct EditProfileView: View {
                             }
                         }
 
-                        Button {
-                            Haptic.success(); saving = true
-                            Task { if await model.saveProfile(form.payload(full: false)) { dismiss() }; saving = false }
-                        } label: {
-                            Text(saving ? "Saving…" : "Save changes").font(Theme.Font.body.weight(.bold))
-                                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                                .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip)).foregroundStyle(.white)
-                        }.disabled(saving)
+                        HStack(spacing: 6) {
+                            if saving { ProgressView().controlSize(.mini).tint(Theme.Palette.textFaint) }
+                            else { Image(systemName: "checkmark.circle.fill").font(.caption).foregroundStyle(Theme.Palette.mint) }
+                            Text(saving ? "Saving…" : "Changes save automatically").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        }.frame(maxWidth: .infinity).padding(.vertical, 4)
                         Color.clear.frame(height: 8)
                     }.padding(Theme.Space.m)
                 }
             }
             .navigationTitle("Edit profile").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task {
                 if !loaded, let snap = await model.loadProfileSnapshot() { form.prefill(snap); loaded = true }
+            }
+            // Auto-save: debounce changes so each edit persists without a Save button.
+            .onReceive(form.objectWillChange) { _ in
+                guard loaded else { return }      // ignore the burst from prefill()
+                saveTask?.cancel()
+                saveTask = Task {
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    if Task.isCancelled { return }
+                    saving = true
+                    _ = await model.saveProfile(form.payload(full: false))
+                    saving = false
+                }
             }
         }
     }
