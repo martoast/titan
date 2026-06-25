@@ -60,7 +60,9 @@ public final class FrameRouter {
         case "T5:":
             if let hr = FrameDecoder.decodeT5(payload) {
                 onBpm?(hr.bpm)
-                wa.addHr(hr)        // workout HR (only kept if a session is open)
+                // A sport-tagged reading OPENS/extends a workout — this is how a connected indoor
+                // session (no GPS, no T6) becomes a sealable workout window.
+                if let w = wa.addWorkoutHr(hr) { submit(.workout(w)) }
                 // ...and the 24/7 trend, which keeps EVERY reading (rest or active) for the all-day graph.
                 if let w = hrTrend.add(t: hr.t, bpm: hr.bpm, conf: hr.conf) { submit(.hrTrend(w)) }
             }

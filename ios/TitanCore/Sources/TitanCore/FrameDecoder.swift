@@ -19,6 +19,10 @@ public struct GpsFix: Equatable {
 }
 public struct HrReading: Equatable {
     public let t: UInt64; public let bpm: UInt8; public let conf: UInt8
+    public let sport: UInt8   // band sport-mode tag: 0 rest · 1 run/general (incl. lifting) · 2 bike
+    public init(t: UInt64, bpm: UInt8, conf: UInt8, sport: UInt8 = 0) {
+        self.t = t; self.bpm = bpm; self.conf = conf; self.sport = sport
+    }
 }
 public struct AccelSample: Equatable {
     public let t: UInt64; public let ax: Int16; public let ay: Int16; public let az: Int16
@@ -66,10 +70,11 @@ public enum FrameDecoder {
                       alt: altRaw == ALT_NONE ? nil : Double(altRaw) / 10)
     }
 
-    /// T5 — HR: [ver u8, bpm u8, conf u8, rsvd u8, ts u64] (12 B).
+    /// T5 — HR: [ver u8, bpm u8, conf u8, sport u8, ts u64] (12 B). The sport byte tags workout mode
+    /// (0 rest / 1 run-general / 2 bike) — used to open a workout even when connected indoors.
     public static func decodeT5(_ b64: String) -> HrReading? {
         guard let r = Reader(b64), r.count >= 12 else { return nil }
-        return HrReading(t: r.u64(4), bpm: r.u8(1), conf: r.u8(2))
+        return HrReading(t: r.u64(4), bpm: r.u8(1), conf: r.u8(2), sport: r.u8(3))
     }
 
     /// T6 — offline workout accel: 16-B header [ver u8, rsvd u8, count u16, start u64, durMs u32]

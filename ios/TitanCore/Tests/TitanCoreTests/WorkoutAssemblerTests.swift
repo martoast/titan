@@ -36,6 +36,28 @@ final class WorkoutAssemblerTests: XCTestCase {
         XCTAssertTrue(w.gps.grade.prefix(17).allSatisfy { $0 == 0 })
     }
 
+    // The connected-indoor case: NO GPS, NO offline accel — a workout must still open from the
+    // sport-tagged HR (T5) + be filled by live T1 accel, and produce a window on flush.
+    func testSportTaggedHrOpensWorkoutAndLiveAccelFillsIt() {
+        let start: UInt64 = 2_000_000_000
+        let wa = WorkoutAssembler()
+        // Resting HR (sport 0) must NOT open a workout.
+        wa.addWorkoutHr(HrReading(t: start, bpm: 60, conf: 95, sport: 0))
+        wa.addAccel([PpgSample(t: start + 10, ppg: 0, ax: 5, ay: 3, az: 1000)])  // ignored — not active
+        // Workout begins: sport>0 opens it; live T1 accel now fills in.
+        wa.addWorkoutHr(HrReading(t: start + 1000, bpm: 120, conf: 96, sport: 1))
+        for i in 0...1600 {   // ~64s @ 25Hz of live accel
+            wa.addAccel([PpgSample(t: start + 1000 + UInt64(i) * 40, ppg: 0, ax: Int16((i % 8) - 4), ay: 2, az: 1000)])
+        }
+        wa.addWorkoutHr(HrReading(t: start + 65000, bpm: 138, conf: 96, sport: 1))
+
+        let w = try! XCTUnwrap(wa.flush())
+        XCTAssertEqual(w.kind, "workout")
+        XCTAssertGreaterThanOrEqual(w.accel_xyz.x.count, 25)
+        XCTAssertTrue(w.gps.speed_kmh.allSatisfy { $0 == 0 })   // no GPS indoors
+        XCTAssertFalse(w.hr_bpm.isEmpty)
+    }
+
     func testTooShortReturnsNil() {
         let wa = WorkoutAssembler()
         wa.addWorkoutAccel([AccelSample(t: 1000, ax: 0, ay: 0, az: 1000)])

@@ -85,6 +85,19 @@ public final class WorkoutAssembler {
 
     public func addHr(_ h: HrReading) { if active { hr.append(h) } }
 
+    /// T5 with a sport-mode tag — the band's "I'm in a workout" signal. This is what OPENS a workout
+    /// when you're connected INDOORS (no GPS/T4, and T6 is suppressed while connected): the band keeps
+    /// sending sport>0 HR throughout the session, and the live T1 accel fills it in via addAccel.
+    /// Resting readings (sport 0) don't open or extend, so the end-gap closes the session when you stop.
+    @discardableResult public func addWorkoutHr(_ h: HrReading) -> WorkoutWindow? {
+        guard h.sport > 0 else { return nil }
+        let ended = gapFinalize(h.t)
+        open(h.t)
+        hr.append(h)
+        lastActivityT = max(lastActivityT, h.t)
+        return ended ?? periodic(h.t)
+    }
+
     /// Live: T1 keeps device-time moving so a workout's end-gap is detected.
     @discardableResult public func tick(_ deviceNowT: UInt64) -> WorkoutWindow? { gapFinalize(deviceNowT) }
 
