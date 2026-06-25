@@ -49,6 +49,7 @@ final class AppModel: ObservableObject {
     @Published var bandSyncing = false     // a manual "Sync now" is in flight
     @Published var lastBandSyncAt: Date?   // when the last manual sync completed
     @Published var bandIdle = false        // power-saving: we released the live link, band is duty-cycling
+    @Published var bandBattery: Int?       // band battery % (BLE Battery Service), last-known
     @Published var waveform: [Double] = []  // recent PPG for the live trace
     @Published var error: String?
     @Published var loading = false
@@ -327,6 +328,7 @@ final class AppModel: ObservableObject {
         }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in self?.bandConnected = up } }
+        band.onBattery = { [weak self] pct in Task { @MainActor in self?.bandBattery = pct } }
         band.onPaired = { [weak self] ok in
             Task { @MainActor in
                 self?.pairing = false

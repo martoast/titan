@@ -13,6 +13,8 @@ public final class BandManager: NSObject {
     public static let NUS_SERVICE = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
     public static let NUS_TX = CBUUID(string: "6E400003-B5A3-F393-E0A9-E50E24DCCA9E") // notify
     public static let NUS_RX = CBUUID(string: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E") // write
+    public static let BATTERY_SERVICE = CBUUID(string: "180F")   // standard BLE Battery Service
+    public static let BATTERY_LEVEL = CBUUID(string: "2A19")     // u8 percent (0-100), Bangle exposes it by default
     private static let restoreId = "com.titan.band.central"
     private static let boundKey = "titan.band.peripheralUUID"
 
@@ -41,6 +43,8 @@ public final class BandManager: NSObject {
     }
 
     public var onConnectionChange: ((Bool) -> Void)?
+    /// Band battery percent (0-100), from the standard BLE Battery Service — read on connect + on change.
+    public var onBattery: ((Int) -> Void)?
     /// Pairing bound to a band (true) or timed out with no pick (false).
     public var onPaired: ((Bool) -> Void)?
     /// Live list of nearby bands during pairing (closest first) for the picker UI.
@@ -219,7 +223,7 @@ extension BandManager: CBCentralManagerDelegate {
 
     public func centralManager(_ c: CBCentralManager, didConnect p: CBPeripheral) {
         onConnectionChange?(true)
-        p.discoverServices([Self.NUS_SERVICE])
+        p.discoverServices([Self.NUS_SERVICE, Self.BATTERY_SERVICE])
     }
 
     public func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
@@ -231,13 +235,17 @@ extension BandManager: CBCentralManagerDelegate {
 
 extension BandManager: CBPeripheralDelegate {
     public func peripheral(_ p: CBPeripheral, didDiscoverServices error: Error?) {
-        p.services?.forEach { p.discoverCharacteristics([Self.NUS_TX, Self.NUS_RX], for: $0) }
+        for s in p.services ?? [] {
+            if s.uuid == Self.BATTERY_SERVICE { p.discoverCharacteristics([Self.BATTERY_LEVEL], for: s) }
+            else { p.discoverCharacteristics([Self.NUS_TX, Self.NUS_RX], for: s) }
+        }
     }
 
     public func peripheral(_ p: CBPeripheral, didDiscoverCharacteristicsFor s: CBService, error: Error?) {
         for ch in s.characteristics ?? [] {
             if ch.uuid == Self.NUS_TX { p.setNotifyValue(true, for: ch) }
             if ch.uuid == Self.NUS_RX { rxChar = ch }
+            if ch.uuid == Self.BATTERY_LEVEL { p.readValue(for: ch); p.setNotifyValue(true, for: ch) }
         }
         if rxChar != nil { syncTime() }   // push the phone's local time + timezone to the band
     }
@@ -252,9 +260,14 @@ extension BandManager: CBPeripheralDelegate {
         p.writeValue(Data(cmd.utf8), for: rx, type: .withoutResponse)
     }
 
-    /// NUS TX stream — fires in the background and wakes a terminated app. Drain fast.
+    /// NUS TX stream — fires in the background and wakes a terminated app. Drain fast. Battery-level
+    /// updates (the standard 0x2A19 char) split off to onBattery; everything else is a frame.
     public func peripheral(_ p: CBPeripheral, didUpdateValueFor ch: CBCharacteristic, error: Error?) {
         guard let d = ch.value else { return }
+        if ch.uuid == Self.BATTERY_LEVEL {
+            if let pct = d.first { onBattery?(Int(pct)) }
+            return
+        }
         router.ingest(d)
     }
 }

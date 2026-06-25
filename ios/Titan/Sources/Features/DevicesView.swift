@@ -152,6 +152,15 @@ struct DevicesView: View {
                     Text(statusSub).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
                         .multilineTextAlignment(.center)
                 }
+                if let batt = model.bandBattery {
+                    HStack(spacing: 6) {
+                        Image(systemName: batteryIcon(batt)).foregroundStyle(batteryColor(batt))
+                        Text("\(batt)%").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+                        Text("band").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    }
+                    .padding(.horizontal, Theme.Space.m).padding(.vertical, 7)
+                    .background(batteryColor(batt).opacity(0.12), in: Capsule())
+                }
                 if model.bandConnected, let bpm = model.liveBpm {
                     HStack(spacing: 8) {
                         Image(systemName: "heart.fill").foregroundStyle(Theme.Palette.pink)
@@ -186,6 +195,17 @@ struct DevicesView: View {
                 .frame(width: 20, height: 20).background(Theme.Palette.indigo, in: Circle())
             Text(text).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
         }
+    }
+
+    private func batteryColor(_ p: Int) -> Color {
+        p < 15 ? Theme.Palette.pink : (p < 35 ? Theme.Palette.amber : Theme.Palette.mint)
+    }
+    private func batteryIcon(_ p: Int) -> String {
+        if p >= 88 { return "battery.100" }
+        if p >= 60 { return "battery.75" }
+        if p >= 35 { return "battery.50" }
+        if p >= 12 { return "battery.25" }
+        return "battery.0"
     }
 
     private var divider: some View { Rectangle().fill(Theme.Palette.cardStroke).frame(width: 1, height: 30) }
