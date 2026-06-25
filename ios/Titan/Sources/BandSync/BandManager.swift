@@ -114,6 +114,20 @@ public final class BandManager: NSObject {
         central.scanForPeripherals(withServices: nil)   // didDiscover only accepts our bound id
     }
 
+    /// Force a fresh connection attempt when we're paired but stuck — advertised-but-never-connected,
+    /// a half-open link, or a Bluetooth stack that's wedged. Tears down any existing connection to the
+    /// bound band, drops the cached write char, then re-arms connect AND restarts a scan so we catch
+    /// the band the instant it advertises again. This is the "Reconnect" button's muscle.
+    public func reconnectKick() {
+        guard central.state == .poweredOn, let id = boundId else { return }
+        if let b = band, b.state != .disconnected { central.cancelPeripheralConnection(b) }
+        rxChar = nil
+        if let p = central.retrievePeripherals(withIdentifiers: [id]).first {
+            band = p; p.delegate = self; reconnect(p)
+        }
+        central.scanForPeripherals(withServices: nil)   // didDiscover only accepts our bound id
+    }
+
     /// No-timeout connect (survives out-of-range + termination); system wakes us on events.
     private func reconnect(_ p: CBPeripheral) {
         central.connect(p, options: [

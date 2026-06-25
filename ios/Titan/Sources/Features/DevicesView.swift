@@ -29,6 +29,27 @@ struct DevicesView: View {
                     Text("Wear it overnight, then tap to pull your night in the morning.")
                         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).multilineTextAlignment(.center)
                 }
+
+                // Stuck on "Searching…"? Force a fresh BLE attempt without losing the pairing.
+                if !model.bandConnected {
+                    Button { Haptic.rigid(); model.reconnectBand() } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Reconnect")
+                        }
+                        .font(Theme.Font.body.weight(.semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                        .foregroundStyle(Theme.Palette.text)
+                    }
+                }
+
+                // Last resort: drop the binding and pick the band again from scratch.
+                Button { Haptic.rigid(); Task { await model.repairBand() } } label: {
+                    Text("Forget band & re-pair")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).underline()
+                }.frame(maxWidth: .infinity).padding(.top, 2)
             }
 
             if model.bandConnected {

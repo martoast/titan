@@ -37,7 +37,7 @@ final class SqliteWindowStore: WindowStore {
             throw StoreError.prepare
         }
         defer { sqlite3_finalize(stmt) }
-        data.withUnsafeBytes { sqlite3_bind_blob(stmt, 1, $0.baseAddress, Int32(data.count), Self.SQLITE_TRANSIENT) }
+        _ = data.withUnsafeBytes { sqlite3_bind_blob(stmt, 1, $0.baseAddress, Int32(data.count), Self.SQLITE_TRANSIENT) }
         sqlite3_bind_double(stmt, 2, Date().timeIntervalSince1970)
         guard sqlite3_step(stmt) == SQLITE_DONE else { throw StoreError.step }
     }

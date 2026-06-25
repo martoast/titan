@@ -225,6 +225,27 @@ final class AppModel: ObservableObject {
         pairCandidates = []
     }
 
+    /// "Reconnect" — kick a fresh BLE connection attempt when we're paired but stuck on Searching.
+    /// Cheap: no new server creds, just re-establishes the link to the band we're already bound to.
+    func reconnectBand() {
+        startBandIfPaired()
+        error = nil
+        band?.reconnectKick()
+    }
+
+    /// "Forget band & re-pair" — the clean reset. Drops the BLE binding so the UI falls back to the
+    /// pairing flow, then immediately reopens the picker. Use when Reconnect won't take (wrong band,
+    /// swapped hardware, binding gone bad). Re-pairing mints fresh creds for whichever band you pick.
+    func repairBand() async {
+        band?.unbind()
+        bandBound = false
+        bandConnected = false
+        pairCandidates = []
+        liveBpm = nil
+        error = nil
+        await pairBand()
+    }
+
     /// Paired = we have server creds AND a band bound to this phone's BLE identity.
     var isBandPaired: Bool { bandBound && Keychain.get(Keychain.deviceId) != nil }
 
