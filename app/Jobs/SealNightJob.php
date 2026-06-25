@@ -63,8 +63,11 @@ class SealNightJob implements ShouldQueue
     /**
      * @param  int  $profileId  the profile whose night to seal
      * @param  string|null  $night  optional explicit night date (Y-m-d, local); null = auto-detect the latest completed night
+     * @param  bool  $confirmed  the user MARKED AWAKE on the band → fire the coach's sleep summary. The
+     *                           automatic (cron) seal leaves this false: it computes the data silently,
+     *                           so you only get a sleep push when YOU end the session (no wrong-time noise).
      */
-    public function __construct(public int $profileId, public ?string $night = null)
+    public function __construct(public int $profileId, public ?string $night = null, public bool $confirmed = false)
     {
         $this->onQueue('biosignal');
     }
@@ -379,8 +382,11 @@ class SealNightJob implements ShouldQueue
                 ], fn ($v) => $v !== null),
             );
 
-            // A real night just landed → let the coach react (well-rested win / sleep-debt note).
-            \App\Jobs\ReactToSleepLogged::dispatch($log->id)->afterCommit();
+            // The night's data is computed either way; the coach SUMMARY fires only when the user
+            // marked awake on the band (confirmed) — so the morning push is user-controlled, never automatic.
+            if ($this->confirmed) {
+                \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
+            }
         } catch (\Throwable $e) {
             Log::warning('[Biosignal] ppg sleep staging failed', [
                 'profile_id' => $profile->id, 'night' => $date, 'error' => $e->getMessage(),
@@ -455,8 +461,11 @@ class SealNightJob implements ShouldQueue
                 'result_refs' => array_merge((array) $i->result_refs, ['sleep_log_id' => $log->id, 'sealed' => true]),
             ]));
 
-            // A real night just landed → let the coach react (well-rested win / sleep-debt note).
-            \App\Jobs\ReactToSleepLogged::dispatch($log->id)->afterCommit();
+            // The night's data is computed either way; the coach SUMMARY fires only when the user
+            // marked awake on the band (confirmed) — so the morning push is user-controlled, never automatic.
+            if ($this->confirmed) {
+                \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
+            }
         } catch (\Throwable $e) {
             Log::warning('[Biosignal] sleep seal failed', ['profile_id' => $profile->id, 'night' => $date, 'error' => $e->getMessage()]);
             // Seal anyway so a persistently bad night doesn't wedge the queue.

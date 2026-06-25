@@ -175,6 +175,25 @@ class DeviceIngestionService
      *
      * @param  array<string,mixed>  $summary
      */
+    /**
+     * A user-confirmed sleep marker from the band (the "I'm awake" double-click). Seal that night with
+     * the user's real boundaries and — because they explicitly ended it — fire the morning sleep summary.
+     */
+    private function triggerSleepSummary(WearableConnection $connection, array $summary, string $tz): bool
+    {
+        if (empty($summary['confirmed'])) {
+            return false;
+        }
+        $bed = (int) ($summary['bedtime'] ?? 0);
+        if ($bed <= 0) {
+            return false;
+        }
+        $night = \Carbon\CarbonImmutable::createFromTimestamp($bed, $tz)->toDateString();
+        \App\Jobs\SealNightJob::dispatch($connection->profile_id, $night, true)->afterCommit();
+
+        return true;
+    }
+
     private function writeSummary(WearableConnection $connection, array $summary, string $tz): bool
     {
         $kind = (string) ($summary['kind'] ?? '');
@@ -203,6 +222,9 @@ class DeviceIngestionService
                     'updated_via' => 'device:summary',
                 ], fn ($v) => $v !== null),
             ),
+            // The band's "I'm awake" marker (T9): seal that night and fire the coach's sleep summary,
+            // BECAUSE the user confirmed it. (No marker → the cron still computes the data, silently.)
+            'sleep_session' => $this->triggerSleepSummary($connection, $summary, $tz),
             'body' => (bool) BodyMetric::create(array_filter([
                 'profile_id' => $pid,
                 'taken_at' => $this->dateOf($summary['taken_at'] ?? null, $tz),

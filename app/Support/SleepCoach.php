@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Profile;
+use App\Models\SleepLog;
 use Illuminate\Support\Carbon;
 
 /**
@@ -23,6 +24,51 @@ class SleepCoach
     private const DEBT_NIGHTS = 5;
     private const DEBT_CAP_H = 5.0;
     private const NEED_CAP_H = 10.0;
+
+    /**
+     * The morning sleep SUMMARY — fired when the user marks awake on the band (a CONFIRMED session).
+     * Unlike assess()'s selective win/debt nudge, this speaks to EVERY confirmed night: the breakdown
+     * (duration, deep, REM, quality), the band's read, and a forward line. Mirrors {@see WorkoutCoach}.
+     *
+     * @return array{title:string, push:string, body:string}
+     */
+    public static function summary(Profile $profile, SleepLog $log): array
+    {
+        $name = $profile->display_name ? ' '.$profile->display_name : '';
+        $h = $log->duration_min ? $log->duration_min / 60.0 : null;
+        $hh = $h !== null ? rtrim(rtrim(number_format($h, 1), '0'), '.').'h' : null;
+
+        $bits = [];
+        if ($hh) {
+            $bits[] = $hh.' asleep';
+        }
+        if ($log->deep_min) {
+            $bits[] = $log->deep_min.' min deep';
+        }
+        if ($log->rem_min) {
+            $bits[] = $log->rem_min.' min REM';
+        }
+        if ($log->quality) {
+            $bits[] = $log->quality.'% quality';
+        }
+        $summary = implode(' · ', $bits);
+
+        $assess = rescue(fn () => self::assess($profile), null, false);
+        $band = $assess['band'] ?? null;
+        $advice = $assess['advice'] ?? '';
+
+        $emoji = $band === 'optimal' ? '☀️' : (($band === 'debt' || $band === 'low') ? '😴' : '🌅');
+        $lead = $band === 'optimal' ? 'You banked a full night'
+            : (($band === 'debt' || $band === 'low') ? 'A short one' : 'Solid night');
+
+        return [
+            'title' => "{$emoji} Good morning",
+            'push' => ($summary !== '' ? $summary : 'Sleep logged').'. Tap — your coach has your sleep breakdown.',
+            'body' => "{$emoji} **Good morning{$name}.** {$lead}".($summary !== '' ? " — {$summary}." : '.')
+                .($advice !== '' ? " {$advice}" : '')
+                ." How do you feel — rested, or still tired? I'll factor it into today's plan.",
+        ];
+    }
 
     /**
      * @return array{need_h:float,baseline_h:float,debt_h:float,strain_bump_h:float,
