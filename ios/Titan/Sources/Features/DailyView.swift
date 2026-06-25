@@ -133,63 +133,136 @@ private struct SleepSection: View {
     private func trim(_ v: Double) -> String { v.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(v))" : String(format: "%.1f", v) }
 }
 
-// MARK: - Cycle segment (women) — Flo-style pregnancy chance front-and-center
+// MARK: - Cycle segment (women) — Flo-style: week strip, big prediction hero, pregnancy chance below
 
 private struct CycleSection: View {
     @EnvironmentObject var model: AppModel
     @State private var showLogPeriod = false
+    @State private var showSymptoms = false
+    @State private var showCalendar = false
     @State private var periodDate = Date()
     @State private var todayFlow: String?
     @State private var todaySymptoms: Set<String> = []
     @State private var saving = false
-    @State private var showCalendar = false
+    @State private var week: [String: CycleCalendarResponse.Day] = [:]
 
+    private let cal = Calendar.current
+    private let key: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
+    private let dowFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEEEE"; return f }()
+    private let titleFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMMM d"; return f }()
     private let chipCols = [GridItem(.adaptive(minimum: 96), spacing: 8)]
 
     var body: some View {
-        VStack(spacing: Theme.Space.m) {
+        VStack(spacing: Theme.Space.l) {
             if let c = model.cycle?.cycle, c.cycle_day != nil {
-                Picker("", selection: $showCalendar) {
-                    Text("Overview").tag(false); Text("Calendar").tag(true)
-                }.pickerStyle(.segmented)
-
-                if showCalendar {
-                    CycleCalendarView()
-                    logPeriodButton
-                } else {
-                    overview(c)
-                }
+                weekStrip
+                hero(c)              // the big prediction — NOT the pregnancy chance
+                chanceLine(c)        // pregnancy chance, secondary, below the hero
+                actionButtons
+                phaseCard(c)
                 disclaimer
             } else {
-                // Empty: the period log IS the primary action (like a dedicated period app).
-                GlassCard(padding: Theme.Space.l) {
-                    VStack(spacing: Theme.Space.m) {
-                        Image(systemName: "drop.fill").font(.system(size: 30)).foregroundStyle(Theme.Palette.pink)
-                        Text("Log your period to begin").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
-                        Text("Set the first day of your last period and I'll map your phases, predict your next one, and show your daily pregnancy chance.")
-                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
-                        logPeriodButton
-                    }.frame(maxWidth: .infinity)
-                }
-                disclaimer
+                emptyState
             }
         }
         .task { await model.loadCycle() }
+        .task(id: model.cycle?.cycle?.cycle_day ?? -1) { await loadWeek() }
         .sheet(isPresented: $showLogPeriod) { logPeriodSheet }
+        .sheet(isPresented: $showSymptoms) { symptomsSheet }
+        .sheet(isPresented: $showCalendar) { calendarSheet }
     }
 
-    @ViewBuilder private func overview(_ c: CycleResponse.Cycle) -> some View {
-        let (label, color) = chance(c.conception?.likelihood)
-        // Front-and-center: chance of pregnancy today.
-        GlassCard(padding: Theme.Space.l) {
-            VStack(spacing: Theme.Space.s) {
-                Text("CHANCE OF PREGNANCY TODAY").font(Theme.Font.micro).tracking(0.8).foregroundStyle(Theme.Palette.textDim)
-                Text(label).font(Theme.Font.num(40)).foregroundStyle(color)
-                if let note = c.conception?.note, !note.isEmpty {
-                    Text(note).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
+    // MARK: week strip
+    private var weekDates: [Date] {
+        let wd = cal.component(.weekday, from: Date())   // 1 = Sunday
+        let start = cal.date(byAdding: .day, value: -(wd - 1), to: cal.startOfDay(for: Date())) ?? Date()
+        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+    }
+    private var weekStrip: some View {
+        VStack(spacing: Theme.Space.s) {
+            HStack {
+                Text(titleFmt.string(from: Date())).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                Spacer()
+                Button { Haptic.tap(); showCalendar = true } label: {
+                    Image(systemName: "calendar").font(.body).foregroundStyle(Theme.Palette.pink)
                 }
-            }.frame(maxWidth: .infinity)
+            }
+            HStack(spacing: 0) { ForEach(weekDates, id: \.self) { weekCell($0) } }
         }
+    }
+    private func weekCell(_ date: Date) -> some View {
+        let day = week[key.string(from: date)]
+        let today = cal.isDateInToday(date)
+        let isPeriod = day?.period == true
+        let isOv = day?.ovulation == true
+        let isFertile = day?.fertile == true
+        return VStack(spacing: 5) {
+            Text(dowFmt.string(from: date).uppercased()).font(Theme.Font.micro)
+                .foregroundStyle(today ? Theme.Palette.text : Theme.Palette.textFaint)
+            ZStack {
+                if today { Circle().fill(Theme.Palette.pink) }
+                else if isPeriod { Circle().fill(Theme.Palette.pink.opacity(0.8)) }
+                else if isOv { Circle().strokeBorder(Theme.Palette.violet, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2])) }
+                else if isFertile { Circle().fill(Theme.Palette.cyan.opacity(0.18)) }
+                Text("\(cal.component(.day, from: date))").font(Theme.Font.body)
+                    .foregroundStyle((today || isPeriod) ? .white : Theme.Palette.text)
+            }.frame(width: 36, height: 36)
+        }.frame(maxWidth: .infinity)
+    }
+
+    // MARK: hero — the big imminent-event prediction
+    private func hero(_ c: CycleResponse.Cycle) -> some View {
+        let (top, big) = heroText(c)
+        return VStack(spacing: 2) {
+            Text(top).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+            Text(big).font(Theme.Font.num(46)).foregroundStyle(Theme.Palette.text).multilineTextAlignment(.center)
+        }.frame(maxWidth: .infinity).padding(.top, Theme.Space.s)
+    }
+    private func heroText(_ c: CycleResponse.Cycle) -> (String, String) {
+        let day = c.cycle_day ?? 1
+        let periodLen = c.period_length ?? 5
+        if c.late == true, let n = c.next_period?.in_days { return ("Period", "\(-n)d late") }
+        if day <= periodLen { return ("Period", "Day \(day)") }
+        if let ov = c.ovulation?.in_days {
+            if ov == 0 { return ("Ovulation", "Today") }
+            if ov > 0 && ov <= 6 { return ("Ovulation in", "\(ov) day\(ov == 1 ? "" : "s")") }
+        }
+        if let np = c.next_period?.in_days, np >= 0 { return ("Period in", "\(np) day\(np == 1 ? "" : "s")") }
+        return (c.phase_label ?? "Cycle", "Day \(day)")
+    }
+
+    // MARK: pregnancy chance — secondary, below the hero
+    private func chanceLine(_ c: CycleResponse.Cycle) -> some View {
+        let (label, color) = chance(c.conception?.likelihood)
+        return VStack(spacing: 2) {
+            Text("Chance of pregnancy today").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(label).font(Theme.Font.body.weight(.bold)).foregroundStyle(color)
+        }.frame(maxWidth: .infinity)
+    }
+
+    // MARK: circular actions (Flo-style)
+    private var actionButtons: some View {
+        HStack(spacing: 0) {
+            circleButton("drop.fill", "Log period", filled: true) { Haptic.tap(); periodDate = Date(); showLogPeriod = true }
+            circleButton("plus", "Symptoms", filled: false) { Haptic.tap(); showSymptoms = true }
+            circleButton("calendar", "Calendar", filled: false) { Haptic.tap(); showCalendar = true }
+        }
+    }
+    private func circleButton(_ icon: String, _ label: String, filled: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                ZStack {
+                    Circle().fill(filled ? Theme.Palette.pink : Theme.Palette.card).frame(width: 58, height: 58)
+                        .overlay(Circle().strokeBorder(Theme.Palette.cardStroke, lineWidth: filled ? 0 : 1))
+                    Image(systemName: icon).font(.system(size: 21, weight: .semibold)).foregroundStyle(filled ? .white : Theme.Palette.text)
+                }
+                Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }.frame(maxWidth: .infinity)
+        }.buttonStyle(.plain)
+    }
+
+    // MARK: phase details
+    private func phaseCard(_ c: CycleResponse.Cycle) -> some View {
         GlassCard {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 SectionHeader(title: c.phase_label ?? "Cycle", trailing: c.cycle_day.map { "Day \($0)" })
@@ -203,20 +276,28 @@ private struct CycleSection: View {
                 }
             }
         }
-        logPeriodButton
-        todayCard
     }
 
-    private var logPeriodButton: some View {
-        Button { Haptic.tap(); periodDate = Date(); showLogPeriod = true } label: {
-            Label("Log period", systemImage: "drop.fill").font(Theme.Font.body.weight(.semibold))
-                .frame(maxWidth: .infinity).padding(.vertical, 13)
-                .background(Theme.Palette.pink.opacity(0.16), in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
-                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.pink.opacity(0.5)))
-                .foregroundStyle(Theme.Palette.pink)
+    private var emptyState: some View {
+        VStack(spacing: Theme.Space.m) {
+            GlassCard(padding: Theme.Space.l) {
+                VStack(spacing: Theme.Space.m) {
+                    Image(systemName: "drop.fill").font(.system(size: 30)).foregroundStyle(Theme.Palette.pink)
+                    Text("Log your period to begin").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                    Text("Set the first day of your last period and I'll map your phases, predict your next one, and show your daily pregnancy chance.")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
+                    Button { Haptic.tap(); periodDate = Date(); showLogPeriod = true } label: {
+                        Label("Log period", systemImage: "drop.fill").font(Theme.Font.body.weight(.semibold))
+                            .frame(maxWidth: .infinity).padding(.vertical, 13)
+                            .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip)).foregroundStyle(.white)
+                    }
+                }.frame(maxWidth: .infinity)
+            }
+            disclaimer
         }
     }
 
+    // MARK: sheets
     private var logPeriodSheet: some View {
         NavigationStack {
             ZStack {
@@ -242,43 +323,60 @@ private struct CycleSection: View {
         }
     }
 
-    private var todayCard: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: Theme.Space.m) {
-                SectionHeader(title: "Log today")
-                if let flows = model.cycle?.flows {
-                    Text("FLOW").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                    Picker("", selection: $todayFlow) {
-                        Text("—").tag(String?.none)
-                        ForEach(flows, id: \.self) { Text($0.capitalized).tag(String?.some($0)) }
-                    }.pickerStyle(.segmented)
-                }
-                if let syms = model.cycle?.symptoms {
-                    Text("SYMPTOMS").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                    LazyVGrid(columns: chipCols, spacing: 8) {
-                        ForEach(syms, id: \.self) { s in
-                            let on = todaySymptoms.contains(s)
-                            Button { Haptic.tap(); if on { todaySymptoms.remove(s) } else { todaySymptoms.insert(s) } } label: {
-                                Text(s.replacingOccurrences(of: "_", with: " ").capitalized)
-                                    .font(Theme.Font.micro).foregroundStyle(on ? .white : Theme.Palette.textDim)
-                                    .frame(maxWidth: .infinity).padding(.vertical, 8)
-                                    .background(on ? Theme.Palette.violet : Theme.Palette.bg2, in: Capsule())
-                                    .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
-                            }.buttonStyle(.plain)
+    private var symptomsSheet: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        if let flows = model.cycle?.flows {
+                            Text("FLOW").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            Picker("", selection: $todayFlow) {
+                                Text("—").tag(String?.none)
+                                ForEach(flows, id: \.self) { Text($0.capitalized).tag(String?.some($0)) }
+                            }.pickerStyle(.segmented)
                         }
-                    }
+                        if let syms = model.cycle?.symptoms {
+                            Text("SYMPTOMS").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            LazyVGrid(columns: chipCols, spacing: 8) {
+                                ForEach(syms, id: \.self) { s in
+                                    let on = todaySymptoms.contains(s)
+                                    Button { Haptic.tap(); if on { todaySymptoms.remove(s) } else { todaySymptoms.insert(s) } } label: {
+                                        Text(s.replacingOccurrences(of: "_", with: " ").capitalized)
+                                            .font(Theme.Font.micro).foregroundStyle(on ? .white : Theme.Palette.textDim)
+                                            .frame(maxWidth: .infinity).padding(.vertical, 8)
+                                            .background(on ? Theme.Palette.violet : Theme.Palette.bg2, in: Capsule())
+                                            .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
+                                    }.buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }.padding(Theme.Space.m)
                 }
-                Button {
-                    Haptic.success(); saving = true
-                    Task { await model.logCycleDay(flow: todayFlow, symptoms: Array(todaySymptoms)); saving = false }
-                } label: {
-                    Text(saving ? "Saving…" : "Save today").font(Theme.Font.body.weight(.semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
-                        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
-                        .foregroundStyle(Theme.Palette.text)
-                }.disabled(saving || (todayFlow == nil && todaySymptoms.isEmpty))
             }
+            .navigationTitle("Log today").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showSymptoms = false } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "Saving…" : "Save") {
+                        Haptic.success(); saving = true
+                        Task { await model.logCycleDay(flow: todayFlow, symptoms: Array(todaySymptoms)); saving = false; showSymptoms = false }
+                    }.disabled(saving || (todayFlow == nil && todaySymptoms.isEmpty))
+                }
+            }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+    }
+
+    private var calendarSheet: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView { CycleCalendarView().padding(Theme.Space.m) }
+            }
+            .navigationTitle("Calendar").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { showCalendar = false } label: { Image(systemName: "xmark") } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 
@@ -288,6 +386,7 @@ private struct CycleSection: View {
             .frame(maxWidth: .infinity)
     }
 
+    // MARK: helpers
     private func chance(_ s: String?) -> (String, Color) {
         let l = (s ?? "low").lowercased()
         if l.contains("high") { return ("HIGH", Theme.Palette.pink) }
@@ -300,6 +399,11 @@ private struct CycleSection: View {
             Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
             Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
         }.frame(maxWidth: .infinity)
+    }
+    private func loadWeek() async {
+        let start = weekDates.first ?? Date()
+        let list = await model.cycleCalendar(from: start, days: 7)
+        week = Dictionary(list.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
     }
 }
 
