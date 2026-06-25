@@ -1,6 +1,37 @@
 import Foundation
 import Network
 import TitanCore
+#if canImport(UIKit)
+import UIKit
+#endif
+
+/// Holds a UIApplication background-task assertion for the lifetime of one upload drain. The band
+/// wakes a suspended/terminated app in the background for BLE events; that wake window is short and
+/// ends the moment BLE goes quiet — which can be mid-upload. This assertion asks iOS for the extra
+/// runtime (~30s) to finish flushing the queue before the app is suspended again. Best-effort: the
+/// persistent WindowStore still covers anything we can't finish in time. No-op where UIKit is
+/// absent (the core unit tests run on macOS).
+private final class BackgroundAssertion {
+    #if canImport(UIKit)
+    private var id = UIBackgroundTaskIdentifier.invalid
+    init() {
+        // beginBackgroundTask/endBackgroundTask are documented thread-safe, so calling from the
+        // SyncQueue actor (off the main thread) is fine.
+        id = UIApplication.shared.beginBackgroundTask(withName: "titan.sync.drain") { [weak self] in
+            self?.end()   // expiration handler — release before the OS force-suspends us
+        }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
+    #else
+    init() {}
+    func end() {}
+    #endif
+}
 
 /// Offline-durable FIFO upload queue. Windows are persisted the instant they're built (so a
 /// crash/relaunch never loses the overnight buffer), then drained whenever the network is up,
@@ -46,6 +77,11 @@ public actor SyncQueue {
     public func drain() async {
         guard online, !draining else { return }
         draining = true; defer { draining = false }
+
+        // Keep the app alive long enough to empty the queue after a background BLE wake.
+        let assertion = BackgroundAssertion()
+        defer { assertion.end() }
+
         while online, let batch = try? store.pending(limit: 1), let item = batch.first {
             switch await client.ship(window: item.window) {
             case .accepted, .duplicate:

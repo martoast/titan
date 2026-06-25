@@ -21,7 +21,7 @@ Open your coach
 This is coaching grounded in your logged data — not medical advice. For clinical concerns, see a qualified physician.
 @if ($kind === 'morning')
 <br>You get this each morning. Turn briefings off anytime in your coach settings.
-@else
+@elseif ($kind === 'evening')
 <br>You get this each evening. Turn nudges off anytime in your coach settings.
 @endif
 </td></tr>

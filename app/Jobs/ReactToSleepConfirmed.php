@@ -41,7 +41,8 @@ class ReactToSleepConfirmed implements ShouldQueue
         }
 
         $msg = SleepCoach::summary($profile, $log);
-        $notifications->notify($profile, $msg['title'], $msg['push'], '/coach', 'sleep');
+        // Push AND email -- email is what reaches the native app without a paid Apple account.
+        $notifications->notify($profile, $msg['title'], $msg['push'], '/coach', 'sleep', email: true);
 
         $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
         $convo->messages()->create(['role' => 'assistant', 'content' => $msg['body']]);

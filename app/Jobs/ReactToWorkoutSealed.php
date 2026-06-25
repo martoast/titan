@@ -41,8 +41,9 @@ class ReactToWorkoutSealed implements ShouldQueue
 
         $msg = WorkoutCoach::celebrate($log);
 
-        // The summary push opens the coach so the note is right there.
-        $notifications->notify($profile, $msg['title'], $msg['push'], '/coach', 'workout');
+        // The summary lands as a push AND an email (the channel native-app users actually receive),
+        // opening the coach so the note is right there.
+        $notifications->notify($profile, $msg['title'], $msg['push'], '/coach', 'workout', email: true);
 
         $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
         $convo->messages()->create(['role' => 'assistant', 'content' => $msg['body']]);
