@@ -162,7 +162,8 @@ var CFG = {
   // rest, so we gate the END on HR returning to baseline AND motion going quiet for a long hold — a
   // still wrist with a high HR is "resting between sets", not "done". This is Whoop's exact trick.
   // Numbers seeded from the NHANES/actigraphy + Whoop/Apple literature; tune on real device data.
-  AUTO_DETECT: true,               // master switch for hands-free workout detection
+  AUTO_DETECT: false,              // OFF — workouts start ONLY on a manual double-click (auto-detect
+                                   // misfired on everyday exertion like carrying groceries upstairs)
   AUTO_TICK_MS: 5000,              // evaluate the detector once every 5 s (one "epoch")
   AUTO_MOTION_HI: 0.20,            // motion-EMA above this = vigorous activity → start candidate (cardio)
   AUTO_MOTION_LO: 0.09,            // below this = "quiet" (the HI/LO gap is hysteresis → no flapping)
