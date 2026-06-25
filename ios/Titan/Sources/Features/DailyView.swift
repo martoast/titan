@@ -137,10 +137,17 @@ private struct SleepSection: View {
 
 private struct CycleSection: View {
     @EnvironmentObject var model: AppModel
+    @State private var showLogPeriod = false
+    @State private var periodDate = Date()
+    @State private var todayFlow: String?
+    @State private var todaySymptoms: Set<String> = []
+    @State private var saving = false
+
+    private let chipCols = [GridItem(.adaptive(minimum: 96), spacing: 8)]
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
-            if let c = model.cycle?.cycle {
+            if let c = model.cycle?.cycle, c.cycle_day != nil {
                 let (label, color) = chance(c.conception?.likelihood)
 
                 // Front-and-center: chance of pregnancy today.
@@ -168,20 +175,106 @@ private struct CycleSection: View {
                     }
                 }
 
-                Text("Estimates for awareness — not a contraceptive method or medical advice.")
-                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
+                logPeriodButton
+                todayCard
+                disclaimer
             } else {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 4) {
-                        SectionHeader(title: "Cycle")
-                        Text("Log the first day of your last period (tell the coach, or in You › Edit profile) and I'll map your phases, predict your next one, and show your daily pregnancy chance.")
-                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                    }
+                // Empty: the period log IS the primary action (like a dedicated period app).
+                GlassCard(padding: Theme.Space.l) {
+                    VStack(spacing: Theme.Space.m) {
+                        Image(systemName: "drop.fill").font(.system(size: 30)).foregroundStyle(Theme.Palette.pink)
+                        Text("Log your period to begin").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                        Text("Set the first day of your last period and I'll map your phases, predict your next one, and show your daily pregnancy chance.")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
+                        logPeriodButton
+                    }.frame(maxWidth: .infinity)
                 }
+                disclaimer
             }
         }
         .task { await model.loadCycle() }
+        .sheet(isPresented: $showLogPeriod) { logPeriodSheet }
+    }
+
+    private var logPeriodButton: some View {
+        Button { Haptic.tap(); periodDate = Date(); showLogPeriod = true } label: {
+            Label("Log period", systemImage: "drop.fill").font(Theme.Font.body.weight(.semibold))
+                .frame(maxWidth: .infinity).padding(.vertical, 13)
+                .background(Theme.Palette.pink.opacity(0.16), in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.pink.opacity(0.5)))
+                .foregroundStyle(Theme.Palette.pink)
+        }
+    }
+
+    private var logPeriodSheet: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                VStack(spacing: Theme.Space.l) {
+                    Text("When did your period start?").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                    DatePicker("", selection: $periodDate, in: ...Date(), displayedComponents: .date)
+                        .datePickerStyle(.graphical).tint(Theme.Palette.pink).padding(.horizontal, Theme.Space.m)
+                    Button {
+                        Haptic.success()
+                        Task { await model.logPeriod(periodDate); showLogPeriod = false }
+                    } label: {
+                        Text("Log period start").font(Theme.Font.body.weight(.bold))
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip)).foregroundStyle(.white)
+                    }.padding(.horizontal, Theme.Space.m)
+                    Spacer()
+                }.padding(.top, Theme.Space.l)
+            }
+            .navigationTitle("Log period").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showLogPeriod = false } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+    }
+
+    private var todayCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                SectionHeader(title: "Log today")
+                if let flows = model.cycle?.flows {
+                    Text("FLOW").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Picker("", selection: $todayFlow) {
+                        Text("—").tag(String?.none)
+                        ForEach(flows, id: \.self) { Text($0.capitalized).tag(String?.some($0)) }
+                    }.pickerStyle(.segmented)
+                }
+                if let syms = model.cycle?.symptoms {
+                    Text("SYMPTOMS").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    LazyVGrid(columns: chipCols, spacing: 8) {
+                        ForEach(syms, id: \.self) { s in
+                            let on = todaySymptoms.contains(s)
+                            Button { Haptic.tap(); if on { todaySymptoms.remove(s) } else { todaySymptoms.insert(s) } } label: {
+                                Text(s.replacingOccurrences(of: "_", with: " ").capitalized)
+                                    .font(Theme.Font.micro).foregroundStyle(on ? .white : Theme.Palette.textDim)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                                    .background(on ? Theme.Palette.violet : Theme.Palette.bg2, in: Capsule())
+                                    .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+                Button {
+                    Haptic.success(); saving = true
+                    Task { await model.logCycleDay(flow: todayFlow, symptoms: Array(todaySymptoms)); saving = false }
+                } label: {
+                    Text(saving ? "Saving…" : "Save today").font(Theme.Font.body.weight(.semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                        .foregroundStyle(Theme.Palette.text)
+                }.disabled(saving || (todayFlow == nil && todaySymptoms.isEmpty))
+            }
+        }
+    }
+
+    private var disclaimer: some View {
+        Text("Estimates for awareness — not a contraceptive method or medical advice.")
+            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
     }
 
     private func chance(_ s: String?) -> (String, Color) {

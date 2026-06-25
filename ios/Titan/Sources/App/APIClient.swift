@@ -122,6 +122,16 @@ final class APIClient {
         try await send(request("api/me/cycle"), as: CycleResponse.self)
     }
 
+    func logCyclePeriod(date: String) async throws {
+        _ = try await session.data(for: request("api/me/cycle/period", method: "POST", json: ["date": date]))
+    }
+
+    func logCycleDay(date: String, flow: String?, symptoms: [String]) async throws {
+        var json: [String: Any] = ["date": date, "symptoms": symptoms]
+        if let flow { json["flow"] = flow }
+        _ = try await session.data(for: request("api/me/cycle/day", method: "POST", json: json))
+    }
+
     func scanMeal(_ imageData: Data, caption: String?) async throws -> MealScanResult {
         var fields: [String: String] = [:]
         if let caption, !caption.isEmpty { fields["caption"] = caption }

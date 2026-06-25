@@ -64,6 +64,24 @@ class MobileDailyEndpointsTest extends TestCase
             ->assertJsonPath('cycle.conception.likelihood', fn ($l) => is_string($l) && $l !== '');
     }
 
+    public function test_logging_a_period_from_the_cycle_page_unlocks_it(): void
+    {
+        $user = User::factory()->create();
+        $user->ensureProfile()->update(['sex' => 'F']);
+
+        // Log period right from the Cycle page — no profile-settings detour.
+        $this->auth($user)->postJson('/api/me/cycle/period', ['date' => now()->subDays(13)->toDateString()])
+            ->assertOk()->assertJsonPath('ok', true)->assertJsonPath('cycle.cycle_day', 14);
+
+        // And a day's flow + symptoms.
+        $this->auth($user)->postJson('/api/me/cycle/day', ['date' => now()->toDateString(), 'flow' => 'medium', 'symptoms' => ['cramps', 'fatigue']])
+            ->assertOk()->assertJsonPath('ok', true);
+
+        $this->auth($user)->getJson('/api/me/cycle')
+            ->assertOk()->assertJsonPath('available', true)
+            ->assertJsonStructure(['symptoms', 'flows', 'cycle' => ['conception' => ['likelihood']]]);
+    }
+
     public function test_cycle_endpoint_unavailable_for_men(): void
     {
         $user = User::factory()->create();

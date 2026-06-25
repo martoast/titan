@@ -305,6 +305,16 @@ final class AppModel: ObservableObject {
     func loadSleepDetail() async { sleepDetail = try? await api.sleepDetail() }
     func loadCycle() async { cycle = try? await api.cycle() }
 
+    func logPeriod(_ date: Date) async {
+        try? await api.logCyclePeriod(date: Self.ymd(date))
+        await loadCycle()
+    }
+    func logCycleDay(flow: String?, symptoms: [String]) async {
+        try? await api.logCycleDay(date: Self.ymd(Date()), flow: flow, symptoms: symptoms)
+        await loadCycle()
+    }
+    static func ymd(_ d: Date) -> String { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d) }
+
     /// Snap a meal → AI macros (grounded + logged) → show the result + refresh the rings.
     func scanMeal(_ imageData: Data, caption: String? = nil) async {
         scanning = true; defer { scanning = false }

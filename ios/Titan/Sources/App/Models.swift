@@ -135,6 +135,8 @@ struct SleepResponse: Codable {
 struct CycleResponse: Codable {
     let available: Bool
     let cycle: Cycle?
+    let symptoms: [String]?
+    let flows: [String]?
     struct Cycle: Codable {
         let cycle_day: Int?
         let phase: String?

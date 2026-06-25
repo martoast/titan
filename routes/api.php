@@ -45,6 +45,8 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     // "Daily" hub: sleep breakdown + the women's cycle view (phase, fertile window, pregnancy chance).
     Route::get('/sleep', [\App\Http\Controllers\Api\MobileSleepController::class, 'show']);
     Route::get('/cycle', [\App\Http\Controllers\Api\MobileCycleController::class, 'show']);
+    Route::post('/cycle/period', [\App\Http\Controllers\Api\MobileCycleController::class, 'period']);
+    Route::post('/cycle/day', [\App\Http\Controllers\Api\MobileCycleController::class, 'logDay']);
 
     // Edit the profile info collected at onboarding (change anything later).
     Route::get('/profile', [\App\Http\Controllers\Api\MobileProfileController::class, 'show']);
