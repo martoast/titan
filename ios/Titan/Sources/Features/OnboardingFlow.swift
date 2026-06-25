@@ -262,6 +262,14 @@ struct EditProfileView: View {
                             section("Cycle") {
                                 Toggle("Track my cycle", isOn: $form.cycleEnabled).tint(Theme.Palette.pink).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                                 if form.cycleEnabled {
+                                    Toggle("Log my last period", isOn: $form.hasLastPeriod).tint(Theme.Palette.pink).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                    if form.hasLastPeriod {
+                                        DatePicker("First day of last period", selection: $form.lastPeriod, in: ...Date(), displayedComponents: .date)
+                                            .tint(Theme.Palette.pink).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                    }
+                                    Stepper(value: $form.cycleLength, in: 21...45) {
+                                        Text("Average cycle length: \(form.cycleLength) days").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                    }.tint(Theme.Palette.pink)
                                     label("Birth control"); OBOptionList(options: OB.birthControl, selection: $form.birthControl)
                                     label("Intent"); OBOptionList(options: OB.cycleIntent, selection: $form.cycleIntent)
                                 }

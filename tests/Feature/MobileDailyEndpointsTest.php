@@ -47,6 +47,23 @@ class MobileDailyEndpointsTest extends TestCase
             ->assertJsonStructure(['cycle' => ['cycle_day', 'phase', 'conception' => ['likelihood'], 'fertile_window', 'ovulation']]);
     }
 
+    public function test_editing_profile_to_female_with_last_period_unlocks_the_cycle(): void
+    {
+        $user = User::factory()->create();
+        $user->ensureProfile()->update(['birthdate' => '1995-01-01', 'height_cm' => 165]);
+
+        // The exact edit a tester does in You → Edit profile.
+        $this->auth($user)->patchJson('/api/me/profile', [
+            'sex' => 'F', 'cycle_enabled' => true, 'last_period' => now()->subDays(13)->toDateString(),
+        ])->assertOk();
+
+        $this->auth($user)->getJson('/api/me/cycle')
+            ->assertOk()
+            ->assertJsonPath('available', true)
+            ->assertJsonPath('cycle.cycle_day', 14)              // 13 days in → day 14 (near ovulation)
+            ->assertJsonPath('cycle.conception.likelihood', fn ($l) => is_string($l) && $l !== '');
+    }
+
     public function test_cycle_endpoint_unavailable_for_men(): void
     {
         $user = User::factory()->create();

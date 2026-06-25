@@ -305,6 +305,13 @@ class OnboardingService
         }
 
         $profile->update($cols + ['settings' => $settings]);
+
+        // On edit, a provided last-period date anchors (or re-anchors) the cycle — needed to compute
+        // phase + the pregnancy chance. Idempotent on the date (Cycle::startPeriod updateOrCreates).
+        if (! empty($data['last_period']) && $profile->sex === 'F') {
+            Cycle::startPeriod($profile, Carbon::parse($data['last_period']));
+        }
+
         $this->seedCoreMemory($user, $profile->fresh(), $this->memoryCtx($profile->fresh()));
     }
 

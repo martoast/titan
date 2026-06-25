@@ -93,7 +93,7 @@ final class OnboardingForm: ObservableObject {
                 p["cycle_length"] = cycleLength
                 p["birth_control"] = birthControl
                 p["cycle_intent"] = cycleIntent
-                if full && hasLastPeriod { p["last_period"] = OB.ymdString(lastPeriod) }
+                if hasLastPeriod { p["last_period"] = OB.ymdString(lastPeriod) }   // also on edit, to anchor the cycle
             }
         }
         if full { p["has_wearable"] = hasWearable }
