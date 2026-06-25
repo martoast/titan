@@ -1,9 +1,6 @@
 import Foundation
 import SwiftUI
 import TitanCore
-#if canImport(BackgroundTasks)
-import BackgroundTasks
-#endif
 
 /// In-memory `WindowStore` so the sync queue runs out of the box. Swap for a GRDB/SQLite-backed
 /// store for crash-durable offline buffering (tasks/native-ios todo).
@@ -207,10 +204,9 @@ final class AppModel: ObservableObject {
     // The band runs heavy (continuous + streaming) only while we hold a live BLE link. So we hold it
     // when it's worth it — app foreground (workouts, checking stats) — and RELEASE it when the app
     // sits idle in the background, dropping the band into its low-power offline duty-cycle. The
-    // firmware auto-flushes its buffered trend on every reconnect, so each foreground/burst catches up
-    // the whole day with no held connection. This is what makes real all-day wear viable on the band.
+    // firmware auto-flushes its buffered trend on every reconnect, so opening the app catches up the
+    // whole day with no held connection. This is what makes real all-day wear viable on the band.
 
-    static let bgSyncId = "com.alexmartos.titan.sync"
     private var connectionReleaseTask: Task<Void, Never>?
 
     /// App came forward (or a workout/sync) → hold a live link.
@@ -234,27 +230,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// One opportunistic background burst (BGAppRefresh): connect briefly, let the firmware flush the
-    /// buffered trend, then release — so the day's data lands even without opening the app.
-    func backgroundSyncBurst() async {
-        startBandIfPaired()
-        guard band != nil else { scheduleBackgroundSync(); return }
-        bandIdle = false
-        band?.setDesiredConnection(true)
-        try? await Task.sleep(nanoseconds: 25_000_000_000)   // connect + flushLog dump
-        band?.setDesiredConnection(false)
-        bandIdle = true
-        scheduleBackgroundSync()
-    }
-
-    /// Ask iOS to wake us for another burst later (it decides exactly when, a few times a day).
-    func scheduleBackgroundSync() {
-        #if canImport(BackgroundTasks)
-        let req = BGAppRefreshTaskRequest(identifier: Self.bgSyncId)
-        req.earliestBeginDate = Date(timeIntervalSinceNow: 2 * 3600)
-        try? BGTaskScheduler.shared.submit(req)
-        #endif
-    }
 
     /// (hold yours to the phone) so two nearby bands never cross-connect.
     func pairBand() async {

@@ -23,19 +23,14 @@ struct TitanApp: App {
                         // Burst-sync: hold a live band link while we're up front (workouts / checking stats).
                         model.holdConnection()
                     case .background:
-                        // Idle in the background → release the link so the band saves battery; line up a
-                        // background burst so the day still syncs without opening the app.
+                        // Idle in the background → release the link so the band saves battery. It
+                        // re-syncs the whole day the next time you open the app (firmware auto-flushes
+                        // its buffer on every reconnect).
                         model.releaseConnectionAfterGrace()
-                        model.scheduleBackgroundSync()
                     default:
                         break
                     }
                 }
-        }
-        // Opportunistic background sync (Scene-level modifier): iOS wakes us a few times a day to pull
-        // the band's buffered trend, then we release the link again.
-        .backgroundTask(.appRefresh(AppModel.bgSyncId)) {
-            await model.backgroundSyncBurst()
         }
     }
 }
