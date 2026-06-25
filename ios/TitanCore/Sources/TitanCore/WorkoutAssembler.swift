@@ -122,7 +122,7 @@ public final class WorkoutAssembler {
     /// Pure builder — port of `buildWorkoutWindow`.
     public static func buildWorkoutWindow(accel: [AccelSample], hr: [HrReading], gps: [GpsFix],
                                           startT: UInt64, endT: UInt64, minMs: UInt64) -> WorkoutWindow? {
-        guard endT - startT >= minMs, accel.count >= 25 else { return nil }
+        guard endT >= startT, endT - startT >= minMs, accel.count >= 25 else { return nil }
         let ax = accel.map { Int($0.ax) }, ay = accel.map { Int($0.ay) }, az = accel.map { Int($0.az) }
         let accelFs = max(1, Int((Double(accel.count) * 1000 / Double(max(endT - startT, 1))).rounded()))
         let secs = max(1, Int((Double(endT - startT) / 1000).rounded(.up)))

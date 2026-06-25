@@ -61,6 +61,27 @@ public enum FrameDecoder {
         return T1Frame(epoch: epoch, samples: out)
     }
 
+    /// T2 — compact offline/overnight PPG log: 20-B header [ver u8, rsvd u8, count u16, epoch u64,
+    /// durMs u32, activity u32] + count×i16 PPG (no accel). This is the band's buffered-while-offline
+    /// format, flushed on reconnect. Per-sample t is spread evenly over [epoch, epoch+durMs] — so the
+    /// timeline is MONOTONIC by construction (unlike feeding it through decodeT1, whose 12-B sample
+    /// stride misreads the 2-B PPG payload into garbage out-of-order timestamps → window-math underflow).
+    public static func decodeT2(_ b64: String) -> T1Frame {
+        guard let r = Reader(b64), r.count >= 20 else { return T1Frame(epoch: 0, samples: []) }
+        let count = Int(r.u16(2))
+        let epoch = r.u64(4)
+        let durMs = UInt64(r.u32(12))
+        let denom = max(1, count - 1)
+        var out: [PpgSample] = []
+        for i in 0..<count {
+            let o = 20 + i * 2
+            if o + 2 > r.count { break }
+            let t = epoch + UInt64((Double(durMs) * Double(i) / Double(denom)).rounded())
+            out.append(PpgSample(t: t, ppg: r.i16(o), ax: 0, ay: 0, az: 0))   // PPG-only; no accel
+        }
+        return T1Frame(epoch: epoch, samples: out)
+    }
+
     /// T4 — GPS fix: [ver u8, sats u8, speed×100 i16, ts u64, alt×10 i32, rsvd u32] (20 B).
     public static func decodeT4(_ b64: String) -> GpsFix? {
         guard let r = Reader(b64), r.count >= 20 else { return nil }

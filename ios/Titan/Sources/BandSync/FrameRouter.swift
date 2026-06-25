@@ -7,7 +7,9 @@ import TitanCore
 /// finished windows of either kind go to the `SyncQueue`. T5 also drives the live bpm display.
 public final class FrameRouter {
     private var rx = Data()                       // newline accumulator (== bridge's this._rx)
-    private let ppg = PpgWindowBuilder()
+    private let ppg = PpgWindowBuilder()           // live T1 PPG
+    private let ppgLog = PpgWindowBuilder()        // flushed T2 PPG — SEPARATE so old buffered timestamps
+                                                   // never interleave with live T1 (would be non-monotonic)
     private let wa = WorkoutAssembler()
     private let hrTrend = HrTrendBuilder()         // 24/7 HR graph — per-minute points from every T5
     private let queue: SyncQueue
@@ -35,7 +37,7 @@ public final class FrameRouter {
         guard line.count > 3, let s = String(data: line, encoding: .utf8) else { return }
         let payload = String(s.dropFirst(3))             // strip "Tn:"
         switch s.prefix(3) {
-        case "T1:", "T2:":
+        case "T1:":
             let frame = FrameDecoder.decodeT1(payload)
             // Live stats for the UI (waveform + counters).
             totalSamples += frame.samples.count
@@ -55,6 +57,14 @@ public final class FrameRouter {
                 maxDeviceT = max(maxDeviceT, last)
                 if let w = wa.tick(maxDeviceT) { submit(.workout(w)) }   // close a finished workout
             }
+        case "T2:":
+            // Compact offline/overnight PPG, flushed on reconnect. Its own decoder (PPG-only, 2-B
+            // stride) + its own window builder — keeps this older buffered data off the live path so
+            // it can't interleave with current T1 timestamps and underflow the window math (the crash
+            // seen after a long offline sleep, when a big T2 backlog flushed on reopen).
+            let frame = FrameDecoder.decodeT2(payload)
+            totalSamples += frame.samples.count
+            for w in ppgLog.add(frame.samples) { submit(.ppg(w)) }
         case "T4:":
             if let fix = FrameDecoder.decodeT4(payload), let w = wa.addGps(fix) { submit(.workout(w)) }
         case "T5:":
@@ -89,6 +99,7 @@ public final class FrameRouter {
     /// On disconnect / app suspend: flush trailing partial windows so nothing is lost.
     public func flush(live: Bool) {
         if let w = ppg.flush(live: live) { submit(.ppg(w)) }
+        if let w = ppgLog.flush(live: live) { submit(.ppg(w)) }
         if let w = wa.flush() { submit(.workout(w)) }
         if let w = hrTrend.flush() { submit(.hrTrend(w)) }
     }

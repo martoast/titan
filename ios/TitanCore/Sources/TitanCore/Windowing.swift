@@ -152,7 +152,10 @@ public final class PpgWindowBuilder {
         var out: [PpgWindow] = []
         while samples.count > 1 {
             let t0 = samples[0].t
-            guard samples[samples.count - 1].t - t0 >= Self.WINDOW_MS else { break }
+            let last = samples[samples.count - 1].t
+            // Underflow-safe: a non-monotonic buffer (e.g. older buffered data interleaved with live)
+            // must never do `last - t0` when last < t0 — UInt64 wraps and TRAPS. Wait for more instead.
+            guard last >= t0, last - t0 >= Self.WINDOW_MS else { break }
             let cut = t0 + Self.WINDOW_MS
             var i = 0
             while i < samples.count && samples[i].t < cut { i += 1 }
@@ -167,7 +170,8 @@ public final class PpgWindowBuilder {
     /// collecting (matches the bridge: skip <30s while still connected).
     public func flush(live: Bool) -> PpgWindow? {
         guard samples.count >= 1 else { return nil }
-        let span = samples[samples.count - 1].t - samples[0].t
+        let last = samples[samples.count - 1].t, first = samples[0].t
+        let span = last >= first ? last - first : 0          // underflow-safe (see add)
         if span < 30_000 && live { return nil }
         let chunk = samples; samples = []
         return Self.build(chunk)
@@ -177,7 +181,7 @@ public final class PpgWindowBuilder {
     static func build(_ s: [PpgSample]) -> PpgWindow? {
         guard s.count >= 30 else { return nil }
         let startMs = s[0].t, endMs = s[s.count - 1].t
-        let durSec = max(1.0, Double(endMs - startMs) / 1000)
+        let durSec = max(1.0, Double(endMs >= startMs ? endMs - startMs : 0) / 1000)
         let rate = max(1, Int((Double(s.count) / durSec).rounded()))
         return PpgWindow(
             kind: "ppg_raw",
