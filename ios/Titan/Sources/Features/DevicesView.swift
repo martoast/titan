@@ -10,6 +10,27 @@ struct DevicesView: View {
         VStack(spacing: Theme.Space.m) {
             hero.padding(.top, Theme.Space.s)
 
+            if model.isBandPaired {
+                Button { Haptic.rigid(); model.syncBand() } label: {
+                    HStack(spacing: 8) {
+                        if model.bandSyncing { ProgressView().tint(.white) }
+                        else { Image(systemName: "arrow.triangle.2.circlepath") }
+                        Text(model.bandSyncing ? "Syncing your band…" : "Sync now")
+                    }
+                    .font(Theme.Font.body.weight(.semibold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                    .foregroundStyle(.white)
+                }.disabled(model.bandSyncing)
+                if let t = model.lastBandSyncAt {
+                    Text("Last synced \(t.formatted(.relative(presentation: .named)))")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                } else {
+                    Text("Wear it overnight, then tap to pull your night in the morning.")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).multilineTextAlignment(.center)
+                }
+            }
+
             if model.bandConnected {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {

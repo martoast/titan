@@ -43,6 +43,8 @@ final class AppModel: ObservableObject {
     @Published var syncedSamples = 0       // cumulative PPG samples received this session
     @Published var windowsUploaded = 0     // windows confirmed by the server
     @Published var liveHz = 0
+    @Published var bandSyncing = false     // a manual "Sync now" is in flight
+    @Published var lastBandSyncAt: Date?   // when the last manual sync completed
     @Published var waveform: [Double] = []  // recent PPG for the live trace
     @Published var error: String?
     @Published var loading = false
@@ -181,6 +183,20 @@ final class AppModel: ObservableObject {
     // MARK: band
 
     /// Pair a fresh band: server mints a one-time secret, then bind to the CLOSEST band over BLE
+    /// Manual "Sync now": pull the band's overnight log on demand (free accounts have no background
+    /// BLE, so you open the app in the morning and tap this). Connects if needed, then asks the band to
+    /// flush; the live counters show frames arriving. We clear the spinner after a short window.
+    func syncBand() {
+        startBandIfPaired()        // ensure the BandManager exists
+        band?.syncNow()
+        bandSyncing = true
+        Task {
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            bandSyncing = false
+            lastBandSyncAt = Date()
+        }
+    }
+
     /// (hold yours to the phone) so two nearby bands never cross-connect.
     func pairBand() async {
         do {

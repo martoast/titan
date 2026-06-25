@@ -1325,6 +1325,9 @@ Bluetooth.on("data", function (d) {
         if (typeof c.t === "number") setTime(c.t);
         if (page === 1) drawUI();
       } catch (err) { /* malformed — ignore */ }
+    } else if (line.substr(0, 2) === "C3") {      // "sync now" — flush the overnight ring on demand
+      try { emitStepFrame(); } catch (e) {}        // push today's step total too
+      flushLog();
     }
   }
 });

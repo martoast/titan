@@ -97,6 +97,23 @@ public final class BandManager: NSObject {
         band = nil
     }
 
+    public var isConnected: Bool { band?.state == .connected }
+
+    /// Manual "Sync now" (for free accounts with no background BLE): if the band is connected, ask it
+    /// to flush its overnight ring buffer right now (C3); otherwise kick a connect to the bound band —
+    /// the firmware auto-flushes on connect. Either way the whole night transfers on demand.
+    public func syncNow() {
+        guard central.state == .poweredOn, let id = boundId else { return }
+        if let p = band, p.state == .connected, let rx = rxChar {
+            p.writeValue(Data("C3:\n".utf8), for: rx, type: .withoutResponse)
+            return
+        }
+        if let p = central.retrievePeripherals(withIdentifiers: [id]).first {
+            band = p; p.delegate = self; reconnect(p)
+        }
+        central.scanForPeripherals(withServices: nil)   // didDiscover only accepts our bound id
+    }
+
     /// No-timeout connect (survives out-of-range + termination); system wakes us on events.
     private func reconnect(_ p: CBPeripheral) {
         central.connect(p, options: [
