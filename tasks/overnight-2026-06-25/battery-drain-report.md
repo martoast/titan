@@ -64,10 +64,17 @@ to "Whoop-class ~3-6%/night."
 | # | Change | Saving | Effort | Status |
 |---|---|---|---|---|
 | 1 | **Duty-cycle the sleep HRM** | ~50% → ~8-10%/night | Med | **✅ shipped (needs device test)** |
+| 3 | **LCD/backlight dark + wake-on-twist/touch/face-up OFF during a sleep session** (button still wakes it). A screen waking against the pillow is up to 17 mA in bursts. | several %/night | Low | **✅ shipped (needs device test)** |
 | 2 | **Don't hold a live BLE stream link overnight** — log to flash, burst-sync on reconnect. Let the link park (~0.5 mA → ~0.01-0.08 mA). | up to ~50× the link cost | Med-High | proposal — only matters when phone is in range at night |
-| 3 | **Guarantee LCD/backlight OFF + disable wake-on-twist during a sleep session.** A screen waking against the pillow is up to 17 mA in bursts. | several %/night | **Low** | proposal — worth doing next, cheap |
 | 4 | **Drop accel rate while still + keep firmware auto power-save on** (don't pin `setPollInterval`; poll on a coarse timer). | 0.3 → 0.15 mA | Low-Med | proposal |
 | 5 | **HRM ref-count hygiene** — stable appID, pair every `setHRMPower(1)` with a `(0)`. One leaked ref silently pins the HRM on and re-creates this drain. | prevents regressions | Low | recommend as a standing rule |
+
+**Screen-dark detail (#3, shipped):** on sleep start we snapshot the current wake options, set
+`wakeOnTwist/wakeOnTouch/wakeOnFaceUp: false`, and `setLocked(true)` to drop the screen — leaving
+`wakeOnBTN1` untouched, so **one click of the side button still lights the watch.** On sleep end (and
+as a safety net in `stopStreaming`) we restore the snapshot. CFG-gated by `SLEEP_SCREEN_OFF`. The
+sleep face's single-button-tap is a no-op (only double-tap stops the session), so a peek has no side
+effects.
 
 **Optional premium path:** a BLE chest strap (`bthrm`, e.g. Polar H10) offloads HR entirely — far more
 motion-robust and avoids the ~5 mA on-watch optical cost. Power-user option, not the default.

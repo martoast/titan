@@ -137,6 +137,12 @@ var CFG = {
   SLEEP_DUTY_ON_MS: 30000,           // 30 s clean HRV burst (settle + a solid RR series)
   SLEEP_DUTY_PERIOD_MS: 180000,      // one burst every 3 min (~17% duty); widen ON if HRV looks thin
 
+  // Overnight the screen should stay dark through tossing/turning — the LCD backlight is ~17 mA (~57x
+  // idle) and wrist-twist against a pillow can fire it hundreds of times a night. During a sleep
+  // session we disable the ACCIDENTAL wakes (twist/touch/face-up) and keep wake-on-button, so one
+  // click of the side button still lights the watch. Restored when the session ends.
+  SLEEP_SCREEN_OFF: true,            // master switch for the overnight screen-dark behaviour
+
   // OFFLINE workouts (a run with no phone, or a gym session): when not connected we log the
   // 3-axis accel to flash as compact T6 frames so the workout still CLASSIFIES on morning sync
   // (the overnight T2 log is PPG-only and can't). During a workout we log T6 instead of T2 PPG
@@ -898,6 +904,31 @@ function stopSleepDuty() {
   if (sleepDutyOnTimer) { clearTimeout(sleepDutyOnTimer); sleepDutyOnTimer = null; }
 }
 
+// ----- Overnight screen-dark (battery) ----------------------------------------------------
+// During a sleep session, suppress the accidental screen wakes (wrist-twist / touch / face-up) so the
+// backlight doesn't fire all night against a pillow — but LEAVE wakeOnBTN1 alone, so one click of the
+// side button still lights the watch to peek. We snapshot the current wake options on the way down and
+// restore them exactly on the way back up (no-op if we never touched them).
+var sleepWakeSaved = null;   // captured wake options (null = we haven't changed anything)
+
+function sleepScreenOff() {
+  if (!CFG.SLEEP_SCREEN_OFF || sleepWakeSaved) return;
+  try {
+    var o = Bangle.getOptions();   // recent firmware; falls back to Bangle.js 2 defaults if absent
+    sleepWakeSaved = { wakeOnTwist: o.wakeOnTwist, wakeOnTouch: o.wakeOnTouch, wakeOnFaceUp: o.wakeOnFaceUp };
+  } catch (e) {
+    sleepWakeSaved = { wakeOnTwist: true, wakeOnTouch: false, wakeOnFaceUp: false };
+  }
+  try { Bangle.setOptions({ wakeOnTwist: false, wakeOnTouch: false, wakeOnFaceUp: false }); } catch (e) {}
+  try { Bangle.setLocked(true); } catch (e) {}   // drop the screen now; the untouched wakeOnBTN1 still wakes it
+}
+
+function sleepScreenRestore() {
+  if (!sleepWakeSaved) return;                    // nothing to undo
+  try { Bangle.setOptions(sleepWakeSaved); } catch (e) {}
+  sleepWakeSaved = null;
+}
+
 // Single source of truth for HRM power, called on every state transition. Sleep → burst duty-cycle
 // (battery); rest+offline → per-minute duty-cycle; everything else (connected live, workout) →
 // continuous HRM at the right sport mode + rate. If SLEEP_DUTY is off, sleep falls through to
@@ -941,6 +972,7 @@ function stopStreaming() {
   flushFrame(); // emit whatever partial frame we have
   stopRestDuty();
   stopSleepDuty();
+  sleepScreenRestore();   // safety net: never leave twist/touch wake disabled if a sleep was active
   Bangle.setHRMPower(0, "titan");
   endWorkout(); // close any workout (flushes T6, powers GPS down)
   motionEMA = 0;
@@ -1411,6 +1443,7 @@ function startSleepSession() {              // double-click button → time it A
   if (state.workout) endWorkout();          // sleep isn't a workout → log T2 PPG (not T6 accel)
   if (!state.streaming) startStreaming();   // guarantee the night is captured for HRV + staging
   reconcileHrm();                           // sleep → burst the HRM (SLEEP_DUTY): ~30s of 25 Hz raw PPG every 3 min, so HRV is captured all night without flattening the battery
+  sleepScreenOff();                         // dark screen all night (no twist/touch wakes); one button click still wakes it
   try { Bangle.buzz(80); setTimeout(function () { try { Bangle.buzz(80); } catch (e) {} }, 150); } catch (e) {}
   if (uiVisible) drawUI();
 }
@@ -1422,6 +1455,7 @@ function stopTimer() {                       // stop either mode; a SLEEP sessio
     emitSleepFrame(bedSec, wakeSec, 1);      // confirmed window → the morning sync fires the sleep summary
   }
   state.swMode = "idle";
+  sleepScreenRestore();   // sleep ended → give back wrist-twist/touch wake
   reconcileHrm();   // sleep ended → if still offline + idle, drop back into the HR duty cycle
   try { Bangle.buzz(60); } catch (e) {}
   if (uiVisible) drawUI();
