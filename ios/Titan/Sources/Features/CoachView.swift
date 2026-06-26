@@ -8,7 +8,13 @@ final class CoachViewModel: ObservableObject {
     @Published var toolStatus: String?
     @Published var sending = false
     @Published var transcribing = false        // voice clip uploading → text
+    @Published var pendingImage: Data?         // photo staged in the composer, awaiting send
     private var conversationId: Int?
+
+    /// Send button entry point — routes to a photo send when one is staged, otherwise plain text.
+    func submit(api: APIClient) {
+        if pendingImage != nil { sendPhoto(api: api) } else { send(api: api) }
+    }
 
     func send(api: APIClient, text overrideText: String? = nil) {
         let text = (overrideText ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -38,13 +44,13 @@ final class CoachViewModel: ObservableObject {
         }
     }
 
-    /// Send a photo to the coach (snap-to-coach, like the web app). The current composer text rides
+    /// Send the staged photo to the coach (snap-to-coach, like the web app). The composer text rides
     /// along as the caption. The server runs vision, auto-logs what it recognizes, and replies.
-    func sendPhoto(_ imageData: Data, api: APIClient) {
-        guard !sending else { return }
+    func sendPhoto(api: APIClient) {
+        guard let imageData = pendingImage, !sending else { return }
         Haptic.tap()
         let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        input = ""; sending = true
+        input = ""; pendingImage = nil; sending = true
         messages.append(ChatMessage(role: .user, text: caption, imageData: imageData))
         var assistant = ChatMessage(role: .assistant, text: "", streaming: true)
         messages.append(assistant)
@@ -159,31 +165,58 @@ struct CoachView: View {
     }
 
     private var composer: some View {
-        HStack(spacing: 8) {
-            // Snap a photo to the coach (camera or library) — sends straight away with the typed caption.
-            PhotoSourceButton { data in vm.sendPhoto(data, api: model.api); focused = false } label: {
-                circleIcon("camera.fill")
+        VStack(spacing: 8) {
+            if let data = vm.pendingImage, let ui = UIImage(data: data) {
+                attachmentPreview(ui)
             }
-            .disabled(vm.sending)
+            HStack(spacing: 8) {
+                // Attach a photo (camera or library) — it stages in the composer so you can add a
+                // note before sending, just like attaching a meal photo.
+                PhotoSourceButton { data in withAnimation(Theme.Motion.snappy) { vm.pendingImage = data }; Haptic.soft() } label: {
+                    circleIcon("camera.fill")
+                }
+                .disabled(vm.sending)
 
-            micButton
+                micButton
 
-            TextField("Message", text: $vm.input, axis: .vertical)
-                .focused($focused).lineLimit(1...5).font(Theme.Font.body)
-                .padding(.horizontal, Theme.Space.m).padding(.vertical, 11)
-                .background(Theme.Palette.bg2, in: Capsule())
-                .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
+                TextField(vm.pendingImage == nil ? "Message" : "Add a note…", text: $vm.input, axis: .vertical)
+                    .focused($focused).lineLimit(1...5).font(Theme.Font.body)
+                    .padding(.horizontal, Theme.Space.m).padding(.vertical, 11)
+                    .background(Theme.Palette.bg2, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
 
-            Button { vm.send(api: model.api); focused = false } label: {
-                Image(systemName: "arrow.up").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(canSend ? AnyShapeStyle(Theme.Grad.brand) : AnyShapeStyle(Theme.Palette.card), in: Circle())
+                Button { vm.submit(api: model.api); focused = false } label: {
+                    Image(systemName: "arrow.up").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(canSend ? AnyShapeStyle(Theme.Grad.brand) : AnyShapeStyle(Theme.Palette.card), in: Circle())
+                }
+                .disabled(!canSend).scaleEffect(canSend ? 1 : 0.9).animation(Theme.Motion.snappy, value: canSend)
             }
-            .disabled(!canSend).scaleEffect(canSend ? 1 : 0.9).animation(Theme.Motion.snappy, value: canSend)
         }
         .padding(Theme.Space.s)
         .background(.ultraThinMaterial)
         .overlay(Rectangle().fill(Theme.Palette.cardStroke).frame(height: 0.5), alignment: .top)
+    }
+
+    // Staged photo preview — sits above the input row with a tap-to-remove control.
+    private func attachmentPreview(_ ui: UIImage) -> some View {
+        HStack(spacing: Theme.Space.s) {
+            ZStack(alignment: .topTrailing) {
+                Image(uiImage: ui).resizable().scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.Palette.cardStroke))
+                Button { withAnimation(Theme.Motion.snappy) { vm.pendingImage = nil }; Haptic.soft() } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 18))
+                        .foregroundStyle(.white, .black.opacity(0.5))
+                }
+                .offset(x: 6, y: -6)
+            }
+            Text("Photo ready — add a note or send").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
     // Tap to start dictating; tap again to stop → the clip transcribes into the text field.
