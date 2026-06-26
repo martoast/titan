@@ -6,6 +6,8 @@ use App\Models\Profile;
 use App\Models\StackItem;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -20,22 +22,30 @@ use Illuminate\Support\Str;
  */
 class InteractionChecker
 {
+    /** Cap on live openFDA calls per refresh — bounds worst-case request latency (each is cached after). */
+    private const MAX_FDA_CALLS = 10;
+
     /** Recompute and persist flags for the profile's active stack. @return Collection<int,\App\Models\InteractionFlag> */
     public function refresh(Profile $profile): Collection
     {
         $items = $profile->stackItems()->where('active', true)->get();
         $now = Carbon::now();
 
-        // Wipe the previous snapshot — flags are a pure function of the current active stack.
-        $profile->interactionFlags()->delete();
-
+        // Compute the FULL new snapshot first (including any network lookups) BEFORE touching the DB,
+        // so a slow/failed openFDA call can never leave the profile with zero flags — the old snapshot
+        // survives until we atomically swap it in below.
         $found = [];
         $list = $items->values();
+        $fdaCalls = 0;
         for ($i = 0; $i < $list->count(); $i++) {
             for ($j = $i + 1; $j < $list->count(); $j++) {
                 $a = $list[$i];
                 $b = $list[$j];
-                $hit = $this->seedMatch($a, $b) ?? $this->openFdaMatch($a, $b);
+                $hit = $this->seedMatch($a, $b);
+                if (! $hit && $a->kind === 'medication' && $b->kind === 'medication' && $fdaCalls < self::MAX_FDA_CALLS) {
+                    $fdaCalls++;
+                    $hit = $this->openFdaMatch($a, $b);
+                }
                 if ($hit) {
                     $found[] = [
                         'profile_id' => $profile->id,
@@ -54,9 +64,14 @@ class InteractionChecker
             }
         }
 
-        if ($found !== []) {
-            \App\Models\InteractionFlag::insert($found);
-        }
+        // Atomic swap: the wipe + insert happen together so concurrent reads (and a mid-refresh
+        // failure) never observe an empty flag set on a stack that has real interactions.
+        DB::transaction(function () use ($profile, $found) {
+            $profile->interactionFlags()->delete();
+            if ($found !== []) {
+                \App\Models\InteractionFlag::insert($found);
+            }
+        });
 
         return $profile->interactionFlags()
             ->get()
@@ -104,28 +119,39 @@ class InteractionChecker
         if ($a->kind !== 'medication' || $b->kind !== 'medication') {
             return null;   // seed covers supplement pairs; openFDA labels are drug-centric
         }
+        $ka = $this->canonical($a->name);
+        $kb = $this->canonical($b->name);
+
+        // Cache the RESOLVED result per drug pair (a hit, or a confirmed no-interaction) for a week.
+        // Only a successful lookup is cached — a transient timeout/5xx returns null WITHOUT caching, so
+        // one blip never suppresses a real flag for days (unlike a naive Cache::remember around the call).
+        $pair = [$ka, $kb];
+        sort($pair);
+        $cacheKey = 'stack:fda:'.implode('|', $pair);
+        if (($cached = Cache::get($cacheKey)) !== null) {
+            return $cached['hit'] ?? null;
+        }
+
         try {
-            $other = $this->canonical($b->name);
             $res = Http::timeout(4)->acceptJson()->get('https://api.fda.gov/drug/label.json', [
-                'search' => 'openfda.generic_name:"'.$this->canonical($a->name).'"',
+                'search' => 'openfda.generic_name:"'.$ka.'"',
                 'limit' => 1,
             ]);
             if (! $res->ok()) {
-                return null;
+                return null;   // transient — do not cache
             }
             $text = Str::lower((string) data_get($res->json(), 'results.0.drug_interactions.0', ''));
-            if ($text !== '' && str_contains($text, $other)) {
-                return [
-                    'severity' => 'moderate',
-                    'summary' => 'An interaction between these two is noted on the FDA drug label. Worth asking your pharmacist about.',
-                    'source' => 'openFDA label',
-                ];
-            }
-        } catch (\Throwable) {
-            // best-effort only
-        }
+            $hit = ($text !== '' && str_contains($text, $kb)) ? [
+                'severity' => 'moderate',
+                'summary' => 'An interaction between these two is noted on the FDA drug label. Worth asking your pharmacist about.',
+                'source' => 'openFDA label',
+            ] : null;
+            Cache::put($cacheKey, ['hit' => $hit], Carbon::now()->addDays(7));
 
-        return null;
+            return $hit;
+        } catch (\Throwable) {
+            return null;   // best-effort only — do not cache a failure
+        }
     }
 
     /** Canonical-key aliases: many product names → one ingredient key. */

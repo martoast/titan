@@ -31,11 +31,18 @@ class StackController extends Controller
         $profile = $this->profile($request);
         $items = $profile->stackItems()->orderByDesc('active')->orderBy('name')->get();
 
+        // Avoid the N+1 when rendering the protocol: share the loaded profile onto each item and
+        // batch the taken-dose counts, then resolve adherence once per item up front.
+        $items->each->setRelation('profile', $profile);
+        $counts = \App\Models\StackItem::takenCounts($items);
+        $adherence = $items->mapWithKeys(fn ($i) => [$i->id => $i->adherencePct(14, $counts[$i->id] ?? 0)])->all();
+
         return view('stack.index', [
             'today' => Stack::today($profile),
             'supplements' => $items->where('kind', 'supplement')->values(),
             'medications' => $items->where('kind', 'medication')->values(),
             'others' => $items->whereNotIn('kind', ['supplement', 'medication'])->values(),
+            'adherence' => $adherence,
             'flags' => $profile->interactionFlags()->get()->sortBy(fn ($f) => $f->rank())->values(),
             'disclaimer' => \App\Http\Controllers\Api\MobileStackController::DISCLAIMER,
         ]);
