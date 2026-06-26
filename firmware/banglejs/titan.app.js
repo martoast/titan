@@ -207,7 +207,7 @@ var state = {
   restHr: null,        // personal resting-HR baseline (EMA from low-motion windows) — gates auto-detect
   swMode: "idle",      // Stopwatch face: "idle" | "watch" (plain timer) | "sleep" (logs as a sleep session)
   swStartMs: 0,        // unix-ms the running timer started
-  count: 0,            // Counter face: a plain tally (tap +1, double-click button resets) — RAM only
+  count: 0,            // Counter face: a plain tally (button 1× = +1, button 2× = reset) — RAM only
   ppgCount: 0,         // samples captured this session (UI counter)
   framesSent: 0,       // BLE frames emitted/flushed
   logged: 0,           // approx bytes held in the overnight log ring (UI counter)
@@ -272,9 +272,9 @@ var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
 var PAGES = 7;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Stopwatch · 5 Counter · 6 Run
-var STOPWATCH_PAGE = 4;   // the Stopwatch face (tap = plain timer; double-click button = log as sleep)
-var COUNTER_PAGE = 5;     // the Counter face (tap = +1; double-click button = reset to zero)
-var RUN_PAGE = 6;         // the Run face (tap = start/stop a GPS-tracked run → the app's route map)
+var STOPWATCH_PAGE = 4;   // the Stopwatch face (button 1×: plain timer · button 2×: log as sleep)
+var COUNTER_PAGE = 5;     // the Counter face (button 1×: +1 · button 2×: reset to zero)
+var RUN_PAGE = 6;         // the Run face (button 1×: start/finish a GPS-tracked run → the app's route map)
 var page = 0;             // current face (swipe to change)
 // Run face state — a GPS-tracked run started from the watch; the workout's T4 coords build the route.
 var runActive = false;    // a run is being tracked
@@ -282,7 +282,6 @@ var runStartMs = 0;       // run start (device ms)
 var runDistM = 0;         // accumulated distance (m), summed from GPS fixes (haversine)
 var runLastLat = null, runLastLon = null;  // last coord, for the distance increment
 var runTimer = null;      // 1 Hz repaint while the run face is live (so the timer ticks)
-var lastSwipeT = 0;       // getTime() of the last page swipe — so the tap that ends a swipe isn't a sleep toggle
 var clockTickTimer = null; // minute-boundary redraw for the clock face
 
 // Default timezone so the clock reads correctly out of the box without a phone: Tijuana / Baja
@@ -1081,13 +1080,18 @@ function pageDots() {
   }
 }
 
-// Shared top bar: REC/IDLE pill (left) + battery (right). High-contrast, no dithered greys.
+// Shared top bar: REC/IDLE pill + link state (left) + battery (right). High-contrast, no dithered greys.
 function topBar() {
   var W = g.getWidth();
   g.setFont("6x8", 2); g.setFontAlign(-1, 0);
   g.setColor(state.streaming ? C.rec : C.cyan); g.fillCircle(12, 16, 5);
   g.setColor(state.streaming ? C.white : C.cyan);
   g.drawString(state.streaming ? "REC" : "IDLE", 24, 16);
+  if (state.streaming) {                 // tiny link state: LIVE (phone in range) / LOG (offline, buffering)
+    g.setFont("6x8", 1);
+    g.setColor(state.connected ? C.cyan : C.amber);
+    g.drawString(state.connected ? "LIVE" : "LOG", 64, 17);
+  }
   battIcon(W - 28, 9, state.battery, state.charging);
 }
 
@@ -1095,6 +1099,26 @@ function topBar() {
 function tabTitle(t, col) {
   g.setFont("6x8", 2); g.setFontAlign(0, 0); g.setColor(col);
   g.drawString(t, g.getWidth() / 2, 38);
+}
+
+// THE one interaction affordance. The whole model now: swipe to move, press the SIDE BUTTON to act —
+// so nothing can fire while you're swiping across a face. Each actionable face draws this footer to
+// say what the button does: a filled dot = one click, two dots = a double-click. The verb turns RED
+// when the press will STOP something that's already running.
+function drawAction(primary, active, secondary, accent, y) {
+  var cx = g.getWidth() / 2;
+  if (y === undefined) y = 150;
+  g.setFont("6x8", 2); g.setColor(active ? C.rec : (accent || C.mint));
+  var tw = g.stringWidth(primary), gx = cx - (tw + 14) / 2;
+  g.fillCircle(gx + 4, y, 4);                                   // single-click dot
+  g.setFontAlign(-1, 0); g.drawString(primary, gx + 14, y);
+  if (secondary) {
+    var y2 = y + 16;
+    g.setFont("6x8", 1); g.setColor(C.dim);
+    var tw2 = g.stringWidth(secondary), gx2 = cx - (tw2 + 16) / 2;
+    g.fillCircle(gx2 + 3, y2, 2); g.fillCircle(gx2 + 9, y2, 2); // double-click dots
+    g.setFontAlign(-1, 0); g.drawString(secondary, gx2 + 16, y2);
+  }
 }
 
 function stepCount() {
@@ -1108,18 +1132,14 @@ function drawHeart() {
   var W = g.getWidth();
   topBar();
   tabTitle("HEART RATE", C.heart);
-  var cx = W / 2, cy = 104, r = 47, bpm = state.bpm || 0;
+  var cx = W / 2, cy = 96, r = 45, bpm = state.bpm || 0;
   arc(cx, cy, r, 8, 0, 1, C.track);
   if (bpm) arc(cx, cy, r, 8, 0, hrFrac(bpm), hrColor(bpm));
-  g.setColor(C.white); g.setFont("Vector", 52); g.setFontAlign(0, 0);
+  g.setColor(C.white); g.setFont("Vector", 50); g.setFontAlign(0, 0);
   g.drawString((bpm || "--") + "", cx, cy);
-  // Bottom status. A WORKOUT (sport-mode HR engaged) is the headline state — show it in red so you
-  // can SEE the motion-tolerant mode is on before a heavy set.
-  var hlabel = !state.streaming ? "TAP TO START"
-             : state.workout ? "WORKOUT" + (state.connected ? "" : " ·LOG")
-             : (state.connected ? "SYNCING" : "LOGGING");
-  g.setColor(state.workout ? C.rec : (state.connected ? C.cyan : C.amber)); g.setFont("6x8", 2);
-  g.drawString(hlabel, cx, 160);
+  // Button action: a workout (sport-mode HR) is the marquee gesture — one click starts/ends it.
+  // A double-click is the rarely-needed capture master toggle.
+  drawAction(state.workout ? "END" : "WORKOUT", state.workout, state.workout ? null : "CAPTURE", C.heart);
 }
 
 // Page 1 — CLOCK: big time + date (timezone synced from the phone).
@@ -1160,9 +1180,12 @@ function drawStatus() {
       state.charging ? C.cyan : (state.battery < 20 ? C.rec : C.mint));
   row("SAMPLES", state.ppgCount + "", C.white);
   row("SYNCED", state.framesSent + "", C.cyan);
+  // This is the setup face: pair from here when not linked; sync on demand (and re-pair) when linked.
+  if (state.connected) drawAction("SYNC NOW", false, "PAIR", C.cyan);
+  else drawAction("PAIR BAND", false, null, C.cyan);
 }
 
-// Page 5 — STOPWATCH (doubles as the sleep timer). Tap = plain timer; double-click button = run it as
+// Page 5 — STOPWATCH (doubles as the sleep timer). Button 1× = plain timer; button 2× = run it as
 // a logged SLEEP session. Shows the elapsed time big, with the mode + how to stop.
 function drawStopwatch() {
   var W = g.getWidth(), cx = W / 2;
@@ -1172,34 +1195,27 @@ function drawStopwatch() {
   if (state.swMode === "idle") {
     g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
     g.drawString("00:00", cx, 100);
-    g.setColor(C.cyan); g.setFont("6x8", 1);
-    g.drawString("tap: start timer", cx, 150);
-    g.setColor(C.violet);
-    g.drawString("double-click button: sleep", cx, 166);
+    drawAction("START", false, "SLEEP", C.cyan);
   } else {
     var s = Math.floor((getTime() * 1000 - state.swStartMs) / 1000);
     var hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
     var t = (hh > 0 ? hh + ":" + ("0" + mm).substr(-2) : mm) + ":" + ("0" + ss).substr(-2);
     g.setColor(sleep ? C.violet : C.white); g.setFont("Vector", 48); g.setFontAlign(0, 0);
-    g.drawString(t, cx, 102);
-    g.setColor(C.dim); g.setFont("6x8", 1);
-    g.drawString(sleep ? "sleeping · tap when you wake" : "tap to stop", cx, 152);
+    g.drawString(t, cx, 100);
+    drawAction(sleep ? "WAKE" : "STOP", true, null, sleep ? C.violet : C.cyan);
   }
 }
 
-// Page 6 — COUNTER: a dead-simple tally. Tap the screen to add 1; double-click the button to reset
-// to zero. Lives in RAM (resets on reboot) — it's a quick rep/set/round/lap counter, not a logged
+// Page 6 — COUNTER: a dead-simple tally. Button 1× adds 1 (a real clicker); button 2× resets to
+// zero. Lives in RAM (resets on reboot) — it's a quick rep/set/round/lap counter, not a logged
 // metric, so it never writes flash or emits a frame.
 function drawCounter() {
   var W = g.getWidth(), cx = W / 2;
   topBar();
   tabTitle("COUNTER", C.amber);
   g.setColor(C.white); g.setFont("Vector", 64); g.setFontAlign(0, 0);
-  g.drawString((state.count || 0) + "", cx, 102);
-  g.setColor(C.cyan); g.setFont("6x8", 1);
-  g.drawString("tap: +1", cx, 150);
-  g.setColor(C.amber);
-  g.drawString("double-click button: reset", cx, 166);
+  g.drawString((state.count || 0) + "", cx, 98);
+  drawAction("+1", false, "RESET", C.amber);
 }
 
 // "m:ss" (or "h:mm:ss") for an elapsed/pace second count — the Run face's time + pace.
@@ -1209,35 +1225,35 @@ function fmtMMSS(s) {
   return (hh > 0 ? hh + ":" + ("0" + mm).substr(-2) : mm) + ":" + ("0" + ss).substr(-2);
 }
 
-// Page 7 — RUN: a GPS-tracked run you start from the watch. Tap to start (arms GPS + a workout pinned
-// as a run); the live time / distance / pace show here, and the workout's T4 coords build the route
-// map in the app on the next sync. Tap again to finish.
+// Page 7 — RUN: a GPS-tracked run you start from the watch. Click the button to start (arms GPS + a
+// workout pinned as a run); the live time / distance / pace show here, and the workout's T4 coords
+// build the route map in the app on the next sync. Click again to finish.
 function drawRun() {
   var W = g.getWidth(), cx = W / 2;
   topBar();
   tabTitle("RUN", C.mint);
   if (!runActive) {
     g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
-    g.drawString("0.00", cx, 96);
-    g.setFont("6x8", 1); g.drawString("km", cx, 124);
-    g.setColor(C.mint); g.drawString("tap: start run", cx, 150);
-    g.setColor(state.gpsFix ? C.mint : C.amber);
-    g.drawString(state.gpsFix ? "GPS ready" : "GPS searching", cx, 166);
+    g.drawString("0.00", cx, 92);
+    g.setFont("6x8", 1); g.drawString("km", cx, 118);
+    g.setColor(state.gpsFix ? C.mint : C.amber); g.setFont("6x8", 1);
+    g.drawString(state.gpsFix ? "GPS READY" : "GPS SEARCHING", cx, 132);
+    drawAction("START", false, null, C.mint);
     return;
   }
   var sec = (getTime() * 1000 - runStartMs) / 1000;
   var km = runDistM / 1000;
-  g.setColor(C.white); g.setFont("Vector", 44); g.setFontAlign(0, 0);
-  g.drawString(fmtMMSS(sec), cx, 80);
-  g.setColor(C.mint); g.setFont("Vector", 34);
-  g.drawString(km.toFixed(2) + " km", cx, 124);
+  g.setColor(C.white); g.setFont("Vector", 40); g.setFontAlign(0, 0);
+  g.drawString(fmtMMSS(sec), cx, 72);
+  g.setColor(C.mint); g.setFont("Vector", 30);
+  g.drawString(km.toFixed(2) + " km", cx, 110);
   var pace = km > 0.02 ? fmtMMSS(sec / km) + " /km" : "--:-- /km";
-  g.setColor(C.dim); g.setFont("6x8", 2); g.drawString(pace, cx, 158);
-  g.setColor(state.gpsFix ? C.mint : C.amber); g.setFont("6x8", 1);
-  g.drawString(state.gpsFix ? "tracking · tap to finish" : "acquiring GPS · tap to finish", cx, 184);
+  g.setColor(state.gpsFix ? C.dim : C.amber); g.setFont("6x8", 2);
+  g.drawString(pace, cx, 136);
+  drawAction("FINISH", true, null, C.mint, 158);
 }
 
-// Tap on the Run face: start or finish a GPS-tracked run. Start arms GPS + a manual run workout (so
+// Button on the Run face: start or finish a GPS-tracked run. Start arms GPS + a manual run workout (so
 // it logs T4 coords + T6 accel and seals as a run with a route); finish closes the workout.
 function runTap() {
   if (runActive) {
@@ -1305,24 +1321,15 @@ Bangle.on("pressure", onPressure);
 NRF.on("connect", onConnect);
 NRF.on("disconnect", onDisconnect);
 
-// Touchscreen — swipe left/right to flip between the Heart, Clock and Signals faces. (Up/down
-// are left to the Bangle OS for widgets/launcher.)
+// Touchscreen is for NAVIGATION ONLY — swipe left/right to flip faces. Taps never trigger anything
+// (that's the whole fix: a swipe can no longer be misread as "start a run / timer / +1"). Every
+// action lives on the physical side button, which can't be fired by accident mid-swipe. (Up/down
+// swipes are left to the Bangle OS for widgets/launcher.)
 Bangle.on("swipe", function (lr) {
   if (pairTimer || !uiVisible || !lr) return;
-  lastSwipeT = getTime();
   page = (page + (lr > 0 ? 1 : PAGES - 1)) % PAGES;   // right = +1, left = −1
   try { Bangle.buzz(15); } catch (e) {}
   drawUI();
-});
-
-// Screen taps act on the two interactive faces: the Stopwatch (start/stop the timer) and the Counter
-// (+1). We ignore a tap that lands right after a swipe (so flipping to the face doesn't fire it).
-Bangle.on("touch", function () {
-  if (pairTimer || !uiVisible) return;
-  if (getTime() - lastSwipeT < 0.4) return;
-  if (page === STOPWATCH_PAGE) swTap();
-  else if (page === COUNTER_PAGE) bumpCounter();
-  else if (page === RUN_PAGE) runTap();
 });
 
 // Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep). If we're
@@ -1373,9 +1380,9 @@ setInterval(function () {
 }, 1000);
 
 // Hardware button toggles capture.
-// ----- Pairing mode (Whoop-style: a deliberate gesture puts the band in a pairable state and
-// shows a CODE on its own screen, so the app can list nearby bands by code and the user taps the
-// one that matches what's on their wrist — unambiguous even with two bands side by side). The
+// ----- Pairing mode (Whoop-style: clicking the button on the Status face puts the band in a pairable
+// state and shows a CODE on its own screen, so the app can list nearby bands by code and the user taps
+// the one that matches what's on their wrist — unambiguous even with two bands side by side). The
 // code is the BLE address suffix, which is exactly the "Bangle.js XXXX" advertised-name suffix.
 // (pairUntil / pairTimer are declared in the globals block near the top.)
 function pairCode() {
@@ -1419,42 +1426,48 @@ function exitPairing() {
 }
 
 // Button gestures — CLICK BURSTS ONLY. A long button HOLD is reserved by the Bangle OS (it REBOOTS
-// the watch) and cannot be intercepted, so we never use holds for anything. Instead we count taps in
-// a quick burst and act once it settles:
-// 1- and 2-tap are FACE-SCOPED so you never start a recording by accident from the clock/steps:
-//   1 tap  → start/stop streaming (capture) — ONLY on the Heart face
-//   2 taps → context-aware: Heart = start/stop a WORKOUT · Stopwatch = sleep · Counter = reset
-//   3 taps → enter pairing mode — works from ANY face (the one global gesture, rare one-time setup)
-// (Whoop-style "tap like a heartbeat", and it sidesteps the reboot-on-hold entirely.)
+// the watch) and cannot be intercepted, so we never use holds. We count clicks in a quick burst and
+// act once it settles. The button is the SOLE way to act, and it's CONTEXT-AWARE to the face you're
+// on — one click does the obvious thing, a double-click the secondary thing, matching the on-screen
+// dots. There is NO global gesture: pairing (rare, setup) lives on the Status face, so a stray burst
+// while you're tallying reps on the Counter can never stop recording or pop a pairing screen.
+//   1 click  → primary:    Heart=workout · Stopwatch=timer · Counter=+1 · Run=run · Status=sync/pair
+//   2 clicks → secondary:  Heart=capture · Stopwatch=sleep · Counter=reset · Status=pair
 var tapCount = 0, tapTimer = null;
-var TAP_GAP = 0.45;   // seconds; a new tap within this window extends the burst
+var TAP_GAP = 0.4;    // seconds; a new click within this window extends the burst
 
 function handleTaps(n) {
-  if (n >= 3) {
-    // Triple-tap = pairing. The only gesture that works from every face.
-    try { Bangle.buzz(120); } catch (e) {}
-    if (state.streaming) stopStreaming();          // back to idle, then show the pairing code
-    enterPairing();
-    return;
-  }
-  if (n === 2) {
-    // Double-click, context-aware per face. Each branch buzzes its own ack; an unhandled face stays
-    // silent so a stray double-tap there does nothing.
-    if (page === STOPWATCH_PAGE) { try { Bangle.buzz(80); } catch (e) {} swSleepToggle(); }
-    else if (page === COUNTER_PAGE) { resetCounter(); }   // resetCounter() buzzes
-    else if (page === 0) {                                 // Heart face → manual WORKOUT
-      try { Bangle.buzz(80); } catch (e) {}
-      if (!state.streaming) startStreaming();     // ensure the HR sensor is powered before the workout
-      toggleManualWorkout();                       // start/stop the workout → sport-mode HR
+  // STATUS face = setup/diagnostics, and the only home for pairing. Not connected → any click pairs
+  // (that's why you came here). Connected → 1× syncs the ring now, 2× re-enters pairing.
+  if (page === 3) {
+    if (!state.connected || n >= 2) {
+      try { Bangle.buzz(120); } catch (e) {}
+      if (state.streaming) stopStreaming();        // back to idle, then show the pairing code
+      enterPairing();
+    } else {
+      try { Bangle.buzz(60); } catch (e) {}
+      emitStepFrame(); flushLog();                 // 1× while connected → sync now
     }
     return;
   }
-  // Single tap → start/stop HR recording, but ONLY on the Heart face. Everywhere else it's ignored so
-  // you can't kick off a recording just by bumping the button while checking the time or your steps.
-  if (page === 0) {
-    try { Bangle.buzz(40); } catch (e) {}
-    toggleStreaming();
+  if (n >= 2) {
+    // Double-click → the face's secondary action (the second on-screen dot). Faces without one buzz a
+    // tiny "nothing here" so a stray double is felt but does nothing.
+    if (page === STOPWATCH_PAGE) { try { Bangle.buzz(80); } catch (e) {} swSleepToggle(); }
+    else if (page === COUNTER_PAGE) { resetCounter(); }              // resetCounter() buzzes
+    else if (page === 0) { try { Bangle.buzz(80); } catch (e) {} toggleStreaming(); }  // Heart → CAPTURE toggle
+    else { try { Bangle.buzz(20); } catch (e) {} }
+    return;
   }
+  // Single click → the PRIMARY action of the face you're on. Because it's the button (not a touch),
+  // it can never mis-fire while you swipe across a face.
+  if (page === 0) {                                                  // Heart → start/end a WORKOUT
+    if (!state.streaming) startStreaming();                          // power the HR sensor first
+    toggleManualWorkout();                                           // start/stop buzzes its own ack
+  } else if (page === STOPWATCH_PAGE) swTap();                       // start / stop the timer
+  else if (page === COUNTER_PAGE) bumpCounter();                     // +1
+  else if (page === RUN_PAGE) runTap();                              // start / finish the run
+  else { try { Bangle.buzz(20); } catch (e) {} }                     // info face → nothing to do
 }
 
 setWatch(function () {
@@ -1475,15 +1488,15 @@ setWatch(function () {
 }, BTN1, { repeat: true, edge: "falling" });
 
 function toggleManualWorkout() {
-  if (state.workout && state.workoutManual) endWorkout();
-  else startWorkout(true);
+  if (state.workout && state.workoutManual) { endWorkout(); try { Bangle.buzz(60); } catch (e) {} }
+  else startWorkout(true);   // startWorkout buzzes its own start ack
 }
 
 // ----- Stopwatch + sleep (the Stopwatch face) -------------------------------
-// One face, two uses. TAP the screen = a plain stopwatch (general timer, nothing logged). DOUBLE-CLICK
-// the button on this face = run the timer as a SLEEP session: starting marks bedtime + ensures the
-// night logs (PPG + actigraphy → server staging); stopping emits the confirmed T9 window, which on the
-// next sync triggers the server seal + the coach's sleep summary push.
+// One face, two uses. Button 1× = a plain stopwatch (general timer, nothing logged). Button 2× on
+// this face = run the timer as a SLEEP session: starting marks bedtime + ensures the night logs (PPG
+// + actigraphy → server staging); stopping emits the confirmed T9 window, which on the next sync
+// triggers the server seal + the coach's sleep summary push.
 function startStopwatch() {                 // plain timer (tap from idle)
   state.swMode = "watch";
   state.swStartMs = Math.round(getTime() * 1000);
@@ -1491,7 +1504,7 @@ function startStopwatch() {                 // plain timer (tap from idle)
   if (uiVisible) drawUI();
 }
 
-function startSleepSession() {              // double-click button → time it AS sleep
+function startSleepSession() {              // button 2× on the Stopwatch face → time it AS sleep
   state.swMode = "sleep";
   state.swStartMs = Math.round(getTime() * 1000);
   if (state.workout) endWorkout();          // sleep isn't a workout → log T2 PPG (not T6 accel)
@@ -1515,20 +1528,22 @@ function stopTimer() {                       // stop either mode; a SLEEP sessio
   if (uiVisible) drawUI();
 }
 
-// A screen tap on the Stopwatch face: idle → start plain timer; running → stop (sleep logs, plain doesn't).
+// A single button click on the Stopwatch face: idle → start plain timer; running → stop (sleep logs, plain doesn't).
 function swTap() {
   if (state.swMode === "idle") startStopwatch();
   else stopTimer();
 }
 
 // Double-click of the button while on the Stopwatch face: start a SLEEP session, or stop+log one.
+// If a PLAIN timer is running, do nothing — stop it first (single-click) so a stray double never
+// silently turns a stopwatch into a logged sleep session.
 function swSleepToggle() {
   if (state.swMode === "sleep") stopTimer();
-  else startSleepSession();
+  else if (state.swMode === "idle") startSleepSession();
 }
 
 // ----- Counter (the Counter face) -------------------------------------------
-// A plain tally: screen tap adds 1, double-click of the button resets to zero. RAM only.
+// A plain tally: a single button click adds 1, a double-click resets to zero. RAM only.
 function bumpCounter() {
   state.count = (state.count || 0) + 1;
   try { Bangle.buzz(20); } catch (e) {}

@@ -60,7 +60,13 @@ then erases it** — this is the overnight-logging / morning-sync path (see "Pat
 2. Paste the contents of `titan.app.js` into the right-hand editor and click
    **Send to Espruino** (the upload-to-RAM/Flash button). It runs immediately.
    The icon and `.json`/`.info` files are not needed for this path.
-3. Press **BTN** (the side button) to start/stop streaming.
+3. **Swipe** left/right to move between faces; **click the side button** to act on
+   the face you're on. The touchscreen only navigates — taps never trigger anything,
+   so you can't start a run or timer by accident mid-swipe. The button is
+   context-aware: 1 click = the face's primary verb (Heart = start/end a workout,
+   Stopwatch = timer, Counter = +1, Run = start/finish, Status = sync), 2 clicks =
+   the secondary verb (Heart = capture on/off, Stopwatch = sleep, Counter = reset).
+   Pairing lives on the **Status** face (click the button there when unpaired).
 
 ### Option 2 — Bangle App Loader (proper install, survives reboot)
 1. Drop this folder into a checkout of
