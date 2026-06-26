@@ -39,6 +39,19 @@ the rest.
 - The only reusable "hard" bits — **Google polyline encoding + Douglas–Peucker simplification** — live
   once in `biosignal` and feed every renderer.
 
+## STATUS — all phases shipped on `feat/strava-runs` (2026-06-26)
+- ✅ **Phase 1** firmware GPS lat/lon capture (T4 v5) + both decoders + tests (commit 26e616a, +alt)
+- ✅ **Phase 2a** biosignal `/process/route` analytics — distance/moving-time/pace/GAP/splits/elevation/
+  best-efforts/Relative-Effort/polyline (commit 12c0128, 6 tests)
+- ✅ **Phase 2b** Laravel storage + seal wiring (commit 90b9ad9, migration + 8 seal tests)
+- ✅ **Phase 3 web** run-detail page w/ Mapbox static map (commit 2b0421c)
+- ✅ **Phase 3 iOS** run list + detail (Mapbox image, stats, splits, elevation) (commit ae5af37, +API)
+- ✅ **Phase 4** on-watch Run face — tap to start a GPS run, live time/dist/pace (commit 8432669)
+- ✅ **Phase 5** GAP + best-efforts + Relative-Effort — computed in route.py, surfaced web + iOS
+- Verified: PHP 468/0, biosignal route 6/6, TitanCore 25/25, iOS BUILD SUCCEEDED, firmware node --check.
+- **Needs on-device validation:** the firmware GPS-coord logging + Run face (can't flash from here).
+- **Token:** `MAPBOX_API_TOKEN` in `.env` (set). iOS uses the server-built static-map URL (no iOS token).
+
 ## Phased build
 - **Phase 1 — Foundation (firmware GPS capture).** Extend T4 with lat/lon; decode both ends; store a raw
   coordinate stream through to seal. *Unblocks everything; no decisions needed.*
