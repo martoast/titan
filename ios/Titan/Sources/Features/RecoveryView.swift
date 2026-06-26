@@ -5,6 +5,9 @@ struct RecoveryView: View {
     var body: some View {
         let r = model.dashboard?.recovery
         VStack(spacing: Theme.Space.m) {
+            if model.dashboardPhase == .failed && model.dashboard == nil {
+                SyncErrorRow(message: "Couldn't sync recovery") { await model.refresh() }
+            }
             MetricRing(score: model.dashboard?.readiness?.score, label: "Recovery", size: 180).padding(.top, 6)
 
             GlassCard {
@@ -55,7 +58,8 @@ struct RecoveryView: View {
         .padding(.horizontal, Theme.Space.m)
         .background(Theme.Palette.bg.ignoresSafeArea())
         .navigationTitle("Recovery")
-        .task { await model.loadTrends() }
+        .animation(Theme.Motion.snappy, value: model.dashboardPhase)
+        .task { await model.refresh(); await model.loadTrends() }
     }
 
     private func feel(_ label: String, _ v: Int?, _ icon: String, _ c: Color) -> some View {

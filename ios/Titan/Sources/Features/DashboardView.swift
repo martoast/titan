@@ -17,6 +17,11 @@ struct DashboardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .opacity(appeared ? 1 : 0)
 
+            // A failed cold sync is legible + recoverable here, rather than a ring stuck at "building baseline".
+            if model.dashboardPhase == .failed && model.dashboard == nil {
+                SyncErrorRow(message: "Couldn't sync today") { await model.refresh() }
+            }
+
             // Hero: recovery ring + headline
             VStack(spacing: Theme.Space.m) {
                 MetricRing(score: d?.readiness?.score, label: "Recovery", size: 200)
@@ -156,11 +161,12 @@ struct DashboardView: View {
             Color.clear.frame(height: 8)
         }
         .animation(Theme.Motion.spring, value: appeared)
+        .animation(Theme.Motion.snappy, value: model.dashboardPhase)
         .titanScreen("Today", glow: Theme.Palette.recovery(model.dashboard?.readiness?.score))
         .refreshable { Haptic.soft(); await model.refresh(); await model.loadInsights(); await model.loadJournal() }
         .task {
+            appeared = true          // let the screen animate in immediately, not after the network
             await model.refresh()
-            appeared = true
             await model.loadInsights()
             await model.loadJournal()
         }
