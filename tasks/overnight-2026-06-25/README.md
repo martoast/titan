@@ -25,10 +25,11 @@ in the morning. Everything below was done autonomously on branch
 - Every code fix gated on the PHP test suite (run inside the `laravel.test` container).
 - Reversible changes only; anything risky is written up as a proposal, not applied.
 
-## Baseline at start of night
-- PHP suite: **465 passed, 1925 assertions, 25.3s** (green)
-- Biosignal suite: not run (slim runtime image lacks pytest; only run if biosignal touched)
-- iOS: BUILD SUCCEEDED (tonight's coach-photo fix already committed)
+## Test status (start → end of night)
+- PHP suite: 465 → **473 passed** (1947 assertions) — +8 regression tests, zero failures.
+- Biosignal suite: 53 → **58 passed** — +5 input-validation tests, zero failures.
+- TitanCore (iOS): 24 → **25 passed** — +1 HR-trend test.
+- iOS app: **BUILD SUCCEEDED** (rebuilt after every iOS change).
 
 ## Session log
 - 23:24 — branched `overnight/hardening-and-research`; committed iOS coach-photo staging fix.
