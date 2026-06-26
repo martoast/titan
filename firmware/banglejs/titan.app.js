@@ -271,10 +271,10 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
-var PAGES = 8;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo · 5 Stopwatch · 6 Counter · 7 Run
-var STOPWATCH_PAGE = 5;   // the Stopwatch face (tap = plain timer; double-click button = log as sleep)
-var COUNTER_PAGE = 6;     // the Counter face (tap = +1; double-click button = reset to zero)
-var RUN_PAGE = 7;         // the Run face (tap = start/stop a GPS-tracked run → the app's route map)
+var PAGES = 7;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Stopwatch · 5 Counter · 6 Run
+var STOPWATCH_PAGE = 4;   // the Stopwatch face (tap = plain timer; double-click button = log as sleep)
+var COUNTER_PAGE = 5;     // the Counter face (tap = +1; double-click button = reset to zero)
+var RUN_PAGE = 6;         // the Run face (tap = start/stop a GPS-tracked run → the app's route map)
 var page = 0;             // current face (swipe to change)
 // Run face state — a GPS-tracked run started from the watch; the workout's T4 coords build the route.
 var runActive = false;    // a run is being tracked
@@ -283,17 +283,12 @@ var runDistM = 0;         // accumulated distance (m), summed from GPS fixes (ha
 var runLastLat = null, runLastLon = null;  // last coord, for the distance increment
 var runTimer = null;      // 1 Hz repaint while the run face is live (so the timer ticks)
 var lastSwipeT = 0;       // getTime() of the last page swipe — so the tap that ends a swipe isn't a sleep toggle
-var photoMin = -2;        // minute currently shown on the Photo face (-2 = needs a full repaint)
 var clockTickTimer = null; // minute-boundary redraw for the clock face
 
 // Default timezone so the clock reads correctly out of the box without a phone: Tijuana / Baja
 // California (PST/PDT). The app's time-sync (C2:) overrides this with the device's exact current
 // offset — including DST — the moment it connects, so this is only the cold-boot fallback.
 try { E.setTimeZone(-7); } catch (e) {}
-
-// [[TITAN_PHOTO_EMBED]] — a local single-file flash build injects the screensaver photo here, so
-// it's baked into the one file you flash. Kept OUT of git (the photo is personal; this repo is open
-// source). The committed firmware just reads "titan.gf" from flash if present.
 
 // ----- Helpers --------------------------------------------------------------
 
@@ -1259,61 +1254,12 @@ function runTap() {
   if (uiVisible) drawUI();
 }
 
-// Outlined text — stays readable over any photo. The 3-bit panel has no alpha, so we fake a halo
-// by stamping the string in the background colour around the glyphs, then the real colour on top.
-function drawOutlined(s, x, y, fg) {
-  var o = 2;
-  g.setColor(C.bg);
-  g.drawString(s, x - o, y); g.drawString(s, x + o, y);
-  g.drawString(s, x, y - o); g.drawString(s, x, y + o);
-  g.drawString(s, x - o, y - o); g.drawString(s, x + o, y + o);
-  g.drawString(s, x - o, y + o); g.drawString(s, x + o, y - o);
-  g.setColor(fg); g.drawString(s, x, y);
-}
-
-// Page 4 — PHOTO: a full-screen picture stored in flash as "titan.gf", with the time floating over
-// it (a little screensaver). Upload your own once via titan-photo-upload.js in the IDE — it lives in
-// flash and survives firmware reflashes. Falls back to a hint until you do.
-function drawPhoto() {
-  var W = g.getWidth(), H = g.getHeight();
-  // Prefer the picture hardcoded straight into this build (TITAN_PHOTO) — no flash-write step that
-  // can silently fail. Fall back to a flash copy ("titan.gf"), then to a hint / on-screen error.
-  var img = (typeof TITAN_PHOTO !== "undefined" && TITAN_PHOTO) ? TITAN_PHOTO : null;
-  if (!img) { try { img = require("Storage").read("titan.gf") || null; } catch (e) {} }
-  var drawn = false, err = "";
-  if (img) { try { g.drawImage(img, 0, 0); drawn = true; } catch (e) { err = "" + e; } }
-  if (!drawn) {
-    g.setColor(C.bg); g.fillRect(0, 0, W, H);
-    g.setFontAlign(0, 0);
-    if (err) {
-      g.setColor(C.rec); g.setFont("6x8", 2); g.drawString("PHOTO ERR", W / 2, 70);
-      g.setColor(C.dim); g.setFont("6x8", 1); g.drawString(err.substr(0, 28), W / 2, 96);
-    } else {
-      g.setColor(C.violet); g.setFont("6x8", 2); g.drawString("PHOTO", W / 2, 70);
-      g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("no picture in this build", W / 2, 96);
-    }
-  }
-  var d = new Date();
-  var hh = ("0" + d.getHours()).substr(-2), mm = ("0" + d.getMinutes()).substr(-2);
-  g.setFont("Vector", 38); g.setFontAlign(0, 0);
-  drawOutlined(hh + ":" + mm, W / 2, 140, C.white);
-}
-
 // Dispatcher: clears, draws the current page + page dots. All sensor-event drawUI() calls
 // just repaint whichever face you're on.
 function drawUI() {
   if (!uiVisible) return;
   if (pairTimer) return;            // pairing screen owns the display
   if (!Bangle.isLCDOn()) return;    // power: don't redraw while the screen is asleep
-  if (page === 4) {                 // Photo face is a heavy full-screen draw — only repaint when the
-    var m = new Date().getMinutes();// minute changes, so 1 Hz sensor ticks don't thrash it.
-    if (m === photoMin) return;
-    photoMin = m;
-    drawPhoto();
-    pageDots();
-    return;
-  }
-  photoMin = -2;                    // off the photo face → force a fresh photo draw when we return
   g.reset(); g.setColor(C.bg); g.fillRect(0, 0, g.getWidth(), g.getHeight());
   if (page === 1) drawClock();
   else if (page === 2) drawSteps();
@@ -1379,7 +1325,6 @@ Bangle.on("touch", function () {
 // minute-old one.
 Bangle.on("lcdPower", function (on) {
   if (!on) return;
-  photoMin = -2;
   drawUI();
   if (restModeActive() && !restDutyOnTimer) restDutyTick();
 });
@@ -1403,7 +1348,7 @@ function queueClockTick() {
   if (clockTickTimer) clearTimeout(clockTickTimer);
   clockTickTimer = setTimeout(function () {
     clockTickTimer = null;
-    if (page === 1 || page === 4) drawUI();   // clock + photo faces show the time
+    if (page === 1) drawUI();   // clock face shows the time
     queueClockTick();
   }, 60000 - (Date.now() % 60000) + 50);
 }
@@ -1471,7 +1416,7 @@ function exitPairing() {
 // Button gestures — CLICK BURSTS ONLY. A long button HOLD is reserved by the Bangle OS (it REBOOTS
 // the watch) and cannot be intercepted, so we never use holds for anything. Instead we count taps in
 // a quick burst and act once it settles:
-// 1- and 2-tap are FACE-SCOPED so you never start a recording by accident from the clock/steps/photo:
+// 1- and 2-tap are FACE-SCOPED so you never start a recording by accident from the clock/steps:
 //   1 tap  → start/stop streaming (capture) — ONLY on the Heart face
 //   2 taps → context-aware: Heart = start/stop a WORKOUT · Stopwatch = sleep · Counter = reset
 //   3 taps → enter pairing mode — works from ANY face (the one global gesture, rare one-time setup)
