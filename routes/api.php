@@ -64,6 +64,7 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/community/leaderboard', [\App\Http\Controllers\Api\LeaderboardController::class, 'index']);
     Route::get('/community/settings', [\App\Http\Controllers\Api\CommunityController::class, 'settings']);
     Route::patch('/community/settings', [\App\Http\Controllers\Api\CommunityController::class, 'updateSettings']);
+    Route::post('/community/avatar', [\App\Http\Controllers\Api\CommunityController::class, 'uploadAvatar']);
     Route::get('/community/requests', [\App\Http\Controllers\Api\CommunityController::class, 'requests']);
     Route::post('/community/requests/{follow}/accept', [\App\Http\Controllers\Api\CommunityController::class, 'acceptRequest']);
     Route::post('/community/requests/{follow}/decline', [\App\Http\Controllers\Api\CommunityController::class, 'declineRequest']);

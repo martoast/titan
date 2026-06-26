@@ -557,6 +557,88 @@ final class AppModel: ObservableObject {
         catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
+    // MARK: community (opt-in social)
+
+    @Published var communitySettings: CommunitySettings?
+    @Published var feed: [ActivityCard] = []
+    @Published var feedPhase: LoadPhase = .idle
+    @Published var board: LeaderboardResponse?
+    @Published var boardPhase: LoadPhase = .idle
+    @Published var boardMetric = "effort"
+    @Published var boardWindow = "week"
+    @Published var followRequests: [FollowRequest] = []
+    @Published var achievements: [Achievement] = []
+    @Published var recap: CommunityRecap?
+
+    var communityEnabled: Bool { communitySettings?.community_enabled == true }
+
+    func loadCommunitySettings() async { communitySettings = try? await api.communitySettings() }
+
+    @discardableResult
+    func updateCommunity(_ fields: [String: Any]) async -> Bool {
+        do { communitySettings = try await api.updateCommunitySettings(fields); return true }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
+    }
+
+    @discardableResult
+    func uploadAvatar(_ data: Data) async -> Bool {
+        do { communitySettings = try await api.uploadCommunityAvatar(data); return true }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
+    }
+
+    func loadFeed() async {
+        if feed.isEmpty { feedPhase = .loading }
+        do { feed = try await api.communityFeed().items; feedPhase = .loaded }
+        catch { feedPhase = feed.isEmpty ? .failed : .loaded }
+    }
+
+    func loadBoard() async {
+        if board == nil { boardPhase = .loading }
+        do { board = try await api.leaderboard(metric: boardMetric, window: boardWindow); boardPhase = .loaded }
+        catch { boardPhase = board == nil ? .failed : .loaded }
+    }
+
+    func setBoard(metric: String? = nil, window: String? = nil) async {
+        if let metric { boardMetric = metric }
+        if let window { boardWindow = window }
+        board = nil                       // force the skeleton on a dimension switch
+        await loadBoard()
+    }
+
+    func loadFollowRequests() async { followRequests = (try? await api.followRequests()) ?? [] }
+    func loadAchievements() async { achievements = (try? await api.achievements()) ?? [] }
+    func loadRecap() async { recap = try? await api.communityRecap() }
+
+    func accept(_ r: FollowRequest) async {
+        Haptic.success()
+        try? await api.acceptRequest(r.follow_id)
+        await loadFollowRequests(); await loadFeed()
+    }
+
+    func decline(_ r: FollowRequest) async {
+        try? await api.declineRequest(r.follow_id)
+        await loadFollowRequests()
+    }
+
+    /// Optimistic kudos toggle on a feed card — flips instantly, reconciles with the server, reverts on failure.
+    func toggleKudos(_ card: ActivityCard) async {
+        guard let i = feed.firstIndex(where: { $0.id == card.id }) else { return }
+        let want = !feed[i].did_kudos
+        Haptic.tap()
+        feed[i].did_kudos = want
+        feed[i].kudos_count = max(0, feed[i].kudos_count + (want ? 1 : -1))
+        do {
+            let st = want ? try await api.kudos(card.id) : try await api.unkudos(card.id)
+            if let j = feed.firstIndex(where: { $0.id == card.id }) {
+                feed[j].did_kudos = st.did_kudos; feed[j].kudos_count = st.kudos_count
+            }
+        } catch {
+            if let j = feed.firstIndex(where: { $0.id == card.id }) {
+                feed[j].did_kudos = card.did_kudos; feed[j].kudos_count = card.kudos_count
+            }
+        }
+    }
+
     private func deviceName() -> String {
         #if canImport(UIKit)
         return UIDevice.current.name

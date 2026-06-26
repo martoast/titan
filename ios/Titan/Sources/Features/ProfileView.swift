@@ -6,6 +6,7 @@ struct ProfileView: View {
     @State private var showBand = false
     @State private var showEditProfile = false
     @State private var showBody = false
+    @State private var showCommunity = false
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -65,6 +66,24 @@ struct ProfileView: View {
             }
             .buttonStyle(PressCard())
             .sheet(isPresented: $showBand) { DevicesView() }
+
+            Button { Haptic.tap(); showCommunity = true } label: {
+                GlassCard {
+                    HStack {
+                        Label("Community & sharing", systemImage: "person.2.fill").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                        Spacer()
+                        HStack(spacing: 7) {
+                            PulseDot(on: model.communityEnabled)
+                            Text(model.communityEnabled ? "Public" : "Private")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+                        }
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+            .sheet(isPresented: $showCommunity) { CommunitySettingsView() }
+            .task { await model.loadCommunitySettings() }
 
             // Apple Health
             Button { Haptic.tap(); Task { model.healthConnected ? await model.syncAppleHealth(days: 30) : await model.connectAppleHealth() } } label: {

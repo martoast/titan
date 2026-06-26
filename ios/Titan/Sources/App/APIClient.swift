@@ -389,4 +389,90 @@ final class APIClient {
         return try await send(multipart(path, fields: fields, fileField: "photo", fileData: imageData),
                               as: CoachScanResult.self)
     }
+
+    // MARK: community
+
+    func communitySettings() async throws -> CommunitySettings {
+        try await send(request("api/me/community/settings"), as: CommunitySettings.self)
+    }
+
+    @discardableResult
+    func updateCommunitySettings(_ fields: [String: Any]) async throws -> CommunitySettings {
+        try await send(request("api/me/community/settings", method: "PATCH", json: fields), as: CommunitySettings.self)
+    }
+
+    @discardableResult
+    func uploadCommunityAvatar(_ imageData: Data) async throws -> CommunitySettings {
+        try await send(multipart("api/me/community/avatar", fileField: "photo", fileData: imageData), as: CommunitySettings.self)
+    }
+
+    func communityFeed(offset: Int = 0) async throws -> FeedResponse {
+        try await send(request("api/me/community/feed?offset=\(offset)"), as: FeedResponse.self)
+    }
+
+    func leaderboard(metric: String, window: String) async throws -> LeaderboardResponse {
+        try await send(request("api/me/community/leaderboard?metric=\(metric)&window=\(window)"), as: LeaderboardResponse.self)
+    }
+
+    func followRequests() async throws -> [FollowRequest] {
+        try await send(request("api/me/community/requests"), as: FollowRequestsResponse.self).requests
+    }
+
+    func acceptRequest(_ id: Int) async throws {
+        _ = try await session.data(for: request("api/me/community/requests/\(id)/accept", method: "POST"))
+    }
+
+    func declineRequest(_ id: Int) async throws {
+        _ = try await session.data(for: request("api/me/community/requests/\(id)/decline", method: "POST"))
+    }
+
+    func communityRecap() async throws -> CommunityRecap {
+        try await send(request("api/me/community/recap"), as: CommunityRecap.self)
+    }
+
+    func achievements() async throws -> [Achievement] {
+        try await send(request("api/me/achievements"), as: AchievementsResponse.self).achievements
+    }
+
+    func searchAthletes(_ q: String) async throws -> [Athlete] {
+        let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+        return try await send(request("api/me/athletes/search?q=\(enc)"), as: AthleteSearchResponse.self).athletes
+    }
+
+    func athlete(_ id: Int) async throws -> AthleteProfileResponse {
+        try await send(request("api/me/athletes/\(id)"), as: AthleteProfileResponse.self)
+    }
+
+    @discardableResult
+    func follow(_ id: Int) async throws -> FollowResult {
+        try await send(request("api/me/athletes/\(id)/follow", method: "POST"), as: FollowResult.self)
+    }
+
+    @discardableResult
+    func unfollow(_ id: Int) async throws -> FollowResult {
+        try await send(request("api/me/athletes/\(id)/follow", method: "DELETE"), as: FollowResult.self)
+    }
+
+    @discardableResult
+    func kudos(_ activityId: Int) async throws -> KudosState {
+        try await send(request("api/me/activities/\(activityId)/kudos", method: "POST"), as: KudosState.self)
+    }
+
+    @discardableResult
+    func unkudos(_ activityId: Int) async throws -> KudosState {
+        try await send(request("api/me/activities/\(activityId)/kudos", method: "DELETE"), as: KudosState.self)
+    }
+
+    func comments(_ activityId: Int) async throws -> [CommentItem] {
+        try await send(request("api/me/activities/\(activityId)/comments"), as: CommentsResponse.self).comments
+    }
+
+    @discardableResult
+    func postComment(_ activityId: Int, body: String) async throws -> CommentItem {
+        try await send(request("api/me/activities/\(activityId)/comments", method: "POST", json: ["body": body]), as: CommentItem.self)
+    }
+
+    func deleteComment(_ id: Int) async throws {
+        _ = try await session.data(for: request("api/me/activities/comments/\(id)", method: "DELETE"))
+    }
 }

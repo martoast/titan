@@ -117,6 +117,22 @@ class CommunityController extends Controller
         return response()->json(['achievements' => $this->present->achievements($p)]);
     }
 
+    /** Upload / replace the profile photo other athletes see + find you by. */
+    public function uploadAvatar(Request $request): JsonResponse
+    {
+        $p = $request->user()->profile ?? $request->user()->ensureProfile();
+        $request->validate(['photo' => ['required', 'image', 'max:8192']]);
+
+        $old = $p->avatar_path;
+        $path = $request->file('photo')->store('community/avatars', 'public');
+        $p->update(['avatar_path' => $path]);
+        if ($old) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($old);
+        }
+
+        return response()->json($this->settingsPayload($p->fresh()));
+    }
+
     private function settingsPayload($p): array
     {
         return [
@@ -124,6 +140,7 @@ class CommunityController extends Controller
             'username' => $p->username,
             'bio' => $p->bio,
             'display_name' => $p->display_name,
+            'avatar_url' => $p->avatar_path ? asset('storage/'.$p->avatar_path) : null,
             'followers_require_approval' => (bool) $p->followers_require_approval,
             'default_activity_visibility' => $p->default_activity_visibility ?? 'followers',
             'follower_count' => Follow::where('followee_id', $p->id)->where('status', Follow::ACCEPTED)->count(),
