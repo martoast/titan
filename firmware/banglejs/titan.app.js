@@ -861,6 +861,7 @@ function restDutyTick() {
   restDutyTimer = null;
   if (!restModeActive()) { stopRestDuty(); return; }
   try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
+  applyHrmMode();   // force normal mode + 40 Hz rest cadence — else a burst after a workout inherits stale sportMode 1 + 20 ms (inflated HR + more power)
   if (restDutyOnTimer) clearTimeout(restDutyOnTimer);
   restDutyOnTimer = setTimeout(function () {
     restDutyOnTimer = null;
