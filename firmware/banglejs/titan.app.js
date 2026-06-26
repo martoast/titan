@@ -828,7 +828,12 @@ function onDisconnect() {
 // locomotion gate has armed) so the classifier sees its validated rate; 12.5 Hz the rest of the
 // time (overnight actigraphy + power).
 function applyAccelRate() {
-  var fast = state.streaming && (state.connected || state.workout);
+  // 25 Hz ONLY during an actual workout (the classifier's training rate). NOT merely when connected:
+  // the Bangle.js built-in pedometer (getHealthStatus().steps) only counts at the default 80 ms /
+  // 12.5 Hz poll — a non-default interval silently kills it. Holding 25 Hz just because the phone was
+  // attached zeroed steps for the whole connected session (and after every run). Runs pin 12.5 Hz via
+  // primed.accelHz below, so the step counter keeps running even mid-run.
+  var fast = state.streaming && state.workout;
   var ms = fast ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT;
   // A coach-primed activity carries its own accel cadence (e.g. 12.5 Hz for a run); honor it
   // while that activity's workout runs so a reconnect doesn't snap us back to 25 Hz.
