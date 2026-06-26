@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import os
 import TitanCore
 #if canImport(UIKit)
 import UIKit
@@ -56,6 +57,13 @@ public actor SyncQueue {
     private let onUploaded: (@Sendable (Int) -> Void)?   // (cumulative windows uploaded) for the UI
     private var uploadedCount = 0
 
+    /// Bounded in-memory hold for windows that FAILED to persist (disk full / locked / unusable DB).
+    /// Without this, a thrown enqueue silently dropped the sample. We retry persisting these on every
+    /// drain; capped so a permanently-broken store can't grow memory without bound.
+    private var unpersisted: [AnyWindow] = []
+    private static let maxUnpersisted = 500
+    private static let log = Logger(subsystem: "org.titan.band", category: "sync")
+
     public init(store: WindowStore, client: IngestClient, onUploaded: (@Sendable (Int) -> Void)? = nil) {
         self.store = store; self.client = client; self.onUploaded = onUploaded
         monitor.pathUpdateHandler = { [weak self] path in
@@ -68,7 +76,14 @@ public actor SyncQueue {
 
     /// Persist a window and try to drain. Safe to call from a background wake.
     public func submit(_ window: AnyWindow) async {
-        try? store.enqueue(window)
+        do {
+            try store.enqueue(window)
+        } catch {
+            // Persisting failed — keep it in the bounded in-memory buffer instead of dropping it
+            // silently; the next drain retries persistence (and the disk may have recovered by then).
+            Self.log.error("enqueue failed, buffering in memory: \(error.localizedDescription, privacy: .public)")
+            if unpersisted.count < Self.maxUnpersisted { unpersisted.append(window) }
+        }
         await drain()
     }
 
@@ -81,6 +96,15 @@ public actor SyncQueue {
         // Keep the app alive long enough to empty the queue after a background BLE wake.
         let assertion = BackgroundAssertion()
         defer { assertion.end() }
+
+        // Retry persisting anything that failed to write earlier; once on disk it drains normally below.
+        if !unpersisted.isEmpty {
+            var stillFailing: [AnyWindow] = []
+            for w in unpersisted {
+                do { try store.enqueue(w) } catch { stillFailing.append(w) }
+            }
+            unpersisted = stillFailing
+        }
 
         while online, let batch = try? store.pending(limit: 1), let item = batch.first {
             switch await client.ship(window: item.window) {

@@ -152,6 +152,45 @@ class StackTest extends TestCase
         $this->assertStringContainsStringIgnoringCase('magnesium', $results[0]['name']);
     }
 
+    public function test_web_stack_page_renders_with_batched_adherence(): void
+    {
+        $user = User::factory()->create();
+        $p = $user->ensureProfile();
+        StackItem::create(['profile_id' => $p->id, 'name' => 'Creatine', 'kind' => 'supplement',
+            'active' => true, 'schedule' => ['frequency' => 'daily', 'times' => ['morning']]]);
+
+        $this->actingAs($user)->get('/stack')->assertOk()->assertSee('What you take', false);
+    }
+
+    public function test_stack_index_reports_adherence_without_an_n_plus_one(): void
+    {
+        $user = User::factory()->create();
+        $p = $user->ensureProfile();
+        $p->update(['settings' => ['timezone' => 'UTC']]);
+        $headers = $this->auth($user);
+
+        $item = StackItem::create(['profile_id' => $p->id, 'name' => 'Creatine', 'kind' => 'supplement',
+            'active' => true, 'schedule' => ['frequency' => 'daily', 'times' => ['morning']]]);
+        IntakeEvent::create(['profile_id' => $p->id, 'stack_item_id' => $item->id, 'name' => 'Creatine',
+            'taken_at' => now(), 'status' => 'taken', 'source' => 'manual']);
+
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $res = $this->getJson('/api/me/stack', $headers)->assertOk();
+        $baseline = count(\Illuminate\Support\Facades\DB::getQueryLog());
+        $this->assertNotNull($res->json('items.0.adherence'));   // adherence still computed via batched count
+
+        // Five more items must not add per-item queries (the adherence N+1).
+        for ($i = 0; $i < 5; $i++) {
+            StackItem::create(['profile_id' => $p->id, 'name' => "S{$i}", 'kind' => 'supplement',
+                'active' => true, 'schedule' => ['frequency' => 'daily', 'times' => ['morning']]]);
+        }
+        \Illuminate\Support\Facades\DB::flushQueryLog();
+        $this->getJson('/api/me/stack', $headers)->assertOk();
+        $grown = count(\Illuminate\Support\Facades\DB::getQueryLog());
+
+        $this->assertLessThanOrEqual($baseline + 2, $grown, 'stack index issues per-item queries (N+1)');
+    }
+
     public function test_stack_is_scoped_to_the_owning_profile(): void
     {
         $a = User::factory()->create();

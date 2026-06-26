@@ -194,7 +194,10 @@ class AiService
                 try {
                     $result = $dispatch($name, is_array($args) ? $args : []);
                 } catch (\Throwable $e) {
-                    $result = ['error' => $e->getMessage()];
+                    // Log the real error server-side; feed the model a generic, safe string so SQL /
+                    // driver / file-path detail never reaches the conversation (and thence the user).
+                    \Illuminate\Support\Facades\Log::warning('[Coach] tool failed', ['tool' => $name, 'error' => $e->getMessage()]);
+                    $result = ['error' => 'That tool failed to run — tell the user it didn’t work and to try again.'];
                 }
                 $messages[] = [
                     'role' => 'tool',
@@ -271,7 +274,10 @@ class AiService
                 try {
                     $result = $dispatch($name, $args);
                 } catch (\Throwable $e) {
-                    $result = ['error' => $e->getMessage()];
+                    // Log the real error server-side; feed the model a generic, safe string so SQL /
+                    // driver / file-path detail never reaches the conversation (and thence the user).
+                    \Illuminate\Support\Facades\Log::warning('[Coach] tool failed', ['tool' => $name, 'error' => $e->getMessage()]);
+                    $result = ['error' => 'That tool failed to run — tell the user it didn’t work and to try again.'];
                 }
                 $messages[] = [
                     'role' => 'tool',

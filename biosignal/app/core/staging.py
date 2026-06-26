@@ -33,6 +33,9 @@ import numpy as np
 from . import sleep_features, sleep_hmm
 
 EPOCH_SEC = 30
+# Hard ceiling on epochs per stage_night call (~48h). A tiny payload with a huge start/end span
+# must never allocate millions of epochs and spin the Viterbi/rolling loops (memory + CPU DoS).
+MAX_EPOCHS = 2 * 24 * 60 * 60 // EPOCH_SEC
 
 # Stage codes for the 30-s hypnogram.
 WAKE, LIGHT, DEEP, REM = "wake", "light", "deep", "rem"
@@ -111,8 +114,9 @@ def stage_night(
     t1 = _parse_ts(end)
     if t0 and t1 and t1 > t0:
         n_epochs = max(int((t1 - t0).total_seconds() // EPOCH_SEC), 1)
+        n_epochs = min(n_epochs, MAX_EPOCHS)   # clamp a runaway span (DoS guard)
     else:
-        n_epochs = int(accel.size)
+        n_epochs = min(int(accel.size), MAX_EPOCHS)
         t0 = _parse_ts(start) or datetime.now(timezone.utc)
 
     accel_e = _to_epochs(accel, n_epochs)
