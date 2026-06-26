@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
     @Published var user: AuthUser?
     @Published var onboarded = true        // gate: false → show the onboarding wizard
     @Published var dashboard: Dashboard?
+    @Published var dashboardPhase: LoadPhase = .idle
     @Published var hrvTrend: [Double] = []
     @Published var bandConnected = false
     @Published var bandBound = false       // bound to a specific band's BLE identity
@@ -185,8 +186,12 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() async {
-        do { dashboard = try await api.dashboard() }
-        catch { if case APIError.unauthorized = error { await logout() } }
+        if dashboard == nil { dashboardPhase = .loading }
+        do { dashboard = try await api.dashboard(); dashboardPhase = .loaded }
+        catch {
+            if case APIError.unauthorized = error { await logout() }
+            else { dashboardPhase = dashboard == nil ? .failed : .loaded }
+        }
     }
 
     func loadTrends() async {
@@ -380,15 +385,36 @@ final class AppModel: ObservableObject {
         catch { if case APIError.unauthorized = error { await logout() } }
     }
 
+    /// Per-section fetch state, so the UI can show a skeleton on first load and an inline retry on
+    /// failure — instead of flashing a false "no data" empty state before the request even returns.
+    enum LoadPhase { case idle, loading, loaded, failed }
+
     @Published var sleepDetail: SleepResponse?
     @Published var cycle: CycleResponse?
     @Published var hrDay: HrResponse?
+    @Published var sleepPhase: LoadPhase = .idle
+    @Published var cyclePhase: LoadPhase = .idle
+    @Published var hrPhase: LoadPhase = .idle
     /// Whether to show the women's Cycle segment (server gates on sex/cycle config).
     var showsCycle: Bool { cycle?.available == true }
 
-    func loadSleepDetail() async { sleepDetail = try? await api.sleepDetail() }
-    func loadCycle() async { cycle = try? await api.cycle() }
-    func loadHr() async { hrDay = try? await api.hr() }
+    // A failed fetch only counts as "failed" when there's nothing to show yet; if we already have
+    // data, a dropped poll keeps the last-good view rather than yanking it for an error row.
+    func loadSleepDetail() async {
+        if sleepDetail == nil { sleepPhase = .loading }
+        do { sleepDetail = try await api.sleepDetail(); sleepPhase = .loaded }
+        catch { sleepPhase = sleepDetail == nil ? .failed : .loaded }
+    }
+    func loadCycle() async {
+        if cycle == nil { cyclePhase = .loading }
+        do { cycle = try await api.cycle(); cyclePhase = .loaded }
+        catch { cyclePhase = cycle == nil ? .failed : .loaded }
+    }
+    func loadHr() async {
+        if hrDay == nil { hrPhase = .loading }
+        do { hrDay = try await api.hr(); hrPhase = .loaded }
+        catch { hrPhase = hrDay == nil ? .failed : .loaded }
+    }
 
     func logPeriod(_ date: Date) async {
         try? await api.logCyclePeriod(date: Self.ymd(date))

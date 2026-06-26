@@ -61,6 +61,11 @@ private struct SleepSection: View {
             let night = model.sleepDetail?.nights.first
             let a = model.sleepDetail?.assess
 
+            if model.sleepPhase == .loading && model.sleepDetail == nil {
+                SkeletonCard()
+            } else if model.sleepPhase == .failed && model.sleepDetail == nil {
+                SyncErrorRow(message: "Couldn't load sleep") { await model.loadSleepDetail() }
+            } else {
             GlassCard(padding: Theme.Space.l) {
                 VStack(spacing: Theme.Space.m) {
                     if let n = night, let dur = n.duration_min {
@@ -103,7 +108,9 @@ private struct SleepSection: View {
                     }
                 }
             }
+            }
         }
+        .animation(Theme.Motion.snappy, value: model.sleepPhase)
         .task { await model.loadSleepDetail() }
     }
 
@@ -155,7 +162,11 @@ private struct CycleSection: View {
 
     var body: some View {
         VStack(spacing: Theme.Space.l) {
-            if let c = model.cycle?.cycle, c.cycle_day != nil {
+            if model.cyclePhase == .loading && model.cycle == nil {
+                SkeletonCard()
+            } else if model.cyclePhase == .failed && model.cycle == nil {
+                SyncErrorRow(message: "Couldn't load cycle") { await model.loadCycle() }
+            } else if let c = model.cycle?.cycle, c.cycle_day != nil {
                 weekStrip
                 hero(c)              // the big prediction — NOT the pregnancy chance
                 chanceLine(c)        // pregnancy chance, secondary, below the hero
@@ -166,6 +177,7 @@ private struct CycleSection: View {
                 emptyState
             }
         }
+        .animation(Theme.Motion.snappy, value: model.cyclePhase)
         .task { await model.loadCycle() }
         .task(id: model.cycle?.cycle?.cycle_day ?? -1) { await loadWeek() }
         .sheet(isPresented: $showLogPeriod) { logPeriodSheet }
@@ -508,6 +520,11 @@ private struct HrSection: View {
     var body: some View {
         VStack(spacing: Theme.Space.m) {
             let hr = model.hrDay
+            if model.hrPhase == .loading && model.hrDay == nil {
+                SkeletonCard()
+            } else if model.hrPhase == .failed && model.hrDay == nil {
+                SyncErrorRow(message: "Couldn't load heart rate") { await model.loadHr() }
+            } else {
             GlassCard(padding: Theme.Space.l) {
                 VStack(spacing: Theme.Space.m) {
                     if let hr, hr.count > 0 {
@@ -538,7 +555,9 @@ private struct HrSection: View {
             Text("Your all-day heart rate. Resting HR is your daily floor — it trends down as you get fitter.")
                 .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+        .animation(Theme.Motion.snappy, value: model.hrPhase)
         .task { await model.loadHr() }
     }
 

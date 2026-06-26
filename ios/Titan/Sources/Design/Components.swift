@@ -174,6 +174,62 @@ struct Shimmer: View {
     }
 }
 
+// MARK: - Loading placeholder shaped like a daily-loop card
+/// A shimmering stand-in for a metric card: a big headline bar, a wide sub-line, and a row of small
+/// stat blocks — so a cold open reads as "loading" instead of flashing an empty state.
+struct SkeletonCard: View {
+    var body: some View {
+        GlassCard(padding: Theme.Space.l) {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                Shimmer().frame(width: 150, height: 42)
+                Shimmer().frame(height: 14).frame(maxWidth: .infinity)
+                HStack(spacing: Theme.Space.l) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        Shimmer().frame(height: 32).frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+        .transition(.opacity)
+    }
+}
+
+// MARK: - Inline "couldn't sync" row with a retry
+/// The single error affordance for the daily loop: a failed fetch shows this instead of `—` forever,
+/// so a network blip is legible (and recoverable) rather than indistinguishable from "no data".
+struct SyncErrorRow: View {
+    var message: String = "Couldn't sync"
+    let retry: () async -> Void
+    @State private var retrying = false
+    var body: some View {
+        GlassCard {
+            HStack(spacing: Theme.Space.m) {
+                Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                    .font(.title3).foregroundStyle(Theme.Palette.amber)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(message).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    Text("Check your connection").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+                Spacer()
+                Button {
+                    Haptic.tap()
+                    Task { retrying = true; await retry(); retrying = false }
+                } label: {
+                    if retrying {
+                        ProgressView().tint(Theme.Palette.indigo)
+                    } else {
+                        Text("Retry").font(Theme.Font.label.weight(.semibold)).foregroundStyle(Theme.Palette.indigo)
+                    }
+                }
+                .frame(minWidth: 52, minHeight: 30)
+                .background(Theme.Palette.indigo.opacity(0.14), in: Capsule())
+                .disabled(retrying)
+            }
+        }
+        .transition(.opacity)
+    }
+}
+
 // MARK: - BLE signal strength bars
 struct SignalBars: View {
     let rssi: Int   // dBm: ~ -30 (touching) … -100 (far)
