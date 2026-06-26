@@ -269,7 +269,11 @@ struct CoachView: View {
             .overlay(Circle().strokeBorder(Theme.Palette.cardStroke))
     }
 
-    private var canSend: Bool { !vm.input.trimmingCharacters(in: .whitespaces).isEmpty && !vm.sending }
+    // Sendable when there's text OR a staged photo (a photo with no caption is valid — the coach
+    // reads the image either way).
+    private var canSend: Bool {
+        (!vm.input.trimmingCharacters(in: .whitespaces).isEmpty || vm.pendingImage != nil) && !vm.sending
+    }
 }
 
 private struct Bubble: View {

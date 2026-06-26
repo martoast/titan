@@ -166,6 +166,7 @@ struct StackView: View {
     @EnvironmentObject var model: AppModel
     @State private var showAdd = false
     @State private var editing: StackItem?
+    @State private var pendingDelete: StackItem?
 
     var body: some View {
         ScrollView {
@@ -198,6 +199,16 @@ struct StackView: View {
         .task { await model.loadStack() }
         .sheet(isPresented: $showAdd) { AddToStackSheet() }
         .sheet(item: $editing) { EditStackItemSheet(item: $0) }
+        .confirmationDialog("Stop taking \(pendingDelete?.name ?? "this")?",
+                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible) {
+            Button("Remove it and its history", role: .destructive) {
+                if let item = pendingDelete { Haptic.warning(); Task { await model.deleteStackItem(item.id) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes it and your logged history. To keep the record, choose Pause instead.")
+        }
     }
 
     private func group(_ title: String, _ items: [StackItem]) -> some View {
@@ -212,7 +223,7 @@ struct StackView: View {
                             Button { Task { await model.updateStackItem(item.id, fields: ["active": !item.active]) } } label: {
                                 Label(item.active ? "Pause" : "Resume", systemImage: item.active ? "pause.circle" : "play.circle")
                             }
-                            Button(role: .destructive) { Task { await model.deleteStackItem(item.id) } } label: {
+                            Button(role: .destructive) { Haptic.tap(); pendingDelete = item } label: {
                                 Label("Stop", systemImage: "stop.circle")
                             }
                         }
@@ -580,6 +591,7 @@ private struct StackEditor: View {
     let onSave: ([String: Any]) async -> Void
     let onDelete: (() async -> Void)?
     @State private var saving = false
+    @State private var confirmingDelete = false
 
     /// Show the Type picker in the full edit sheet, or on the add path only when `kind` is still ambiguous.
     private var showType: Bool { onDelete != nil || !draft.kindKnown }
@@ -651,9 +663,9 @@ private struct StackEditor: View {
                     }
                     .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || saving)
 
-                    if let onDelete {
+                    if onDelete != nil {
                         Button(role: .destructive) {
-                            Haptic.warning(); Task { await onDelete() }
+                            Haptic.tap(); confirmingDelete = true
                         } label: {
                             Text("Stop taking this").font(Theme.Font.micro).foregroundStyle(Theme.Palette.pink)
                         }.frame(maxWidth: .infinity)
@@ -665,6 +677,15 @@ private struct StackEditor: View {
             .scrollIndicators(.hidden)
         }
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Stop taking \(draft.name.isEmpty ? "this" : draft.name)?",
+                            isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Remove it and its history", role: .destructive) {
+                Haptic.warning(); Task { await onDelete?() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes it and your logged history. To keep the record, close this and Pause it instead.")
+        }
     }
 
     private func save() {
