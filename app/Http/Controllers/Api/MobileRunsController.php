@@ -38,6 +38,7 @@ class MobileRunsController extends Controller
         $imperial = ($profile->units ?? 'metric') === 'imperial';
 
         return response()->json($this->summary($session) + [
+            'distance_source' => $session->distance_source,
             'moving_time_s' => $session->moving_time_s,
             'avg_pace_s_per_km' => $session->avg_pace_s_per_km,
             'gap_s_per_km' => $session->gap_s_per_km,

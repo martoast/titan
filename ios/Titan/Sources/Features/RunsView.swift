@@ -151,44 +151,71 @@ struct RunDetailView: View {
         return "Ran \(d)\(p == "—" ? "" : " at \(p)") — tracked on Titan 🏃"
     }
 
-    // — map: the hero. Route + a bottom scrim with the BIG distance + pace overlaid (the poster). —
-    private var mapHero: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card)
-            if let urlStr = detail?.map_url_large ?? fallback.map_thumb_url, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().scaledToFill()
-                    case .failure: mapPlaceholder
-                    default: Shimmer()
-                    }
-                }
-            } else { mapPlaceholder }
+    private var hasMap: Bool { (detail?.map_url_large ?? fallback.map_thumb_url) != nil }
 
-            // legibility scrim only when we actually have a map
-            if (detail?.map_url_large ?? fallback.map_thumb_url) != nil {
-                LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(heroDistanceValue).font(Theme.Font.num(48)).foregroundStyle(.white)
-                        Text(heroDistanceUnit).font(Theme.Font.body.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
-                    }
-                    HStack(spacing: 10) {
-                        label("clock", RunFmt.dur(detail?.moving_time_s ?? fallback.duration_min.map { $0 * 60 }))
-                        label("speedometer", paceLabel(detail?.avg_pace_s_per_km ?? fallback.avg_pace_s_per_km))
+    // — the hero. With GPS: the route poster (BIG distance + pace overlaid). Without GPS (indoor/no
+    //   Mapbox): a clean stats hero so you STILL get distance + pace + the "estimated from steps" note. —
+    @ViewBuilder private var mapHero: some View {
+        if hasMap {
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card)
+                if let urlStr = detail?.map_url_large ?? fallback.map_thumb_url, let url = URL(string: urlStr) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        case .failure: mapPlaceholder
+                        default: Shimmer()
+                        }
                     }
                 }
-                .padding(Theme.Space.m)
+                LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
+                heroStats(onMap: true).padding(Theme.Space.m)
+            }
+            .frame(height: 260).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+        } else if loading {
+            Shimmer().frame(height: 150).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        } else if failed {
+            GlassCard { mapPlaceholder.frame(height: 110) }
+        } else {
+            GlassCard(padding: Theme.Space.l) {
+                VStack(alignment: .leading, spacing: Theme.Space.s) {
+                    heroStats(onMap: false)
+                    if (detail?.distance_source) == "steps" {
+                        Label("Estimated from your steps — no GPS lock on this one", systemImage: "figure.run")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.amber)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Theme.Palette.amber.opacity(0.12), in: Capsule())
+                    } else {
+                        Label("No GPS route on this one", systemImage: "mappin.slash")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
             }
         }
-        .frame(height: 260).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
     }
 
-    private func label(_ icon: String, _ text: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
-            Text(text).font(Theme.Font.num(15, .semibold)).foregroundStyle(.white.opacity(0.92))
+    private func heroStats(onMap: Bool) -> some View {
+        let fg: Color = onMap ? .white : Theme.Palette.text
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(heroDistanceValue).font(Theme.Font.num(48)).foregroundStyle(fg)
+                Text(heroDistanceUnit).font(Theme.Font.body.weight(.semibold)).foregroundStyle(fg.opacity(0.8))
+            }
+            HStack(spacing: 10) {
+                label("clock", RunFmt.dur(detail?.moving_time_s ?? fallback.duration_min.map { $0 * 60 }), onMap: onMap)
+                label("speedometer", paceLabel(detail?.avg_pace_s_per_km ?? fallback.avg_pace_s_per_km), onMap: onMap)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func label(_ icon: String, _ text: String, onMap: Bool = true) -> some View {
+        let tint: Color = onMap ? .white.opacity(0.7) : Theme.Palette.textDim
+        let fg: Color = onMap ? .white.opacity(0.92) : Theme.Palette.text
+        return HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 11)).foregroundStyle(tint)
+            Text(text).font(Theme.Font.num(15, .semibold)).foregroundStyle(fg)
         }
     }
 

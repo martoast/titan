@@ -354,6 +354,67 @@ class ActivitySealTest extends TestCase
         $this->assertCount(1, $group->invoke($job, $contiguous));
     }
 
+    public function test_indoor_run_without_gps_estimates_distance_from_steps(): void
+    {
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 30.0, 'mean_hr' => 150.0, 'trimp' => 55.0, 'calories_kcal' => 360,
+                'activity_type' => 'run', 'activity_confidence' => 0.9,
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 48.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'good', 'fitness_percentile_band' => 2, 'hrr' => null]),
+            '*/process/step-distance' => Http::response([
+                'algo_version' => 'v1', 'estimated' => true,
+                'cadence_spm' => 168.0, 'steps' => 5040, 'stride_m' => 1.05, 'distance_km' => 5.29,
+            ]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 178]);
+
+        $this->storeIndoorWorkoutWindow($profile->id);   // accel + HR, NO gps at all
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($session);
+        $this->assertSame('run', $session->activity_type);
+        $this->assertEqualsWithDelta(5.29, $session->distance_km, 0.01);   // from the step estimate
+        $this->assertSame('steps', $session->distance_source);
+        $this->assertNotNull($session->avg_pace_s_per_km);                 // pace derived from it
+        // No GPS track ⇒ the route pass is skipped, and height reaches the estimator.
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/process/route'));
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/process/step-distance')
+            && ($r['height_cm'] ?? null) == 178);
+    }
+
+    /** A connected/indoor workout window: accel + on-chip HR, NO GPS (no track, no speed). */
+    private function storeIndoorWorkoutWindow(int $profileId, int $endsAgoMin = 60): void
+    {
+        $hr = array_fill(0, 1800, 150);
+        $fs = 25;
+        $m = 30 * 60 * $fs;
+        $ax = $ay = array_fill(0, $m, 0.0);
+        $az = array_fill(0, $m, 9.8);
+        $counts = array_fill(0, 60, 40);
+        $end = CarbonImmutable::now()->subMinutes($endsAgoMin);
+        $start = $end->subMinutes(30);
+        $window = [
+            'kind' => 'workout', 'start' => $start->toIso8601ZuluString(), 'end' => $end->toIso8601ZuluString(),
+            'accel_xyz' => ['x' => $ax, 'y' => $ay, 'z' => $az], 'accel_fs' => $fs, 'accel_unit' => 'ms2',
+            'accel_counts' => $counts, 'hr_bpm' => $hr,   // deliberately no 'gps'
+        ];
+        $key = "raw/{$profileId}/indoor-test.ndjson.gz";
+        Storage::disk('raw')->put($key, gzencode(json_encode($window)));
+        DeviceIngestion::create([
+            'batch_uid' => 'indoor-'.$profileId, 'profile_id' => $profileId, 'source' => 'titan_band',
+            'kind' => 'workout', 'object_key' => $key, 'window_start' => $start, 'window_end' => $end,
+            'status' => DeviceIngestion::STATUS_QUEUED,
+        ]);
+    }
+
     private function storeWorkoutWindow(int $profileId, int $endsAgoMin = 60, array $track = []): void
     {
         $n = 1800; // 30 min @ 1 Hz HR / GPS

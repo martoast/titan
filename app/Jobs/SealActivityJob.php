@@ -267,6 +267,31 @@ class SealActivityJob implements ShouldQueue
         $distance = ($route['distance_km'] ?? null)
             ?? $sess['distance_km']
             ?? ($speed ? round(array_sum($speed) / 3600.0, 2) : null);
+        $distanceSource = $distance !== null ? 'gps' : null;
+        $estPace = null;   // s/km, only when we estimate from steps (no GPS pace to read)
+
+        // No GPS distance at all (indoor / treadmill / never locked) → estimate it from the accel
+        // cadence + the user's height, so an indoor run still gets distance + pace + all the HR stats
+        // (just no map). Honest 'steps' source label. Failure here never blocks the seal.
+        if ($distance === null && $ax && $ay && $az && ($profileBits['height_cm'] ?? 0) > 0 && $durationMin > 0) {
+            try {
+                $est = $biosignal->estimateStepDistance([
+                    'accel_xyz' => ['x' => $ax, 'y' => $ay, 'z' => $az],
+                    'accel_fs' => $fs,
+                    'accel_unit' => $unit,
+                    'duration_s' => $durationMin * 60,
+                    'height_cm' => $profileBits['height_cm'],
+                    'activity_type' => $sess['activity_type'] ?? null,
+                ]);
+                if (($est['estimated'] ?? false) && ($est['distance_km'] ?? 0) > 0) {
+                    $distance = $est['distance_km'];
+                    $distanceSource = 'steps';
+                    $estPace = (int) round(($durationMin * 60) / max(0.01, $distance));
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[Biosignal] step-distance estimate failed', ['profile_id' => $profile->id, 'error' => $e->getMessage()]);
+            }
+        }
 
         $log = ActivitySession::updateOrCreate(
             ['profile_id' => $profile->id, 'started_at' => $startIso ? CarbonImmutable::parse($startIso) : now()],
@@ -277,6 +302,7 @@ class SealActivityJob implements ShouldQueue
                 'activity_type' => $sess['activity_type'] ?? null,
                 'activity_confidence' => $sess['activity_confidence'] ?? null,
                 'distance_km' => $distance,
+                'distance_source' => $distanceSource,
                 'avg_hr' => isset($sess['mean_hr']) ? (int) round($sess['mean_hr']) : ($hr1 ? (int) round(array_sum($hr1) / count($hr1)) : null),
                 'max_hr' => $maxHr,
                 'hr_source' => $hrSource,
@@ -291,8 +317,8 @@ class SealActivityJob implements ShouldQueue
                 // Run route + analytics (null-filtered → a routeless session keeps its existing values).
                 'route_polyline' => $route['polyline'] ?? null,
                 'route_bounds' => $route['bounds'] ?? null,
-                'moving_time_s' => $route['moving_time_s'] ?? null,
-                'avg_pace_s_per_km' => $route['avg_pace_s_per_km'] ?? null,
+                'moving_time_s' => $route['moving_time_s'] ?? ($estPace !== null ? (int) round($durationMin * 60) : null),
+                'avg_pace_s_per_km' => $route['avg_pace_s_per_km'] ?? $estPace,
                 'gap_s_per_km' => $route['gap_s_per_km'] ?? null,
                 'elevation_gain_m' => $route['elevation_gain_m'] ?? null,
                 'elevation_loss_m' => $route['elevation_loss_m'] ?? null,

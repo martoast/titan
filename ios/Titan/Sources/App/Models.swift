@@ -542,6 +542,7 @@ struct RunDetail: Codable, Equatable, Identifiable {
     let started_at: String?
     let duration_min: Int?
     let distance_km: Double?
+    let distance_source: String?
     let moving_time_s: Int?
     let avg_pace_s_per_km: Int?
     let gap_s_per_km: Int?

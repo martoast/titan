@@ -84,6 +84,34 @@ def cadence_spm(ax, ay, az, fs: int = 25, unit: str = "ms2") -> Optional[dict]:
     return {"cadence_spm": round(cadence, 1), "periodicity": round(strength, 2)}
 
 
+def estimate_distance(ax, ay, az, fs, duration_s, height_cm, activity_type=None, unit="ms2"):
+    """
+    Step-count distance ESTIMATE for an indoor / no-GPS run — so you still get distance + pace when
+    GPS never locked (or there's no Mapbox key for the map). Stride isn't directly observable at the
+    wrist, so we scale a height-based step length by gait type + cadence: walking step ≈ 0.41×height
+    (Bohannon), running step grows with cadence (~0.6×h at 150 spm → ~0.9×h fast). Distance =
+    cadence × minutes × step_length. Label it as an estimate in the UI. None if no clear periodic gait.
+    """
+    cad = cadence_spm(ax, ay, az, fs, unit)
+    if cad is None or duration_s <= 0 or height_cm <= 0:
+        return None
+    cadence = cad["cadence_spm"]
+    steps = cadence * (duration_s / 60.0)
+    h = height_cm / 100.0
+    running = activity_type == "run" or cadence >= 150
+    if running:
+        factor = 0.60 + min(0.30, max(0.0, (cadence - 150.0) / 35.0 * 0.30))
+    else:
+        factor = 0.41
+    step_m = factor * h
+    return {
+        "cadence_spm": cadence,
+        "steps": int(round(steps)),
+        "stride_m": round(step_m, 3),
+        "distance_km": round(steps * step_m / 1000.0, 2),
+    }
+
+
 def sit_to_stand(ax, ay, az, fs: int = 25, unit: str = "ms2", duration_s: Optional[float] = None) -> Optional[dict]:
     """Count sit-to-stand reps in a guided test from wrist accel (reuses the squat-validated counter).
 

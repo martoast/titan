@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from .. import ALGO_VERSION
 from ..core import activity as activity_core
+from ..core import gait as gait_core
 
 router = APIRouter(prefix="/process", tags=["activity"])
 
@@ -63,6 +64,41 @@ class ActivityMetrics(BaseModel):
 class ActivityResponse(BaseModel):
     algo_version: str
     metrics: ActivityMetrics
+
+
+class StepDistanceRequest(BaseModel):
+    accel_xyz: AccelXYZ = Field(..., description="Raw 3-axis accel for the whole activity (no GPS).")
+    accel_fs: int = Field(default=25, gt=0, le=1000)
+    accel_unit: str = Field(default="ms2", description="'ms2' | 'g' | 'mg' (Bangle sends 'mg').")
+    duration_s: float = Field(..., gt=0, description="Activity duration in seconds.")
+    height_cm: float = Field(..., gt=0, description="User height (cm) → step-length scale.")
+    activity_type: Optional[str] = Field(default=None, description="Classified type (run/walk/…) to tune stride.")
+
+
+class StepDistanceResponse(BaseModel):
+    algo_version: str
+    estimated: bool
+    cadence_spm: Optional[float] = None
+    steps: Optional[int] = None
+    stride_m: Optional[float] = None
+    distance_km: Optional[float] = None
+
+
+@router.post("/step-distance", response_model=StepDistanceResponse)
+async def process_step_distance(req: StepDistanceRequest) -> StepDistanceResponse:
+    """Estimate distance from accel cadence + height when there's no GPS (indoor/treadmill runs)."""
+    try:
+        est = gait_core.estimate_distance(
+            req.accel_xyz.x, req.accel_xyz.y, req.accel_xyz.z,
+            fs=req.accel_fs, duration_s=req.duration_s, height_cm=req.height_cm,
+            activity_type=req.activity_type, unit=req.accel_unit,
+        )
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"Step-distance failed: {exc}")
+
+    if not est:
+        return StepDistanceResponse(algo_version=ALGO_VERSION, estimated=False)
+    return StepDistanceResponse(algo_version=ALGO_VERSION, estimated=True, **est)
 
 
 @router.post("/activity", response_model=ActivityResponse)

@@ -59,10 +59,39 @@
             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zm12 7a3 3 0 100-6 3 3 0 000 6z"/></svg>
             Share this run
         </button>
-    @elseif (! config('services.mapbox.token'))
-        <div class="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center text-[13px] text-amber-300/80">
-            Add a <span class="font-mono">MAPBOX_API_TOKEN</span> to <span class="font-mono">.env</span> to render the route map.
+    @else
+        {{-- No route map (indoor/no-GPS run, or no Mapbox key) — still lead with the numbers. --}}
+        <div class="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+            @if ($dist)
+                <div class="flex items-end gap-2">
+                    <span class="font-display nums text-5xl font-black leading-none text-white sm:text-6xl">{{ $distNum }}</span>
+                    <span class="mb-1 text-base font-semibold text-white/75">{{ $distUnit }}</span>
+                </div>
+            @else
+                <div class="font-display nums text-5xl font-black leading-none text-white sm:text-6xl">{{ $movingLabel }}</div>
+            @endif
+            <div class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] font-semibold text-gray-200 nums">
+                <span class="flex items-center gap-1.5">
+                    <svg class="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 7v5l3 2"/></svg>{{ $movingLabel }}</span>
+                @if ($avgPace)<span class="flex items-center gap-1.5">
+                    <svg class="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>{{ $avgPace }}</span>@endif
+            </div>
+            @if ($session->distance_source === 'steps')
+                <p class="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-400/10 px-2.5 py-1 text-[11px] font-medium text-amber-300/90">
+                    <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    Estimated from your steps — no GPS lock on this one
+                </p>
+            @elseif (! config('services.mapbox.token') && $session->hasRoute())
+                <p class="mt-3 text-[12px] text-amber-300/70">Route tracked — add a <span class="font-mono">MAPBOX_API_TOKEN</span> to render the map.</p>
+            @endif
         </div>
+        @if ($dist)
+            <button type="button" onclick="shareRun()"
+                class="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] py-3 text-[14px] font-semibold text-gray-200 hover:bg-white/[0.07] transition">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zm12 7a3 3 0 100-6 3 3 0 000 6z"/></svg>
+                Share this run
+            </button>
+        @endif
     @endif
 
     {{-- ── Secondary stats (calm — color reserved for GAP + effort) ────────── --}}

@@ -58,6 +58,16 @@ class BiosignalClient
     }
 
     /**
+     * Estimate distance from accel cadence + height when there's no GPS (indoor/treadmill run).
+     *
+     * @return array<string,mixed>
+     */
+    public function estimateStepDistance(array $request): array
+    {
+        return $this->client()->post('/process/step-distance', $request)->throw()->json();
+    }
+
+    /**
      * Floors climbed + ascent/descent from a barometric altitude series.
      *
      * @param  array<string,mixed>  $window  {altitude_m: float[], sample_rate_hz: float}

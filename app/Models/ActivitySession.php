@@ -14,7 +14,7 @@ class ActivitySession extends Model
     protected $fillable = [
         'profile_id', 'source', 'started_at', 'ended_at', 'duration_min',
         'activity_type', 'activity_confidence',
-        'distance_km', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'hr_zones', 'trimp', 'calories_kcal',
+        'distance_km', 'distance_source', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'hr_zones', 'trimp', 'calories_kcal',
         'vo2max', 'fitness_level', 'hrr_bpm', 'updated_via',
         // Run route + analytics (biosignal /process/route).
         'route_polyline', 'route_bounds', 'moving_time_s', 'avg_pace_s_per_km', 'gap_s_per_km',
