@@ -109,6 +109,10 @@ public final class HrTrendBuilder {
     /// Feed one T5 reading (`t` in ms). Returns a window once enough minutes have accumulated.
     public func add(t: UInt64, bpm: UInt8, conf: UInt8) -> HrTrendWindow? {
         let minute = t / 60_000
+        // Monotonic guard: a reading that regresses into an already-passed minute (out-of-order
+        // offline duty-cycle reads arriving after a reconnect flush) would reopen a closed bucket and
+        // fragment that minute's median into stray single-sample points. bucketMin only advances.
+        if bucketMin != 0, minute < bucketMin { return pending.count >= Self.FLUSH_AT ? drain() : nil }
         if bucketMin == 0 { bucketMin = minute }
         if minute != bucketMin { closeBucket(); bucketMin = minute }
         if bpm > 0 { bpms.append(Int(bpm)); confMax = max(confMax, Int(conf)) }

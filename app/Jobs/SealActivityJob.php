@@ -114,7 +114,10 @@ class SealActivityJob implements ShouldQueue
 
         foreach ($windows as $w) {
             $start = CarbonImmutable::parse($w->window_start ?? $w->created_at);
-            $newSession = $lastEnd !== null && $start->diffInMinutes($lastEnd) > self::SESSION_GAP_MINUTES;
+            // Carbon 3 diffInMinutes is SIGNED — windows are ordered ascending so a real forward gap
+            // yields a negative value; take the magnitude or the gap rule never fires (every workout
+            // would merge into one session).
+            $newSession = $lastEnd !== null && abs($start->diffInMinutes($lastEnd)) > self::SESSION_GAP_MINUTES;
             if ($newSession && $current->isNotEmpty()) {
                 $sessions[] = $current;
                 $current = collect();
@@ -172,7 +175,7 @@ class SealActivityJob implements ShouldQueue
         }
 
         $startIso = $start ? CarbonImmutable::parse($start)->toIso8601ZuluString() : null;
-        $durationMin = ($start && $end) ? CarbonImmutable::parse($start)->diffInMinutes(CarbonImmutable::parse($end)) : null;
+        $durationMin = ($start && $end) ? abs(CarbonImmutable::parse($start)->diffInMinutes(CarbonImmutable::parse($end))) : null;
         if ($durationMin !== null && $durationMin < self::MIN_SESSION_MIN) {
             $session->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
 

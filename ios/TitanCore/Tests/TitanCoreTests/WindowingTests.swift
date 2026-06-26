@@ -72,6 +72,20 @@ final class WindowingTests: XCTestCase {
         XCTAssertEqual(w.samples[1].bpm, 50)
     }
 
+    func testHrTrendIgnoresOutOfOrderReadingsThatWouldReopenAClosedMinute() throws {
+        // A reconnect flush can interleave older offline-duty-cycle reads after live ones. Such a
+        // regressed reading must NOT reopen minute 0 (which would fragment it into a second point).
+        let b = HrTrendBuilder()
+        let m0: UInt64 = 1_750_000_000_000
+        XCTAssertNil(b.add(t: m0 + 1_000, bpm: 60, conf: 80))   // minute 0
+        XCTAssertNil(b.add(t: m0 + 61_000, bpm: 50, conf: 90))  // minute 1 → closes minute 0
+        XCTAssertNil(b.add(t: m0 + 5_000, bpm: 200, conf: 99))  // out-of-order minute-0 read → ignored
+        let w = try XCTUnwrap(b.flush())
+        XCTAssertEqual(w.samples.count, 2)                       // exactly two minutes, not three
+        XCTAssertEqual(w.samples[0].bpm, 60)                     // minute 0 unaffected by the stray read
+        XCTAssertEqual(w.samples[1].bpm, 50)
+    }
+
     func testHrTrendIgnoresZeroBpmAndEmptyFlush() {
         let b = HrTrendBuilder()
         XCTAssertNil(b.add(t: 1_750_000_000_000, bpm: 0, conf: 0))  // no valid reading

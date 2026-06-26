@@ -135,6 +135,12 @@ class SealNightJob implements ShouldQueue
      */
     private function nightIsComplete(\Illuminate\Support\Collection $windows, string $date, string $tz): bool
     {
+        if ($this->confirmed) {
+            return true; // the user explicitly marked awake on the band — seal now, don't wait for
+            // quiescence. This also keeps the hourly cron (confirmed=false, still gated below) from
+            // sealing the fresh night out from under the user's confirmed summary.
+        }
+
         if ($date < now($tz)->toDateString()) {
             return true; // a past night -- morning cutoff
         }

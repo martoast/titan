@@ -104,7 +104,7 @@ class StackItem extends Model
      * Rough adherence over the last N days: taken doses ÷ scheduled doses, capped at 100.
      * null for as-needed items (nothing to be "on track" against).
      */
-    public function adherencePct(int $days = 14): ?int
+    public function adherencePct(int $days = 14, ?int $takenCount = null): ?int
     {
         if (($this->schedule['frequency'] ?? 'daily') === 'as_needed') {
             return null;
@@ -123,9 +123,38 @@ class StackItem extends Model
             return null;
         }
 
-        $start = $today->copy()->subDays($days - 1)->setTimezone(config('app.timezone', 'UTC'));
-        $taken = $this->intakeEvents()->where('status', 'taken')->where('taken_at', '>=', $start)->count();
+        // When the caller batched the counts (see takenCounts), use the injected value instead of
+        // firing a per-item COUNT — avoids the N+1 when rendering a whole protocol.
+        if ($takenCount === null) {
+            $start = $today->copy()->subDays($days - 1)->setTimezone(config('app.timezone', 'UTC'));
+            $takenCount = $this->intakeEvents()->where('status', 'taken')->where('taken_at', '>=', $start)->count();
+        }
 
-        return (int) round(min(100, $taken / $expected * 100));
+        return (int) round(min(100, $takenCount / $expected * 100));
+    }
+
+    /**
+     * Taken-dose counts over the last $days for a whole set of items in ONE grouped query, keyed by
+     * item id — feed each into adherencePct($days, $count) to render a protocol without an N+1.
+     *
+     * @param  \Illuminate\Support\Collection<int,StackItem>  $items
+     * @return array<int,int>
+     */
+    public static function takenCounts(\Illuminate\Support\Collection $items, int $days = 14): array
+    {
+        if ($items->isEmpty()) {
+            return [];
+        }
+        $tz = $items->first()->profile?->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $start = Carbon::now($tz)->startOfDay()->subDays($days - 1)->setTimezone(config('app.timezone', 'UTC'));
+
+        return IntakeEvent::query()
+            ->whereIn('stack_item_id', $items->pluck('id'))
+            ->where('status', 'taken')
+            ->where('taken_at', '>=', $start)
+            ->groupBy('stack_item_id')
+            ->selectRaw('stack_item_id, count(*) as c')
+            ->pluck('c', 'stack_item_id')
+            ->all();
     }
 }

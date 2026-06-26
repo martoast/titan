@@ -14,17 +14,29 @@ final class SqliteWindowStore: WindowStore {
     /// Application Support directory.
     init(path: String? = nil) {
         let file = path ?? Self.defaultPath()
-        if sqlite3_open(file, &db) == SQLITE_OK {
-            exec("""
-                CREATE TABLE IF NOT EXISTS windows (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    payload BLOB NOT NULL,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    created_at REAL NOT NULL
-                );
-            """)
-            exec("PRAGMA journal_mode=WAL;")
+        if !open(file) {
+            // The on-disk DB is unusable (corrupt / failed open). Recreate it once rather than leave
+            // `db` nil and silently swallow every enqueue — losing the whole night's buffer.
+            sqlite3_close(db)
+            db = nil
+            try? FileManager.default.removeItem(atPath: file)
+            _ = open(file)
         }
+    }
+
+    /// Open the database and ensure the schema. Returns false if the handle could not be opened.
+    private func open(_ file: String) -> Bool {
+        guard sqlite3_open(file, &db) == SQLITE_OK else { return false }
+        exec("""
+            CREATE TABLE IF NOT EXISTS windows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payload BLOB NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL
+            );
+        """)
+        exec("PRAGMA journal_mode=WAL;")
+        return true
     }
 
     deinit { sqlite3_close(db) }
@@ -59,7 +71,8 @@ final class SqliteWindowStore: WindowStore {
                 if let w = try? JSONDecoder().decode(AnyWindow.self, from: data) {
                     out.append((id, w))
                 } else {
-                    try? remove(id: id)   // corrupt row — drop it rather than wedge the queue
+                    deleteRow(id: id)   // corrupt row — drop it (we already hold the lock; must NOT
+                    // call the public, self-locking remove() here or NSLock deadlocks the drain).
                 }
             }
         }
@@ -68,6 +81,12 @@ final class SqliteWindowStore: WindowStore {
 
     func remove(id: Int64) throws {
         lock.lock(); defer { lock.unlock() }
+        deleteRow(id: id)
+    }
+
+    /// Delete a row. The CALLER must already hold `lock` (NSLock is non-recursive — re-locking from
+    /// the same thread deadlocks). Used by both `remove(id:)` and `pending`'s corrupt-row drop.
+    private func deleteRow(id: Int64) {
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, "DELETE FROM windows WHERE id = ?;", -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }
