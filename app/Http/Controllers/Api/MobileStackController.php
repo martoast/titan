@@ -168,10 +168,15 @@ class MobileStackController extends Controller
     /** @return array<string,mixed> */
     private function payload(Profile $profile): array
     {
+        $items = $profile->stackItems()->orderByDesc('active')->orderBy('kind')->orderBy('name')->get();
+        // Avoid the N+1: the items all share this profile (set the relation so adherencePct's tz
+        // lookup never lazy-loads it), and batch every item's taken-dose count into one query.
+        $items->each->setRelation('profile', $profile);
+        $takenCounts = StackItem::takenCounts($items);
+
         return [
             'today' => Stack::today($profile),
-            'items' => $profile->stackItems()->orderByDesc('active')->orderBy('kind')->orderBy('name')->get()
-                ->map(fn (StackItem $i) => $this->itemJson($i))->values(),
+            'items' => $items->map(fn (StackItem $i) => $this->itemJson($i, $takenCounts[$i->id] ?? 0))->values(),
             'flags' => $profile->interactionFlags()->get()->sortBy(fn ($f) => $f->rank())->values()
                 ->map(fn ($f) => $this->flagJson($f)),
             'disclaimer' => self::DISCLAIMER,
@@ -209,7 +214,7 @@ class MobileStackController extends Controller
     }
 
     /** @return array<string,mixed> */
-    private function itemJson(StackItem $i): array
+    private function itemJson(StackItem $i, ?int $takenCount = null): array
     {
         return [
             'id' => $i->id,
@@ -224,7 +229,7 @@ class MobileStackController extends Controller
             'slots' => $i->slots(),
             'active' => (bool) $i->active,
             'photo_url' => $i->photoUrl(),
-            'adherence' => $i->adherencePct(),
+            'adherence' => $i->adherencePct(14, $takenCount),
             'notes' => $i->notes,
         ];
     }

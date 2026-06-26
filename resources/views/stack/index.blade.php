@@ -121,7 +121,7 @@
                         </div>
                         <div class="space-y-2">
                             @foreach ($items as $item)
-                                @php $pct = $item->adherencePct(); @endphp
+                                @php $pct = $adherence[$item->id] ?? null; @endphp
                                 <div class="rounded-xl border border-white/5 bg-gray-900/50 overflow-hidden"
                                      x-data="{ open: false, edit: false }">
                                     {{-- Row summary --}}

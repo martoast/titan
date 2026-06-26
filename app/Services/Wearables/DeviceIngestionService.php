@@ -185,11 +185,20 @@ class DeviceIngestionService
         if (empty($summary['confirmed'])) {
             return false;
         }
-        $bed = (int) ($summary['bedtime'] ?? 0);
-        if ($bed <= 0) {
+        // Key the night the SAME way SealNightJob groups windows — by the local date the overnight
+        // windows END (the wake date). Deriving it from bedtime breaks for every sleep that crosses
+        // midnight (bed 23:00 → wake 07:00): the bedtime date never matches the window_end grouping,
+        // so the user's confirmed summary never fires. Use the latest unsealed window's end date.
+        $latestEnd = DeviceIngestion::query()
+            ->where('profile_id', $connection->profile_id)
+            ->whereIn('kind', ['ibi', 'ppg_raw', 'sleep'])
+            ->where('status', '!=', DeviceIngestion::STATUS_SEALED)
+            ->whereNotNull('window_end')
+            ->max('window_end');
+        if ($latestEnd === null) {
             return false;
         }
-        $night = \Carbon\CarbonImmutable::createFromTimestamp($bed, $tz)->toDateString();
+        $night = CarbonImmutable::parse($latestEnd)->setTimezone($tz)->toDateString();
         \App\Jobs\SealNightJob::dispatch($connection->profile_id, $night, true)->afterCommit();
 
         return true;

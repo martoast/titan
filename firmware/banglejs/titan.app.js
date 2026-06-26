@@ -92,7 +92,7 @@ var CFG = {
   GPS_ARM_SEC: 25,                   // sustained motion before GPS powers on (covers ~30s cold fix)
   GPS_OFF_SEC: 90,                   // quiet time before an AUTO workout ends
   GPS_FIX_TIMEOUT: 90,               // no satellite fix this long → indoors; drop GPS, keep the workout
-  GPS_PROTO_VERSION: 4,              // T4 frame: per-fix speed + altitude (+ grade source)
+  GPS_PROTO_VERSION: 5,              // T4 frame: per-fix lat/lon (route map) + speed + altitude (v5 added coords)
 
   // During a WORKOUT we also stream the on-chip HR (bpm) — but ONLY as a fallback for offline
   // sessions (no raw PPG reaches the server). When connected, the server recomputes in-motion HR
@@ -123,7 +123,30 @@ var CFG = {
   // the Whoop trick: sample sparsely when still, densely when it matters.
   REST_DUTY: true,                   // master switch for offline-rest duty-cycling
   REST_DUTY_ON_MS: 15000,            // measure window — long enough for the VC31 to settle + average
-  REST_DUTY_PERIOD_MS: 60000,        // one reading per minute (25% duty → ~4x the HRM battery life)
+  REST_DUTY_PERIOD_MS: 60000,        // MOVING cadence: one reading/min (25% duty) — keeps HR responsive while you're active
+  // Motion-gated rest cadence (Whoop's trick): when you're STILL (desk / sitting), relax the period to
+  // save battery; the instant you move, snap back to the tight REST_DUTY_PERIOD_MS. motionEMA is the
+  // same always-on accel signal the GPS gate + auto-detect already maintain, so the gating is free.
+  REST_DUTY_PERIOD_STILL_MS: 180000, // STILL cadence: one reading every 3 min (~8% duty → ~3x the active rest battery)
+  REST_STILL_MOTION: 0.07,           // motionEMA below this = "still" (under AUTO_MOTION_LO: typing stays still, walking trips it)
+
+  // --- OVERNIGHT SLEEP duty-cycle (battery) ----------------------------------
+  // Running the HRM continuously at 25 Hz all night (for HRV) drains a ~200 mAh Bangle.js 2 in ~16 h
+  // — i.e. ~50% per 8-h night, which is what was observed. Whoop doesn't run its PPG continuously
+  // either; it samples a clean burst periodically. So overnight we DUTY-CYCLE the HRM in sleep too:
+  // power it on for a window long enough to settle the VC31 and capture a clean RR series (HRV), then
+  // off. Crucially — unlike REST duty (which logs only a light T5 HR point) — raw PPG IS still logged
+  // during each ON window (pushSample → logSample, because restModeActive() stays false in sleep), so
+  // the server gets per-burst nocturnal HRV across the whole night. ~17% duty → ~6x the HRM battery.
+  SLEEP_DUTY: true,                  // master switch for overnight sleep duty-cycling
+  SLEEP_DUTY_ON_MS: 30000,           // 30 s clean HRV burst (settle + a solid RR series)
+  SLEEP_DUTY_PERIOD_MS: 180000,      // one burst every 3 min (~17% duty); widen ON if HRV looks thin
+
+  // Overnight the screen should stay dark through tossing/turning — the LCD backlight is ~17 mA (~57x
+  // idle) and wrist-twist against a pillow can fire it hundreds of times a night. During a sleep
+  // session we disable the ACCIDENTAL wakes (twist/touch/face-up) and keep wake-on-button, so one
+  // click of the side button still lights the watch. Restored when the session ends.
+  SLEEP_SCREEN_OFF: true,            // master switch for the overnight screen-dark behaviour
 
   // OFFLINE workouts (a run with no phone, or a gym session): when not connected we log the
   // 3-axis accel to flash as compact T6 frames so the workout still CLASSIFIES on morning sync
@@ -248,10 +271,17 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
-var PAGES = 7;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo · 5 Stopwatch · 6 Counter
+var PAGES = 8;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo · 5 Stopwatch · 6 Counter · 7 Run
 var STOPWATCH_PAGE = 5;   // the Stopwatch face (tap = plain timer; double-click button = log as sleep)
 var COUNTER_PAGE = 6;     // the Counter face (tap = +1; double-click button = reset to zero)
+var RUN_PAGE = 7;         // the Run face (tap = start/stop a GPS-tracked run → the app's route map)
 var page = 0;             // current face (swipe to change)
+// Run face state — a GPS-tracked run started from the watch; the workout's T4 coords build the route.
+var runActive = false;    // a run is being tracked
+var runStartMs = 0;       // run start (device ms)
+var runDistM = 0;         // accumulated distance (m), summed from GPS fixes (haversine)
+var runLastLat = null, runLastLon = null;  // last coord, for the distance increment
+var runTimer = null;      // 1 Hz repaint while the run face is live (so the timer ticks)
 var lastSwipeT = 0;       // getTime() of the last page swipe — so the tap that ends a swipe isn't a sleep toggle
 var photoMin = -2;        // minute currently shown on the Photo face (-2 = needs a full repaint)
 var clockTickTimer = null; // minute-boundary redraw for the clock face
@@ -652,7 +682,25 @@ function onGPS(g) {
   state.speed = g.speed; // Bangle GPS speed is km/h on most builds; server treats it as such
   // Prefer barometric altitude (smoother for grade); fall back to GPS altitude.
   var alt = (lastAltitude !== null) ? lastAltitude : (isNaN(g.alt) ? null : g.alt);
-  emitGpsFrame(state.speed, alt, g.satellites | 0);
+  // Position for the route map: only when the fix carries real coords (NaN before/at a marginal fix).
+  var lat = (g.lat !== undefined && !isNaN(g.lat)) ? g.lat : null;
+  var lon = (g.lon !== undefined && !isNaN(g.lon)) ? g.lon : null;
+  emitGpsFrame(state.speed, alt, g.satellites | 0, lat, lon);
+  // Live on-watch run distance: sum the gap between consecutive fixes (the server recomputes its own
+  // distance from the full track on seal; this is just the glanceable number on the Run face).
+  if (runActive && lat !== null && lon !== null) {
+    if (runLastLat !== null) runDistM += haversineM(runLastLat, runLastLon, lat, lon);
+    runLastLat = lat; runLastLon = lon;
+  }
+}
+
+// Great-circle distance between two lat/lon points, in metres (on-watch, for the live run readout).
+function haversineM(la1, lo1, la2, lo2) {
+  var toR = Math.PI / 180;
+  var dLa = (la2 - la1) * toR, dLo = (lo2 - lo1) * toR;
+  var a = Math.sin(dLa / 2) * Math.sin(dLa / 2)
+    + Math.cos(la1 * toR) * Math.cos(la2 * toR) * Math.sin(dLo / 2) * Math.sin(dLo / 2);
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
 function onPressure(p) {
@@ -697,10 +745,12 @@ function emitAltFrame() {
   }
 }
 
-// T4 frame: one GPS fix → speed (km/h ×100) + altitude (m ×10) + sats. Streamed live when
-// connected; when offline it's appended to the same overnight log for morning sync.
-function emitGpsFrame(speedKmh, altM, sats) {
-  var buf = new ArrayBuffer(20);
+// T4 frame (v5, 24 B): one GPS fix → lat/lon (deg ×1e7, the route map) + speed (km/h ×100) +
+// altitude (m ×10) + sats. Coords use the same -2147483648 = "no value" sentinel as altitude, so a
+// speed-only fix still logs. Streamed live when connected; offline it's appended to the log for sync.
+var GPS_NULL = -2147483648;   // i32 min — shared "no value" sentinel for alt + lat + lon
+function emitGpsFrame(speedKmh, altM, sats, lat, lon) {
+  var buf = new ArrayBuffer(24);
   var dv = new DataView(buf);
   var nowMs = Math.round(getTime() * 1000);
   var hi = Math.floor(nowMs / 4294967296);
@@ -709,8 +759,9 @@ function emitGpsFrame(speedKmh, altM, sats) {
   dv.setInt16(2, clampI16(Math.round(speedKmh * 100)), true);
   dv.setUint32(4, (nowMs - hi * 4294967296) >>> 0, true);
   dv.setUint32(8, hi >>> 0, true);
-  dv.setInt32(12, (altM === null ? -2147483648 : Math.round(altM * 10)) | 0, true);
-  dv.setUint32(16, 0, true);
+  dv.setInt32(12, (altM === null ? GPS_NULL : Math.round(altM * 10)) | 0, true);
+  dv.setInt32(16, (lat === null || lat === undefined ? GPS_NULL : Math.round(lat * 1e7)) | 0, true);
+  dv.setInt32(20, (lon === null || lon === undefined ? GPS_NULL : Math.round(lon * 1e7)) | 0, true);
   var line = "T4:" + b64(buf);
   if (state.connected) {
     try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
@@ -817,45 +868,127 @@ function applyHrmMode() {
 
 // ----- 24/7 HRM power: continuous when it matters, duty-cycled when idle+offline ----------
 // Offline rest = streaming, no central, no workout, no sleep session. THE battery-critical 24/7 case.
-var restDutyTimer = null;    // the per-minute "take a reading" interval (null = not duty-cycling)
+var restDutyTimer = null;    // timeout to the NEXT burst (null = mid-window or not duty-cycling)
 var restDutyOnTimer = null;  // the "measure window done → read + power off" timeout
 
 function restModeActive() {
   return state.streaming && !state.connected && !state.workout && state.swMode !== "sleep";
 }
 
-// One duty cycle: power the HRM on, let it settle for REST_DUTY_ON_MS, then log the bpm as a light
-// T5 trend point and power back off. Skips itself if we've since left rest mode.
+// Motion-gated cadence: when you're STILL, relax the period (battery); when you're MOVING, keep it
+// tight so HR stays responsive. motionEMA is the always-on accel signal — re-evaluated every cycle, so
+// it tightens the instant you start moving and relaxes once you settle. Whoop does exactly this.
+function restDutyPeriod() {
+  return (motionEMA < CFG.REST_STILL_MOTION) ? CFG.REST_DUTY_PERIOD_STILL_MS : CFG.REST_DUTY_PERIOD_MS;
+}
+
+// One duty cycle: power the HRM on, let it settle for REST_DUTY_ON_MS, log the bpm as a light T5 trend
+// point, power back off, then self-schedule the NEXT burst by the current motion state. The whole loop
+// stands down the moment we leave rest mode (workout/connect/sleep own the power from there).
 function restDutyTick() {
+  restDutyTimer = null;
   if (!restModeActive()) { stopRestDuty(); return; }
   try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
+  applyHrmMode();   // force normal mode + 40 Hz rest cadence — else a burst after a workout inherits stale sportMode 1 + 20 ms (inflated HR + more power)
   if (restDutyOnTimer) clearTimeout(restDutyOnTimer);
   restDutyOnTimer = setTimeout(function () {
     restDutyOnTimer = null;
     if (state.bpm > 0) emitHrFrame(state.bpm, state.conf);   // → ring (offline), a tiny HR-trend point
-    if (restModeActive()) { try { Bangle.setHRMPower(0, "titan"); } catch (e) {} }
+    if (!restModeActive()) { stopRestDuty(); return; }       // left rest mid-window → don't power off, the new mode owns it
+    try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
+    // gap = full cycle minus the ON window, so REST_DUTY_PERIOD_*_MS keeps meaning "one reading per period"
+    restDutyTimer = setTimeout(restDutyTick, Math.max(1000, restDutyPeriod() - CFG.REST_DUTY_ON_MS));
   }, CFG.REST_DUTY_ON_MS);
 }
 
 function startRestDuty() {
-  if (!CFG.REST_DUTY || restDutyTimer) return;
-  restDutyTimer = setInterval(restDutyTick, CFG.REST_DUTY_PERIOD_MS);
-  restDutyTick();   // take the first reading immediately
+  if (!CFG.REST_DUTY || restDutyTimer || restDutyOnTimer) return;   // already cycling (timer = waiting, onTimer = mid-window)
+  restDutyTick();   // first reading immediately; it self-schedules from there
 }
 
 function stopRestDuty() {
-  if (restDutyTimer) { clearInterval(restDutyTimer); restDutyTimer = null; }
+  if (restDutyTimer) { clearTimeout(restDutyTimer); restDutyTimer = null; }
   if (restDutyOnTimer) { clearTimeout(restDutyOnTimer); restDutyOnTimer = null; }
 }
 
-// Single source of truth for HRM power, called on every state transition. Rest+offline → duty-cycle;
-// everything else (connected live, workout, sleep) → continuous HRM at the right sport mode + rate.
+// ----- Overnight SLEEP HRM duty-cycle (battery) -------------------------------------------
+// Sleep wants HRV, which needs raw PPG + a clean RR series — but holding the HRM on continuously
+// at 25 Hz all night flattens a ~175 mAh Bangle.js 2 in ~16 h (the CPU never deep-sleeps to run the
+// VC31 algorithm — ~5 mA, ~85-90% of the overnight drain). Whoop doesn't sample continuously at rest
+// either. So overnight we BURST: power the HRM on for SLEEP_DUTY_ON_MS (long enough to settle + grab a
+// solid RR window for HRV), then off for the rest of the period. Unlike rest-duty (which logs only a
+// light T5 point), restModeActive() stays false during sleep — so each ON window logs raw PPG to flash
+// (T2) and HR (T1) through the normal streaming path, exactly as continuous sleep did, just in bursts.
+var sleepDutyTimer = null;    // the per-period "take a burst" interval (null = not duty-cycling)
+var sleepDutyOnTimer = null;  // the "burst window done → power off" timeout
+
+function sleepModeActive() {
+  return state.streaming && state.swMode === "sleep" && !state.workout;
+}
+
+function sleepDutyTick() {
+  if (!sleepModeActive()) { stopSleepDuty(); return; }
+  try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
+  applyHrmMode();   // 25 Hz rest cadence → clean RR + raw PPG for HRV during the burst
+  if (sleepDutyOnTimer) clearTimeout(sleepDutyOnTimer);
+  sleepDutyOnTimer = setTimeout(function () {
+    sleepDutyOnTimer = null;
+    // The HRM handler logged HR (T1) + raw PPG (T2) across the burst — just power the LED+AFE back down.
+    if (sleepModeActive()) { try { Bangle.setHRMPower(0, "titan"); } catch (e) {} }
+  }, CFG.SLEEP_DUTY_ON_MS);
+}
+
+function startSleepDuty() {
+  if (!CFG.SLEEP_DUTY || sleepDutyTimer) return;
+  sleepDutyTimer = setInterval(sleepDutyTick, CFG.SLEEP_DUTY_PERIOD_MS);
+  sleepDutyTick();   // first burst immediately
+}
+
+function stopSleepDuty() {
+  if (sleepDutyTimer) { clearInterval(sleepDutyTimer); sleepDutyTimer = null; }
+  if (sleepDutyOnTimer) { clearTimeout(sleepDutyOnTimer); sleepDutyOnTimer = null; }
+}
+
+// ----- Overnight screen-dark (battery) ----------------------------------------------------
+// During a sleep session, suppress the accidental screen wakes (wrist-twist / touch / face-up) so the
+// backlight doesn't fire all night against a pillow — but LEAVE wakeOnBTN1 alone, so one click of the
+// side button still lights the watch to peek. We snapshot the current wake options on the way down and
+// restore them exactly on the way back up (no-op if we never touched them).
+var sleepWakeSaved = null;   // captured wake options (null = we haven't changed anything)
+
+function sleepScreenOff() {
+  if (!CFG.SLEEP_SCREEN_OFF || sleepWakeSaved) return;
+  try {
+    var o = Bangle.getOptions();   // recent firmware; falls back to Bangle.js 2 defaults if absent
+    sleepWakeSaved = { wakeOnTwist: o.wakeOnTwist, wakeOnTouch: o.wakeOnTouch, wakeOnFaceUp: o.wakeOnFaceUp };
+  } catch (e) {
+    sleepWakeSaved = { wakeOnTwist: true, wakeOnTouch: false, wakeOnFaceUp: false };
+  }
+  try { Bangle.setOptions({ wakeOnTwist: false, wakeOnTouch: false, wakeOnFaceUp: false }); } catch (e) {}
+  try { Bangle.setLocked(true); } catch (e) {}   // drop the screen now; the untouched wakeOnBTN1 still wakes it
+}
+
+function sleepScreenRestore() {
+  if (!sleepWakeSaved) return;                    // nothing to undo
+  try { Bangle.setOptions(sleepWakeSaved); } catch (e) {}
+  sleepWakeSaved = null;
+}
+
+// Single source of truth for HRM power, called on every state transition. Sleep → burst duty-cycle
+// (battery); rest+offline → per-minute duty-cycle; everything else (connected live, workout) →
+// continuous HRM at the right sport mode + rate. If SLEEP_DUTY is off, sleep falls through to
+// continuous (the old behaviour) so the night is never left un-sampled.
 function reconcileHrm() {
-  if (!state.streaming) { stopRestDuty(); return; }   // stopStreaming() owns the power-off
-  if (restModeActive()) {
+  if (!state.streaming) { stopRestDuty(); stopSleepDuty(); return; }   // stopStreaming() owns the power-off
+  if (sleepModeActive() && CFG.SLEEP_DUTY) {
+    stopRestDuty();
+    startSleepDuty();
+  } else if (restModeActive()) {
+    stopSleepDuty();
     startRestDuty();
   } else {
     stopRestDuty();
+    stopSleepDuty();
     try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
     applyHrmMode();
   }
@@ -883,6 +1016,8 @@ function stopStreaming() {
   setStreamPref(false);
   flushFrame(); // emit whatever partial frame we have
   stopRestDuty();
+  stopSleepDuty();
+  sleepScreenRestore();   // safety net: never leave twist/touch wake disabled if a sleep was active
   Bangle.setHRMPower(0, "titan");
   endWorkout(); // close any workout (flushes T6, powers GPS down)
   motionEMA = 0;
@@ -1067,6 +1202,63 @@ function drawCounter() {
   g.drawString("double-click button: reset", cx, 166);
 }
 
+// "m:ss" (or "h:mm:ss") for an elapsed/pace second count — the Run face's time + pace.
+function fmtMMSS(s) {
+  s = Math.max(0, Math.round(s));
+  var hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
+  return (hh > 0 ? hh + ":" + ("0" + mm).substr(-2) : mm) + ":" + ("0" + ss).substr(-2);
+}
+
+// Page 7 — RUN: a GPS-tracked run you start from the watch. Tap to start (arms GPS + a workout pinned
+// as a run); the live time / distance / pace show here, and the workout's T4 coords build the route
+// map in the app on the next sync. Tap again to finish.
+function drawRun() {
+  var W = g.getWidth(), cx = W / 2;
+  topBar();
+  tabTitle("RUN", C.mint);
+  if (!runActive) {
+    g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
+    g.drawString("0.00", cx, 96);
+    g.setFont("6x8", 1); g.drawString("km", cx, 124);
+    g.setColor(C.mint); g.drawString("tap: start run", cx, 150);
+    g.setColor(state.gpsFix ? C.mint : C.amber);
+    g.drawString(state.gpsFix ? "GPS ready" : "GPS searching", cx, 166);
+    return;
+  }
+  var sec = (getTime() * 1000 - runStartMs) / 1000;
+  var km = runDistM / 1000;
+  g.setColor(C.white); g.setFont("Vector", 44); g.setFontAlign(0, 0);
+  g.drawString(fmtMMSS(sec), cx, 80);
+  g.setColor(C.mint); g.setFont("Vector", 34);
+  g.drawString(km.toFixed(2) + " km", cx, 124);
+  var pace = km > 0.02 ? fmtMMSS(sec / km) + " /km" : "--:-- /km";
+  g.setColor(C.dim); g.setFont("6x8", 2); g.drawString(pace, cx, 158);
+  g.setColor(state.gpsFix ? C.mint : C.amber); g.setFont("6x8", 1);
+  g.drawString(state.gpsFix ? "tracking · tap to finish" : "acquiring GPS · tap to finish", cx, 184);
+}
+
+// Tap on the Run face: start or finish a GPS-tracked run. Start arms GPS + a manual run workout (so
+// it logs T4 coords + T6 accel and seals as a run with a route); finish closes the workout.
+function runTap() {
+  if (runActive) {
+    runActive = false;
+    if (runTimer) { clearInterval(runTimer); runTimer = null; }
+    endWorkout();
+    try { Bangle.buzz(60); } catch (e) {}
+  } else {
+    runActive = true;
+    runStartMs = Math.round(getTime() * 1000);
+    runDistM = 0; runLastLat = null; runLastLon = null;
+    primed = { type: "run", accelHz: 12.5 };   // pin the run profile (sport mode + cadence)
+    if (!state.streaming) startStreaming();     // make sure the session is captured offline too
+    startWorkout(true);                         // manual workout → arms GPS now (no motion gate)
+    if (runTimer) clearInterval(runTimer);
+    runTimer = setInterval(function () { if (page === RUN_PAGE) drawUI(); }, 1000);   // tick the live readout
+    try { Bangle.buzz(120); } catch (e) {}
+  }
+  if (uiVisible) drawUI();
+}
+
 // Outlined text — stays readable over any photo. The 3-bit panel has no alpha, so we fake a halo
 // by stamping the string in the background colour around the glyphs, then the real colour on top.
 function drawOutlined(s, x, y, fg) {
@@ -1128,6 +1320,7 @@ function drawUI() {
   else if (page === 3) drawStatus();
   else if (page === STOPWATCH_PAGE) drawStopwatch();
   else if (page === COUNTER_PAGE) drawCounter();
+  else if (page === RUN_PAGE) drawRun();
   else drawHeart();
   pageDots();
 }
@@ -1178,6 +1371,7 @@ Bangle.on("touch", function () {
   if (getTime() - lastSwipeT < 0.4) return;
   if (page === STOPWATCH_PAGE) swTap();
   else if (page === COUNTER_PAGE) bumpCounter();
+  else if (page === RUN_PAGE) runTap();
 });
 
 // Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep). If we're
@@ -1352,7 +1546,8 @@ function startSleepSession() {              // double-click button → time it A
   state.swStartMs = Math.round(getTime() * 1000);
   if (state.workout) endWorkout();          // sleep isn't a workout → log T2 PPG (not T6 accel)
   if (!state.streaming) startStreaming();   // guarantee the night is captured for HRV + staging
-  reconcileHrm();                           // sleep → continuous 25 Hz + raw PPG (HRV needs it), no duty-cycle
+  reconcileHrm();                           // sleep → burst the HRM (SLEEP_DUTY): ~30s of 25 Hz raw PPG every 3 min, so HRV is captured all night without flattening the battery
+  sleepScreenOff();                         // dark screen all night (no twist/touch wakes); one button click still wakes it
   try { Bangle.buzz(80); setTimeout(function () { try { Bangle.buzz(80); } catch (e) {} }, 150); } catch (e) {}
   if (uiVisible) drawUI();
 }
@@ -1364,6 +1559,7 @@ function stopTimer() {                       // stop either mode; a SLEEP sessio
     emitSleepFrame(bedSec, wakeSec, 1);      // confirmed window → the morning sync fires the sleep summary
   }
   state.swMode = "idle";
+  sleepScreenRestore();   // sleep ended → give back wrist-twist/touch wake
   reconcileHrm();   // sleep ended → if still offline + idle, drop back into the HR duty cycle
   try { Bangle.buzz(60); } catch (e) {}
   if (uiVisible) drawUI();

@@ -72,6 +72,14 @@ return [
         'timeout' => (int) env('BIOSIGNAL_TIMEOUT', 60),
     ],
 
+    // Mapbox — run route maps (Strava-style). The public token (pk.*) renders the
+    // interactive Mapbox GL map in-app and the Static Images API `path(polyline)`
+    // share-card PNG. It's a publishable client token (URL/scope-restricted), but we
+    // still keep it in .env and expose it only to views that draw a map.
+    'mapbox' => [
+        'token' => env('MAPBOX_API_TOKEN'),
+    ],
+
     // Mailgun — transactional email (password resets + notifications). The active
     // mailer is SMTP (MAIL_MAILER=smtp, Mailgun's SMTP relay); these credentials
     // also enable the `mailgun` API transport. Same account as fullstack-suite.

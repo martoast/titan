@@ -405,6 +405,14 @@ function buildBody(samples) {
   };
 }
 
+// Put un-sent samples back at the FRONT of the queue so the next flush retries them. Bounded so a
+// server that stays down can't grow memory without limit (drop the oldest beyond the cap).
+var MAX_QUEUED = 20000;
+function requeue(samples) {
+  batch = samples.concat(batch);
+  if (batch.length > MAX_QUEUED) batch = batch.slice(batch.length - MAX_QUEUED);
+}
+
 async function flushBatch() {
   if (!batch.length) return;
   const samples = batch;
@@ -415,7 +423,8 @@ async function flushBatch() {
   const deviceId = $("deviceId").value.trim();
   const secret = $("secret").value.trim();
   if (!url || !deviceId || !secret) {
-    log("Set URL + Device ID + secret before POSTing. " + samples.length + " samples dropped.", "muted");
+    requeue(samples);
+    log("Set URL + Device ID + secret before POSTing. " + samples.length + " samples re-queued.", "muted");
     return;
   }
 
@@ -440,12 +449,14 @@ async function flushBatch() {
       setIngest("202 accepted", "on");
       log("POST " + res.status + " — " + samples.length + " samples — " + txt.slice(0, 160));
     } else {
+      requeue(samples);
       setIngest(res.status + " error", "err");
-      log("POST failed " + res.status + ": " + txt.slice(0, 200), "muted");
+      log("POST failed " + res.status + ": " + txt.slice(0, 200) + " — " + samples.length + " samples re-queued", "muted");
     }
   } catch (e) {
+    requeue(samples);
     setIngest("network error", "err");
-    log("POST network error: " + e.message + " (" + samples.length + " samples lost)", "muted");
+    log("POST network error: " + e.message + " (" + samples.length + " samples re-queued)", "muted");
   }
   refreshStats();
 }

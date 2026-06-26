@@ -8,7 +8,13 @@ final class CoachViewModel: ObservableObject {
     @Published var toolStatus: String?
     @Published var sending = false
     @Published var transcribing = false        // voice clip uploading → text
+    @Published var pendingImage: Data?         // photo staged in the composer, awaiting send
     private var conversationId: Int?
+
+    /// Send button entry point — routes to a photo send when one is staged, otherwise plain text.
+    func submit(api: APIClient) {
+        if pendingImage != nil { sendPhoto(api: api) } else { send(api: api) }
+    }
 
     func send(api: APIClient, text overrideText: String? = nil) {
         let text = (overrideText ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -38,13 +44,13 @@ final class CoachViewModel: ObservableObject {
         }
     }
 
-    /// Send a photo to the coach (snap-to-coach, like the web app). The current composer text rides
+    /// Send the staged photo to the coach (snap-to-coach, like the web app). The composer text rides
     /// along as the caption. The server runs vision, auto-logs what it recognizes, and replies.
-    func sendPhoto(_ imageData: Data, api: APIClient) {
-        guard !sending else { return }
+    func sendPhoto(api: APIClient) {
+        guard let imageData = pendingImage, !sending else { return }
         Haptic.tap()
         let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        input = ""; sending = true
+        input = ""; pendingImage = nil; sending = true
         messages.append(ChatMessage(role: .user, text: caption, imageData: imageData))
         var assistant = ChatMessage(role: .assistant, text: "", streaming: true)
         messages.append(assistant)
@@ -159,31 +165,58 @@ struct CoachView: View {
     }
 
     private var composer: some View {
-        HStack(spacing: 8) {
-            // Snap a photo to the coach (camera or library) — sends straight away with the typed caption.
-            PhotoSourceButton { data in vm.sendPhoto(data, api: model.api); focused = false } label: {
-                circleIcon("camera.fill")
+        VStack(spacing: 8) {
+            if let data = vm.pendingImage, let ui = UIImage(data: data) {
+                attachmentPreview(ui)
             }
-            .disabled(vm.sending)
+            HStack(spacing: 8) {
+                // Attach a photo (camera or library) — it stages in the composer so you can add a
+                // note before sending, just like attaching a meal photo.
+                PhotoSourceButton { data in withAnimation(Theme.Motion.snappy) { vm.pendingImage = data }; Haptic.soft() } label: {
+                    circleIcon("camera.fill")
+                }
+                .disabled(vm.sending)
 
-            micButton
+                micButton
 
-            TextField("Message", text: $vm.input, axis: .vertical)
-                .focused($focused).lineLimit(1...5).font(Theme.Font.body)
-                .padding(.horizontal, Theme.Space.m).padding(.vertical, 11)
-                .background(Theme.Palette.bg2, in: Capsule())
-                .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
+                TextField(vm.pendingImage == nil ? "Message" : "Add a note…", text: $vm.input, axis: .vertical)
+                    .focused($focused).lineLimit(1...5).font(Theme.Font.body)
+                    .padding(.horizontal, Theme.Space.m).padding(.vertical, 11)
+                    .background(Theme.Palette.bg2, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
 
-            Button { vm.send(api: model.api); focused = false } label: {
-                Image(systemName: "arrow.up").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(canSend ? AnyShapeStyle(Theme.Grad.brand) : AnyShapeStyle(Theme.Palette.card), in: Circle())
+                Button { vm.submit(api: model.api); focused = false } label: {
+                    Image(systemName: "arrow.up").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(canSend ? AnyShapeStyle(Theme.Grad.brand) : AnyShapeStyle(Theme.Palette.card), in: Circle())
+                }
+                .disabled(!canSend).scaleEffect(canSend ? 1 : 0.9).animation(Theme.Motion.snappy, value: canSend)
             }
-            .disabled(!canSend).scaleEffect(canSend ? 1 : 0.9).animation(Theme.Motion.snappy, value: canSend)
         }
         .padding(Theme.Space.s)
         .background(.ultraThinMaterial)
         .overlay(Rectangle().fill(Theme.Palette.cardStroke).frame(height: 0.5), alignment: .top)
+    }
+
+    // Staged photo preview — sits above the input row with a tap-to-remove control.
+    private func attachmentPreview(_ ui: UIImage) -> some View {
+        HStack(spacing: Theme.Space.s) {
+            ZStack(alignment: .topTrailing) {
+                Image(uiImage: ui).resizable().scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.Palette.cardStroke))
+                Button { withAnimation(Theme.Motion.snappy) { vm.pendingImage = nil }; Haptic.soft() } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 18))
+                        .foregroundStyle(.white, .black.opacity(0.5))
+                }
+                .offset(x: 6, y: -6)
+            }
+            Text("Photo ready — add a note or send").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
     // Tap to start dictating; tap again to stop → the clip transcribes into the text field.
@@ -236,14 +269,16 @@ struct CoachView: View {
             .overlay(Circle().strokeBorder(Theme.Palette.cardStroke))
     }
 
-    private var canSend: Bool { !vm.input.trimmingCharacters(in: .whitespaces).isEmpty && !vm.sending }
+    // Sendable when there's text OR a staged photo (a photo with no caption is valid — the coach
+    // reads the image either way).
+    private var canSend: Bool {
+        (!vm.input.trimmingCharacters(in: .whitespaces).isEmpty || vm.pendingImage != nil) && !vm.sending
+    }
 }
 
 private struct Bubble: View {
     let msg: ChatMessage
     var isUser: Bool { msg.role == .user }
-    // Show the text bubble unless this is a pure image attachment (image + empty, settled caption).
-    private var showText: Bool { !msg.text.isEmpty || msg.streaming }
     var body: some View {
         HStack {
             if isUser { Spacer(minLength: 44) }
@@ -254,23 +289,206 @@ private struct Bubble: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.Palette.cardStroke))
                 }
-                if showText {
-                    Group {
-                        if msg.text.isEmpty && msg.streaming { TypingDots() }
-                        else { Text(.init(msg.text)).font(Theme.Font.body) }
+                if isUser {
+                    if !msg.text.isEmpty { textBubble(msg.text) }
+                } else if msg.text.isEmpty && msg.streaming {
+                    TypingDots()
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.Palette.cardStroke))
+                } else {
+                    // The coach can emit a ```titan-card {json} block (e.g. a macros card after logging
+                    // a meal). Render those as native cards instead of leaking raw JSON into the chat.
+                    let segments = CoachSegment.parse(msg.text, streaming: msg.streaming)
+                    ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                        switch seg {
+                        case .text(let t): if !t.isEmpty { textBubble(t) }
+                        case .card(let json): TitanCardView(json: json)
+                        }
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .foregroundStyle(isUser ? .white : Theme.Palette.text)
-                    .background(
-                        isUser ? AnyShapeStyle(Theme.Grad.brand) : AnyShapeStyle(Theme.Palette.card),
-                        in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    )
-                    .overlay(isUser ? nil : RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.Palette.cardStroke))
                 }
             }
             if !isUser { Spacer(minLength: 44) }
         }
         .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .opacity))
+    }
+
+    private func textBubble(_ text: String) -> some View {
+        Text(.init(text)).font(Theme.Font.body)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .foregroundStyle(isUser ? .white : Theme.Palette.text)
+            .background(
+                isUser ? AnyShapeStyle(Theme.Grad.brand) : AnyShapeStyle(Theme.Palette.card),
+                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+            )
+            .overlay(isUser ? nil : RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.Palette.cardStroke))
+    }
+}
+
+// MARK: - titan-card parsing + native rendering
+
+/// One piece of an assistant message: either markdown text or a parsed titan-card payload.
+private enum CoachSegment {
+    case text(String)
+    case card([String: Any])
+
+    /// Split a message on ```titan-card fences. A fence that hasn't closed yet (mid-stream) or whose
+    /// JSON doesn't parse is dropped rather than shown raw — the user never sees code/JSON.
+    static func parse(_ raw: String, streaming: Bool) -> [CoachSegment] {
+        let fence = "```titan-card"
+        guard raw.contains(fence) else { return [.text(raw.trimmingCharacters(in: .whitespacesAndNewlines))] }
+
+        var segments: [CoachSegment] = []
+        var rest = Substring(raw)
+        while let open = rest.range(of: fence) {
+            let before = String(rest[rest.startIndex..<open.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !before.isEmpty { segments.append(.text(before)) }
+            let afterOpen = rest[open.upperBound...]
+            guard let close = afterOpen.range(of: "```") else {
+                rest = ""   // unclosed fence (still streaming) — suppress the partial block
+                break
+            }
+            let jsonStr = String(afterOpen[afterOpen.startIndex..<close.lowerBound])
+            if let card = decode(jsonStr) { segments.append(.card(card)) }
+            rest = afterOpen[close.upperBound...]
+        }
+        let tail = String(rest).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty { segments.append(.text(tail)) }
+        return segments.isEmpty ? [.text("")] : segments
+    }
+
+    private static func decode(_ s: String) -> [String: Any]? {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return obj
+    }
+}
+
+/// Coerce a JSON value (NSNumber/Int/Double/String) to a Double.
+private func jsonNum(_ any: Any?) -> Double? {
+    switch any {
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    case let n as NSNumber: return n.doubleValue
+    case let s as String: return Double(s)
+    default: return nil
+    }
+}
+
+/// Renders a parsed titan-card. `macros` (the meal-logging card) is first-class; everything else
+/// falls back to a clean key/value card so a card type we don't draw natively never shows as JSON.
+private struct TitanCardView: View {
+    let json: [String: Any]
+    var body: some View {
+        Group {
+            switch json["type"] as? String {
+            case "macros": MacrosCard(json: json)
+            default: GenericCard(json: json)
+            }
+        }
+        .frame(maxWidth: 300, alignment: .leading)
+    }
+}
+
+private struct CardBar: View {
+    let value: Double
+    let target: Double
+    let color: Color
+    var body: some View {
+        let pct = target > 0 ? min(1, value / target) : 0
+        Capsule().fill(Color.white.opacity(0.08)).frame(height: 6)
+            .overlay(alignment: .leading) {
+                GeometryReader { geo in
+                    Capsule().fill(color).frame(width: geo.size.width * pct)
+                }
+            }
+            .frame(height: 6)
+    }
+}
+
+private struct MacrosCard: View {
+    let json: [String: Any]
+    private func pair(_ key: String) -> (Double, Double) {
+        let d = json[key] as? [String: Any]
+        return (jsonNum(d?["value"]) ?? 0, jsonNum(d?["target"]) ?? 0)
+    }
+    private func macroRow(_ key: String, _ name: String, _ color: Color) -> some View {
+        let (v, t) = pair(key)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(name).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                Spacer()
+                Text("\(Int(v))\(t > 0 ? "/\(Int(t))" : "")g").font(Theme.Font.num(13)).foregroundStyle(color)
+            }
+            CardBar(value: v, target: t, color: color)
+        }
+    }
+    var body: some View {
+        let cal = pair("calories")
+        VStack(alignment: .leading, spacing: 12) {
+            Text((json["title"] as? String) ?? "Today's fuel")
+                .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("Calories").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Spacer()
+                    Text("\(Int(cal.0))\(cal.1 > 0 ? " / \(Int(cal.1))" : "") kcal")
+                        .font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.text)
+                }
+                if cal.1 > 0 { CardBar(value: cal.0, target: cal.1, color: cal.0 > cal.1 * 1.05 ? Theme.Palette.amber : Theme.Palette.cyan) }
+            }
+            macroRow("protein", "Protein", Theme.Palette.mint)
+            macroRow("carbs", "Carbs", Theme.Palette.amber)
+            macroRow("fat", "Fat", Theme.Palette.pink)
+            if let footer = json["footer"] as? String, !footer.isEmpty {
+                Text(footer).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+        }
+        .padding(14)
+        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.Palette.cardStroke))
+    }
+}
+
+/// Clean fallback for any card type we don't draw natively yet — title + a compact list of fields
+/// (scalars, or an `items` grid). Never raw JSON.
+private struct GenericCard: View {
+    let json: [String: Any]
+    private var title: String? { (json["title"] as? String) ?? (json["label"] as? String) }
+    private var rows: [(String, String)] {
+        if let items = json["items"] as? [[String: Any]] {
+            return items.map { it in
+                let label = (it["label"] as? String) ?? ""
+                let unit = (it["unit"] as? String).map { " \($0)" } ?? ""
+                let val = it["value"].map { "\($0)" } ?? "–"
+                return (label, val + unit)
+            }
+        }
+        return json.compactMap { (k, v) -> (String, String)? in
+            guard k != "type", k != "title", k != "label", k != "footer" else { return nil }
+            if let s = v as? String { return (k.capitalized, s) }
+            if let n = v as? NSNumber { return (k.capitalized, "\(n)") }
+            return nil
+        }.sorted { $0.0 < $1.0 }
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title { Text(title).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text) }
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack {
+                    Text(row.0).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Spacer()
+                    Text(row.1).font(Theme.Font.num(13)).foregroundStyle(Theme.Palette.text)
+                }
+            }
+            if let footer = json["footer"] as? String, !footer.isEmpty {
+                Text(footer).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+        }
+        .padding(14)
+        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.Palette.cardStroke))
     }
 }
 

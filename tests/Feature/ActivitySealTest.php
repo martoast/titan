@@ -72,6 +72,70 @@ class ActivitySealTest extends TestCase
         Http::assertSent(fn ($r) => str_contains($r->url(), '/process/fitness') && ($r['resting_hr'] ?? null) == 52);
     }
 
+    public function test_seals_a_run_with_a_gps_route(): void
+    {
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 30.0, 'mean_hr' => 150.0, 'trimp' => 58.0, 'calories_kcal' => 370,
+                'activity_type' => 'run', 'activity_confidence' => 0.95,
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 50.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'high', 'fitness_percentile_band' => 3, 'hrr' => null]),
+            // The route service (its geometry is proven in biosignal/tests/test_route.py) returns the summary.
+            '*/process/route' => Http::response([
+                'algo_version' => 'v1', 'valid' => true,
+                'distance_km' => 5.02, 'moving_time_s' => 1500, 'elapsed_time_s' => 1560,
+                'avg_pace_s_per_km' => 299, 'gap_s_per_km' => 290,
+                'elevation_gain_m' => 42, 'elevation_loss_m' => 40,
+                'elevation_profile' => [['d_km' => 0.0, 'alt_m' => 10.0], ['d_km' => 5.0, 'alt_m' => 12.0]],
+                'splits_km' => [['index' => 1, 'pace_s_per_unit' => 300, 'elev_delta_m' => 8.0, 'avg_hr' => 150]],
+                'splits_mi' => [['index' => 1, 'pace_s_per_unit' => 482, 'elev_delta_m' => 13.0, 'avg_hr' => 151]],
+                'best_efforts' => ['1k' => ['distance_m' => 1000, 'elapsed_s' => 295, 'pace_s_per_km' => 295]],
+                'relative_effort' => 64, 'polyline' => '_p~iF~ps|U_ulLnnqC',
+                'bounds' => ['min_lat' => 37.77, 'min_lon' => -122.42, 'max_lat' => 37.79, 'max_lon' => -122.40],
+            ]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+
+        // A short coordinate track on the window (sorted + deduped by the seal job before the call).
+        $track = [
+            ['t' => 1750000000000, 'lat' => 37.7749, 'lon' => -122.4194, 'alt' => 10.0],
+            ['t' => 1750000001000, 'lat' => 37.7750, 'lon' => -122.4193, 'alt' => 11.0],
+            ['t' => 1750000002000, 'lat' => 37.7751, 'lon' => -122.4192, 'alt' => 12.0],
+        ];
+        $this->storeWorkoutWindow($profile->id, track: $track);
+
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($session);
+        $this->assertTrue($session->hasRoute());
+        $this->assertSame('_p~iF~ps|U_ulLnnqC', $session->route_polyline);
+        $this->assertEqualsWithDelta(5.02, $session->distance_km, 0.01);   // route distance preferred
+        $this->assertSame(1500, $session->moving_time_s);
+        $this->assertSame(299, $session->avg_pace_s_per_km);
+        $this->assertSame(290, $session->gap_s_per_km);
+        $this->assertSame(42, $session->elevation_gain_m);
+        $this->assertSame(64, $session->relative_effort);
+        $this->assertIsArray($session->splits);
+        $this->assertArrayHasKey('km', $session->splits);
+        $this->assertArrayHasKey('mi', $session->splits);
+        $this->assertArrayHasKey('1k', $session->best_efforts);
+        $this->assertSame(37.77, $session->route_bounds['min_lat']);
+        $this->assertSame('4:59 /km', $session->formatPace($session->avg_pace_s_per_km));
+
+        // The deduped, time-sorted track actually reached the route endpoint.
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/process/route')
+            && is_array($r['track'] ?? null) && count($r['track']) === 3
+            && ($r['hr_max'] ?? null) > 0);
+    }
+
     public function test_in_motion_hr_recomputed_from_raw_ppg_overrides_onchip(): void
     {
         Storage::fake('raw');
@@ -229,7 +293,68 @@ class ActivitySealTest extends TestCase
             ->assertSee('Run')->assertSee('51.4')->assertSee('High');
     }
 
-    private function storeWorkoutWindow(int $profileId, int $endsAgoMin = 60): void
+    public function test_run_detail_page_renders_the_route(): void
+    {
+        config(['services.mapbox.token' => 'pk.test']);
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+
+        $session = ActivitySession::create([
+            'profile_id' => $profile->id, 'source' => 'titan_band',
+            'started_at' => now()->subHour(), 'ended_at' => now()->subMinutes(30), 'duration_min' => 30,
+            'activity_type' => 'run', 'distance_km' => 5.02, 'avg_hr' => 150, 'max_hr' => 172,
+            'route_polyline' => '_p~iF~ps|U_ulLnnqC', 'route_bounds' => ['min_lat' => 37.77, 'min_lon' => -122.42, 'max_lat' => 37.79, 'max_lon' => -122.40],
+            'moving_time_s' => 1500, 'avg_pace_s_per_km' => 299, 'gap_s_per_km' => 290,
+            'elevation_gain_m' => 42, 'elevation_loss_m' => 40,
+            'elevation_profile' => [['d_km' => 0.0, 'alt_m' => 10.0], ['d_km' => 2.5, 'alt_m' => 30.0], ['d_km' => 5.0, 'alt_m' => 12.0]],
+            'splits' => ['km' => [['index' => 1, 'distance_m' => 1000, 'pace_s_per_unit' => 295, 'elev_delta_m' => 8.0, 'avg_hr' => 149, 'partial' => false]], 'mi' => []],
+            'best_efforts' => ['1k' => ['distance_m' => 1000, 'elapsed_s' => 290, 'pace_s_per_km' => 290]],
+            'relative_effort' => 64, 'updated_via' => 'biosignal:sealed',
+        ]);
+
+        $res = $this->actingAs($user)->get(route('fitness.run', $session))->assertOk();
+        $res->assertSee('5.02 km');           // distance
+        $res->assertSee('4:59 /km');          // avg pace (299 s)
+        $res->assertSee('Best efforts');
+        $res->assertSee('api.mapbox.com', false);   // the static route map URL is rendered
+
+        // Another profile can't view it.
+        $other = User::factory()->create();
+        $this->actingAs($other)->get(route('fitness.run', $session))->assertNotFound();
+    }
+
+    public function test_workouts_separated_by_a_gap_split_into_distinct_sessions(): void
+    {
+        // Regression: Carbon 3's signed diffInMinutes made the >20min gap rule never fire, so every
+        // unsealed workout merged into ONE session. groupIntoSessions must split on a real gap.
+        $job = new SealActivityJob(1);
+        $group = new \ReflectionMethod($job, 'groupIntoSessions');
+        $group->setAccessible(true);
+
+        $mk = function (string $start, string $end): DeviceIngestion {
+            $i = new DeviceIngestion;
+            $i->window_start = CarbonImmutable::parse($start);
+            $i->window_end = CarbonImmutable::parse($end);
+
+            return $i;
+        };
+
+        // A morning run and an evening run, 8h apart → TWO sessions.
+        $apart = collect([
+            $mk('2026-06-15T07:00:00Z', '2026-06-15T07:30:00Z'),
+            $mk('2026-06-15T15:00:00Z', '2026-06-15T15:30:00Z'),
+        ]);
+        $this->assertCount(2, $group->invoke($job, $apart));
+
+        // Two contiguous windows (5-min gap) → ONE session.
+        $contiguous = collect([
+            $mk('2026-06-15T07:00:00Z', '2026-06-15T07:30:00Z'),
+            $mk('2026-06-15T07:35:00Z', '2026-06-15T08:00:00Z'),
+        ]);
+        $this->assertCount(1, $group->invoke($job, $contiguous));
+    }
+
+    private function storeWorkoutWindow(int $profileId, int $endsAgoMin = 60, array $track = []): void
     {
         $n = 1800; // 30 min @ 1 Hz HR / GPS
         $hr = $speed = $grade = [];
@@ -253,7 +378,8 @@ class ActivitySealTest extends TestCase
         $window = [
             'kind' => 'workout', 'start' => $start->toIso8601ZuluString(), 'end' => $end->toIso8601ZuluString(),
             'accel_xyz' => ['x' => $ax, 'y' => $ay, 'z' => $az], 'accel_fs' => $fs, 'accel_unit' => 'ms2',
-            'accel_counts' => $counts, 'hr_bpm' => $hr, 'gps' => ['speed_kmh' => $speed, 'grade' => $grade],
+            'accel_counts' => $counts, 'hr_bpm' => $hr,
+            'gps' => ['speed_kmh' => $speed, 'grade' => $grade, 'track' => $track],
         ];
 
         $key = "raw/{$profileId}/workout-test.ndjson.gz";

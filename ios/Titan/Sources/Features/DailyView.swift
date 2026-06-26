@@ -519,6 +519,10 @@ private struct HrSection: View {
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
+            // When the band is connected, show the same live feed as the Devices page — the beat-by-beat
+            // BPM and the live PPG trace — above the all-day highs/lows graph.
+            if model.bandConnected { liveCard }
+
             let hr = model.hrDay
             if model.hrPhase == .loading && model.hrDay == nil {
                 SkeletonCard()
@@ -559,6 +563,34 @@ private struct HrSection: View {
         }
         .animation(Theme.Motion.snappy, value: model.hrPhase)
         .task { await model.loadHr() }
+    }
+
+    /// The live band feed (mirrors the Devices "Live signal" card), in the heart context.
+    private var liveCard: some View {
+        GlassCard(padding: Theme.Space.l) {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                HStack(spacing: 8) {
+                    PulseDot(on: true)
+                    Text("Live now").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Spacer()
+                    if model.liveHz > 0 {
+                        Text("\(model.liveHz) Hz").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    }
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(model.liveBpm.map { "\($0)" } ?? "—")
+                        .font(Theme.Font.num(46)).foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text("bpm").font(Theme.Font.body).foregroundStyle(Theme.Palette.pink)
+                    Spacer()
+                    Image(systemName: "heart.fill").foregroundStyle(Theme.Palette.pink).font(.title3)
+                        .symbolEffect(.pulse, options: .repeating)
+                }
+                WaveformView(samples: model.waveform, color: Theme.Palette.pink)
+                    .frame(height: 56)
+            }
+        }
+        .animation(Theme.Motion.snappy, value: model.liveBpm)
     }
 
     private func stat(_ v: String, _ l: String, _ c: Color) -> some View {

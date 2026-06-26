@@ -114,7 +114,10 @@ class SealActivityJob implements ShouldQueue
 
         foreach ($windows as $w) {
             $start = CarbonImmutable::parse($w->window_start ?? $w->created_at);
-            $newSession = $lastEnd !== null && $start->diffInMinutes($lastEnd) > self::SESSION_GAP_MINUTES;
+            // Carbon 3 diffInMinutes is SIGNED — windows are ordered ascending so a real forward gap
+            // yields a negative value; take the magnitude or the gap rule never fires (every workout
+            // would merge into one session).
+            $newSession = $lastEnd !== null && abs($start->diffInMinutes($lastEnd)) > self::SESSION_GAP_MINUTES;
             if ($newSession && $current->isNotEmpty()) {
                 $sessions[] = $current;
                 $current = collect();
@@ -147,7 +150,7 @@ class SealActivityJob implements ShouldQueue
      */
     private function sealSession(Profile $profile, BiosignalClient $biosignal, \Illuminate\Support\Collection $session): void
     {
-        $ax = $ay = $az = $hr1 = $counts = $speed = $grade = [];
+        $ax = $ay = $az = $hr1 = $counts = $speed = $grade = $track = [];
         $unit = 'ms2';
         $fs = 25;
         $start = $end = null;
@@ -165,6 +168,10 @@ class SealActivityJob implements ShouldQueue
             $this->append($counts, $w['accel_counts'] ?? []);
             $this->append($speed, $w['gps']['speed_kmh'] ?? []);
             $this->append($grade, $w['gps']['grade'] ?? []);
+            // Raw coordinate fixes for the route map (windows carry their own ascending-time track).
+            foreach (($w['gps']['track'] ?? []) as $pt) {
+                $track[] = $pt;
+            }
             $unit = $w['accel_unit'] ?? $unit;
             $fs = (int) ($w['accel_fs'] ?? $fs);
             $start = $start ?? ($ingestion->window_start ?? null);
@@ -172,7 +179,7 @@ class SealActivityJob implements ShouldQueue
         }
 
         $startIso = $start ? CarbonImmutable::parse($start)->toIso8601ZuluString() : null;
-        $durationMin = ($start && $end) ? CarbonImmutable::parse($start)->diffInMinutes(CarbonImmutable::parse($end)) : null;
+        $durationMin = ($start && $end) ? abs(CarbonImmutable::parse($start)->diffInMinutes(CarbonImmutable::parse($end))) : null;
         if ($durationMin !== null && $durationMin < self::MIN_SESSION_MIN) {
             $session->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
 
@@ -251,8 +258,15 @@ class SealActivityJob implements ShouldQueue
             'hr_fs' => 1.0,
         ], fn ($v) => $v !== null));
 
-        // Prefer the biosignal's GPS-integrated distance; fall back to per-second speed·time.
-        $distance = $sess['distance_km'] ?? ($speed ? round(array_sum($speed) / 3600.0, 2) : null);
+        // Run route → the Strava-style summary (map polyline + splits + elevation + best efforts +
+        // Relative Effort). Only when we actually have a GPS track; the geometry stands on its own,
+        // so a failure here never blocks sealing the session.
+        $route = $this->routeMetrics($biosignal, $track, $hr1, (int) ($profileBits['hr_max'] ?? 0));
+
+        // Prefer the route's GPS-integrated distance, then the activity pass, then speed·time.
+        $distance = ($route['distance_km'] ?? null)
+            ?? $sess['distance_km']
+            ?? ($speed ? round(array_sum($speed) / 3600.0, 2) : null);
 
         $log = ActivitySession::updateOrCreate(
             ['profile_id' => $profile->id, 'started_at' => $startIso ? CarbonImmutable::parse($startIso) : now()],
@@ -274,6 +288,18 @@ class SealActivityJob implements ShouldQueue
                 'fitness_level' => $fitness['fitness_level'] ?? null,
                 'hrr_bpm' => $fitness['hrr']['hrr_bpm'] ?? null,
                 'updated_via' => 'biosignal:sealed',
+                // Run route + analytics (null-filtered → a routeless session keeps its existing values).
+                'route_polyline' => $route['polyline'] ?? null,
+                'route_bounds' => $route['bounds'] ?? null,
+                'moving_time_s' => $route['moving_time_s'] ?? null,
+                'avg_pace_s_per_km' => $route['avg_pace_s_per_km'] ?? null,
+                'gap_s_per_km' => $route['gap_s_per_km'] ?? null,
+                'elevation_gain_m' => $route['elevation_gain_m'] ?? null,
+                'elevation_loss_m' => $route['elevation_loss_m'] ?? null,
+                'elevation_profile' => $route['elevation_profile'] ?? null,
+                'splits' => isset($route['splits_km']) ? ['km' => $route['splits_km'], 'mi' => $route['splits_mi'] ?? []] : null,
+                'best_efforts' => $route['best_efforts'] ?? null,
+                'relative_effort' => $route['relative_effort'] ?? null,
             ], fn ($v) => $v !== null),
         );
 
@@ -300,6 +326,52 @@ class SealActivityJob implements ShouldQueue
             'profile_id' => $profile->id, 'activity_session_id' => $log->id,
             'type' => $log->activity_type, 'vo2max' => $log->vo2max,
         ]);
+    }
+
+    /**
+     * Run route → the Strava-style summary via biosignal /process/route. Sorts + dedupes the
+     * cross-window coordinate fixes, then asks the service for distance/pace/splits/elevation/best-
+     * efforts/Relative-Effort + the map polyline. Pure geometry, so a failure is logged and swallowed
+     * — it never blocks sealing the session.
+     *
+     * @param  array<int,array<string,mixed>>  $track  [{t,lat,lon,alt?}]
+     * @param  array<int,float>  $hr1  1 Hz HR aligned to the run start
+     * @return array<string,mixed>
+     */
+    private function routeMetrics(BiosignalClient $biosignal, array $track, array $hr1, int $hrMax): array
+    {
+        if (count($track) < 2 || ! $biosignal->configured()) {
+            return [];
+        }
+        // Order by time and drop duplicate timestamps (windows can overlap a fix at their boundary).
+        usort($track, fn ($a, $b) => ($a['t'] ?? 0) <=> ($b['t'] ?? 0));
+        $seen = [];
+        $clean = [];
+        foreach ($track as $pt) {
+            $t = $pt['t'] ?? null;
+            if ($t === null || isset($seen[$t]) || ! isset($pt['lat'], $pt['lon'])) {
+                continue;
+            }
+            $seen[$t] = true;
+            $clean[] = $pt;
+        }
+        if (count($clean) < 2) {
+            return [];
+        }
+
+        try {
+            $res = $biosignal->processRoute(array_filter([
+                'track' => $clean,
+                'hr_bpm' => $hr1 ?: null,
+                'hr_max' => $hrMax > 0 ? $hrMax : null,
+            ], fn ($v) => $v !== null));
+        } catch (\Throwable $e) {
+            Log::warning('[Biosignal] route analysis failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        return ($res['valid'] ?? false) ? $res : [];
     }
 
     /** The 10 MM-Fit exercises → catalog metadata (muscle group / category / equipment / label). */

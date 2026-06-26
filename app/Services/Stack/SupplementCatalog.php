@@ -83,37 +83,40 @@ class SupplementCatalog
     /** @return array<int,array<string,mixed>> */
     private function dsld(string $q): array
     {
-        return Cache::remember('stack.dsld.'.md5(Str::lower($q)), now()->addDay(), function () use ($q) {
-            try {
-                $res = Http::timeout(4)->acceptJson()->get(self::DSLD, ['q' => $q, 'size' => 6]);
-                if (! $res->ok()) {
-                    return [];
-                }
-                $hits = $res->json('hits.hits') ?? $res->json('hits') ?? [];
-                $out = [];
-                foreach ($hits as $h) {
-                    $s = $h['_source'] ?? $h;
-                    $name = $s['fullName'] ?? $s['productName'] ?? $s['name'] ?? null;
-                    if (! $name) {
-                        continue;
-                    }
-                    $out[] = [
-                        'name' => Str::limit((string) $name, 80, ''),
-                        'brand' => $s['brandName'] ?? $s['brand'] ?? null,
-                        'dose_amount' => null,
-                        'dose_unit' => null,
-                        'form' => $s['physicalState']['langualCodeDescription'] ?? null,
-                        'kind' => 'supplement',
-                        'dsld_id' => (string) ($h['_id'] ?? $s['id'] ?? ''),
-                        'source' => 'dsld',
-                    ];
-                }
-
-                return $out;
-            } catch (\Throwable) {
-                return [];
+        $key = 'stack.dsld.'.md5(Str::lower($q));
+        if (($cached = Cache::get($key)) !== null) {
+            return $cached;
+        }
+        try {
+            $res = Http::timeout(4)->acceptJson()->get(self::DSLD, ['q' => $q, 'size' => 6]);
+            if (! $res->ok()) {
+                return [];   // transient — don't cache a failure for a day
             }
-        });
+            $hits = $res->json('hits.hits') ?? $res->json('hits') ?? [];
+            $out = [];
+            foreach ($hits as $h) {
+                $s = $h['_source'] ?? $h;
+                $name = $s['fullName'] ?? $s['productName'] ?? $s['name'] ?? null;
+                if (! $name) {
+                    continue;
+                }
+                $out[] = [
+                    'name' => Str::limit((string) $name, 80, ''),
+                    'brand' => $s['brandName'] ?? $s['brand'] ?? null,
+                    'dose_amount' => null,
+                    'dose_unit' => null,
+                    'form' => $s['physicalState']['langualCodeDescription'] ?? null,
+                    'kind' => 'supplement',
+                    'dsld_id' => (string) ($h['_id'] ?? $s['id'] ?? ''),
+                    'source' => 'dsld',
+                ];
+            }
+            Cache::put($key, $out, now()->addDay());   // cache only a successful response
+
+            return $out;
+        } catch (\Throwable) {
+            return [];   // transient — don't cache
+        }
     }
 
     // ---- RxNorm (medications) ----------------------------------------------
@@ -121,39 +124,42 @@ class SupplementCatalog
     /** @return array<int,array<string,mixed>> */
     private function rxnorm(string $q): array
     {
-        return Cache::remember('stack.rxnorm.'.md5(Str::lower($q)), now()->addDay(), function () use ($q) {
-            try {
-                $res = Http::timeout(4)->acceptJson()->get(self::RXNORM, ['term' => $q, 'maxEntries' => 5]);
-                if (! $res->ok()) {
-                    return [];
-                }
-                $cands = $res->json('approximateGroup.candidate') ?? [];
-                $out = [];
-                $seenRxcui = [];
-                foreach ($cands as $c) {
-                    $rxcui = (string) ($c['rxcui'] ?? '');
-                    $name = $c['name'] ?? null;
-                    if (! $rxcui || ! $name || isset($seenRxcui[$rxcui])) {
-                        continue;
-                    }
-                    $seenRxcui[$rxcui] = true;
-                    $out[] = [
-                        'name' => Str::limit((string) $name, 80, ''),
-                        'brand' => null,
-                        'dose_amount' => null,
-                        'dose_unit' => null,
-                        'form' => null,
-                        'kind' => 'medication',
-                        'rxcui' => $rxcui,
-                        'source' => 'rxnorm',
-                    ];
-                }
-
-                return $out;
-            } catch (\Throwable) {
-                return [];
+        $key = 'stack.rxnorm.'.md5(Str::lower($q));
+        if (($cached = Cache::get($key)) !== null) {
+            return $cached;
+        }
+        try {
+            $res = Http::timeout(4)->acceptJson()->get(self::RXNORM, ['term' => $q, 'maxEntries' => 5]);
+            if (! $res->ok()) {
+                return [];   // transient — don't cache a failure for a day
             }
-        });
+            $cands = $res->json('approximateGroup.candidate') ?? [];
+            $out = [];
+            $seenRxcui = [];
+            foreach ($cands as $c) {
+                $rxcui = (string) ($c['rxcui'] ?? '');
+                $name = $c['name'] ?? null;
+                if (! $rxcui || ! $name || isset($seenRxcui[$rxcui])) {
+                    continue;
+                }
+                $seenRxcui[$rxcui] = true;
+                $out[] = [
+                    'name' => Str::limit((string) $name, 80, ''),
+                    'brand' => null,
+                    'dose_amount' => null,
+                    'dose_unit' => null,
+                    'form' => null,
+                    'kind' => 'medication',
+                    'rxcui' => $rxcui,
+                    'source' => 'rxnorm',
+                ];
+            }
+            Cache::put($key, $out, now()->addDay());   // cache only a successful response
+
+            return $out;
+        } catch (\Throwable) {
+            return [];   // transient — don't cache
+        }
     }
 
     /** @param  array<int,array<string,mixed>>  $rows */

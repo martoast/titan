@@ -234,7 +234,9 @@
     @else
         <div class="space-y-2">
             @foreach ($sessions as $s)
-                <div class="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-3.5">
+                @php $hasRoute = $s->hasRoute(); $tag = $hasRoute ? 'a' : 'div'; @endphp
+                <{{ $tag }} @if ($hasRoute) href="{{ route('fitness.run', $s) }}" @endif
+                    class="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-3.5 @if ($hasRoute) hover:bg-white/[0.06] hover:border-white/10 transition @endif">
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-indigo-300">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $icon($s->activity_type) }}" /></svg>
                     </div>
@@ -255,7 +257,10 @@
                             @if ($s->vo2max)<span class="text-emerald-400/80">VO₂ {{ number_format($s->vo2max, 1) }}</span>@endif
                         </div>
                     </div>
-                </div>
+                    @if ($hasRoute)
+                        <svg class="h-4 w-4 shrink-0 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                    @endif
+                </{{ $tag }}>
             @endforeach
         </div>
     @endif

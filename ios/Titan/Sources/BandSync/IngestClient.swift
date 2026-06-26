@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import TitanCore
 
@@ -22,9 +23,16 @@ public struct IngestClient {
     public func ship(window: AnyWindow) async -> Result {
         let isSummary: Bool
         switch window { case .steps, .sleep, .hrTrend: isSummary = true; default: isSummary = false }
+        // batch_uid must be STABLE across retries — the server dedups on it. Deriving it from the
+        // window's content (not a fresh ULID per call) means a retry after a lost response reuses the
+        // same uid and the server returns `duplicate` instead of double-ingesting the samples.
+        guard let windowData = try? JSONEncoder().encode(window) else {
+            return .rejected(status: 0, error: "encode failed")
+        }
+        let uid = Self.stableUID(for: windowData)
         let batch = isSummary
-            ? Batch(batch_uid: ULID.generate(), windows: [], summaries: [window])
-            : Batch(batch_uid: ULID.generate(), windows: [window], summaries: [])
+            ? Batch(batch_uid: uid, windows: [], summaries: [window])
+            : Batch(batch_uid: uid, windows: [window], summaries: [])
         guard let body = try? JSONEncoder().encode(batch) else {
             return .rejected(status: 0, error: "encode failed")
         }
@@ -58,4 +66,10 @@ public struct IngestClient {
     }
 
     struct Batch: Encodable { let batch_uid: String; let windows: [AnyWindow]; let summaries: [AnyWindow] }
+
+    /// A deterministic 32-hex-char id for a window's bytes (SHA-256 prefix) — identical content always
+    /// yields the same uid, which is exactly what makes server-side dedup work across retries.
+    static func stableUID(for data: Data) -> String {
+        SHA256.hash(data: data).prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
 }
