@@ -818,7 +818,9 @@ class CoachTools
         try {
             $hits = app(\App\Services\Brain\KnowledgeBase::class)->search($this->profile, $query, 8);
         } catch (\Throwable $e) {
-            return ['error' => 'Knowledge search failed: '.$e->getMessage()];
+            \Illuminate\Support\Facades\Log::warning('[Coach] knowledge search failed', ['error' => $e->getMessage()]);
+
+            return ['error' => 'Knowledge search failed — try again.'];
         }
 
         if ($hits === []) {
@@ -881,7 +883,9 @@ class CoachTools
 
             return ['saved' => true, 'title' => $title, 'pinned' => (bool) ($args['pinned'] ?? false)];
         } catch (\Throwable $e) {
-            return ['error' => 'Could not save note: '.$e->getMessage()];
+            \Illuminate\Support\Facades\Log::warning('[Coach] save note failed', ['error' => $e->getMessage()]);
+
+            return ['error' => 'Could not save note — try again.'];
         }
     }
 
