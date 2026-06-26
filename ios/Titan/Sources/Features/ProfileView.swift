@@ -85,6 +85,19 @@ struct ProfileView: View {
             .sheet(isPresented: $showCommunity) { CommunitySettingsView() }
             .task { await model.loadCommunitySettings() }
 
+            #if DEBUG
+            Button { Haptic.tap(); model.simulateLiveRun() } label: {
+                GlassCard {
+                    HStack {
+                        Label("Simulate live run", systemImage: "figure.run.circle.fill").font(Theme.Font.body).foregroundStyle(Theme.Palette.mint)
+                        Spacer()
+                        Text("DEBUG").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+            #endif
+
             // Apple Health
             Button { Haptic.tap(); Task { model.healthConnected ? await model.syncAppleHealth(days: 30) : await model.connectAppleHealth() } } label: {
                 GlassCard {

@@ -22,6 +22,11 @@ struct DashboardView: View {
                 SyncErrorRow(message: "Couldn't sync today") { await model.refresh() }
             }
 
+            // A run is streaming live from the band — see it tracking, right at the top.
+            if model.runActive {
+                LiveRunBanner { model.showLiveRunSheet = true }
+            }
+
             // Hero: recovery ring + headline
             VStack(spacing: Theme.Space.m) {
                 MetricRing(score: d?.readiness?.score, label: "Recovery", size: 200)

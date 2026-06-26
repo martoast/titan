@@ -317,6 +317,8 @@ final class AppModel: ObservableObject {
                 self?.waveform = ppg.map { Double($0) }
             }
         }
+        router.onGps = { [weak self] fix in Task { @MainActor in self?.ingestLiveGps(fix) } }
+        router.onHr = { [weak self] hr in Task { @MainActor in self?.ingestLiveHr(hr) } }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in self?.bandConnected = up } }
         band.onBattery = { [weak self] pct in Task { @MainActor in self?.bandBattery = pct } }
@@ -637,6 +639,115 @@ final class AppModel: ObservableObject {
                 feed[j].did_kudos = card.did_kudos; feed[j].kudos_count = card.kudos_count
             }
         }
+    }
+
+    // MARK: live run (the band streams a GPS run → watch it tracking in real time)
+
+    @Published var runActive = false
+    @Published var runDistanceKm = 0.0
+    @Published var runElapsedSec = 0
+    @Published var runPaceSecPerKm = 0
+    @Published var runLiveBpm: Int?
+    @Published var runMaxBpm = 0
+    @Published var runTrack: [CGPoint] = []        // streamed coords for the live trace (x=lon, y=lat)
+    @Published var showLiveRunSheet = false        // drives the full-screen live tracker (app-wide)
+    private var runStartedAt: Date?
+    private var runLastLat: Double?
+    private var runLastLon: Double?
+    private var runLastSignal: Date?
+    private var runTicker: Task<Void, Never>?
+    private let runEndGapSec: TimeInterval = 90    // sport frames stop for this long ⇒ run ended
+
+    var runHasGps: Bool { !runTrack.isEmpty }
+
+    /// A live GPS fix during a run → accumulate distance (haversine) + extend the trace.
+    private func ingestLiveGps(_ fix: GpsFix) {
+        guard let lat = fix.lat, let lon = fix.lon else { return }   // need a real position fix
+        startRunIfNeeded()
+        runLastSignal = Date()
+        if let la = runLastLat, let lo = runLastLon {
+            let d = Self.haversineM(la, lo, lat, lon)
+            if d.isFinite && d < 200 { runDistanceKm += d / 1000 }   // drop GPS teleports
+        }
+        runLastLat = lat; runLastLon = lon
+        runTrack.append(CGPoint(x: lon, y: lat))
+        if runTrack.count > 3000 { runTrack.removeFirst(runTrack.count - 3000) }
+        recomputePace()
+    }
+
+    /// A sport-tagged HR reading (sport==1) means a workout is live; drive the live bpm + start gate.
+    private func ingestLiveHr(_ hr: HrReading) {
+        if hr.sport == 1 { startRunIfNeeded(); runLastSignal = Date() }
+        if runActive {
+            runLiveBpm = Int(hr.bpm)
+            runMaxBpm = max(runMaxBpm, Int(hr.bpm))
+        }
+    }
+
+    private func startRunIfNeeded() {
+        guard !runActive else { return }
+        runActive = true
+        runStartedAt = Date(); runLastSignal = Date()
+        runDistanceKm = 0; runElapsedSec = 0; runPaceSecPerKm = 0
+        runLastLat = nil; runLastLon = nil; runTrack = []; runMaxBpm = 0; runLiveBpm = nil
+        showLiveRunSheet = true        // pop the live tracker the moment a run begins
+        Haptic.success()
+        runTicker?.cancel()
+        runTicker = Task { @MainActor [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, self.runActive else { break }
+                if let s = self.runStartedAt { self.runElapsedSec = Int(Date().timeIntervalSince(s)) }
+                self.recomputePace()
+                if let last = self.runLastSignal, Date().timeIntervalSince(last) > self.runEndGapSec {
+                    self.endRun()
+                }
+            }
+        }
+    }
+
+    /// End the live run (the band stopped streaming sport frames, or the user dismissed it). The
+    /// sealed run shows up in the runs list shortly after via the normal upload→seal path.
+    func endRun() {
+        guard runActive else { return }
+        runActive = false
+        runTicker?.cancel(); runTicker = nil
+    }
+
+    private func recomputePace() {
+        runPaceSecPerKm = runDistanceKm > 0.02 ? Int(Double(runElapsedSec) / runDistanceKm) : 0
+    }
+
+    #if DEBUG
+    /// Feed a synthetic GPS run through the SAME live-ingest path as the band, in real time, so the
+    /// live-run UI can be exercised without a device. ~A loop near Golden Gate Park at ~5:30/km.
+    func simulateLiveRun(seconds: Int = 90) {
+        guard !runActive else { return }
+        let lat0 = 37.7694, lon0 = -122.4862
+        let mLat = 111_320.0, mLon = 111_320.0 * cos(lat0 * .pi / 180)
+        let speed = 1000.0 / 330.0   // m/s ≈ 5:30/km
+        Task { @MainActor [weak self] in
+            for i in 0..<seconds {
+                guard let self else { return }
+                let f = Double(i) / Double(seconds)
+                let r = 220.0
+                let th = 2 * Double.pi * f
+                let x = r * sin(th), y = r * (cos(th) - 1)
+                let lat = lat0 + y / mLat, lon = lon0 + x / mLon
+                self.ingestLiveGps(GpsFix(t: UInt64(i) * 1000, sats: 9, speedKmh: speed * 3.6, alt: 40, lat: lat, lon: lon))
+                self.ingestLiveHr(HrReading(t: UInt64(i) * 1000, bpm: UInt8(min(180, 120 + Int(40 * f))), conf: 95, sport: 1))
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            self?.endRun()
+        }
+    }
+    #endif
+
+    static func haversineM(_ la1: Double, _ lo1: Double, _ la2: Double, _ lo2: Double) -> Double {
+        let toR = Double.pi / 180
+        let dLa = (la2 - la1) * toR, dLo = (lo2 - lo1) * toR
+        let a = sin(dLa / 2) * sin(dLa / 2) + cos(la1 * toR) * cos(la2 * toR) * sin(dLo / 2) * sin(dLo / 2)
+        return 2 * 6_371_000 * asin(min(1, sqrt(a)))
     }
 
     private func deviceName() -> String {

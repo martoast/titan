@@ -50,6 +50,8 @@ struct RootView: View {
                         ProfileView().tabItem { Label("You", systemImage: "person.fill") }
                     }
                     .transition(.opacity)
+                    // A run streaming from the band pops the live tracker from any tab.
+                    .fullScreenCover(isPresented: $model.showLiveRunSheet) { LiveRunView().environmentObject(model) }
                 } else {
                     OnboardingView().transition(.move(edge: .trailing))
                 }

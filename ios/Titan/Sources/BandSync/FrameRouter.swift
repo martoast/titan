@@ -18,6 +18,10 @@ public final class FrameRouter {
     public var onBpm: ((UInt8) -> Void)?          // live HR for the UI
     /// Live stream stats for the UI: (cumulative samples, recent PPG for the waveform, ~Hz).
     public var onSamples: ((Int, [Int16], Int) -> Void)?
+    /// Live GPS fix (drives the in-app live-run distance/pace + route trace).
+    public var onGps: ((GpsFix) -> Void)?
+    /// Every HR reading with its sport tag (sport==1 ⇒ a run/workout is live).
+    public var onHr: ((HrReading) -> Void)?
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
@@ -69,10 +73,14 @@ public final class FrameRouter {
             totalSamples += frame.samples.count
             for w in ppgLog.add(frame.samples) { submit(.ppg(w)) }
         case "T4:":
-            if let fix = FrameDecoder.decodeT4(payload), let w = wa.addGps(fix) { submit(.workout(w)) }
+            if let fix = FrameDecoder.decodeT4(payload) {
+                onGps?(fix)
+                if let w = wa.addGps(fix) { submit(.workout(w)) }
+            }
         case "T5:":
             if let hr = FrameDecoder.decodeT5(payload) {
                 onBpm?(hr.bpm)
+                onHr?(hr)
                 // A sport-tagged reading OPENS/extends a workout — this is how a connected indoor
                 // session (no GPS, no T6) becomes a sealable workout window.
                 if let w = wa.addWorkoutHr(hr) { submit(.workout(w)) }
