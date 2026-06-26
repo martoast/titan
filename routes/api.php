@@ -54,6 +54,10 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/profile', [\App\Http\Controllers\Api\MobileProfileController::class, 'show']);
     Route::patch('/profile', [\App\Http\Controllers\Api\MobileProfileController::class, 'update']);
 
+    // Runs — the Strava-style list + end-of-run detail (route map, splits, elevation, best efforts).
+    Route::get('/runs', [\App\Http\Controllers\Api\MobileRunsController::class, 'index']);
+    Route::get('/runs/{session}', [\App\Http\Controllers\Api\MobileRunsController::class, 'show']);
+
     // Personalized insight feed (anomalies, goal progress, wins, behavior correlations).
     Route::get('/insights', [\App\Http\Controllers\Api\MobileInsightsController::class, 'index']);
 

@@ -32,19 +32,7 @@ struct TrainSection: View {
                 }
             }
 
-            GlassCard {
-                VStack(alignment: .leading, spacing: Theme.Space.s) {
-                    SectionHeader(title: "Recent")
-                    VStack(spacing: 6) {
-                        Image(systemName: "figure.strengthtraining.traditional")
-                            .font(.system(size: 30)).foregroundStyle(Theme.Palette.textFaint)
-                        Text("No sessions yet").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                        Text("Start one above — training load, strain and recovery cost land here automatically.")
-                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
-                }
-            }
+            RunsSection()
         }
     }
 
