@@ -123,7 +123,12 @@ var CFG = {
   // the Whoop trick: sample sparsely when still, densely when it matters.
   REST_DUTY: true,                   // master switch for offline-rest duty-cycling
   REST_DUTY_ON_MS: 15000,            // measure window — long enough for the VC31 to settle + average
-  REST_DUTY_PERIOD_MS: 60000,        // one reading per minute (25% duty → ~4x the HRM battery life)
+  REST_DUTY_PERIOD_MS: 60000,        // MOVING cadence: one reading/min (25% duty) — keeps HR responsive while you're active
+  // Motion-gated rest cadence (Whoop's trick): when you're STILL (desk / sitting), relax the period to
+  // save battery; the instant you move, snap back to the tight REST_DUTY_PERIOD_MS. motionEMA is the
+  // same always-on accel signal the GPS gate + auto-detect already maintain, so the gating is free.
+  REST_DUTY_PERIOD_STILL_MS: 180000, // STILL cadence: one reading every 3 min (~8% duty → ~3x the active rest battery)
+  REST_STILL_MOTION: 0.07,           // motionEMA below this = "still" (under AUTO_MOTION_LO: typing stays still, walking trips it)
 
   // --- OVERNIGHT SLEEP duty-cycle (battery) ----------------------------------
   // Running the HRM continuously at 25 Hz all night (for HRV) drains a ~200 mAh Bangle.js 2 in ~16 h
@@ -835,34 +840,45 @@ function applyHrmMode() {
 
 // ----- 24/7 HRM power: continuous when it matters, duty-cycled when idle+offline ----------
 // Offline rest = streaming, no central, no workout, no sleep session. THE battery-critical 24/7 case.
-var restDutyTimer = null;    // the per-minute "take a reading" interval (null = not duty-cycling)
+var restDutyTimer = null;    // timeout to the NEXT burst (null = mid-window or not duty-cycling)
 var restDutyOnTimer = null;  // the "measure window done → read + power off" timeout
 
 function restModeActive() {
   return state.streaming && !state.connected && !state.workout && state.swMode !== "sleep";
 }
 
-// One duty cycle: power the HRM on, let it settle for REST_DUTY_ON_MS, then log the bpm as a light
-// T5 trend point and power back off. Skips itself if we've since left rest mode.
+// Motion-gated cadence: when you're STILL, relax the period (battery); when you're MOVING, keep it
+// tight so HR stays responsive. motionEMA is the always-on accel signal — re-evaluated every cycle, so
+// it tightens the instant you start moving and relaxes once you settle. Whoop does exactly this.
+function restDutyPeriod() {
+  return (motionEMA < CFG.REST_STILL_MOTION) ? CFG.REST_DUTY_PERIOD_STILL_MS : CFG.REST_DUTY_PERIOD_MS;
+}
+
+// One duty cycle: power the HRM on, let it settle for REST_DUTY_ON_MS, log the bpm as a light T5 trend
+// point, power back off, then self-schedule the NEXT burst by the current motion state. The whole loop
+// stands down the moment we leave rest mode (workout/connect/sleep own the power from there).
 function restDutyTick() {
+  restDutyTimer = null;
   if (!restModeActive()) { stopRestDuty(); return; }
   try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
   if (restDutyOnTimer) clearTimeout(restDutyOnTimer);
   restDutyOnTimer = setTimeout(function () {
     restDutyOnTimer = null;
     if (state.bpm > 0) emitHrFrame(state.bpm, state.conf);   // → ring (offline), a tiny HR-trend point
-    if (restModeActive()) { try { Bangle.setHRMPower(0, "titan"); } catch (e) {} }
+    if (!restModeActive()) { stopRestDuty(); return; }       // left rest mid-window → don't power off, the new mode owns it
+    try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
+    // gap = full cycle minus the ON window, so REST_DUTY_PERIOD_*_MS keeps meaning "one reading per period"
+    restDutyTimer = setTimeout(restDutyTick, Math.max(1000, restDutyPeriod() - CFG.REST_DUTY_ON_MS));
   }, CFG.REST_DUTY_ON_MS);
 }
 
 function startRestDuty() {
-  if (!CFG.REST_DUTY || restDutyTimer) return;
-  restDutyTimer = setInterval(restDutyTick, CFG.REST_DUTY_PERIOD_MS);
-  restDutyTick();   // take the first reading immediately
+  if (!CFG.REST_DUTY || restDutyTimer || restDutyOnTimer) return;   // already cycling (timer = waiting, onTimer = mid-window)
+  restDutyTick();   // first reading immediately; it self-schedules from there
 }
 
 function stopRestDuty() {
-  if (restDutyTimer) { clearInterval(restDutyTimer); restDutyTimer = null; }
+  if (restDutyTimer) { clearTimeout(restDutyTimer); restDutyTimer = null; }
   if (restDutyOnTimer) { clearTimeout(restDutyOnTimer); restDutyOnTimer = null; }
 }
 
