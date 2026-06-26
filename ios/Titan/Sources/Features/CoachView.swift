@@ -279,8 +279,6 @@ struct CoachView: View {
 private struct Bubble: View {
     let msg: ChatMessage
     var isUser: Bool { msg.role == .user }
-    // Show the text bubble unless this is a pure image attachment (image + empty, settled caption).
-    private var showText: Bool { !msg.text.isEmpty || msg.streaming }
     var body: some View {
         HStack {
             if isUser { Spacer(minLength: 44) }
@@ -291,23 +289,206 @@ private struct Bubble: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.Palette.cardStroke))
                 }
-                if showText {
-                    Group {
-                        if msg.text.isEmpty && msg.streaming { TypingDots() }
-                        else { Text(.init(msg.text)).font(Theme.Font.body) }
+                if isUser {
+                    if !msg.text.isEmpty { textBubble(msg.text) }
+                } else if msg.text.isEmpty && msg.streaming {
+                    TypingDots()
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.Palette.cardStroke))
+                } else {
+                    // The coach can emit a ```titan-card {json} block (e.g. a macros card after logging
+                    // a meal). Render those as native cards instead of leaking raw JSON into the chat.
+                    let segments = CoachSegment.parse(msg.text, streaming: msg.streaming)
+                    ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                        switch seg {
+                        case .text(let t): if !t.isEmpty { textBubble(t) }
+                        case .card(let json): TitanCardView(json: json)
+                        }
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .foregroundStyle(isUser ? .white : Theme.Palette.text)
-                    .background(
-                        isUser ? AnyShapeStyle(Theme.Grad.brand) : AnyShapeStyle(Theme.Palette.card),
-                        in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    )
-                    .overlay(isUser ? nil : RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.Palette.cardStroke))
                 }
             }
             if !isUser { Spacer(minLength: 44) }
         }
         .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .opacity))
+    }
+
+    private func textBubble(_ text: String) -> some View {
+        Text(.init(text)).font(Theme.Font.body)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .foregroundStyle(isUser ? .white : Theme.Palette.text)
+            .background(
+                isUser ? AnyShapeStyle(Theme.Grad.brand) : AnyShapeStyle(Theme.Palette.card),
+                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+            )
+            .overlay(isUser ? nil : RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.Palette.cardStroke))
+    }
+}
+
+// MARK: - titan-card parsing + native rendering
+
+/// One piece of an assistant message: either markdown text or a parsed titan-card payload.
+private enum CoachSegment {
+    case text(String)
+    case card([String: Any])
+
+    /// Split a message on ```titan-card fences. A fence that hasn't closed yet (mid-stream) or whose
+    /// JSON doesn't parse is dropped rather than shown raw — the user never sees code/JSON.
+    static func parse(_ raw: String, streaming: Bool) -> [CoachSegment] {
+        let fence = "```titan-card"
+        guard raw.contains(fence) else { return [.text(raw.trimmingCharacters(in: .whitespacesAndNewlines))] }
+
+        var segments: [CoachSegment] = []
+        var rest = Substring(raw)
+        while let open = rest.range(of: fence) {
+            let before = String(rest[rest.startIndex..<open.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !before.isEmpty { segments.append(.text(before)) }
+            let afterOpen = rest[open.upperBound...]
+            guard let close = afterOpen.range(of: "```") else {
+                rest = ""   // unclosed fence (still streaming) — suppress the partial block
+                break
+            }
+            let jsonStr = String(afterOpen[afterOpen.startIndex..<close.lowerBound])
+            if let card = decode(jsonStr) { segments.append(.card(card)) }
+            rest = afterOpen[close.upperBound...]
+        }
+        let tail = String(rest).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty { segments.append(.text(tail)) }
+        return segments.isEmpty ? [.text("")] : segments
+    }
+
+    private static func decode(_ s: String) -> [String: Any]? {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return obj
+    }
+}
+
+/// Coerce a JSON value (NSNumber/Int/Double/String) to a Double.
+private func jsonNum(_ any: Any?) -> Double? {
+    switch any {
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    case let n as NSNumber: return n.doubleValue
+    case let s as String: return Double(s)
+    default: return nil
+    }
+}
+
+/// Renders a parsed titan-card. `macros` (the meal-logging card) is first-class; everything else
+/// falls back to a clean key/value card so a card type we don't draw natively never shows as JSON.
+private struct TitanCardView: View {
+    let json: [String: Any]
+    var body: some View {
+        Group {
+            switch json["type"] as? String {
+            case "macros": MacrosCard(json: json)
+            default: GenericCard(json: json)
+            }
+        }
+        .frame(maxWidth: 300, alignment: .leading)
+    }
+}
+
+private struct CardBar: View {
+    let value: Double
+    let target: Double
+    let color: Color
+    var body: some View {
+        let pct = target > 0 ? min(1, value / target) : 0
+        Capsule().fill(Color.white.opacity(0.08)).frame(height: 6)
+            .overlay(alignment: .leading) {
+                GeometryReader { geo in
+                    Capsule().fill(color).frame(width: geo.size.width * pct)
+                }
+            }
+            .frame(height: 6)
+    }
+}
+
+private struct MacrosCard: View {
+    let json: [String: Any]
+    private func pair(_ key: String) -> (Double, Double) {
+        let d = json[key] as? [String: Any]
+        return (jsonNum(d?["value"]) ?? 0, jsonNum(d?["target"]) ?? 0)
+    }
+    private func macroRow(_ key: String, _ name: String, _ color: Color) -> some View {
+        let (v, t) = pair(key)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(name).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                Spacer()
+                Text("\(Int(v))\(t > 0 ? "/\(Int(t))" : "")g").font(Theme.Font.num(13)).foregroundStyle(color)
+            }
+            CardBar(value: v, target: t, color: color)
+        }
+    }
+    var body: some View {
+        let cal = pair("calories")
+        VStack(alignment: .leading, spacing: 12) {
+            Text((json["title"] as? String) ?? "Today's fuel")
+                .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("Calories").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Spacer()
+                    Text("\(Int(cal.0))\(cal.1 > 0 ? " / \(Int(cal.1))" : "") kcal")
+                        .font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.text)
+                }
+                if cal.1 > 0 { CardBar(value: cal.0, target: cal.1, color: cal.0 > cal.1 * 1.05 ? Theme.Palette.amber : Theme.Palette.cyan) }
+            }
+            macroRow("protein", "Protein", Theme.Palette.mint)
+            macroRow("carbs", "Carbs", Theme.Palette.amber)
+            macroRow("fat", "Fat", Theme.Palette.pink)
+            if let footer = json["footer"] as? String, !footer.isEmpty {
+                Text(footer).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+        }
+        .padding(14)
+        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.Palette.cardStroke))
+    }
+}
+
+/// Clean fallback for any card type we don't draw natively yet — title + a compact list of fields
+/// (scalars, or an `items` grid). Never raw JSON.
+private struct GenericCard: View {
+    let json: [String: Any]
+    private var title: String? { (json["title"] as? String) ?? (json["label"] as? String) }
+    private var rows: [(String, String)] {
+        if let items = json["items"] as? [[String: Any]] {
+            return items.map { it in
+                let label = (it["label"] as? String) ?? ""
+                let unit = (it["unit"] as? String).map { " \($0)" } ?? ""
+                let val = it["value"].map { "\($0)" } ?? "–"
+                return (label, val + unit)
+            }
+        }
+        return json.compactMap { (k, v) -> (String, String)? in
+            guard k != "type", k != "title", k != "label", k != "footer" else { return nil }
+            if let s = v as? String { return (k.capitalized, s) }
+            if let n = v as? NSNumber { return (k.capitalized, "\(n)") }
+            return nil
+        }.sorted { $0.0 < $1.0 }
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title { Text(title).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text) }
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack {
+                    Text(row.0).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Spacer()
+                    Text(row.1).font(Theme.Font.num(13)).foregroundStyle(Theme.Palette.text)
+                }
+            }
+            if let footer = json["footer"] as? String, !footer.isEmpty {
+                Text(footer).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+        }
+        .padding(14)
+        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.Palette.cardStroke))
     }
 }
 
