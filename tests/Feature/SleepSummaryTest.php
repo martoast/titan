@@ -3,11 +3,15 @@
 namespace Tests\Feature;
 
 use App\Jobs\ReactToSleepConfirmed;
+use App\Jobs\SealNightJob;
+use App\Models\DeviceIngestion;
 use App\Models\SleepLog;
 use App\Models\User;
+use App\Services\Wearables\DeviceIngestionService;
 use App\Support\SleepCoach;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
 
 /**
@@ -43,6 +47,50 @@ class SleepSummaryTest extends TestCase
         // Re-running must not post a second summary.
         ReactToSleepConfirmed::dispatchSync($log->id);
         $this->assertSame(1, $convo->messages()->where('role', 'assistant')->count());
+    }
+
+    public function test_confirmed_summary_keys_the_night_by_wake_date_not_bedtime(): void
+    {
+        // Regression: a sleep crossing midnight (bed 23:00 Jun24 → wake 07:00 Jun25) was keyed by the
+        // BEDTIME date (Jun24), which never matched SealNightJob's window_end grouping (Jun25), so the
+        // user's confirmed morning summary never fired. The night must be keyed by the wake date.
+        Bus::fake();
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['settings' => ['timezone' => 'UTC']]);
+        $conn = $profile->wearableConnections()->create([
+            'provider' => 'TITAN_BAND', 'source' => 'titan_band', 'status' => 'connected', 'timezone' => 'UTC',
+        ]);
+
+        DeviceIngestion::create([
+            'batch_uid' => 'night-1', 'profile_id' => $profile->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+            'window_start' => '2026-06-24 23:00:00', 'window_end' => '2026-06-25 06:55:00',
+            'status' => DeviceIngestion::STATUS_QUEUED,
+        ]);
+
+        $svc = app(DeviceIngestionService::class);
+        $trigger = new \ReflectionMethod($svc, 'triggerSleepSummary');
+        $trigger->setAccessible(true);
+        $ok = $trigger->invoke($svc, $conn, ['confirmed' => true, 'bedtime' => strtotime('2026-06-24 23:00:00 UTC')], 'UTC');
+
+        $this->assertTrue($ok);
+        Bus::assertDispatched(SealNightJob::class, fn (SealNightJob $j) => $j->night === '2026-06-25' && $j->confirmed === true);
+    }
+
+    public function test_confirmed_seal_bypasses_the_quiescence_gate(): void
+    {
+        // A confirmed seal fires the instant the user wakes, so the last window ended seconds ago.
+        // nightIsComplete must treat the user's explicit "awake" as complete instead of "still streaming".
+        $job = new SealNightJob(1, '2026-06-25', confirmed: true);
+        $complete = new \ReflectionMethod($job, 'nightIsComplete');
+        $complete->setAccessible(true);
+
+        $fresh = collect([new DeviceIngestion(['window_end' => now()])]); // ended just now
+        $this->assertTrue($complete->invoke($job, $fresh, now()->toDateString(), 'UTC'));
+
+        // The unconfirmed (cron) path still waits for quiescence on a fresh same-day night.
+        $cron = new SealNightJob(1, null, confirmed: false);
+        $this->assertFalse($complete->invoke($cron, $fresh, now()->toDateString(), 'UTC'));
     }
 
     public function test_summary_breakdown_includes_stages(): void
