@@ -107,10 +107,7 @@ private struct CommunityFeed: View {
                 if model.feed.isEmpty {
                     FeedEmptyState()
                 } else {
-                    ForEach(model.feed) { card in
-                        NavigationLink { ActivityDetailView(card: card) } label: { FeedCard(card: card) }
-                            .buttonStyle(PressCard())
-                    }
+                    ForEach(model.feed) { card in FeedCard(card: card) }
                 }
             }
         }
@@ -130,52 +127,85 @@ private struct FeedEmptyState: View {
     }
 }
 
+/// Self-navigating feed card: the athlete header opens their profile; the map+stats open the
+/// activity detail; the kudos/comment bar are in-place actions. (Never wrap this in a NavigationLink.)
 private struct FeedCard: View {
     @EnvironmentObject var model: AppModel
     let card: ActivityCard
+    @State private var clap = false
+
+    private var liveCard: ActivityCard { model.feed.first(where: { $0.id == card.id }) ?? card }
+
     var body: some View {
         GlassCard(padding: Theme.Space.m) {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                HStack(spacing: Theme.Space.s) {
-                    AthleteAvatar(name: card.athlete.name, url: card.athlete.avatar_url, size: 40)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(card.athlete.name).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                        Text("\(card.title) · \(relativeTime(card.started_at))").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                NavigationLink { AthleteProfileView(athleteId: card.athlete.id) } label: {
+                    HStack(spacing: Theme.Space.s) {
+                        AthleteAvatar(name: card.athlete.name, url: card.athlete.avatar_url, size: 42)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(card.athlete.name).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            Text("\(card.title) · \(relativeTime(card.started_at))").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
                     }
-                    Spacer()
-                    Image(systemName: activityIcon(card.activity_type)).foregroundStyle(Theme.Palette.mint)
-                }
+                }.buttonStyle(.plain)
 
-                if let url = card.map_thumb_url, let u = URL(string: url) {
-                    AsyncImage(url: u) { img in img.resizable().scaledToFill() } placeholder: {
-                        Shimmer().frame(height: 150)
+                NavigationLink { ActivityDetailView(card: card) } label: {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        if let url = card.map_thumb_url, let u = URL(string: url) {
+                            ZStack(alignment: .bottomLeading) {
+                                AsyncImage(url: u) { img in img.resizable().scaledToFill() } placeholder: {
+                                    Shimmer().frame(height: 168)
+                                }
+                                .frame(height: 168).frame(maxWidth: .infinity).clipped()
+                                LinearGradient(colors: [.black.opacity(0.65), .clear], startPoint: .bottom, endPoint: .center)
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text(distanceStr(card.distance_km)).font(Theme.Font.num(30)).foregroundStyle(.white)
+                                    Text("km").font(Theme.Font.label).foregroundStyle(.white.opacity(0.8))
+                                    if let p = card.avg_pace_s_per_km {
+                                        Text("· \(paceStr(p))").font(Theme.Font.label.weight(.semibold)).foregroundStyle(.white.opacity(0.9)).padding(.leading, 4)
+                                    }
+                                }.padding(Theme.Space.m)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                        } else {
+                            HStack(spacing: Theme.Space.l) {
+                                statBlock(distanceStr(card.distance_km), "km")
+                                if let p = card.avg_pace_s_per_km { statBlock(paceStr(p), "Pace") }
+                                if let e = card.relative_effort { statBlock("\(e)", "Effort") }
+                            }.padding(.vertical, 4)
+                        }
                     }
-                    .frame(height: 150).frame(maxWidth: .infinity).clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip))
-                }
-
-                HStack(spacing: Theme.Space.l) {
-                    statBlock(distanceStr(card.distance_km), "Distance")
-                    if let p = card.avg_pace_s_per_km { statBlock(paceStr(p), "Pace") }
-                    if let e = card.relative_effort { statBlock("\(e)", "Effort") }
-                }
-                .padding(.top, 2)
+                }.buttonStyle(.plain)
 
                 Divider().overlay(Theme.Palette.cardStroke)
 
                 HStack(spacing: Theme.Space.l) {
-                    Button { Task { await model.toggleKudos(card) } } label: {
+                    Button {
+                        withAnimation(Theme.Motion.snappy) { clap = true }
+                        Task {
+                            await model.toggleKudos(card)
+                            withAnimation(Theme.Motion.snappy) { clap = false }
+                        }
+                    } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: card.did_kudos ? "hands.clap.fill" : "hands.clap")
-                                .foregroundStyle(card.did_kudos ? Theme.Palette.amber : Theme.Palette.textDim)
-                            Text("\(card.kudos_count)").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+                            Image(systemName: liveCard.did_kudos ? "hands.clap.fill" : "hands.clap")
+                                .foregroundStyle(liveCard.did_kudos ? Theme.Palette.amber : Theme.Palette.textDim)
+                                .scaleEffect(clap ? 1.3 : 1)
+                                .symbolEffect(.bounce, value: liveCard.did_kudos)
+                            Text("\(liveCard.kudos_count)").font(Theme.Font.label.weight(.semibold)).foregroundStyle(Theme.Palette.textDim)
                         }
                     }.buttonStyle(.plain)
                     HStack(spacing: 6) {
                         Image(systemName: "bubble.left").foregroundStyle(Theme.Palette.textDim)
-                        Text("\(card.comment_count)").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+                        Text("\(liveCard.comment_count)").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
                     }
                     Spacer()
+                    if let e = card.relative_effort, card.map_thumb_url != nil {
+                        Label("\(e)", systemImage: "bolt.fill").font(Theme.Font.micro.weight(.semibold))
+                            .foregroundStyle(Theme.Palette.mint)
+                    }
                 }
             }
         }
@@ -229,6 +259,7 @@ private struct LeaderboardSection: View {
                 SyncErrorRow(message: "Couldn't load the leaderboard") { await model.loadBoard() }
             default:
                 if let board = model.board, !board.athletes.isEmpty {
+                    if let you = board.you { YourStandingCard(you: you, unit: board.unit, total: board.athletes.count) }
                     Podium(board: board)
                     GlassCard(padding: Theme.Space.s) {
                         VStack(spacing: 0) {
@@ -253,13 +284,41 @@ private struct LeaderboardSection: View {
     }
 }
 
+/// The viewer's own standing — always visible so you know where you sit, even outside the top rows.
+private struct YourStandingCard: View {
+    let you: LeaderboardRow
+    let unit: String
+    let total: Int
+    var body: some View {
+        GlassCard(padding: Theme.Space.m) {
+            HStack(spacing: Theme.Space.m) {
+                VStack(spacing: 0) {
+                    Text("#\(you.rank)").font(Theme.Font.num(28)).foregroundStyle(Theme.Palette.mint)
+                    Text("of \(total)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+                .frame(width: 64)
+                Rectangle().fill(Theme.Palette.cardStroke).frame(width: 1, height: 38)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Your standing").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+                    Text(you.rank == 1 ? "Leading the group 🏆" : "Keep pushing").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                }
+                Spacer()
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(boardValue(you.value, unit: unit)).font(Theme.Font.num(24)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+                    Text(unit).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+        }
+    }
+}
+
 private struct Podium: View {
     let board: LeaderboardResponse
     var body: some View {
         let top = Array(board.athletes.prefix(3))
         HStack(alignment: .bottom, spacing: Theme.Space.s) {
             if top.count > 1 { podiumCol(top[1], height: 78, medal: "2") }
-            if top.count > 0 { podiumCol(top[0], height: 104, medal: "1") }
+            if top.count > 0 { podiumCol(top[0], height: 108, medal: "1") }
             if top.count > 2 { podiumCol(top[2], height: 60, medal: "3") }
         }.frame(maxWidth: .infinity)
     }
@@ -267,10 +326,17 @@ private struct Podium: View {
     private func podiumCol(_ r: LeaderboardRow, height: CGFloat, medal: String) -> some View {
         let color = medal == "1" ? Theme.Palette.amber : (medal == "2" ? Theme.Palette.textDim : Theme.Palette.cyan)
         return VStack(spacing: 6) {
-            AthleteAvatar(name: r.name, url: r.avatar_url, size: medal == "1" ? 56 : 44)
-                .overlay(Circle().stroke(color, lineWidth: 2))
+            ZStack(alignment: .top) {
+                AthleteAvatar(name: r.name, url: r.avatar_url, size: medal == "1" ? 58 : 44)
+                    .overlay(Circle().stroke(color, lineWidth: 2))
+                if medal == "1" {
+                    Image(systemName: "crown.fill").font(.system(size: 18)).foregroundStyle(Theme.Palette.amber)
+                        .offset(y: -14)
+                }
+            }
+            .padding(.top, medal == "1" ? 14 : 0)
             Text(r.name).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
-            Text("\(boardValue(r.value, unit: board.unit))").font(Theme.Font.num(16)).foregroundStyle(color).monospacedDigit()
+            Text(boardValue(r.value, unit: board.unit)).font(Theme.Font.num(16)).foregroundStyle(color).monospacedDigit()
             RoundedRectangle(cornerRadius: 8)
                 .fill(LinearGradient(colors: [color.opacity(0.5), color.opacity(0.12)], startPoint: .top, endPoint: .bottom))
                 .frame(height: height)
@@ -463,10 +529,7 @@ struct AthleteProfileView: View {
                     if d.achievements.contains(where: { $0.earned }) { BadgeWall(achievements: d.achievements) }
                     if !d.activities.isEmpty {
                         SectionHeader(title: "Recent").frame(maxWidth: .infinity, alignment: .leading)
-                        ForEach(d.activities) { card in
-                            NavigationLink { ActivityDetailView(card: card) } label: { FeedCard(card: card) }
-                                .buttonStyle(PressCard())
-                        }
+                        ForEach(d.activities) { card in FeedCard(card: card) }
                     }
                 } else if phase == .failed {
                     SyncErrorRow(message: "Couldn't load this athlete") { await load() }
