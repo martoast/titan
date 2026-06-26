@@ -28,7 +28,7 @@ struct DailyView: View {
 
             switch seg {
             case .sleep: SleepSection()
-            case .fuel: FuelSection()
+            case .fuel: VStack(spacing: Theme.Space.m) { FuelSection(); StackSection() }
             case .train: TrainSection()
             case .heart: HrSection()
             case .cycle: CycleSection()

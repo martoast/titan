@@ -85,6 +85,19 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::patch('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'update']);
     Route::delete('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'destroy']);
 
+    // "What you take" — supplements & meds. Today's checklist card + the full protocol +
+    // (informational) interaction flags. Same rows the coach's my_stack / log_intake tools read.
+    Route::get('/stack', [\App\Http\Controllers\Api\MobileStackController::class, 'index']);
+    Route::get('/stack/search', [\App\Http\Controllers\Api\MobileStackController::class, 'search']);
+    Route::post('/stack/scan', [\App\Http\Controllers\Api\MobileStackController::class, 'scanPhoto']);
+    Route::get('/stack/interactions', [\App\Http\Controllers\Api\MobileStackController::class, 'interactionList']);
+    Route::post('/stack', [\App\Http\Controllers\Api\MobileStackController::class, 'store']);
+    Route::patch('/stack/{item}', [\App\Http\Controllers\Api\MobileStackController::class, 'update']);
+    Route::delete('/stack/{item}', [\App\Http\Controllers\Api\MobileStackController::class, 'destroy']);
+    Route::post('/stack/{item}/intake', [\App\Http\Controllers\Api\MobileStackController::class, 'logItem']);
+    Route::post('/stack/intake', [\App\Http\Controllers\Api\MobileStackController::class, 'logOneOff']);
+    Route::delete('/stack/intake/{event}', [\App\Http\Controllers\Api\MobileStackController::class, 'undo']);
+
     // Progress photos (private physique gallery the coach's physique tools read).
     Route::get('/progress-photos', [\App\Http\Controllers\Api\MobileProgressController::class, 'index']);
     Route::post('/progress-photos', [\App\Http\Controllers\Api\MobileProgressController::class, 'store']);

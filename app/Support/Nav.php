@@ -34,6 +34,7 @@ class Nav
                 self::item('Coach', 'coach', 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 21l1.8-4A7.97 7.97 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'),
                 self::item('Dashboard', 'dashboard', 'M3 12l2-2 7-7 7 7 2 2M5 10v10a1 1 0 001 1h3m10-11v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'),
                 self::item('Meals', 'meals', 'M5 3v7a3 3 0 006 0V3M8 3v18m9-18s2 1 2 5-2 4-2 4v7'),
+                self::item('What you take', 'stack', 'M7 8h10a4 4 0 010 8H7a4 4 0 010-8zM12 8v8'),
                 self::item('Workouts', 'workouts', 'M6.5 6.5l11 11M4 9l1.5-1.5M9 4L7.5 5.5m9 13L18 17m-1-9l2-2M2.5 11.5l3 3m13-3l-3-3'),
             ],
             // Your body's signals — recovery, sleep, movement, cycle.

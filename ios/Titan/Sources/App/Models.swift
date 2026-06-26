@@ -366,6 +366,142 @@ struct FastingStatus: Codable, Equatable {
 struct HealthStatus: Codable { let connected: Bool; let last_sync_at: String? }
 struct HealthIngestResult: Codable { let ok: Bool; let synced_at: String? }
 
+// MARK: - The Stack ("What you take" — supplements & medications)
+
+/// Decodes a value the API may send as either a String or a number, surfaced as a String. Used for
+/// external catalog ids (DSLD ids / RxCUIs come back numeric from some endpoints, string from others).
+struct LooseString: Codable, Equatable, Hashable {
+    let value: String
+    init(_ v: String) { value = v }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let s = try? c.decode(String.self) { value = s }
+        else if let i = try? c.decode(Int.self) { value = String(i) }
+        else if let d = try? c.decode(Double.self) { value = String(Int(d)) }
+        else { value = "" }
+    }
+    func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(value) }
+}
+
+/// The unified stack payload returned by `GET /api/me/stack` and every mutation
+/// (add/update/delete/intake). All fields optional so one type decodes every shape — the mutations
+/// echo back the refreshed snapshot plus an `item`/`event_id`/`ok` we mostly ignore.
+struct StackResponse: Codable, Equatable {
+    let ok: Bool?
+    let item: StackItem?
+    let event_id: Int?
+    let today: StackToday?
+    let items: [StackItem]?
+    let flags: [InteractionFlag]?
+    let disclaimer: String?
+}
+
+/// Today's checklist — doses grouped by time-of-day. No "x of y" scoreboard on the card; progress is
+/// carried by checkmarks + the calm `footer`.
+struct StackToday: Codable, Equatable {
+    let type: String?
+    let title: String?
+    let slots: [StackSlot]
+    let counts: Counts?
+    let worth_knowing: Int?
+    let footer: String?
+    struct Counts: Codable, Equatable { let taken: Int; let total: Int; let extra: Int }
+}
+
+struct StackSlot: Codable, Equatable, Identifiable {
+    var id: String { key }
+    let key: String
+    let label: String
+    let items: [StackTodayItem]
+}
+
+/// One due dose in today's checklist. `id` is the parent stack item; `event_id` is set once taken
+/// (so we can undo). `taken` drives the dim/collapse + checkmark.
+struct StackTodayItem: Codable, Equatable, Identifiable {
+    let id: Int
+    let event_id: Int?
+    let name: String
+    let dose: String?
+    let kind: String?
+    let with_food: Bool?
+    let slot: String?
+    let taken: Bool
+}
+
+/// A persistent protocol entry (the thing you take, with a schedule).
+struct StackItem: Codable, Equatable, Identifiable {
+    let id: Int
+    let name: String
+    let kind: String                 // supplement | medication | other
+    let brand: String?
+    let dose_amount: Double?
+    let dose_unit: String?
+    let dose_label: String?
+    let form: String?
+    let schedule: StackSchedule?
+    let slots: [String]
+    let active: Bool
+    let photo_url: String?
+    let adherence: Int?              // last-~14d adherence %
+    let notes: String?
+}
+
+struct StackSchedule: Codable, Equatable {
+    let frequency: String?           // daily | specific | as_needed
+    let times: [String]?            // slot keys (morning/midday/evening/night)
+    let days: [String]?            // weekday keys, when frequency == specific
+    let with_food: Bool?
+}
+
+/// One catalog hit from `GET /api/me/stack/search` (DSLD for supps, RxNorm for meds).
+struct StackCatalogResult: Codable, Equatable, Identifiable {
+    var id: String { (dsld_id?.value ?? "") + (rxcui?.value ?? "") + name + (brand ?? "") }
+    let name: String
+    let brand: String?
+    let dose_amount: Double?
+    let dose_unit: String?
+    let form: String?
+    let kind: String
+    let dsld_id: LooseString?
+    let rxcui: LooseString?
+    let source: String?
+}
+struct StackCatalogResponse: Codable, Equatable { let results: [StackCatalogResult] }
+
+/// `POST /api/me/stack/scan` — vision pulls candidate labels off a bottle (single) or a shelf.
+struct StackScanResult: Codable, Equatable {
+    let image_url: String?
+    let photo_path: String?
+    let candidates: [StackScanCandidate]
+    let note: String?
+}
+struct StackScanCandidate: Codable, Equatable, Identifiable {
+    var id = UUID()
+    let name: String
+    let brand: String?
+    let dose_amount: Double?
+    let dose_unit: String?
+    let form: String?
+    let kind: String?
+    let confidence: Double?
+    let source: String?
+    enum CodingKeys: String, CodingKey { case name, brand, dose_amount, dose_unit, form, kind, confidence, source }
+}
+
+/// A "worth knowing" interaction flag — cited, severity-tiered, never alarming. `id` tolerates the
+/// server sending it as int/string/absent.
+struct InteractionFlag: Codable, Equatable, Identifiable {
+    let flagID: LooseString?
+    let a: String?
+    let b: String?
+    let severity: String?           // info | timing | moderate | major
+    let summary: String?
+    let source: String?
+    var id: String { flagID?.value ?? "\(a ?? "")-\(b ?? "")-\(severity ?? "")" }
+    enum CodingKeys: String, CodingKey { case flagID = "id", a, b, severity, summary, source }
+}
+struct StackInteractionsResponse: Codable, Equatable { let flags: [InteractionFlag]; let disclaimer: String? }
+
 enum APIError: LocalizedError {
     case http(Int, String), decoding, unauthorized, transport(String)
     var errorDescription: String? {

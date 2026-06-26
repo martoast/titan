@@ -265,6 +265,62 @@ final class APIClient {
                                                   json: ["token": apns, "platform": "ios"]))
     }
 
+    // MARK: stack (What you take — supplements & medications)
+
+    func stack() async throws -> StackResponse {
+        try await send(request("api/me/stack"), as: StackResponse.self)
+    }
+
+    func stackSearch(_ q: String) async throws -> StackCatalogResponse {
+        let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+        return try await send(request("api/me/stack/search?q=\(enc)"), as: StackCatalogResponse.self)
+    }
+
+    func stackScan(_ imageData: Data, mode: String) async throws -> StackScanResult {
+        try await send(multipart("api/me/stack/scan", fields: ["mode": mode], fileField: "photo", fileData: imageData),
+                       as: StackScanResult.self)
+    }
+
+    func stackInteractions() async throws -> StackInteractionsResponse {
+        try await send(request("api/me/stack/interactions"), as: StackInteractionsResponse.self)
+    }
+
+    @discardableResult
+    func addStackItem(_ fields: [String: Any]) async throws -> StackResponse {
+        try await send(request("api/me/stack", method: "POST", json: fields), as: StackResponse.self)
+    }
+
+    @discardableResult
+    func updateStackItem(_ id: Int, fields: [String: Any]) async throws -> StackResponse {
+        try await send(request("api/me/stack/\(id)", method: "PATCH", json: fields), as: StackResponse.self)
+    }
+
+    @discardableResult
+    func deleteStackItem(_ id: Int) async throws -> StackResponse {
+        try await send(request("api/me/stack/\(id)", method: "DELETE"), as: StackResponse.self)
+    }
+
+    @discardableResult
+    func logStackIntake(itemID: Int, status: String? = nil, slot: String? = nil,
+                        takenAt: String? = nil, notes: String? = nil) async throws -> StackResponse {
+        var json: [String: Any] = [:]
+        if let status { json["status"] = status }
+        if let slot { json["slot"] = slot }
+        if let takenAt { json["taken_at"] = takenAt }
+        if let notes { json["notes"] = notes }
+        return try await send(request("api/me/stack/\(itemID)/intake", method: "POST", json: json), as: StackResponse.self)
+    }
+
+    @discardableResult
+    func logQuickIntake(_ fields: [String: Any]) async throws -> StackResponse {
+        try await send(request("api/me/stack/intake", method: "POST", json: fields), as: StackResponse.self)
+    }
+
+    @discardableResult
+    func deleteStackIntake(_ eventID: Int) async throws -> StackResponse {
+        try await send(request("api/me/stack/intake/\(eventID)", method: "DELETE"), as: StackResponse.self)
+    }
+
     // MARK: coach SSE
     // Streams `delta {text}` events as an AsyncStream of token chunks. Also surfaces `tool` pills
     // and the terminal `done`. Parser mirrors CoachController's event names.

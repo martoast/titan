@@ -39,6 +39,8 @@ class CoachTools
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
         'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device', 'spot_reading' => 'device',
+        // "What you take" — supplements & meds (gated; the triggers below cover the asks).
+        'my_stack' => 'stack', 'add_stack_item' => 'stack', 'log_intake' => 'stack', 'recent_intake' => 'stack', 'check_interactions' => 'stack',
         // autoregulate / current_program / advance_program / device_status stay CORE.
     ];
 
@@ -56,6 +58,7 @@ class CoachTools
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
         'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band', 'take a reading', 'spot reading', 'spot check', 'check my hrv', 'read my hrv', 'my hrv now', 'how recovered am i', 'recovered right now', 'live reading', 'check my heart rate', 'take a measurement'],
+        'stack' => ['supplement', 'vitamin', 'creatine', 'omega', 'fish oil', 'multivitamin', 'took my', 'take my', 'i take ', 'medication', ' meds', 'my meds', ' pill', 'dose', 'prescription', 'lisinopril', 'statin', 'melatonin', 'zinc', 'my stack', 'what i take', 'interaction', 'interact with', 'started taking', 'stopped taking'],
     ];
 
     /** @var array<int,string> tool groups currently active (beyond the always-on core) */
@@ -195,6 +198,33 @@ class CoachTools
             $tools[] = $this->fn('recent_meals', 'Get recently logged meals and per-day macro totals (calories, protein, carbs, fat).', [
                 'days' => ['type' => 'integer', 'description' => 'How many days back to include (default 7).'],
             ], []);
+        }
+
+        // --- "What you take": supplements & medications ---
+        if (class_exists(\App\Models\StackItem::class)) {
+            $tools[] = $this->fn('my_stack', "Today's supplements & meds checklist (what's scheduled, what's been taken) → `stack` card. For 'what do I take / what's left today / my stack'.", [], []);
+            $tools[] = $this->fn('add_stack_item', "Add a supplement or medication they take regularly. For 'add creatine 5g every morning', 'I started taking magnesium at night'. Stores dose + schedule; auto-checks the new item against the rest of the stack.", [
+                'name' => ['type' => 'string', 'description' => 'Ingredient/product, e.g. "Vitamin D3", "Magnesium Glycinate", "Lisinopril".'],
+                'kind' => ['type' => 'string', 'enum' => ['supplement', 'medication', 'other'], 'description' => 'Default supplement; use medication for prescription/OTC drugs.'],
+                'dose_amount' => ['type' => 'number', 'description' => 'Dose number, e.g. 5, 400, 5000.'],
+                'dose_unit' => ['type' => 'string', 'description' => 'Unit: IU, mg, mcg, g, ml, caps, tabs.'],
+                'form' => ['type' => 'string', 'description' => 'capsule | tablet | softgel | powder | gummy | liquid.'],
+                'times' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['morning', 'midday', 'evening', 'night', 'anytime']], 'description' => 'When in the day they take it.'],
+                'frequency' => ['type' => 'string', 'enum' => ['daily', 'specific_days', 'as_needed'], 'description' => 'Default daily.'],
+                'with_food' => ['type' => 'boolean', 'description' => 'Taken with food?'],
+                'brand' => ['type' => 'string', 'description' => 'Optional brand.'],
+            ], ['name']);
+            $tools[] = $this->fn('log_intake', "Record they just took (or skipped) a dose. For 'I took my magnesium', 'took my vitamins', 'skipped my evening meds'. Matches an existing item by name, else logs a one-off.", [
+                'name' => ['type' => 'string', 'description' => 'What they took, e.g. "magnesium", "vitamin d".'],
+                'status' => ['type' => 'string', 'enum' => ['taken', 'skipped', 'extra'], 'description' => 'Default taken.'],
+                'slot' => ['type' => 'string', 'enum' => ['morning', 'midday', 'evening', 'night', 'anytime'], 'description' => 'Which slot it satisfies, if known.'],
+                'dose_amount' => ['type' => 'number', 'description' => 'Optional, for a one-off not in their stack.'],
+                'dose_unit' => ['type' => 'string', 'description' => 'Optional unit for a one-off.'],
+            ], ['name']);
+            $tools[] = $this->fn('recent_intake', 'What they have actually taken/skipped recently (adherence + history) over N days.', [
+                'days' => ['type' => 'integer', 'description' => 'How many days back (default 14).'],
+            ], []);
+            $tools[] = $this->fn('check_interactions', "Check their stack for reported interactions & timing notes (drug↔drug, drug↔supplement, supplement↔supplement). INFORMATIONAL literature/label info, never advice. For interaction questions or after adding something.", [], []);
         }
 
         if (class_exists(\App\Models\Workout::class)) {
@@ -465,6 +495,11 @@ class CoachTools
             'lookup_food' => 'Looking up the nutrition facts',
             'recent_biomarkers' => 'Checking your bloodwork',
             'recent_meals' => 'Reviewing your nutrition',
+            'my_stack' => 'Checking what you take',
+            'add_stack_item' => 'Adding to your stack',
+            'log_intake' => 'Logging your dose',
+            'recent_intake' => 'Reviewing what you take',
+            'check_interactions' => 'Checking your stack',
             'my_foods' => 'Checking your usual foods',
             'recent_workouts' => 'Looking at your training',
             'sleep_recovery_summary' => 'Checking sleep & recovery',
@@ -561,6 +596,11 @@ class CoachTools
             'lookup_food' => $this->lookupFood($args),
             'recent_biomarkers' => $this->recentBiomarkers(),
             'recent_meals' => $this->recentMeals((int) ($args['days'] ?? 7)),
+            'my_stack' => $this->myStack(),
+            'add_stack_item' => $this->addStackItem($args),
+            'log_intake' => $this->logIntake($args),
+            'recent_intake' => $this->recentIntake((int) ($args['days'] ?? 14)),
+            'check_interactions' => $this->checkInteractions(),
             'my_foods' => $this->myFoods(),
             'recent_workouts' => $this->recentWorkouts((int) ($args['days'] ?? 14)),
             'sleep_recovery_summary' => $this->sleepRecoverySummary(),
@@ -1290,6 +1330,158 @@ class CoachTools
     private function macrosCard(): array
     {
         return \App\Support\Macros::today($this->profile);
+    }
+
+    // --- "What you take": supplements & medications -------------------------
+
+    private function myStack(): mixed
+    {
+        if (! class_exists(\App\Models\StackItem::class)) {
+            return 'No stack data yet.';
+        }
+
+        return [
+            'card' => \App\Support\Stack::today($this->profile),
+            '_show' => 'Emit this `stack` card inside a ```titan-card fence, then one short, calm line on what is left today. Never nag about a missed dose.',
+        ];
+    }
+
+    private function addStackItem(array $a): mixed
+    {
+        $name = trim((string) ($a['name'] ?? ''));
+        if ($name === '') {
+            return ['error' => 'Need a name to add.'];
+        }
+        $kind = in_array($a['kind'] ?? '', \App\Models\StackItem::KINDS, true) ? $a['kind'] : 'supplement';
+        $times = array_values(array_intersect(\App\Models\StackItem::SLOTS, (array) ($a['times'] ?? [])));
+        $freq = in_array($a['frequency'] ?? '', ['daily', 'specific_days', 'as_needed'], true) ? $a['frequency'] : 'daily';
+
+        $item = $this->profile->stackItems()->create([
+            'name' => \Illuminate\Support\Str::limit($name, 80, ''),
+            'kind' => $kind,
+            'brand' => $a['brand'] ?? null,
+            'dose_amount' => isset($a['dose_amount']) && is_numeric($a['dose_amount']) ? (float) $a['dose_amount'] : null,
+            'dose_unit' => $a['dose_unit'] ?? null,
+            'form' => $a['form'] ?? null,
+            'schedule' => ['frequency' => $freq, 'times' => $times ?: ['anytime'], 'days' => null, 'with_food' => (bool) ($a['with_food'] ?? false)],
+            'active' => true,
+            'started_on' => now()->toDateString(),
+        ]);
+
+        // Re-check the whole stack and surface anything new that involves this item.
+        $new = null;
+        try {
+            $flags = app(\App\Services\Stack\InteractionChecker::class)->refresh($this->profile);
+            $hit = $flags->first(fn ($f) => $f->a_item_id === $item->id || $f->b_item_id === $item->id);
+            if ($hit) {
+                $new = [
+                    'with' => $hit->a_item_id === $item->id ? $hit->b_name : $hit->a_name,
+                    'severity' => $hit->severity,
+                    'summary' => $hit->summary,
+                ];
+            }
+        } catch (\Throwable) {
+            // interaction check is best-effort
+        }
+
+        return [
+            'ok' => true,
+            'added' => $item->name,
+            'dose' => $item->doseLabel(),
+            'card' => \App\Support\Stack::today($this->profile),
+            'interaction' => $new,
+            '_show' => $new
+                ? 'Confirm it was added, then gently mention the one note in `interaction` as INFORMATIONAL (literature/label info), NOT advice — suggest confirming with their pharmacist/clinician. Then show the `stack` card in a ```titan-card fence.'
+                : 'Confirm it was added in one short line, then show the `stack` card inside a ```titan-card fence.',
+            'message' => "Added {$item->name}".($item->doseLabel() ? ' — '.$item->doseLabel() : '').'.',
+        ];
+    }
+
+    private function logIntake(array $a): mixed
+    {
+        $name = trim((string) ($a['name'] ?? ''));
+        if ($name === '') {
+            return ['error' => 'What did you take?'];
+        }
+        $status = in_array($a['status'] ?? '', \App\Models\IntakeEvent::STATUSES, true) ? $a['status'] : 'taken';
+        $slot = in_array($a['slot'] ?? '', \App\Models\StackItem::SLOTS, true) ? $a['slot'] : null;
+
+        $item = $this->profile->stackItems()->where('active', true)
+            ->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($name).'%'])->first();
+
+        $event = $this->profile->intakeEvents()->create([
+            'stack_item_id' => $item?->id,
+            'name' => $item?->name ?? \Illuminate\Support\Str::limit($name, 80, ''),
+            'kind' => $item?->kind ?? 'supplement',
+            'dose_amount' => $item?->dose_amount ?? (isset($a['dose_amount']) && is_numeric($a['dose_amount']) ? (float) $a['dose_amount'] : null),
+            'dose_unit' => $item?->dose_unit ?? ($a['dose_unit'] ?? null),
+            'taken_at' => Carbon::now(),
+            'status' => $status,
+            'source' => 'coach',
+            'slot' => $slot,
+        ]);
+
+        return [
+            'ok' => true,
+            'logged' => $event->name,
+            'status' => $status,
+            'card' => \App\Support\Stack::today($this->profile),
+            '_show' => 'Confirm in one short line and show the `stack` card. Keep it calm — note consistency, never scold a skip.',
+            'message' => ucfirst($status)." {$event->name}.",
+        ];
+    }
+
+    private function recentIntake(int $days): mixed
+    {
+        if (! class_exists(\App\Models\IntakeEvent::class)) {
+            return 'No intake data yet.';
+        }
+        $days = max(1, min($days, 90));
+        $since = Carbon::now()->subDays($days)->startOfDay();
+        $events = $this->profile->intakeEvents()->where('taken_at', '>=', $since)->orderByDesc('taken_at')->get();
+        if ($events->isEmpty()) {
+            return "Nothing logged in the last {$days} days.";
+        }
+
+        $daily = $events->groupBy(fn ($e) => optional($e->taken_at)->toDateString())
+            ->map(fn ($g) => [
+                'taken' => $g->where('status', 'taken')->count(),
+                'skipped' => $g->where('status', 'skipped')->count(),
+            ]);
+
+        return [
+            'window_days' => $days,
+            'daily' => $daily,
+            'recent' => $events->take(20)->map(fn ($e) => [
+                'name' => $e->name,
+                'status' => $e->status,
+                'at' => optional($e->taken_at)->toDateTimeString(),
+            ])->values()->all(),
+        ];
+    }
+
+    private function checkInteractions(): mixed
+    {
+        if (! class_exists(\App\Models\StackItem::class)) {
+            return 'No stack data yet.';
+        }
+        try {
+            $flags = app(\App\Services\Stack\InteractionChecker::class)->refresh($this->profile);
+        } catch (\Throwable) {
+            return 'Could not check interactions right now.';
+        }
+        if ($flags->isEmpty()) {
+            return ['ok' => true, 'flags' => [], '_show' => 'Tell them nothing notable came up across what they take — reassure briefly. Informational only.'];
+        }
+
+        return [
+            'ok' => true,
+            'flags' => $flags->map(fn ($f) => [
+                'a' => $f->a_name, 'b' => $f->b_name, 'severity' => $f->severity, 'summary' => $f->summary, 'source' => $f->source,
+            ])->values()->all(),
+            'disclaimer' => \App\Http\Controllers\Api\MobileStackController::DISCLAIMER,
+            '_show' => 'Summarise these as INFORMATIONAL literature/label notes, not advice. Lead with the most serious. Always close by suggesting they confirm with their pharmacist or clinician. Never tell them to start or stop a medication.',
+        ];
     }
 
     private function setTargets(array $a): array

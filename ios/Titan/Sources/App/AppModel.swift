@@ -69,6 +69,17 @@ final class AppModel: ObservableObject {
     @Published var hydration: HydrationToday?
     @Published var fasting: FastingStatus?
 
+    // What you take (supplements & medications)
+    @Published var stackToday: StackToday?
+    @Published var stackItems: [StackItem] = []
+    @Published var stackFlags: [InteractionFlag] = []
+    @Published var stackDisclaimer: String?
+    @Published var stackSearchResults: [StackCatalogResult] = []
+    @Published var stackSearching = false
+    @Published var stackScan: StackScanResult?
+    @Published var stackScanning = false
+    @Published var stackBusy = false
+
     // Apple Health
     @Published var healthConnected = false
     @Published var healthSyncing = false
@@ -453,6 +464,71 @@ final class AppModel: ObservableObject {
     func deleteProgress(_ id: Int) async {
         await api.deleteProgressPhoto(id)
         progressPhotos.removeAll { $0.id == id }
+    }
+
+    // MARK: what you take (the stack)
+
+    /// Fold a returned payload into our published snapshot (mutations echo the refreshed state).
+    private func applyStack(_ r: StackResponse) {
+        if let t = r.today { stackToday = t }
+        if let i = r.items { stackItems = i }
+        if let f = r.flags { stackFlags = f }
+        if let d = r.disclaimer { stackDisclaimer = d }
+    }
+
+    func loadStack() async {
+        if let r = try? await api.stack() { applyStack(r) }
+    }
+
+    /// One tap = taken. Creates an intake event; the payload comes back with the row already checked.
+    func markStackTaken(_ item: StackTodayItem) async {
+        Haptic.success()
+        if let r = try? await api.logStackIntake(itemID: item.id, status: "taken", slot: item.slot) { applyStack(r) }
+    }
+
+    func skipStackDose(_ item: StackTodayItem, note: String? = nil) async {
+        Haptic.soft()
+        if let r = try? await api.logStackIntake(itemID: item.id, status: "skipped", slot: item.slot, notes: note) { applyStack(r) }
+    }
+
+    func undoStackIntake(_ eventID: Int) async {
+        Haptic.tap()
+        if let r = try? await api.deleteStackIntake(eventID) { applyStack(r) }
+    }
+
+    /// Log a one-off dose by name (not in the protocol) — `POST /api/me/stack/intake`.
+    func quickLogIntake(_ fields: [String: Any]) async {
+        if let r = try? await api.logQuickIntake(fields) { applyStack(r) }
+    }
+
+    func searchStack(_ q: String) async {
+        let query = q.trimmingCharacters(in: .whitespaces)
+        guard query.count >= 2 else { stackSearchResults = []; return }
+        stackSearching = true; defer { stackSearching = false }
+        if let r = try? await api.stackSearch(query) { stackSearchResults = r.results }
+    }
+
+    func scanStack(_ imageData: Data, mode: String) async {
+        stackScanning = true; defer { stackScanning = false }
+        do { stackScan = try await api.stackScan(imageData, mode: mode) }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    @discardableResult
+    func addStackItem(_ fields: [String: Any]) async -> Bool {
+        stackBusy = true; defer { stackBusy = false }
+        do { applyStack(try await api.addStackItem(fields)); return true }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
+    }
+
+    func updateStackItem(_ id: Int, fields: [String: Any]) async {
+        do { applyStack(try await api.updateStackItem(id, fields: fields)) }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func deleteStackItem(_ id: Int) async {
+        do { applyStack(try await api.deleteStackItem(id)) }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
     private func deviceName() -> String {

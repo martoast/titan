@@ -65,6 +65,22 @@ class Profile extends Model
         return $this->hasMany(Meal::class);
     }
 
+    // --- "What you take" — supplements & medications ---
+    public function stackItems(): HasMany
+    {
+        return $this->hasMany(StackItem::class);
+    }
+
+    public function intakeEvents(): HasMany
+    {
+        return $this->hasMany(IntakeEvent::class);
+    }
+
+    public function interactionFlags(): HasMany
+    {
+        return $this->hasMany(InteractionFlag::class);
+    }
+
     // --- Behavior journal ---
     public function behaviorLogs(): HasMany
     {
