@@ -21,7 +21,7 @@ class FunctionRequest(BaseModel):
     ax: List[float] = Field(..., description="Wrist accel X.")
     ay: List[float]
     az: List[float]
-    fs: int = Field(default=25, description="Accel sample rate (Hz).")
+    fs: int = Field(default=25, gt=0, le=1000, description="Accel sample rate (Hz).")
     unit: str = Field(default="ms2", description="'ms2', 'g', or 'mg'.")
     test: str = Field(default="cadence", description="'cadence' (walking) or 'sit_to_stand' (guided 30CST).")
     duration_s: Optional[float] = Field(default=None, description="Protocol length for sit_to_stand (e.g. 30).")

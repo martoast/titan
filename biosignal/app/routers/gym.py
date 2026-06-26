@@ -25,7 +25,7 @@ class GymAccel(BaseModel):
 
 class GymRequest(BaseModel):
     accel_xyz: GymAccel = Field(..., description="Whole-workout 3-axis wrist accel.")
-    accel_fs: int = Field(default=25, description="Sample rate (Hz). Bangle workout ≈ 25.")
+    accel_fs: int = Field(default=25, gt=0, le=1000, description="Sample rate (Hz). Bangle workout ≈ 25.")
     accel_unit: str = Field(default="ms2", description="'ms2' | 'g' | 'mg'. Bangle sends 'mg'.")
 
 

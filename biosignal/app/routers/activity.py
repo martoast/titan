@@ -28,7 +28,7 @@ class ActivityWindow(BaseModel):
     weight_kg: float = Field(default=75.0, description="User weight (kg) for calorie estimate.")
     # Optional raw 3-axis accel stream (the Bangle's live/T1 frames) → workout classification.
     accel_xyz: Optional[AccelXYZ] = Field(default=None, description="Raw 3-axis accel for activity classification (rest/walk/run/cycle/stairs/other).")
-    accel_fs: int = Field(default=25, description="Sample rate of accel_xyz (Hz). Bangle live ≈ 25.")
+    accel_fs: int = Field(default=25, gt=0, le=1000, description="Sample rate of accel_xyz (Hz). Bangle live ≈ 25.")
     accel_unit: str = Field(default="ms2", description="Unit of accel_xyz: 'ms2', 'g', or 'mg'. Bangle sends 'mg' (milli-g).")
     accel_start: Optional[str] = Field(default=None, description="accel_xyz start time (ISO-8601 UTC); defaults to `start`.")
     # Optional per-epoch GPS pace (+ baro grade) → grade-aware cost-of-transport calories for runs/walks.
