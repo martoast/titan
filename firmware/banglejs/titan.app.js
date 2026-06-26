@@ -248,10 +248,17 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
-var PAGES = 7;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo · 5 Stopwatch · 6 Counter
+var PAGES = 8;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Photo · 5 Stopwatch · 6 Counter · 7 Run
 var STOPWATCH_PAGE = 5;   // the Stopwatch face (tap = plain timer; double-click button = log as sleep)
 var COUNTER_PAGE = 6;     // the Counter face (tap = +1; double-click button = reset to zero)
+var RUN_PAGE = 7;         // the Run face (tap = start/stop a GPS-tracked run → the app's route map)
 var page = 0;             // current face (swipe to change)
+// Run face state — a GPS-tracked run started from the watch; the workout's T4 coords build the route.
+var runActive = false;    // a run is being tracked
+var runStartMs = 0;       // run start (device ms)
+var runDistM = 0;         // accumulated distance (m), summed from GPS fixes (haversine)
+var runLastLat = null, runLastLon = null;  // last coord, for the distance increment
+var runTimer = null;      // 1 Hz repaint while the run face is live (so the timer ticks)
 var lastSwipeT = 0;       // getTime() of the last page swipe — so the tap that ends a swipe isn't a sleep toggle
 var photoMin = -2;        // minute currently shown on the Photo face (-2 = needs a full repaint)
 var clockTickTimer = null; // minute-boundary redraw for the clock face
@@ -656,6 +663,21 @@ function onGPS(g) {
   var lat = (g.lat !== undefined && !isNaN(g.lat)) ? g.lat : null;
   var lon = (g.lon !== undefined && !isNaN(g.lon)) ? g.lon : null;
   emitGpsFrame(state.speed, alt, g.satellites | 0, lat, lon);
+  // Live on-watch run distance: sum the gap between consecutive fixes (the server recomputes its own
+  // distance from the full track on seal; this is just the glanceable number on the Run face).
+  if (runActive && lat !== null && lon !== null) {
+    if (runLastLat !== null) runDistM += haversineM(runLastLat, runLastLon, lat, lon);
+    runLastLat = lat; runLastLon = lon;
+  }
+}
+
+// Great-circle distance between two lat/lon points, in metres (on-watch, for the live run readout).
+function haversineM(la1, lo1, la2, lo2) {
+  var toR = Math.PI / 180;
+  var dLa = (la2 - la1) * toR, dLo = (lo2 - lo1) * toR;
+  var a = Math.sin(dLa / 2) * Math.sin(dLa / 2)
+    + Math.cos(la1 * toR) * Math.cos(la2 * toR) * Math.sin(dLo / 2) * Math.sin(dLo / 2);
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
 function onPressure(p) {
@@ -1073,6 +1095,63 @@ function drawCounter() {
   g.drawString("double-click button: reset", cx, 166);
 }
 
+// "m:ss" (or "h:mm:ss") for an elapsed/pace second count — the Run face's time + pace.
+function fmtMMSS(s) {
+  s = Math.max(0, Math.round(s));
+  var hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
+  return (hh > 0 ? hh + ":" + ("0" + mm).substr(-2) : mm) + ":" + ("0" + ss).substr(-2);
+}
+
+// Page 7 — RUN: a GPS-tracked run you start from the watch. Tap to start (arms GPS + a workout pinned
+// as a run); the live time / distance / pace show here, and the workout's T4 coords build the route
+// map in the app on the next sync. Tap again to finish.
+function drawRun() {
+  var W = g.getWidth(), cx = W / 2;
+  topBar();
+  tabTitle("RUN", C.mint);
+  if (!runActive) {
+    g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
+    g.drawString("0.00", cx, 96);
+    g.setFont("6x8", 1); g.drawString("km", cx, 124);
+    g.setColor(C.mint); g.drawString("tap: start run", cx, 150);
+    g.setColor(state.gpsFix ? C.mint : C.amber);
+    g.drawString(state.gpsFix ? "GPS ready" : "GPS searching", cx, 166);
+    return;
+  }
+  var sec = (getTime() * 1000 - runStartMs) / 1000;
+  var km = runDistM / 1000;
+  g.setColor(C.white); g.setFont("Vector", 44); g.setFontAlign(0, 0);
+  g.drawString(fmtMMSS(sec), cx, 80);
+  g.setColor(C.mint); g.setFont("Vector", 34);
+  g.drawString(km.toFixed(2) + " km", cx, 124);
+  var pace = km > 0.02 ? fmtMMSS(sec / km) + " /km" : "--:-- /km";
+  g.setColor(C.dim); g.setFont("6x8", 2); g.drawString(pace, cx, 158);
+  g.setColor(state.gpsFix ? C.mint : C.amber); g.setFont("6x8", 1);
+  g.drawString(state.gpsFix ? "tracking · tap to finish" : "acquiring GPS · tap to finish", cx, 184);
+}
+
+// Tap on the Run face: start or finish a GPS-tracked run. Start arms GPS + a manual run workout (so
+// it logs T4 coords + T6 accel and seals as a run with a route); finish closes the workout.
+function runTap() {
+  if (runActive) {
+    runActive = false;
+    if (runTimer) { clearInterval(runTimer); runTimer = null; }
+    endWorkout();
+    try { Bangle.buzz(60); } catch (e) {}
+  } else {
+    runActive = true;
+    runStartMs = Math.round(getTime() * 1000);
+    runDistM = 0; runLastLat = null; runLastLon = null;
+    primed = { type: "run", accelHz: 12.5 };   // pin the run profile (sport mode + cadence)
+    if (!state.streaming) startStreaming();     // make sure the session is captured offline too
+    startWorkout(true);                         // manual workout → arms GPS now (no motion gate)
+    if (runTimer) clearInterval(runTimer);
+    runTimer = setInterval(function () { if (page === RUN_PAGE) drawUI(); }, 1000);   // tick the live readout
+    try { Bangle.buzz(120); } catch (e) {}
+  }
+  if (uiVisible) drawUI();
+}
+
 // Outlined text — stays readable over any photo. The 3-bit panel has no alpha, so we fake a halo
 // by stamping the string in the background colour around the glyphs, then the real colour on top.
 function drawOutlined(s, x, y, fg) {
@@ -1134,6 +1213,7 @@ function drawUI() {
   else if (page === 3) drawStatus();
   else if (page === STOPWATCH_PAGE) drawStopwatch();
   else if (page === COUNTER_PAGE) drawCounter();
+  else if (page === RUN_PAGE) drawRun();
   else drawHeart();
   pageDots();
 }
@@ -1184,6 +1264,7 @@ Bangle.on("touch", function () {
   if (getTime() - lastSwipeT < 0.4) return;
   if (page === STOPWATCH_PAGE) swTap();
   else if (page === COUNTER_PAGE) bumpCounter();
+  else if (page === RUN_PAGE) runTap();
 });
 
 // Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep). If we're
