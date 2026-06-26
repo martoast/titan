@@ -37,3 +37,8 @@ Schedule::command('coach:nudge sleep')->everyThirtyMinutes()->between('20:00', '
 
 // Living goal-physique: weekly render of the progress step toward the dream physique.
 Schedule::command('physique:living-render')->weeklyOn(1, '06:00');
+
+// Community: Sunday-evening "week vs the group" recap push + a nightly badge sweep (so time-window
+// achievements like 100km-month / streaks land even on a day nothing sealed).
+Schedule::command('community:weekly-recap')->weeklyOn(0, '19:00')->timezone(config('app.timezone'));
+Schedule::command('community:badge-sweep')->dailyAt('04:30')->timezone(config('app.timezone'));

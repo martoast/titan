@@ -572,3 +572,140 @@ enum APIError: LocalizedError {
         }
     }
 }
+
+// MARK: - Community (opt-in social: follow graph, feed, leaderboard, kudos/comments, badges)
+
+struct CommunitySettings: Codable, Equatable {
+    var community_enabled: Bool
+    var username: String?
+    var bio: String?
+    var display_name: String?
+    var avatar_url: String?
+    var followers_require_approval: Bool
+    var default_activity_visibility: String
+    var follower_count: Int
+    var following_count: Int
+    var pending_request_count: Int
+}
+
+/// The compact athlete reference embedded in activity cards + comments.
+struct AthleteMini: Codable, Equatable, Identifiable {
+    let id: Int
+    let name: String
+    let username: String?
+    let avatar_url: String?
+    var is_you: Bool?
+}
+
+/// A feed / list card for one activity, with social counts. `kudos_*` are `var` for optimistic toggles.
+struct ActivityCard: Codable, Equatable, Identifiable {
+    let id: Int
+    let title: String
+    let activity_type: String?
+    let started_at: String?
+    let duration_min: Int?
+    let distance_km: Double?
+    let avg_pace_s_per_km: Int?
+    let elevation_gain_m: Double?
+    let relative_effort: Int?
+    let has_route: Bool
+    let map_thumb_url: String?
+    let athlete: AthleteMini
+    var kudos_count: Int
+    var comment_count: Int
+    var did_kudos: Bool
+}
+
+struct FeedResponse: Codable, Equatable { let items: [ActivityCard]; let next_offset: Int? }
+
+struct LeaderboardRow: Codable, Equatable, Identifiable {
+    let rank: Int
+    let profile_id: Int
+    let name: String
+    let username: String?
+    let avatar_url: String?
+    let activity_count: Int
+    let value: Double
+    let is_you: Bool
+    var id: Int { profile_id }
+}
+
+struct LeaderboardResponse: Codable, Equatable {
+    let metric: String
+    let window: String
+    let unit: String
+    let athletes: [LeaderboardRow]
+    let you: LeaderboardRow?
+}
+
+/// A full athlete profile + the viewer's relationship to them.
+struct Athlete: Codable, Equatable, Identifiable {
+    let id: Int
+    let name: String
+    let username: String?
+    let bio: String?
+    let avatar_url: String?
+    let community_enabled: Bool
+    let is_you: Bool
+    var follow_state: String?     // "accepted" | "pending" | nil
+    let follows_you: Bool?
+    let follower_count: Int
+    let following_count: Int
+    let total_activities: Int
+    let total_distance_km: Double
+}
+
+struct AthleteSearchResponse: Codable, Equatable { let athletes: [Athlete] }
+
+struct AthleteProfileResponse: Codable, Equatable {
+    let athlete: Athlete
+    let activities: [ActivityCard]
+    let achievements: [Achievement]
+}
+
+struct CommentItem: Codable, Equatable, Identifiable {
+    let id: Int
+    let body: String
+    let created_at: String?
+    let is_mine: Bool
+    let athlete: AthleteMini
+}
+
+struct CommentsResponse: Codable, Equatable { let comments: [CommentItem] }
+
+struct KudosState: Codable, Equatable { let kudos_count: Int; let did_kudos: Bool }
+
+struct FollowRequest: Codable, Equatable, Identifiable {
+    let follow_id: Int
+    let requested_at: String?
+    let athlete: Athlete
+    var id: Int { follow_id }
+}
+
+struct FollowRequestsResponse: Codable, Equatable { let requests: [FollowRequest] }
+
+struct FollowResult: Codable, Equatable { let follow_state: String?; let athlete: Athlete }
+
+struct Achievement: Codable, Equatable, Identifiable {
+    let key: String
+    let title: String
+    let blurb: String
+    let icon: String
+    let emoji: String
+    let earned: Bool
+    let awarded_at: String?
+    var id: String { key }
+}
+
+struct AchievementsResponse: Codable, Equatable { let achievements: [Achievement] }
+
+struct CommunityRecap: Codable, Equatable {
+    let window: String
+    let your_activities: Int
+    let your_distance_km: Double
+    let your_effort: Int
+    let your_rank: Int?
+    let group_size: Int
+    let top_performer: TopPerformer?
+    struct TopPerformer: Codable, Equatable { let name: String; let value: Double; let is_you: Bool }
+}

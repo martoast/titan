@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -20,6 +21,9 @@ class Profile extends Model
     protected $fillable = [
         'user_id', 'display_name', 'birthdate', 'sex', 'height_cm',
         'primary_goal', 'coach_tone', 'settings', 'onboarded_at',
+        // Community
+        'community_enabled', 'username', 'bio', 'avatar_path',
+        'followers_require_approval', 'default_activity_visibility',
     ];
 
     protected function casts(): array
@@ -29,7 +33,15 @@ class Profile extends Model
             'height_cm' => 'decimal:1',
             'settings' => 'array',
             'onboarded_at' => 'datetime',
+            'community_enabled' => 'boolean',
+            'followers_require_approval' => 'boolean',
         ];
+    }
+
+    /** A friendly name for the community: the @username if set, else the display name. */
+    public function communityName(): string
+    {
+        return $this->display_name ?: ($this->username ?: 'Athlete');
     }
 
     public function isOnboarded(): bool
@@ -200,6 +212,68 @@ class Profile extends Model
     public function weeklySnapshots(): HasMany
     {
         return $this->hasMany(WeeklySnapshot::class);
+    }
+
+    // --- Community: follow graph + social ----------------------------------------------------
+
+    /** Follow edges where I'm the follower (people I follow / requested). */
+    public function followingLinks(): HasMany
+    {
+        return $this->hasMany(Follow::class, 'follower_id');
+    }
+
+    /** Follow edges where I'm the followee (my followers / pending requests). */
+    public function followerLinks(): HasMany
+    {
+        return $this->hasMany(Follow::class, 'followee_id');
+    }
+
+    /** Profiles I follow (any status — filter on the `status` pivot for accepted-only). */
+    public function following(): BelongsToMany
+    {
+        return $this->belongsToMany(Profile::class, 'follows', 'follower_id', 'followee_id')
+            ->withPivot('status', 'accepted_at')->withTimestamps();
+    }
+
+    /** Profiles who follow me. */
+    public function followers(): BelongsToMany
+    {
+        return $this->belongsToMany(Profile::class, 'follows', 'followee_id', 'follower_id')
+            ->withPivot('status', 'accepted_at')->withTimestamps();
+    }
+
+    public function achievements(): HasMany
+    {
+        return $this->hasMany(Achievement::class);
+    }
+
+    /** Kudos I've given. */
+    public function kudos(): HasMany
+    {
+        return $this->hasMany(Kudo::class);
+    }
+
+    /** IDs of the profiles I follow with an accepted edge — the feed + leaderboard scope. */
+    public function acceptedFollowingIds(): array
+    {
+        return Follow::query()
+            ->where('follower_id', $this->id)
+            ->where('status', Follow::ACCEPTED)
+            ->pluck('followee_id')->all();
+    }
+
+    /** My follow state toward another profile: 'accepted', 'pending', or null (not following). */
+    public function followStateToward(Profile $other): ?string
+    {
+        return Follow::query()
+            ->where('follower_id', $this->id)
+            ->where('followee_id', $other->id)
+            ->value('status');
+    }
+
+    public function isFollowing(Profile $other): bool
+    {
+        return $this->followStateToward($other) === Follow::ACCEPTED;
     }
 
     /** Convenience: the "other" profile in the duo (the brother). */

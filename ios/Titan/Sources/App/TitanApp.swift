@@ -46,9 +46,12 @@ struct RootView: View {
                         CoachView().tabItem { Label("Coach", systemImage: "bubble.left.and.text.bubble.right.fill") }
                         DashboardView().tabItem { Label("Today", systemImage: "circle.hexagongrid.fill") }
                         DailyView().tabItem { Label("Daily", systemImage: "square.stack.3d.up.fill") }
+                        CommunityView().tabItem { Label("Community", systemImage: "person.2.fill") }
                         ProfileView().tabItem { Label("You", systemImage: "person.fill") }
                     }
                     .transition(.opacity)
+                    // A run streaming from the band pops the live tracker from any tab.
+                    .fullScreenCover(isPresented: $model.showLiveRunSheet) { LiveRunView().environmentObject(model) }
                 } else {
                     OnboardingView().transition(.move(edge: .trailing))
                 }

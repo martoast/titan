@@ -17,6 +17,9 @@ public struct GpsFix: Equatable {
     public let t: UInt64; public let sats: UInt8
     public let speedKmh: Double; public let alt: Double?   // nil = no altitude
     public let lat: Double?; public let lon: Double?       // nil = no position (deg); the route map
+    public init(t: UInt64, sats: UInt8, speedKmh: Double, alt: Double?, lat: Double?, lon: Double?) {
+        self.t = t; self.sats = sats; self.speedKmh = speedKmh; self.alt = alt; self.lat = lat; self.lon = lon
+    }
 }
 public struct HrReading: Equatable {
     public let t: UInt64; public let bpm: UInt8; public let conf: UInt8

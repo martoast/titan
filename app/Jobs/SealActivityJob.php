@@ -341,6 +341,13 @@ class SealActivityJob implements ShouldQueue
             'result_refs' => array_merge((array) $i->result_refs, ['activity_session_id' => $log->id, 'sealed' => true]),
         ]));
 
+        // Community: award any newly-earned badges off this seal (never let it break the seal).
+        try {
+            app(\App\Services\Community\AchievementEngine::class)->evaluate($profile, $log);
+        } catch (\Throwable $e) {
+            Log::warning('[Community] achievement eval failed', ['profile_id' => $profile->id, 'error' => $e->getMessage()]);
+        }
+
         // Celebrate it: a push summary + a coach message (congrats, recovery, a follow-up). The session
         // is already logged above, so the coach sees it and it counts. Guarded in tests (the reaction
         // is exercised directly in WorkoutReactionTest) to keep seal tests hermetic.

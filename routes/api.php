@@ -58,6 +58,31 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/runs', [\App\Http\Controllers\Api\MobileRunsController::class, 'index']);
     Route::get('/runs/{session}', [\App\Http\Controllers\Api\MobileRunsController::class, 'show']);
 
+    // Community — opt-in social: the followed-athletes feed, leaderboard, settings, requests,
+    // recap, badges, athlete discovery + profiles, follow graph, and per-activity kudos/comments.
+    Route::get('/community/feed', [\App\Http\Controllers\Api\CommunityController::class, 'feed']);
+    Route::get('/community/leaderboard', [\App\Http\Controllers\Api\LeaderboardController::class, 'index']);
+    Route::get('/community/settings', [\App\Http\Controllers\Api\CommunityController::class, 'settings']);
+    Route::patch('/community/settings', [\App\Http\Controllers\Api\CommunityController::class, 'updateSettings']);
+    Route::post('/community/avatar', [\App\Http\Controllers\Api\CommunityController::class, 'uploadAvatar']);
+    Route::get('/community/requests', [\App\Http\Controllers\Api\CommunityController::class, 'requests']);
+    Route::post('/community/requests/{follow}/accept', [\App\Http\Controllers\Api\CommunityController::class, 'acceptRequest']);
+    Route::post('/community/requests/{follow}/decline', [\App\Http\Controllers\Api\CommunityController::class, 'declineRequest']);
+    Route::get('/community/recap', [\App\Http\Controllers\Api\CommunityController::class, 'recap']);
+    Route::get('/achievements', [\App\Http\Controllers\Api\CommunityController::class, 'achievements']);
+
+    Route::get('/athletes/search', [\App\Http\Controllers\Api\AthleteController::class, 'search']);
+    Route::get('/athletes/{profile}', [\App\Http\Controllers\Api\AthleteController::class, 'show']);
+    Route::post('/athletes/{profile}/follow', [\App\Http\Controllers\Api\AthleteController::class, 'follow']);
+    Route::delete('/athletes/{profile}/follow', [\App\Http\Controllers\Api\AthleteController::class, 'unfollow']);
+
+    Route::post('/activities/{session}/kudos', [\App\Http\Controllers\Api\ActivitySocialController::class, 'kudos']);
+    Route::delete('/activities/{session}/kudos', [\App\Http\Controllers\Api\ActivitySocialController::class, 'unkudos']);
+    Route::get('/activities/{session}/comments', [\App\Http\Controllers\Api\ActivitySocialController::class, 'comments']);
+    Route::post('/activities/{session}/comments', [\App\Http\Controllers\Api\ActivitySocialController::class, 'comment']);
+    Route::delete('/activities/comments/{comment}', [\App\Http\Controllers\Api\ActivitySocialController::class, 'deleteComment']);
+    Route::patch('/activities/{session}/visibility', [\App\Http\Controllers\Api\ActivitySocialController::class, 'updateVisibility']);
+
     // Personalized insight feed (anomalies, goal progress, wins, behavior correlations).
     Route::get('/insights', [\App\Http\Controllers\Api\MobileInsightsController::class, 'index']);
 

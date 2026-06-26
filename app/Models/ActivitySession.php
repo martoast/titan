@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A cardio / wearable activity session (run, ride, walk…) sealed from the band's workout
@@ -12,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ActivitySession extends Model
 {
     protected $fillable = [
-        'profile_id', 'source', 'started_at', 'ended_at', 'duration_min',
+        'profile_id', 'source', 'visibility', 'started_at', 'ended_at', 'duration_min',
         'activity_type', 'activity_confidence',
         'distance_km', 'distance_source', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'hr_zones', 'trimp', 'calories_kcal',
         'vo2max', 'fitness_level', 'hrr_bpm', 'updated_via',
@@ -79,6 +81,66 @@ class ActivitySession extends Model
     public function profile(): BelongsTo
     {
         return $this->belongsTo(Profile::class);
+    }
+
+    // --- Community ----------------------------------------------------------------------------
+
+    public function kudos(): HasMany
+    {
+        return $this->hasMany(Kudo::class);
+    }
+
+    public function comments(): HasMany
+    {
+        return $this->hasMany(ActivityComment::class);
+    }
+
+    /**
+     * The effective visibility — the activity's own override, else the owner's profile default.
+     * Needs the `profile` relation; loads it if absent.
+     */
+    public function effectiveVisibility(): string
+    {
+        if ($this->visibility) {
+            return $this->visibility;
+        }
+
+        return $this->profile?->default_activity_visibility ?? 'followers';
+    }
+
+    /**
+     * Scope to the activities a viewer is allowed to see in the community:
+     *   - their own, always;
+     *   - others' only if that owner has community enabled AND the effective visibility clears —
+     *     `public` to anyone, `followers` only to an accepted follower. `private` never leaks.
+     *
+     * Effective visibility is `COALESCE(activity_sessions.visibility, profiles.default_…)`, so the
+     * gate is expressed in SQL against a join on the owning profile.
+     */
+    public function scopeVisibleTo(Builder $query, Profile $viewer): Builder
+    {
+        $followingIds = Follow::query()
+            ->where('follower_id', $viewer->id)
+            ->where('status', Follow::ACCEPTED)
+            ->pluck('followee_id');
+
+        return $query
+            ->join('profiles as owner', 'owner.id', '=', 'activity_sessions.profile_id')
+            ->select('activity_sessions.*')
+            ->where(function (Builder $q) use ($viewer, $followingIds) {
+                $q->where('activity_sessions.profile_id', $viewer->id)
+                    ->orWhere(function (Builder $shared) use ($followingIds) {
+                        $eff = "COALESCE(activity_sessions.visibility, owner.default_activity_visibility)";
+                        $shared->where('owner.community_enabled', true)
+                            ->where(function (Builder $vis) use ($eff, $followingIds) {
+                                $vis->whereRaw("$eff = 'public'")
+                                    ->orWhere(function (Builder $f) use ($eff, $followingIds) {
+                                        $f->whereRaw("$eff = 'followers'")
+                                            ->whereIn('activity_sessions.profile_id', $followingIds);
+                                    });
+                            });
+                    });
+            });
     }
 
     /**
