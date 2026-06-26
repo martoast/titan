@@ -71,10 +71,19 @@ enable it. Modeled on Strava.
 - /community (feed), /community/leaderboard, /athletes/{username}. Link from /fitness.
 
 ## Build phases (commit per phase)
-1. **Schema + models + visibility** (+ tests)  ← start here
-2. **Follow graph + settings** API (+ tests)
-3. **Feed + kudos + comments** API (+ tests)
-4. **Leaderboard service + endpoint** (+ tests)
-5. **Achievements + weekly recap** (+ tests)
-6. **iOS**: models, APIClient, AppModel, Community tab + views, settings
-7. **Web**: community pages
+1. ✅ **Schema + models + visibility** (+ tests — CommunityVisibilityTest 3/3)
+2. ✅ **Follow graph + settings** API
+3. ✅ **Feed + kudos + comments** API
+4. ✅ **Leaderboard service + endpoint**
+5. ✅ **Achievements + weekly recap** (+ scheduler: weekly-recap, badge-sweep). API tests 6/6.
+6. ✅ **iOS**: models, APIClient, AppModel, Community tab (feed/leaderboard/find), athlete
+   profile, activity detail (kudos+comments), settings sheet, **avatar upload + unique @username**.
+   Chesky polish pass done (poster feed, crowned podium, your-standing card, kudos delight).
+7. ⏳ **Web**: community pages (Blade) — DEFERRED (iOS is the primary surface).
+
+## Follow-ups requested by the user (in progress / queued)
+- ✅ Avatar upload + unique public @username (you're found by handle, seen by name + photo).
+- ⏳ **Live run feed** — when a run starts on the band's Run face, show it tracking live in the
+  app (distance / elapsed / pace / live HR counting up), mirroring the live-HR feed. Motivational.
+  (Separate feature; see tasks/live-run/.)
+- Web community pages (phase 7).
