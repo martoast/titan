@@ -125,6 +125,18 @@ var CFG = {
   REST_DUTY_ON_MS: 15000,            // measure window — long enough for the VC31 to settle + average
   REST_DUTY_PERIOD_MS: 60000,        // one reading per minute (25% duty → ~4x the HRM battery life)
 
+  // --- OVERNIGHT SLEEP duty-cycle (battery) ----------------------------------
+  // Running the HRM continuously at 25 Hz all night (for HRV) drains a ~200 mAh Bangle.js 2 in ~16 h
+  // — i.e. ~50% per 8-h night, which is what was observed. Whoop doesn't run its PPG continuously
+  // either; it samples a clean burst periodically. So overnight we DUTY-CYCLE the HRM in sleep too:
+  // power it on for a window long enough to settle the VC31 and capture a clean RR series (HRV), then
+  // off. Crucially — unlike REST duty (which logs only a light T5 HR point) — raw PPG IS still logged
+  // during each ON window (pushSample → logSample, because restModeActive() stays false in sleep), so
+  // the server gets per-burst nocturnal HRV across the whole night. ~17% duty → ~6x the HRM battery.
+  SLEEP_DUTY: true,                  // master switch for overnight sleep duty-cycling
+  SLEEP_DUTY_ON_MS: 30000,           // 30 s clean HRV burst (settle + a solid RR series)
+  SLEEP_DUTY_PERIOD_MS: 180000,      // one burst every 3 min (~17% duty); widen ON if HRV looks thin
+
   // OFFLINE workouts (a run with no phone, or a gym session): when not connected we log the
   // 3-axis accel to flash as compact T6 frames so the workout still CLASSIFIES on morning sync
   // (the overnight T2 log is PPG-only and can't). During a workout we log T6 instead of T2 PPG
@@ -848,14 +860,59 @@ function stopRestDuty() {
   if (restDutyOnTimer) { clearTimeout(restDutyOnTimer); restDutyOnTimer = null; }
 }
 
-// Single source of truth for HRM power, called on every state transition. Rest+offline → duty-cycle;
-// everything else (connected live, workout, sleep) → continuous HRM at the right sport mode + rate.
+// ----- Overnight SLEEP HRM duty-cycle (battery) -------------------------------------------
+// Sleep wants HRV, which needs raw PPG + a clean RR series — but holding the HRM on continuously
+// at 25 Hz all night flattens a ~175 mAh Bangle.js 2 in ~16 h (the CPU never deep-sleeps to run the
+// VC31 algorithm — ~5 mA, ~85-90% of the overnight drain). Whoop doesn't sample continuously at rest
+// either. So overnight we BURST: power the HRM on for SLEEP_DUTY_ON_MS (long enough to settle + grab a
+// solid RR window for HRV), then off for the rest of the period. Unlike rest-duty (which logs only a
+// light T5 point), restModeActive() stays false during sleep — so each ON window logs raw PPG to flash
+// (T2) and HR (T1) through the normal streaming path, exactly as continuous sleep did, just in bursts.
+var sleepDutyTimer = null;    // the per-period "take a burst" interval (null = not duty-cycling)
+var sleepDutyOnTimer = null;  // the "burst window done → power off" timeout
+
+function sleepModeActive() {
+  return state.streaming && state.swMode === "sleep" && !state.workout;
+}
+
+function sleepDutyTick() {
+  if (!sleepModeActive()) { stopSleepDuty(); return; }
+  try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
+  applyHrmMode();   // 25 Hz rest cadence → clean RR + raw PPG for HRV during the burst
+  if (sleepDutyOnTimer) clearTimeout(sleepDutyOnTimer);
+  sleepDutyOnTimer = setTimeout(function () {
+    sleepDutyOnTimer = null;
+    // The HRM handler logged HR (T1) + raw PPG (T2) across the burst — just power the LED+AFE back down.
+    if (sleepModeActive()) { try { Bangle.setHRMPower(0, "titan"); } catch (e) {} }
+  }, CFG.SLEEP_DUTY_ON_MS);
+}
+
+function startSleepDuty() {
+  if (!CFG.SLEEP_DUTY || sleepDutyTimer) return;
+  sleepDutyTimer = setInterval(sleepDutyTick, CFG.SLEEP_DUTY_PERIOD_MS);
+  sleepDutyTick();   // first burst immediately
+}
+
+function stopSleepDuty() {
+  if (sleepDutyTimer) { clearInterval(sleepDutyTimer); sleepDutyTimer = null; }
+  if (sleepDutyOnTimer) { clearTimeout(sleepDutyOnTimer); sleepDutyOnTimer = null; }
+}
+
+// Single source of truth for HRM power, called on every state transition. Sleep → burst duty-cycle
+// (battery); rest+offline → per-minute duty-cycle; everything else (connected live, workout) →
+// continuous HRM at the right sport mode + rate. If SLEEP_DUTY is off, sleep falls through to
+// continuous (the old behaviour) so the night is never left un-sampled.
 function reconcileHrm() {
-  if (!state.streaming) { stopRestDuty(); return; }   // stopStreaming() owns the power-off
-  if (restModeActive()) {
+  if (!state.streaming) { stopRestDuty(); stopSleepDuty(); return; }   // stopStreaming() owns the power-off
+  if (sleepModeActive() && CFG.SLEEP_DUTY) {
+    stopRestDuty();
+    startSleepDuty();
+  } else if (restModeActive()) {
+    stopSleepDuty();
     startRestDuty();
   } else {
     stopRestDuty();
+    stopSleepDuty();
     try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
     applyHrmMode();
   }
@@ -883,6 +940,7 @@ function stopStreaming() {
   setStreamPref(false);
   flushFrame(); // emit whatever partial frame we have
   stopRestDuty();
+  stopSleepDuty();
   Bangle.setHRMPower(0, "titan");
   endWorkout(); // close any workout (flushes T6, powers GPS down)
   motionEMA = 0;
@@ -1352,7 +1410,7 @@ function startSleepSession() {              // double-click button → time it A
   state.swStartMs = Math.round(getTime() * 1000);
   if (state.workout) endWorkout();          // sleep isn't a workout → log T2 PPG (not T6 accel)
   if (!state.streaming) startStreaming();   // guarantee the night is captured for HRV + staging
-  reconcileHrm();                           // sleep → continuous 25 Hz + raw PPG (HRV needs it), no duty-cycle
+  reconcileHrm();                           // sleep → burst the HRM (SLEEP_DUTY): ~30s of 25 Hz raw PPG every 3 min, so HRV is captured all night without flattening the battery
   try { Bangle.buzz(80); setTimeout(function () { try { Bangle.buzz(80); } catch (e) {} }, 150); } catch (e) {}
   if (uiVisible) drawUI();
 }
