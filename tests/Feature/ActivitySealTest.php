@@ -293,6 +293,36 @@ class ActivitySealTest extends TestCase
             ->assertSee('Run')->assertSee('51.4')->assertSee('High');
     }
 
+    public function test_run_detail_page_renders_the_route(): void
+    {
+        config(['services.mapbox.token' => 'pk.test']);
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+
+        $session = ActivitySession::create([
+            'profile_id' => $profile->id, 'source' => 'titan_band',
+            'started_at' => now()->subHour(), 'ended_at' => now()->subMinutes(30), 'duration_min' => 30,
+            'activity_type' => 'run', 'distance_km' => 5.02, 'avg_hr' => 150, 'max_hr' => 172,
+            'route_polyline' => '_p~iF~ps|U_ulLnnqC', 'route_bounds' => ['min_lat' => 37.77, 'min_lon' => -122.42, 'max_lat' => 37.79, 'max_lon' => -122.40],
+            'moving_time_s' => 1500, 'avg_pace_s_per_km' => 299, 'gap_s_per_km' => 290,
+            'elevation_gain_m' => 42, 'elevation_loss_m' => 40,
+            'elevation_profile' => [['d_km' => 0.0, 'alt_m' => 10.0], ['d_km' => 2.5, 'alt_m' => 30.0], ['d_km' => 5.0, 'alt_m' => 12.0]],
+            'splits' => ['km' => [['index' => 1, 'distance_m' => 1000, 'pace_s_per_unit' => 295, 'elev_delta_m' => 8.0, 'avg_hr' => 149, 'partial' => false]], 'mi' => []],
+            'best_efforts' => ['1k' => ['distance_m' => 1000, 'elapsed_s' => 290, 'pace_s_per_km' => 290]],
+            'relative_effort' => 64, 'updated_via' => 'biosignal:sealed',
+        ]);
+
+        $res = $this->actingAs($user)->get(route('fitness.run', $session))->assertOk();
+        $res->assertSee('5.02 km');           // distance
+        $res->assertSee('4:59 /km');          // avg pace (299 s)
+        $res->assertSee('Best efforts');
+        $res->assertSee('api.mapbox.com', false);   // the static route map URL is rendered
+
+        // Another profile can't view it.
+        $other = User::factory()->create();
+        $this->actingAs($other)->get(route('fitness.run', $session))->assertNotFound();
+    }
+
     private function storeWorkoutWindow(int $profileId, int $endsAgoMin = 60, array $track = []): void
     {
         $n = 1800; // 30 min @ 1 Hz HR / GPS

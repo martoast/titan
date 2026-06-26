@@ -46,6 +46,25 @@ class ActivitySession extends Model
         return ! empty($this->route_polyline);
     }
 
+    /**
+     * Mapbox Static Images URL: the route polyline drawn over a dark map tile — the end-of-run
+     * "picture" + the share card. `auto` fits the path; @2x for retina. Null without a route or token.
+     * The Mapbox public token (pk.*) is designed to ship in client URLs.
+     */
+    public function staticMapUrl(int $w = 640, int $h = 360, string $stroke = 'f43f5e'): ?string
+    {
+        $token = config('services.mapbox.token');
+        if (! $this->route_polyline || ! $token) {
+            return null;
+        }
+        $w = max(1, min(1280, $w));
+        $h = max(1, min(1280, $h));
+        $path = 'path-4+'.$stroke.'-0.9('.rawurlencode($this->route_polyline).')';
+
+        return "https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/{$path}/auto/{$w}x{$h}@2x"
+            .'?padding=42&access_token='.urlencode($token);
+    }
+
     /** Pace (s per km) → "m:ss /km" or "m:ss /mi". `$perKm` false converts to miles. */
     public function formatPace(?int $secPerKm, bool $perKm = true): ?string
     {
