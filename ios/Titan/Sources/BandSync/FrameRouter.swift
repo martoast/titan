@@ -6,6 +6,7 @@ import TitanCore
 /// `PpgWindowBuilder` (recovery PPG) AND the `WorkoutAssembler` (GPS/accel/HR workout windows) —
 /// finished windows of either kind go to the `SyncQueue`. T5 also drives the live bpm display.
 public final class FrameRouter {
+    private static let maxLineBytes = 64 * 1024   // a frame should never exceed this before a newline
     private var rx = Data()                       // newline accumulator (== bridge's this._rx)
     private let ppg = PpgWindowBuilder()           // live T1 PPG
     private let ppgLog = PpgWindowBuilder()        // flushed T2 PPG — SEPARATE so old buffered timestamps
@@ -31,6 +32,8 @@ public final class FrameRouter {
             rx.removeSubrange(rx.startIndex...nl)
             handle(line)
         }
+        // A frame with no terminating newline must not grow the accumulator without bound.
+        if rx.count > Self.maxLineBytes { rx.removeAll(keepingCapacity: false) }
     }
 
     private func handle(_ line: Data) {
@@ -102,6 +105,9 @@ public final class FrameRouter {
         if let w = ppgLog.flush(live: live) { submit(.ppg(w)) }
         if let w = wa.flush() { submit(.workout(w)) }
         if let w = hrTrend.flush() { submit(.hrTrend(w)) }
+        // On a real disconnect, drop any half-received frame — the firmware re-flushes from scratch on
+        // reconnect, so stale partial bytes would otherwise corrupt the first frame of the new stream.
+        if !live { rx.removeAll(keepingCapacity: false) }
     }
 
     private func submit(_ w: AnyWindow) { Task { await queue.submit(w) } }
