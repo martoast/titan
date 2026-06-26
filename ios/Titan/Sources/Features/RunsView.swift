@@ -38,20 +38,20 @@ struct RunsSection: View {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 SectionHeader(title: "Recent runs")
                 if loading {
-                    Shimmer().frame(height: 54).clipShape(RoundedRectangle(cornerRadius: 14))
+                    VStack(spacing: 8) { Shimmer().frame(height: 60).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip)); Shimmer().frame(height: 60).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip)) }
                 } else if runs.isEmpty {
                     VStack(spacing: 6) {
                         Image(systemName: "figure.run").font(.system(size: 30)).foregroundStyle(Theme.Palette.textFaint)
                         Text("No runs yet").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                        Text("Start a run on your band — the route, splits and pace land here.")
+                        Text("Tap the Run face on your band and head out — your route, splits and pace land here.")
                             .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
                 } else {
                     VStack(spacing: 8) {
                         ForEach(runs) { run in
-                            Button { selected = run } label: { RunRow(run: run) }
-                                .buttonStyle(.plain)
+                            Button { Haptic.tap(); selected = run } label: { RunRow(run: run) }
+                                .buttonStyle(PressCard())
                         }
                     }
                 }
@@ -72,23 +72,26 @@ private struct RunRow: View {
     var body: some View {
         HStack(spacing: Theme.Space.m) {
             ZStack {
-                RoundedRectangle(cornerRadius: 12).fill(Theme.Palette.mint.opacity(0.12)).frame(width: 44, height: 44)
+                RoundedRectangle(cornerRadius: Theme.Radius.chip).fill(Theme.Palette.mint.opacity(0.12)).frame(width: 44, height: 44)
                 Image(systemName: icon).foregroundStyle(Theme.Palette.mint).font(.system(size: 18, weight: .semibold))
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(run.title).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(distance).font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.text)
+                    Text(run.title).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
                 HStack(spacing: 8) {
-                    if let d = run.distance_km { Text(String(format: "%.2f km", d)).foregroundStyle(Theme.Palette.textDim) }
                     if let p = run.avg_pace_s_per_km { Text("\(RunFmt.pace(Double(p))) /km").foregroundStyle(Theme.Palette.textDim) }
                     Text(RunFmt.dayLabel(run.started_at)).foregroundStyle(Theme.Palette.textFaint)
                 }.font(Theme.Font.micro)
             }
             Spacer()
-            if run.has_route { Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.Palette.textFaint) }
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.Palette.textFaint)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.03)))
+        .padding(Theme.Space.s)
+        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
     }
+    private var distance: String { run.distance_km.map { String(format: "%.2f km", $0) } ?? "Run" }
     private var icon: String {
         switch run.activity_type { case "cycle": return "bicycle"; case "walk": return "figure.walk"; default: return "figure.run" }
     }
@@ -103,6 +106,7 @@ struct RunDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var detail: RunDetail?
     @State private var loading = true
+    @State private var failed = false
 
     private var imperial: Bool { (detail?.units ?? "metric") == "imperial" }
 
@@ -111,89 +115,132 @@ struct RunDetailView: View {
             ScrollView {
                 VStack(spacing: Theme.Space.m) {
                     mapHero
-                    statGrid
+                    secondaryGrid
                     if let prof = detail?.elevation_profile, prof.count >= 2 { elevationCard(prof) }
                     if let splits = splitsForUnit, !splits.isEmpty { splitsCard(splits) }
                     if let efforts = sortedEfforts, !efforts.isEmpty { effortsCard(efforts) }
-                    Text("GPS-grade estimates · sealed from your band")
+                    Text("Nice work. Sealed from your band — GPS-grade estimates.")
                         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-                        .frame(maxWidth: .infinity).padding(.top, 4)
+                        .frame(maxWidth: .infinity).multilineTextAlignment(.center).padding(.top, 4)
                 }
                 .padding(Theme.Space.m)
             }
             .background(Theme.Palette.bg.ignoresSafeArea())
             .navigationTitle(detail?.title ?? fallback.title)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { shareButton }
+            }
             .task { await load() }
         }
     }
 
-    // — map —
+    // — share: the run as a poster (map link + a proud caption) —
+    @ViewBuilder private var shareButton: some View {
+        if let urlStr = detail?.map_url_large, let url = URL(string: urlStr) {
+            ShareLink(item: url, subject: Text(shareCaption), message: Text(shareCaption)) {
+                Image(systemName: "square.and.arrow.up")
+            }
+        }
+    }
+    private var shareCaption: String {
+        let km = detail?.distance_km ?? fallback.distance_km
+        let d = km.map { imperial ? String(format: "%.2f mi", $0 * 0.621371) : String(format: "%.2f km", $0) } ?? "a run"
+        let p = paceLabel(detail?.avg_pace_s_per_km ?? fallback.avg_pace_s_per_km)
+        return "Ran \(d)\(p == "—" ? "" : " at \(p)") — tracked on Titan 🏃"
+    }
+
+    // — map: the hero. Route + a bottom scrim with the BIG distance + pace overlaid (the poster). —
     private var mapHero: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22).fill(Color.white.opacity(0.03))
+        ZStack(alignment: .bottomLeading) {
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card)
             if let urlStr = detail?.map_url_large ?? fallback.map_thumb_url, let url = URL(string: urlStr) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
-                    case .failure: placeholder("map")
+                    case .failure: mapPlaceholder
                     default: Shimmer()
                     }
                 }
-            } else { placeholder(detail == nil && loading ? nil : "map") }
+            } else { mapPlaceholder }
+
+            // legibility scrim only when we actually have a map
+            if (detail?.map_url_large ?? fallback.map_thumb_url) != nil {
+                LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(heroDistanceValue).font(Theme.Font.num(48)).foregroundStyle(.white)
+                        Text(heroDistanceUnit).font(Theme.Font.body.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
+                    }
+                    HStack(spacing: 10) {
+                        label("clock", RunFmt.dur(detail?.moving_time_s ?? fallback.duration_min.map { $0 * 60 }))
+                        label("speedometer", paceLabel(detail?.avg_pace_s_per_km ?? fallback.avg_pace_s_per_km))
+                    }
+                }
+                .padding(Theme.Space.m)
+            }
         }
-        .frame(height: 220).clipShape(RoundedRectangle(cornerRadius: 22))
-        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Color.white.opacity(0.08)))
-        .overlay(alignment: .bottomLeading) {
-            Text(RunFmt.dateLabel(detail?.started_at ?? fallback.started_at))
-                .font(Theme.Font.micro).foregroundStyle(.white.opacity(0.85))
-                .padding(8).background(.black.opacity(0.35), in: Capsule()).padding(10)
+        .frame(height: 260).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+    }
+
+    private func label(_ icon: String, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
+            Text(text).font(Theme.Font.num(15, .semibold)).foregroundStyle(.white.opacity(0.92))
         }
     }
 
-    private func placeholder(_ kind: String?) -> some View {
-        VStack(spacing: 6) {
-            if let kind { Image(systemName: kind == "map" ? "map" : "questionmark").font(.system(size: 26)).foregroundStyle(Theme.Palette.textFaint) }
-            if kind == "map" { Text("No GPS route").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+    @ViewBuilder private var mapPlaceholder: some View {
+        if failed {
+            Button { Task { await load() } } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 24)).foregroundStyle(Theme.Palette.textDim)
+                    Text("Couldn't load this run").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Text("Tap to retry").font(Theme.Font.micro).foregroundStyle(Theme.Palette.mint)
+                }
+            }.buttonStyle(.plain).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if loading {
+            Shimmer()
+        } else {
+            VStack(spacing: 6) {
+                Image(systemName: "map").font(.system(size: 26)).foregroundStyle(Theme.Palette.textFaint)
+                Text("No GPS route").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    // — stats —
-    private var statGrid: some View {
+    private var heroDistanceValue: String {
+        guard let km = detail?.distance_km ?? fallback.distance_km else { return "—" }
+        return imperial ? String(format: "%.2f", km * 0.621371) : String(format: "%.2f", km)
+    }
+    private var heroDistanceUnit: String { imperial ? "mi" : "km" }
+
+    // — secondary stats (calm: color reserved for pace/effort; the rest read in plain text) —
+    private var secondaryGrid: some View {
         let d = detail
-        let distStr: String = {
-            guard let km = d?.distance_km ?? fallback.distance_km else { return "—" }
-            return imperial ? String(format: "%.2f mi", km * 0.621371) : String(format: "%.2f km", km)
-        }()
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-            stat("Distance", distStr, Theme.Palette.text)
-            stat("Moving", RunFmt.dur(d?.moving_time_s ?? fallback.duration_min.map { $0 * 60 }), Theme.Palette.text)
-            stat("Avg pace", paceLabel(d?.avg_pace_s_per_km ?? fallback.avg_pace_s_per_km), Theme.Palette.mint)
-            if let gap = d?.gap_s_per_km { stat("GAP", paceLabel(gap), Theme.Palette.mint) }
-            if let gain = d?.elevation_gain_m { stat("Elev gain", imperial ? "\(Int(Double(gain) * 3.28084)) ft" : "\(gain) m", Theme.Palette.amber) }
-            if let hr = d?.avg_hr { stat("Avg HR", "\(hr)", Theme.Palette.pink) }
-            if let hr = d?.max_hr { stat("Max HR", "\(hr)", Theme.Palette.pink) }
-            if let re = d?.relative_effort { stat("Effort", "\(re)", Theme.Palette.pink) }
-            if let c = d?.calories_kcal { stat("Calories", "\(c)", Theme.Palette.text) }
-            if let v = d?.vo2max { stat("VO₂max", String(format: "%.1f", v), Theme.Palette.mint) }
+            if let gap = d?.gap_s_per_km { tile(paceLabel(gap), "GAP", Theme.Palette.mint) }
+            if let gain = d?.elevation_gain_m { tile(imperial ? "\(Int(Double(gain) * 3.28084))" : "\(gain)", "Elev gain", Theme.Palette.text, imperial ? "ft" : "m") }
+            if let hr = d?.avg_hr { tile("\(hr)", "Avg HR", Theme.Palette.text, "bpm") }
+            if let hr = d?.max_hr { tile("\(hr)", "Max HR", Theme.Palette.text, "bpm") }
+            if let re = d?.relative_effort { tile("\(re)", "Effort", Theme.Palette.pink) }
+            if let c = d?.calories_kcal { tile("\(c)", "Calories", Theme.Palette.text, "kcal") }
+            if let v = d?.vo2max { tile(String(format: "%.1f", v), "VO₂max", Theme.Palette.mint) }
         }
     }
 
-    private func stat(_ label: String, _ value: String, _ tone: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.Palette.textFaint).tracking(0.5)
-            Text(value).font(Theme.Font.num(18)).foregroundStyle(tone)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 10).padding(.horizontal, 12)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.03)))
+    private func tile(_ value: String, _ label: String, _ color: Color, _ unit: String? = nil) -> some View {
+        Metric(value: value, unit: unit, label: label, color: color)
+            .padding(.vertical, 10).padding(.horizontal, 12)
+            .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
     }
 
     private func paceLabel(_ secPerKm: Int?) -> String {
         guard let s = secPerKm, s > 0 else { return "—" }
         let v = imperial ? Int(Double(s) * 1.609344) : s
-        return "\(RunFmt.pace(Double(v)))\(imperial ? " /mi" : " /km")"
+        return "\(RunFmt.pace(Double(v)))\(imperial ? "/mi" : "/km")"
     }
 
     // — elevation —
@@ -271,11 +318,11 @@ struct RunDetailView: View {
                     HStack(spacing: 8) {
                         ForEach(efforts, id: \.0) { label, e in
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(label.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.Palette.textFaint)
-                                Text(RunFmt.dur(e.elapsed_s.map { Int($0) })).font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.text)
+                                Text(label.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.mint)
+                                Text(RunFmt.dur(e.elapsed_s.map { Int($0) })).font(Theme.Font.num(16)).foregroundStyle(Theme.Palette.text)
                             }
                             .padding(.vertical, 8).padding(.horizontal, 12)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.03)))
+                            .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
                         }
                     }
                 }
@@ -284,7 +331,9 @@ struct RunDetailView: View {
     }
 
     private func load() async {
-        if let d = try? await model.api.runDetail(runId) { detail = d }
+        loading = true; failed = false
+        do { detail = try await model.api.runDetail(runId) }
+        catch { failed = (detail == nil) }
         loading = false
     }
 }

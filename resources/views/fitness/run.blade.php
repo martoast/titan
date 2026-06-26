@@ -15,7 +15,10 @@
             return $h ? sprintf('%d:%02d:%02d', $h, $m, $sec) : sprintf('%d:%02d', $m, $sec);
         };
         $dist = $session->distance_km;
-        $distLabel = $dist ? ($imperial ? number_format($dist * 0.621371, 2).' mi' : number_format($dist, 2).' km') : '—';
+        $distNum = $dist ? number_format($imperial ? $dist * 0.621371 : $dist, 2) : '—';
+        $distUnit = $imperial ? 'mi' : 'km';
+        $distLabel = $dist ? "$distNum $distUnit" : '—';
+        $movingLabel = $session->moving_time_s ? $fmtDur($session->moving_time_s) : ($session->duration_min ? $session->duration_min.' min' : '—');
         $avgPace = $session->formatPace($session->avg_pace_s_per_km, ! $imperial);
         $gapPace = $session->formatPace($session->gap_s_per_km, ! $imperial);
         $gain = $session->elevation_gain_m;
@@ -31,27 +34,44 @@
         Fitness
     </a>
 
-    {{-- ── Route map (the end-of-run picture) ──────────────────────────────── --}}
-    @if ($url = $session->staticMapUrl(900, 500))
-        <div class="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02]">
-            <img src="{{ $url }}" alt="Route map" class="w-full aspect-[9/5] object-cover" loading="lazy" />
+    {{-- ── Route map as a poster — hero distance + pace overlaid (the shareable artifact) ── --}}
+    @php $mapUrl = $session->staticMapUrl(900, 600); @endphp
+    @if ($mapUrl)
+        <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-black">
+            <img src="{{ $mapUrl }}" alt="Route map" class="aspect-[3/2] w-full object-cover" loading="lazy" />
+            <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-black/20"></div>
+            <div class="absolute right-4 top-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Titan</div>
+            <div class="absolute inset-x-0 bottom-0 p-5">
+                <div class="flex items-end gap-2">
+                    <span class="font-display nums text-5xl font-black leading-none text-white sm:text-6xl">{{ $distNum }}</span>
+                    <span class="mb-1 text-base font-semibold text-white/75">{{ $distUnit }}</span>
+                </div>
+                <div class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] font-semibold text-white/90 nums">
+                    <span class="flex items-center gap-1.5">
+                        <svg class="h-3.5 w-3.5 text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 7v5l3 2"/></svg>{{ $movingLabel }}</span>
+                    @if ($avgPace)<span class="flex items-center gap-1.5">
+                        <svg class="h-3.5 w-3.5 text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>{{ $avgPace }}</span>@endif
+                </div>
+            </div>
         </div>
+        <button type="button" onclick="shareRun()"
+            class="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] py-3 text-[14px] font-semibold text-gray-200 hover:bg-white/[0.07] transition">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zm12 7a3 3 0 100-6 3 3 0 000 6z"/></svg>
+            Share this run
+        </button>
     @elseif (! config('services.mapbox.token'))
         <div class="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center text-[13px] text-amber-300/80">
             Add a <span class="font-mono">MAPBOX_API_TOKEN</span> to <span class="font-mono">.env</span> to render the route map.
         </div>
     @endif
 
-    {{-- ── Headline stats ─────────────────────────────────────────────────── --}}
+    {{-- ── Secondary stats (calm — color reserved for GAP + effort) ────────── --}}
     <div class="mt-4 grid grid-cols-3 gap-2.5 sm:grid-cols-4">
-        <x-runstat label="Distance" :value="$distLabel" tone="text-gray-50" />
-        <x-runstat label="Moving time" :value="$session->moving_time_s ? $fmtDur($session->moving_time_s) : ($session->duration_min ? $session->duration_min.' min' : '—')" />
-        <x-runstat label="Avg pace" :value="$avgPace ?? '—'" tone="text-emerald-300" />
-        @if ($gapPace)<x-runstat label="GAP" :value="$gapPace" hint="Grade-adjusted — the pace it felt like on the flat" />@endif
-        @if ($gainLabel)<x-runstat label="Elev gain" :value="$gainLabel" tone="text-amber-300" />@endif
-        @if ($session->avg_hr)<x-runstat label="Avg HR" :value="$session->avg_hr" unit="bpm" tone="text-pink-300" />@endif
-        @if ($session->max_hr)<x-runstat label="Max HR" :value="$session->max_hr" unit="bpm" tone="text-pink-300" />@endif
-        @if ($session->relative_effort)<x-runstat label="Effort" :value="$session->relative_effort" hint="Relative Effort — HR-zone-weighted load" tone="text-rose-300" />@endif
+        @if ($gapPace)<x-runstat label="GAP" :value="$gapPace" hint="Grade-adjusted — the pace it felt like on the flat" tone="text-emerald-300" />@endif
+        @if ($gainLabel)<x-runstat label="Elev gain" :value="$gainLabel" />@endif
+        @if ($session->avg_hr)<x-runstat label="Avg HR" :value="$session->avg_hr" unit="bpm" />@endif
+        @if ($session->max_hr)<x-runstat label="Max HR" :value="$session->max_hr" unit="bpm" />@endif
+        @if ($session->relative_effort)<x-runstat label="Effort" :value="$session->relative_effort" hint="Relative Effort — HR-zone-weighted load" tone="text-pink-300" />@endif
         @if ($session->calories_kcal)<x-runstat label="Calories" :value="$session->calories_kcal" unit="kcal" />@endif
         @if ($session->vo2max)<x-runstat label="VO₂max" :value="number_format($session->vo2max, 1)" tone="text-emerald-300" />@endif
     </div>
@@ -123,5 +143,17 @@
         </div>
     @endif
 
-    <p class="mt-6 text-center text-[11px] text-gray-600">GPS-grade estimates · sealed from your band</p>
+    <p class="mt-6 text-center text-[12px] text-gray-500">Nice work. <span class="text-gray-600">Sealed from your band — GPS-grade estimates.</span></p>
+
+    <script>
+        function shareRun() {
+            const data = {
+                title: 'Titan',
+                text: @json("Ran {$distLabel}".($avgPace ? " at {$avgPace}" : '')." — tracked on Titan 🏃"),
+                url: window.location.href,
+            };
+            if (navigator.share) { navigator.share(data).catch(() => {}); }
+            else { navigator.clipboard?.writeText(data.text + ' ' + data.url); }
+        }
+    </script>
 </x-titan-layout>
