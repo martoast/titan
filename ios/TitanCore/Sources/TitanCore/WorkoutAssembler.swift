@@ -4,7 +4,7 @@ import Foundation
 /// bridge-decode.js `buildWorkoutWindow`. Encodes to the exact keys the server expects.
 public struct WorkoutWindow: Codable, Equatable {
     public struct Accel: Codable, Equatable { public let x: [Int]; public let y: [Int]; public let z: [Int] }
-    public struct TrackPoint: Codable, Equatable { public let t: UInt64; public let lat: Double; public let lon: Double }
+    public struct TrackPoint: Codable, Equatable { public let t: UInt64; public let lat: Double; public let lon: Double; public let alt: Double? }
     public struct Gps: Codable, Equatable { public let speed_kmh: [Double]; public let grade: [Double]; public let track: [TrackPoint] }
     public let kind: String           // "workout"
     public let start: String          // ISO-8601
@@ -156,7 +156,7 @@ public final class WorkoutAssembler {
         // (NOT per-second zero-filled — (0,0) is a real ocean location). Drives polyline + distance.
         let track: [WorkoutWindow.TrackPoint] = gps.compactMap { f in
             guard let lat = f.lat, let lon = f.lon else { return nil }
-            return WorkoutWindow.TrackPoint(t: f.t, lat: lat, lon: lon)
+            return WorkoutWindow.TrackPoint(t: f.t, lat: lat, lon: lon, alt: f.alt)
         }
 
         return WorkoutWindow(

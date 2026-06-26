@@ -274,7 +274,7 @@ export function buildWorkoutWindow(accel, hr, gps, startT, endT, minMs = 60000) 
   // polyline + computes haversine distance / splits from these.
   const track = gps
     .filter((g) => g.lat != null && g.lon != null)
-    .map((g) => ({ t: g.t, lat: g.lat, lon: g.lon }));
+    .map((g) => ({ t: g.t, lat: g.lat, lon: g.lon, alt: g.alt }));   // alt (m|null) → elevation profile + GAP
 
   return {
     kind: 'workout',
