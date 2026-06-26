@@ -15,7 +15,10 @@ final class WorkoutAssemblerTests: XCTestCase {
         let wa = WorkoutAssembler()
         wa.addWorkoutAccel(accel)
         hr.forEach { wa.addHr(HrReading(t: $0.0, bpm: $0.1, conf: 100)) }
-        gps.forEach { wa.addGps(GpsFix(t: $0.0, sats: 8, speedKmh: $0.1, alt: $0.2)) }
+        gps.enumerated().forEach { i, g in
+            wa.addGps(GpsFix(t: g.0, sats: 8, speedKmh: g.1, alt: g.2,
+                             lat: 37.0 + Double(i) * 0.001, lon: -122.0 + Double(i) * 0.001))
+        }
         let w = try! XCTUnwrap(wa.flush())
 
         XCTAssertEqual(w.kind, "workout")
@@ -34,6 +37,11 @@ final class WorkoutAssemblerTests: XCTestCase {
         XCTAssertEqual(Array(w.gps.speed_kmh.prefix(5)), [9, 9, 9, 9, 9])
         XCTAssertEqual(w.gps.grade[17], 0.3, accuracy: 1e-9)
         XCTAssertTrue(w.gps.grade.prefix(17).allSatisfy { $0 == 0 })
+        // Route track: one point per coord-bearing fix, timestamps + coords preserved (not zero-filled).
+        XCTAssertEqual(w.gps.track.count, 3)
+        XCTAssertEqual(w.gps.track.first?.lat ?? 0, 37.0, accuracy: 1e-9)
+        XCTAssertEqual(w.gps.track.first?.lon ?? 0, -122.0, accuracy: 1e-9)
+        XCTAssertEqual(w.gps.track[2].lat, 37.002, accuracy: 1e-9)
     }
 
     // The connected-indoor case: NO GPS, NO offline accel — a workout must still open from the
@@ -69,7 +77,7 @@ final class WorkoutAssemblerTests: XCTestCase {
         let s: UInt64 = 1_000_000
         wa.addWorkoutAccel((0...700).map { AccelSample(t: s + UInt64($0) * 100, ax: 1, ay: 1, az: 1000) }) // 70s
         // A fix far past the last activity ends the prior session.
-        let ended = wa.addGps(GpsFix(t: s + 200_000, sats: 8, speedKmh: 5, alt: 10))
+        let ended = wa.addGps(GpsFix(t: s + 200_000, sats: 8, speedKmh: 5, alt: 10, lat: nil, lon: nil))
         XCTAssertNotNil(ended)
         XCTAssertEqual(ended?.kind, "workout")
     }

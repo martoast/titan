@@ -28,9 +28,22 @@ final class FrameDecoderTests: XCTestCase {
         }
     }
 
-    func testT4() {
+    func testT4() {   // v4 (20 B): no coords → lat/lon decode to nil
         let f = FrameDecoder.decodeT4("AQniBEDpI3SXAQAA0gQAAAAAAAA=")
-        XCTAssertEqual(f, GpsFix(t: 1750000200000, sats: 9, speedKmh: 12.5, alt: 123.4))
+        XCTAssertEqual(f, GpsFix(t: 1750000200000, sats: 9, speedKmh: 12.5, alt: 123.4, lat: nil, lon: nil))
+    }
+
+    func testT4V5Coords() {   // v5 (24 B): lat/lon at bytes 16/20 (deg ×1e7) for the route map
+        var b: [UInt8] = [5, 9]                                    // ver, sats
+        func i16(_ v: Int16) { let u = UInt16(bitPattern: v); for i in 0..<2 { b.append(UInt8((u >> (8*UInt16(i))) & 0xff)) } }
+        func u64(_ v: UInt64) { for i in 0..<8 { b.append(UInt8((v >> (8*UInt64(i))) & 0xff)) } }
+        func i32(_ v: Int32) { let u = UInt32(bitPattern: v); for i in 0..<4 { b.append(UInt8((u >> (8*UInt32(i))) & 0xff)) } }
+        i16(1250); u64(1750000200000); i32(1234); i32(377749000); i32(-1224194000)
+        let f = FrameDecoder.decodeT4(Data(b).base64EncodedString())
+        XCTAssertEqual(f?.speedKmh ?? 0, 12.5, accuracy: 1e-9)
+        XCTAssertEqual(f?.alt ?? 0, 123.4, accuracy: 1e-6)
+        XCTAssertEqual(f?.lat ?? 0, 37.7749, accuracy: 1e-7)
+        XCTAssertEqual(f?.lon ?? 0, -122.4194, accuracy: 1e-7)
     }
 
     func testT5() {

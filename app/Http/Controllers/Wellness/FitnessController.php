@@ -82,6 +82,19 @@ class FitnessController extends Controller
         ]);
     }
 
+    /** Strava-style run detail: the route map, splits, elevation profile, best efforts, effort. */
+    public function showRun(Request $request, ActivitySession $session)
+    {
+        $profile = $request->user()->ensureProfile();
+        abort_unless($session->profile_id === $profile->id, 404);
+
+        return view('fitness.run', [
+            'profile' => $profile,
+            'session' => $session,
+            'units' => $profile->units ?? 'metric',
+        ]);
+    }
+
     /** Manual quick-log of today's step count (for users without a device feeding it). */
     public function logSteps(Request $request)
     {

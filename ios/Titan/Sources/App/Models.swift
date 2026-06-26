@@ -502,6 +502,64 @@ struct InteractionFlag: Codable, Equatable, Identifiable {
 }
 struct StackInteractionsResponse: Codable, Equatable { let flags: [InteractionFlag]; let disclaimer: String? }
 
+// MARK: - Runs (Strava-style) — `GET /api/me/runs` + `/api/me/runs/{id}`
+
+/// One row in the runs list (and the header of the detail).
+struct RunSummary: Codable, Equatable, Identifiable {
+    let id: Int
+    let title: String
+    let activity_type: String?
+    let started_at: String?
+    let duration_min: Int?
+    let distance_km: Double?
+    let avg_pace_s_per_km: Int?
+    let has_route: Bool
+    let map_thumb_url: String?
+}
+
+struct RunsResponse: Codable, Equatable { let runs: [RunSummary] }
+
+struct RunSplit: Codable, Equatable, Identifiable {
+    let index: Int
+    let distance_m: Double?
+    let elapsed_s: Double?
+    let pace_s_per_unit: Double?
+    let elev_delta_m: Double?
+    let avg_hr: Int?
+    let partial: Bool?
+    var id: Int { index }
+}
+
+struct RunSplits: Codable, Equatable { let km: [RunSplit]?; let mi: [RunSplit]? }
+struct ElevationPoint: Codable, Equatable { let d_km: Double; let alt_m: Double }
+struct BestEffort: Codable, Equatable { let distance_m: Double?; let elapsed_s: Double?; let pace_s_per_km: Double? }
+
+/// `GET /api/me/runs/{id}` — the full end-of-run summary.
+struct RunDetail: Codable, Equatable, Identifiable {
+    let id: Int
+    let title: String
+    let activity_type: String?
+    let started_at: String?
+    let duration_min: Int?
+    let distance_km: Double?
+    let moving_time_s: Int?
+    let avg_pace_s_per_km: Int?
+    let gap_s_per_km: Int?
+    let elevation_gain_m: Int?
+    let elevation_loss_m: Int?
+    let elevation_profile: [ElevationPoint]?
+    let splits: RunSplits?
+    let best_efforts: [String: BestEffort]?
+    let relative_effort: Int?
+    let avg_hr: Int?
+    let max_hr: Int?
+    let calories_kcal: Int?
+    let vo2max: Double?
+    let hrr_bpm: Double?
+    let map_url_large: String?
+    let units: String?
+}
+
 enum APIError: LocalizedError {
     case http(Int, String), decoding, unauthorized, transport(String)
     var errorDescription: String? {
