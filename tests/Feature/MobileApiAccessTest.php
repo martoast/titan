@@ -58,4 +58,46 @@ class MobileApiAccessTest extends TestCase
         // The mobile coach group is behind auth.any — unauthenticated is rejected.
         $this->postJson('/api/coach/send', ['message' => 'hi'])->assertStatus(401);
     }
+
+    // --- read/write scope enforcement (auth.any:write) ---------------------------------------
+
+    public function test_read_scoped_token_can_read(): void
+    {
+        $user = User::factory()->create();
+        $user->ensureProfile();
+        [, $plain] = ApiToken::mint($user, 'read-agent', ['read']);
+
+        // A safe GET succeeds for a read-only token.
+        $this->withHeader('Authorization', 'Bearer '.$plain)
+            ->getJson('/api/me/stack')->assertOk();
+    }
+
+    public function test_read_scoped_token_is_blocked_from_writes(): void
+    {
+        $user = User::factory()->create();
+        $user->ensureProfile();
+        [, $plain] = ApiToken::mint($user, 'read-agent', ['read']);
+        $headers = ['Authorization' => 'Bearer '.$plain];
+
+        // Mutating requests across the surface must be refused with 403 insufficient_scope.
+        $this->postJson('/api/me/stack', ['name' => 'Zinc'], $headers)
+            ->assertStatus(403)->assertJsonPath('error', 'insufficient_scope');
+        $this->postJson('/api/devices/pair', ['source' => 'bangle'], $headers)->assertStatus(403);
+        $this->postJson('/api/coach/send', ['message' => 'log 3000 calories'], $headers)->assertStatus(403);
+        $this->postJson('/api/me/weight', ['weight_kg' => 80], $headers)->assertStatus(403);
+
+        // And the read token wrote nothing.
+        $this->assertDatabaseCount('stack_items', 0);
+        $this->assertDatabaseCount('wearable_connections', 0);
+    }
+
+    public function test_full_scoped_token_can_write(): void
+    {
+        $user = User::factory()->create();
+        $user->ensureProfile();
+        [, $plain] = ApiToken::mint($user, 'ios', ['*']);
+
+        $this->withHeader('Authorization', 'Bearer '.$plain)
+            ->postJson('/api/me/stack', ['name' => 'Zinc'])->assertOk();
+    }
 }

@@ -26,8 +26,13 @@ class AuthenticateSessionOrToken
             if (! $token || ! $token->user) {
                 return response()->json(['error' => 'invalid_token'], 401);
             }
-            if ($ability && ! $token->can($ability)) {
-                return response()->json(['error' => 'insufficient_scope', 'required' => $ability], 403);
+            // Read-scoped tokens may only read. Any mutating request (non-safe HTTP method) — or an
+            // explicitly write-gated route (`auth.any:write`) — requires the 'write' ability. This
+            // is a blanket gate so no write route can silently ship without it. Session users below
+            // are full account owners and bypass it entirely.
+            $required = $ability ?? ($request->isMethodSafe() ? null : 'write');
+            if ($required && ! $token->can($required)) {
+                return response()->json(['error' => 'insufficient_scope', 'required' => $required], 403);
             }
             $token->forceFill(['last_used_at' => now()])->saveQuietly();
             Auth::setUser($token->user);

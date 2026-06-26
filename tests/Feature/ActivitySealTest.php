@@ -229,6 +229,37 @@ class ActivitySealTest extends TestCase
             ->assertSee('Run')->assertSee('51.4')->assertSee('High');
     }
 
+    public function test_workouts_separated_by_a_gap_split_into_distinct_sessions(): void
+    {
+        // Regression: Carbon 3's signed diffInMinutes made the >20min gap rule never fire, so every
+        // unsealed workout merged into ONE session. groupIntoSessions must split on a real gap.
+        $job = new SealActivityJob(1);
+        $group = new \ReflectionMethod($job, 'groupIntoSessions');
+        $group->setAccessible(true);
+
+        $mk = function (string $start, string $end): DeviceIngestion {
+            $i = new DeviceIngestion;
+            $i->window_start = CarbonImmutable::parse($start);
+            $i->window_end = CarbonImmutable::parse($end);
+
+            return $i;
+        };
+
+        // A morning run and an evening run, 8h apart → TWO sessions.
+        $apart = collect([
+            $mk('2026-06-15T07:00:00Z', '2026-06-15T07:30:00Z'),
+            $mk('2026-06-15T15:00:00Z', '2026-06-15T15:30:00Z'),
+        ]);
+        $this->assertCount(2, $group->invoke($job, $apart));
+
+        // Two contiguous windows (5-min gap) → ONE session.
+        $contiguous = collect([
+            $mk('2026-06-15T07:00:00Z', '2026-06-15T07:30:00Z'),
+            $mk('2026-06-15T07:35:00Z', '2026-06-15T08:00:00Z'),
+        ]);
+        $this->assertCount(1, $group->invoke($job, $contiguous));
+    }
+
     private function storeWorkoutWindow(int $profileId, int $endsAgoMin = 60): void
     {
         $n = 1800; // 30 min @ 1 Hz HR / GPS
