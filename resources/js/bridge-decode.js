@@ -55,17 +55,27 @@ export function decodeT1(b64) {
   return { epoch, samples };
 }
 
-/** T4 → { t, speedKmh, alt (m | null), sats } for one GPS fix. */
+/** T4 → { t, speedKmh, alt (m | null), sats, lat (deg | null), lon (deg | null) } for one GPS fix.
+ *  v5 (24 B) adds lat/lon at bytes 16/20 (deg ×1e7); v4 (20 B) frames decode with lat/lon = null. */
 export function decodeT4(b64) {
   const bytes = b64ToBytes(b64);
   if (bytes.length < 20) return null;
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const altRaw = dv.getInt32(12, true);
+  let lat = null, lon = null;
+  if (bytes.length >= 24) {
+    const latRaw = dv.getInt32(16, true);
+    const lonRaw = dv.getInt32(20, true);
+    if (latRaw !== ALT_NONE) lat = latRaw / 1e7;
+    if (lonRaw !== ALT_NONE) lon = lonRaw / 1e7;
+  }
   return {
     sats: dv.getUint8(1),
     speedKmh: dv.getInt16(2, true) / 100,
     t: u64(dv, 4),
     alt: altRaw === ALT_NONE ? null : altRaw / 10,
+    lat,
+    lon,
   };
 }
 
@@ -259,6 +269,13 @@ export function buildWorkoutWindow(accel, hr, gps, startT, endT, minMs = 60000) 
   }
   if (k > 0) counts.push(Math.round(Math.min(acc * 2, 300)));
 
+  // Raw coordinate track for the route map: only fixes that carry real coords, timestamps preserved
+  // (NOT per-second zero-filled — (0,0) is a real place in the ocean). The route builder draws the
+  // polyline + computes haversine distance / splits from these.
+  const track = gps
+    .filter((g) => g.lat != null && g.lon != null)
+    .map((g) => ({ t: g.t, lat: g.lat, lon: g.lon }));
+
   return {
     kind: 'workout',
     start: new Date(startT).toISOString(),
@@ -268,7 +285,7 @@ export function buildWorkoutWindow(accel, hr, gps, startT, endT, minMs = 60000) 
     accel_unit: 'mg', // milli-g — the server converts to m/s² for the classifier
     hr_bpm: hrBySec,
     accel_counts: counts,
-    gps: { speed_kmh: speedBySec, grade },
+    gps: { speed_kmh: speedBySec, grade, track },
     src: 'banglejs2',
   };
 }

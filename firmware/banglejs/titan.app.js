@@ -92,7 +92,7 @@ var CFG = {
   GPS_ARM_SEC: 25,                   // sustained motion before GPS powers on (covers ~30s cold fix)
   GPS_OFF_SEC: 90,                   // quiet time before an AUTO workout ends
   GPS_FIX_TIMEOUT: 90,               // no satellite fix this long → indoors; drop GPS, keep the workout
-  GPS_PROTO_VERSION: 4,              // T4 frame: per-fix speed + altitude (+ grade source)
+  GPS_PROTO_VERSION: 5,              // T4 frame: per-fix lat/lon (route map) + speed + altitude (v5 added coords)
 
   // During a WORKOUT we also stream the on-chip HR (bpm) — but ONLY as a fallback for offline
   // sessions (no raw PPG reaches the server). When connected, the server recomputes in-motion HR
@@ -652,7 +652,10 @@ function onGPS(g) {
   state.speed = g.speed; // Bangle GPS speed is km/h on most builds; server treats it as such
   // Prefer barometric altitude (smoother for grade); fall back to GPS altitude.
   var alt = (lastAltitude !== null) ? lastAltitude : (isNaN(g.alt) ? null : g.alt);
-  emitGpsFrame(state.speed, alt, g.satellites | 0);
+  // Position for the route map: only when the fix carries real coords (NaN before/at a marginal fix).
+  var lat = (g.lat !== undefined && !isNaN(g.lat)) ? g.lat : null;
+  var lon = (g.lon !== undefined && !isNaN(g.lon)) ? g.lon : null;
+  emitGpsFrame(state.speed, alt, g.satellites | 0, lat, lon);
 }
 
 function onPressure(p) {
@@ -697,10 +700,12 @@ function emitAltFrame() {
   }
 }
 
-// T4 frame: one GPS fix → speed (km/h ×100) + altitude (m ×10) + sats. Streamed live when
-// connected; when offline it's appended to the same overnight log for morning sync.
-function emitGpsFrame(speedKmh, altM, sats) {
-  var buf = new ArrayBuffer(20);
+// T4 frame (v5, 24 B): one GPS fix → lat/lon (deg ×1e7, the route map) + speed (km/h ×100) +
+// altitude (m ×10) + sats. Coords use the same -2147483648 = "no value" sentinel as altitude, so a
+// speed-only fix still logs. Streamed live when connected; offline it's appended to the log for sync.
+var GPS_NULL = -2147483648;   // i32 min — shared "no value" sentinel for alt + lat + lon
+function emitGpsFrame(speedKmh, altM, sats, lat, lon) {
+  var buf = new ArrayBuffer(24);
   var dv = new DataView(buf);
   var nowMs = Math.round(getTime() * 1000);
   var hi = Math.floor(nowMs / 4294967296);
@@ -709,8 +714,9 @@ function emitGpsFrame(speedKmh, altM, sats) {
   dv.setInt16(2, clampI16(Math.round(speedKmh * 100)), true);
   dv.setUint32(4, (nowMs - hi * 4294967296) >>> 0, true);
   dv.setUint32(8, hi >>> 0, true);
-  dv.setInt32(12, (altM === null ? -2147483648 : Math.round(altM * 10)) | 0, true);
-  dv.setUint32(16, 0, true);
+  dv.setInt32(12, (altM === null ? GPS_NULL : Math.round(altM * 10)) | 0, true);
+  dv.setInt32(16, (lat === null || lat === undefined ? GPS_NULL : Math.round(lat * 1e7)) | 0, true);
+  dv.setInt32(20, (lon === null || lon === undefined ? GPS_NULL : Math.round(lon * 1e7)) | 0, true);
   var line = "T4:" + b64(buf);
   if (state.connected) {
     try { Bluetooth.println(line); state.framesSent++; } catch (e) {}

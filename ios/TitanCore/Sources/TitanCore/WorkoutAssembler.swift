@@ -4,7 +4,8 @@ import Foundation
 /// bridge-decode.js `buildWorkoutWindow`. Encodes to the exact keys the server expects.
 public struct WorkoutWindow: Codable, Equatable {
     public struct Accel: Codable, Equatable { public let x: [Int]; public let y: [Int]; public let z: [Int] }
-    public struct Gps: Codable, Equatable { public let speed_kmh: [Double]; public let grade: [Double] }
+    public struct TrackPoint: Codable, Equatable { public let t: UInt64; public let lat: Double; public let lon: Double }
+    public struct Gps: Codable, Equatable { public let speed_kmh: [Double]; public let grade: [Double]; public let track: [TrackPoint] }
     public let kind: String           // "workout"
     public let start: String          // ISO-8601
     public let end: String
@@ -151,6 +152,13 @@ public final class WorkoutAssembler {
         }
         if k > 0 { counts.append(Int((min(acc * 2, 300)).rounded())) }
 
+        // Raw coordinate track for the route map: only fixes with real coords, timestamps preserved
+        // (NOT per-second zero-filled — (0,0) is a real ocean location). Drives polyline + distance.
+        let track: [WorkoutWindow.TrackPoint] = gps.compactMap { f in
+            guard let lat = f.lat, let lon = f.lon else { return nil }
+            return WorkoutWindow.TrackPoint(t: f.t, lat: lat, lon: lon)
+        }
+
         return WorkoutWindow(
             kind: "workout",
             start: iso.string(from: Date(timeIntervalSince1970: Double(startT) / 1000)),
@@ -158,7 +166,7 @@ public final class WorkoutAssembler {
             accel_xyz: .init(x: ax, y: ay, z: az),
             accel_fs: accelFs, accel_unit: "mg",
             hr_bpm: hrBySec, accel_counts: counts,
-            gps: .init(speed_kmh: speedBySec, grade: grade),
+            gps: .init(speed_kmh: speedBySec, grade: grade, track: track),
             src: "banglejs2")
     }
 

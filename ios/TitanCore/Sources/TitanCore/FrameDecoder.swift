@@ -16,6 +16,7 @@ public struct T1Frame: Equatable {
 public struct GpsFix: Equatable {
     public let t: UInt64; public let sats: UInt8
     public let speedKmh: Double; public let alt: Double?   // nil = no altitude
+    public let lat: Double?; public let lon: Double?       // nil = no position (deg); the route map
 }
 public struct HrReading: Equatable {
     public let t: UInt64; public let bpm: UInt8; public let conf: UInt8
@@ -82,13 +83,21 @@ public enum FrameDecoder {
         return T1Frame(epoch: epoch, samples: out)
     }
 
-    /// T4 — GPS fix: [ver u8, sats u8, speed×100 i16, ts u64, alt×10 i32, rsvd u32] (20 B).
+    /// T4 — GPS fix. v5 (24 B): [ver u8, sats u8, speed×100 i16, ts u64, alt×10 i32, lat×1e7 i32,
+    /// lon×1e7 i32]. v4 (20 B): same without lat/lon (rsvd u32 at byte 16) → lat/lon decode to nil.
     public static func decodeT4(_ b64: String) -> GpsFix? {
         guard let r = Reader(b64), r.count >= 20 else { return nil }
         let altRaw = r.i32(12)
+        var lat: Double? = nil, lon: Double? = nil
+        if r.count >= 24 {
+            let latRaw = r.i32(16), lonRaw = r.i32(20)
+            if latRaw != ALT_NONE { lat = Double(latRaw) / 1e7 }
+            if lonRaw != ALT_NONE { lon = Double(lonRaw) / 1e7 }
+        }
         return GpsFix(t: r.u64(4), sats: r.u8(1),
                       speedKmh: Double(r.i16(2)) / 100,
-                      alt: altRaw == ALT_NONE ? nil : Double(altRaw) / 10)
+                      alt: altRaw == ALT_NONE ? nil : Double(altRaw) / 10,
+                      lat: lat, lon: lon)
     }
 
     /// T5 — HR: [ver u8, bpm u8, conf u8, sport u8, ts u64] (12 B). The sport byte tags workout mode
