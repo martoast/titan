@@ -98,4 +98,17 @@ class BiosignalClient
     {
         return $this->client()->post('/process/inmotion-hr', $request)->throw()->json();
     }
+
+    /**
+     * Run route → the Strava-style summary: distance, moving/elapsed time, avg + grade-adjusted
+     * pace, per-km/mile splits, elevation gain + profile, best efforts, Relative Effort, and an
+     * encoded+simplified polyline (+ bounds) for the map. See biosignal app/core/route.py.
+     *
+     * @param  array<string,mixed>  $request  {track:[{t,lat,lon,alt?}], hr_bpm?, hr_max?, units?}
+     * @return array<string,mixed>
+     */
+    public function processRoute(array $request): array
+    {
+        return $this->client()->post('/process/route', $request)->throw()->json();
+    }
 }

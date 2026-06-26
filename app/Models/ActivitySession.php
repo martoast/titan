@@ -16,6 +16,9 @@ class ActivitySession extends Model
         'activity_type', 'activity_confidence',
         'distance_km', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'hr_zones', 'trimp', 'calories_kcal',
         'vo2max', 'fitness_level', 'hrr_bpm', 'updated_via',
+        // Run route + analytics (biosignal /process/route).
+        'route_polyline', 'route_bounds', 'moving_time_s', 'avg_pace_s_per_km', 'gap_s_per_km',
+        'elevation_gain_m', 'elevation_loss_m', 'elevation_profile', 'splits', 'best_efforts', 'relative_effort',
     ];
 
     protected function casts(): array
@@ -30,7 +33,28 @@ class ActivitySession extends Model
             'trimp' => 'float',
             'vo2max' => 'float',
             'hrr_bpm' => 'float',
+            'route_bounds' => 'array',
+            'elevation_profile' => 'array',
+            'splits' => 'array',
+            'best_efforts' => 'array',
         ];
+    }
+
+    /** A run we have a drawable GPS route for (drives the map card vs a plain stat list). */
+    public function hasRoute(): bool
+    {
+        return ! empty($this->route_polyline);
+    }
+
+    /** Pace (s per km) → "m:ss /km" or "m:ss /mi". `$perKm` false converts to miles. */
+    public function formatPace(?int $secPerKm, bool $perKm = true): ?string
+    {
+        if (! $secPerKm || $secPerKm <= 0) {
+            return null;
+        }
+        $s = $perKm ? $secPerKm : (int) round($secPerKm * 1.609344);
+
+        return sprintf('%d:%02d', intdiv($s, 60), $s % 60).($perKm ? ' /km' : ' /mi');
     }
 
     public function profile(): BelongsTo
