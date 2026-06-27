@@ -1816,9 +1816,15 @@ stepLoad();
 // One-time: reclaim the legacy single-file log from pre-ring firmware (superseded by titan.l0..N).
 try { require("Storage").open(CFG.LOG_FILE, "r").erase(); } catch (e) {}
 
-// Watch-only resume: if recording was on before a reboot, bring it back — there's no app to re-arm it,
-// and a 24/7 wearer shouldn't silently stop capturing because the watch restarted.
-try { if (require("Storage").read("titan.run") === "1") startStreaming(); } catch (e) {}
+// 24/7 capture by default (Whoop-style): the band should sense HR the moment it's worn, no toggle.
+// On FIRST boot (no pref saved yet) we turn capture ON and persist it; on later boots we honour the
+// saved choice — so a user who deliberately turns it OFF stays off, and a 24/7 wearer keeps capturing
+// across reboots without the app re-arming it. (Safe post-bricking-fix: the log is a capped ring and
+// the reconnect flush is chunked, so unsynced 24/7 data can never fill flash or freeze the dump.)
+try {
+  var runPref = require("Storage").read("titan.run");
+  if (runPref === "1" || runPref === undefined) startStreaming();   // undefined = never set = first boot
+} catch (e) {}
 
 // Resume an active SLEEP session across a reboot, so a mid-night restart keeps the original bedtime
 // (and the confirmed wake marker the server seals on) instead of losing the night.
