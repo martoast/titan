@@ -64,6 +64,16 @@ struct DevicesView: View {
                             divider
                             liveStat(model.liveBpm.map { "\($0)" } ?? "—", "bpm", Theme.Palette.pink)
                         }
+                        if model.bandStepsToday > 0 {
+                            Divider().overlay(Theme.Palette.cardStroke)
+                            HStack(spacing: Theme.Space.m) {
+                                Image(systemName: "figure.walk").foregroundStyle(Theme.Palette.mint)
+                                Text("\(model.bandStepsToday)").font(Theme.Font.num(22)).foregroundStyle(Theme.Palette.text).monospacedDigit().contentTransition(.numericText())
+                                Text("steps today").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                Spacer()
+                                Text("LIVE").font(Theme.Font.micro).tracking(1).foregroundStyle(Theme.Palette.mint)
+                            }
+                        }
                     }
                 }
             }

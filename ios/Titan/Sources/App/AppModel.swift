@@ -320,6 +320,12 @@ final class AppModel: ObservableObject {
         }
         router.onGps = { [weak self] fix in Task { @MainActor in self?.ingestLiveGps(fix) } }
         router.onHr = { [weak self] hr in Task { @MainActor in self?.ingestLiveHr(hr) } }
+        router.onSteps = { [weak self] s in
+            Task { @MainActor in
+                // Live "steps today" from the band. Trust it only if it's for the current local day.
+                if s.date == Self.localDayString() { self?.bandStepsToday = s.steps; self?.bandStepsAt = Date() }
+            }
+        }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in self?.bandConnected = up } }
         band.onBattery = { [weak self] pct in Task { @MainActor in self?.bandBattery = pct } }
@@ -684,6 +690,16 @@ final class AppModel: ObservableObject {
     @Published var gpsTestActive = false           // a user-initiated GPS self-test window is running
     private var gpsTestTimer: Task<Void, Never>?
     private let locator = RunLocationTracker()      // phone GPS (the band has none)
+
+    // MARK: live steps — the band's persistent day total, streamed ~every 15 s while connected.
+    @Published var bandStepsToday = 0
+    @Published var bandStepsAt: Date?              // when we last heard a band step total (freshness)
+
+    /// Local YYYY-MM-DD, matching the band's T8 date so we only trust today's live count.
+    static func localDayString() -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = .current; f.timeZone = .current
+        return f.string(from: Date())
+    }
 
     /// A live GPS fix during a run → accumulate distance (haversine) + extend the trace.
     private func ingestLiveGps(_ fix: GpsFix) {

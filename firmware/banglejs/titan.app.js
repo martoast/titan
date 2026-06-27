@@ -169,7 +169,7 @@ var CFG = {
   // the running day total periodically while connected + on connect, so a walk taken with the phone
   // left behind still lands the moment the band reconnects. The server upserts DailyActivity.steps.
   STEP_PROTO_VERSION: 8,            // T8 frame: { day-step total, local YYYY-MM-DD }
-  STEP_SUMMARY_MS: 60000,          // stream the step total once a minute while connected
+  STEP_SUMMARY_MS: 15000,          // stream the running day-step total every 15 s while connected (near-live)
 
   // --- SLEEP session markers (user-toggled, like a workout) ------------------
   // Sleep is logged overnight (T2 PPG + actigraphy) and staged server-side. The Sleep FACE lets the
@@ -1175,10 +1175,53 @@ function drawAction(primary, active, secondary, accent, y) {
   }
 }
 
+// ----- Persistent daily step total (survives reboot — the Whoop model) ------------------------------
+// The Bangle pedometer's day count (getHealthStatus) resets when the watch reboots, and the SERVER
+// merges steps as a per-day MAX — so a mid-day reboot would stall/lose the rest of the day's steps.
+// So we keep our OWN daily total from the validated `step` event, persisted to flash, so the reported
+// total only ever grows within a day. We don't reinvent step DETECTION (that's the firmware pedometer);
+// we just count its `step` events and bank the total across reboots.
+var STEP_FILE = "titan.steps";    // { d:"YYYY-MM-DD", s:total }
+var stepDay = "";                 // local date stepTotal belongs to
+var stepTotal = 0;                // persisted day total
+var stepLastUp = 0;               // last cumulative-since-boot count seen from the step event
+var stepDirty = false;
+
+function stepLocalDate() {
+  var d = new Date();
+  return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).substr(-2) + "-" + ("0" + d.getDate()).substr(-2);
+}
+function stepLoad() {
+  try {
+    var s = require("Storage").readJSON(STEP_FILE, true);
+    if (s && s.d === stepLocalDate()) { stepDay = s.d; stepTotal = s.s | 0; return; }
+  } catch (e) {}
+  stepDay = stepLocalDate(); stepTotal = 0;   // no file, or it's from a previous day → start fresh
+}
+function stepSave() {
+  try { require("Storage").writeJSON(STEP_FILE, { d: stepDay, s: stepTotal }); stepDirty = false; } catch (e) {}
+}
+function stepRollover() {          // local midnight → close the day, start the next at 0
+  var d = stepLocalDate();
+  if (d !== stepDay) { stepDay = d; stepTotal = 0; stepSave(); }
+}
+
+// `up` = the pedometer's running count since boot. Bank the deltas into our persistent daily total.
+Bangle.on("step", function (up) {
+  stepRollover();
+  var delta = up - stepLastUp;
+  if (delta < 0) delta = up;       // pedometer reset (reboot / midnight) → `up` itself is the delta
+  stepLastUp = up;
+  stepTotal += delta;
+  stepDirty = true;
+});
+
 function stepCount() {
-  try { return Bangle.getHealthStatus("day").steps; } catch (e) {}
-  try { return Bangle.getStepCount(); } catch (e) {}
-  return 0;
+  var os = 0;
+  try { os = Bangle.getHealthStatus("day").steps | 0; } catch (e) {}
+  // Ours survives reboot; the OS counter may reset. Report the larger so we never go backwards and
+  // still work if either source is flaky.
+  return stepTotal > os ? stepTotal : os;
 }
 
 // Page 0 — HEART RATE: big BPM inside a color-mapped ring.
@@ -1566,9 +1609,15 @@ function startStopwatch() {                 // plain timer (tap from idle)
   if (uiVisible) drawUI();
 }
 
+// Persist the active sleep session across a reboot — like titan.run for streaming — so a watch restart
+// mid-sleep doesn't lose the bedtime (and therefore the confirmed wake marker the server seals on).
+function saveSleepPref() { try { require("Storage").writeJSON("titan.sleep", { start: state.swStartMs }); } catch (e) {} }
+function clearSleepPref() { try { require("Storage").erase("titan.sleep"); } catch (e) {} }
+
 function startSleepSession() {              // button 2× on the Stopwatch face → time it AS sleep
   state.swMode = "sleep";
   state.swStartMs = Math.round(getTime() * 1000);
+  saveSleepPref();                          // survive a reboot mid-sleep
   if (state.workout) endWorkout();          // sleep isn't a workout → log T2 PPG (not T6 accel)
   if (!state.streaming) startStreaming();   // guarantee the night is captured for HRV + staging
   reconcileHrm();                           // sleep → burst the HRM (SLEEP_DUTY): ~30s of 25 Hz raw PPG every 3 min, so HRV is captured all night without flattening the battery
@@ -1582,6 +1631,7 @@ function stopTimer() {                       // stop either mode; a SLEEP sessio
     var bedSec = Math.round(state.swStartMs / 1000);
     var wakeSec = Math.round(getTime());
     emitSleepFrame(bedSec, wakeSec, 1);      // confirmed window → the morning sync fires the sleep summary
+    clearSleepPref();                        // session done → don't resume it on the next boot
   }
   state.swMode = "idle";
   sleepScreenRestore();   // sleep ended → give back wrist-twist/touch wake
@@ -1715,17 +1765,21 @@ var swTimer = setInterval(function () {
 try { if (Bangle.setBarometerPower) Bangle.setBarometerPower(1, "titan-alt"); } catch (e) {}
 var altTimer = setInterval(sampleAltitude, CFG.ALT_SAMPLE_MS);
 
-// Relay the built-in pedometer's day total to the server once a minute while connected (the server
-// merges it with the phone's count as a per-day MAX). No-op when offline.
+// Relay our persistent day-step total to the server every 15 s while connected (per-day MAX merge).
+// No-op when offline; the total keeps banking on the watch and lands the moment it reconnects.
 var stepTimer = setInterval(emitStepFrame, CFG.STEP_SUMMARY_MS);
+// Persist the day total to flash periodically (only when it changed) so a reboot never loses it.
+var stepSaveTimer = setInterval(function () { stepRollover(); if (stepDirty) stepSave(); }, 30000);
 
 // Clean up if the app is unloaded by the launcher.
 E.on("kill", function () {
   if (uiTimer) clearInterval(uiTimer);
   if (altTimer) clearInterval(altTimer);
   if (stepTimer) clearInterval(stepTimer);
+  if (stepSaveTimer) clearInterval(stepSaveTimer);
   if (swTimer) clearInterval(swTimer);
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; flushSf = null; }   // stop a chunked drain
+  if (stepDirty) stepSave();   // don't lose the last steps on unload
   stopRestDuty();
   if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
@@ -1735,12 +1789,28 @@ E.on("kill", function () {
   } catch (e) {}
 });
 
+// Restore today's banked step total so a reboot doesn't lose the day's steps (the persistent counter).
+stepLoad();
+
 // One-time: reclaim the legacy single-file log from pre-ring firmware (superseded by titan.l0..N).
 try { require("Storage").open(CFG.LOG_FILE, "r").erase(); } catch (e) {}
 
 // Watch-only resume: if recording was on before a reboot, bring it back — there's no app to re-arm it,
 // and a 24/7 wearer shouldn't silently stop capturing because the watch restarted.
 try { if (require("Storage").read("titan.run") === "1") startStreaming(); } catch (e) {}
+
+// Resume an active SLEEP session across a reboot, so a mid-night restart keeps the original bedtime
+// (and the confirmed wake marker the server seals on) instead of losing the night.
+try {
+  var sp = require("Storage").readJSON("titan.sleep", true);
+  if (sp && sp.start) {
+    state.swMode = "sleep";
+    state.swStartMs = sp.start;
+    if (!state.streaming) startStreaming();
+    reconcileHrm();        // back into the overnight HRV burst duty-cycle
+    sleepScreenOff();      // dark screen again; one button click still wakes it
+  }
+} catch (e) {}
 
 // Initial paint.
 refreshBattery();

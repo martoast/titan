@@ -22,9 +22,12 @@ public final class FrameRouter {
     public var onGps: ((GpsFix) -> Void)?
     /// Every HR reading with its sport tag (sport==1 ⇒ a run/workout is live).
     public var onHr: ((HrReading) -> Void)?
+    /// Live day-step total from the band (T8) — for the in-app "steps today" readout.
+    public var onSteps: ((StepDailySummary) -> Void)?
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
+    private var lastStepsKey = ""               // dedupe identical step summaries (don't upload while still)
 
     public init(queue: SyncQueue) { self.queue = queue }
 
@@ -103,7 +106,13 @@ public final class FrameRouter {
         case "T8:":
             // Step total → a daily-activity summary (server merges with the phone's count, per-day MAX).
             if let s = FrameDecoder.decodeT8(payload) {
-                submit(.steps(StepDailySummary(date: s.date, steps: Int(s.steps))))
+                let summary = StepDailySummary(date: s.date, steps: Int(s.steps))
+                onSteps?(summary)                      // live "steps today" readout in the app (every frame)
+                let key = "\(s.date)#\(s.steps)"
+                if key != lastStepsKey {               // only enqueue an upload when the total changed
+                    lastStepsKey = key
+                    submit(.steps(summary))            // server per-day MAX merge
+                }
             }
         case "T9:":
             // "I'm awake" marker → a sleep-session summary (server seals the night + fires the summary).
