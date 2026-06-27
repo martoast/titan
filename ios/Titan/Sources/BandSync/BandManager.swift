@@ -152,6 +152,13 @@ public final class BandManager: NSObject {
         p.writeValue(Data("C4:\n".utf8), for: rx, type: .withoutResponse)
     }
 
+    /// End the run on the band (C0): when you tap "End run" in the app, the band finishes too. No-op if
+    /// not connected (then the band keeps recording until you finish on its RUN face).
+    public func endRunOnBand() {
+        guard let p = band, p.state == .connected, let rx = rxChar else { return }
+        p.writeValue(Data("C0:\n".utf8), for: rx, type: .withoutResponse)
+    }
+
     /// Force a fresh connection attempt when we're paired but stuck — advertised-but-never-connected,
     /// a half-open link, or a Bluetooth stack that's wedged. Tears down any existing connection to the
     /// bound band, drops the cached write char, then re-arms connect AND restarts a scan so we catch

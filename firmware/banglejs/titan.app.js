@@ -1283,12 +1283,8 @@ function drawRun() {
 // Button on the Run face: start or finish a GPS-tracked run. Start arms GPS + a manual run workout (so
 // it logs T4 coords + T6 accel and seals as a run with a route); finish closes the workout.
 function runTap() {
-  if (runActive) {
-    runActive = false;
-    if (runTimer) { clearInterval(runTimer); runTimer = null; }
-    endWorkout();
-    try { Bangle.buzz(60); } catch (e) {}
-  } else {
+  if (runActive) finishRun();
+  else {
     runActive = true;
     runStartMs = Math.round(getTime() * 1000);
     runDistM = 0; runLastLat = null; runLastLon = null;
@@ -1298,7 +1294,18 @@ function runTap() {
     if (runTimer) clearInterval(runTimer);
     runTimer = setInterval(function () { if (page === RUN_PAGE) drawUI(); }, 1000);   // tick the live readout
     try { Bangle.buzz(120); } catch (e) {}
+    if (uiVisible) drawUI();
   }
+}
+
+// Finish the active run — from the Run-face button OR a C0 command the app sends when you tap "End run"
+// in the phone. Either side ends the run; the workout closes (sport→0), which the app sees and mirrors.
+function finishRun() {
+  if (!runActive) return;
+  runActive = false;
+  if (runTimer) { clearInterval(runTimer); runTimer = null; }
+  endWorkout();                                 // → sport 0, GPS off; the app ends its live run on the sport drop
+  try { Bangle.buzz(60); } catch (e) {}
   if (uiVisible) drawUI();
 }
 
@@ -1621,9 +1628,10 @@ Bluetooth.on("data", function (d) {
     cmdBuf = cmdBuf.substr(nl + 1);
     if (line.substr(0, 3) === "C1:") {            // prime: start a typed activity
       try { applyPriming(JSON.parse(line.substr(3))); } catch (err) { /* malformed — ignore */ }
-    } else if (line.substr(0, 2) === "C0") {      // stand down
+    } else if (line.substr(0, 2) === "C0") {      // stand down / "End run" tapped in the app
       primed = null;
-      if (state.workout && state.workoutManual) endWorkout();
+      if (runActive) finishRun();                  // a Run-face run → finish it (also ends the workout)
+      else if (state.workout && state.workoutManual) endWorkout();
     } else if (line.substr(0, 3) === "C2:") {     // set time + timezone from the phone
       try {
         var c = JSON.parse(line.substr(3));       // { t: unixSeconds (UTC), tz: hoursOffset }

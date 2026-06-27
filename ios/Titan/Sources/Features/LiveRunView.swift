@@ -133,9 +133,9 @@ struct LiveRunView: View {
                 .padding(.horizontal, Theme.Space.m)
             }
         }
-        .confirmationDialog("End this run? Tap the band's RUN face to finish properly — this just closes the live view.",
+        .confirmationDialog("End this run? This finishes it on your band too and saves the summary.",
                             isPresented: $confirmEnd, titleVisibility: .visible) {
-            Button("Stop tracking here", role: .destructive) { model.endRun(); dismiss() }
+            Button("End run", role: .destructive) { model.endRun(); dismiss() }
             Button("Keep going", role: .cancel) {}
         }
     }

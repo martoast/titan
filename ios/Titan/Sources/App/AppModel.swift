@@ -713,7 +713,7 @@ final class AppModel: ObservableObject {
                 // Sport tag fell away. Confirm it's SUSTAINED (a few seconds) before ending, so a single
                 // stray sport==0 reading can't end-and-restart the run.
                 if let lost = runSportLostAt {
-                    if Date().timeIntervalSince(lost) > 4 { endRun(); return }
+                    if Date().timeIntervalSince(lost) > 4 { endRun(notifyBand: false); return }   // watch already ended
                 } else {
                     runSportLostAt = Date()
                 }
@@ -750,12 +750,16 @@ final class AppModel: ObservableObject {
 
     /// End the live run (the band stopped streaming sport frames, or the user dismissed it). The
     /// sealed run shows up in the runs list shortly after via the normal upload→seal path.
-    func endRun() {
+    /// End the live run. `notifyBand` sends the band a C0 so finishing in the app finishes on the watch
+    /// too (the user tapped "End run"); pass false when the watch ALREADY ended it (sport→0) or in the
+    /// simulator, so we don't echo a command back.
+    func endRun(notifyBand: Bool = true) {
         guard runActive else { return }
         runActive = false
         runSawSport1 = false; runSportLostAt = nil
         runTicker?.cancel(); runTicker = nil
-        showLiveRunSheet = false       // the run finished on the watch → dismiss the live panel
+        showLiveRunSheet = false       // dismiss the live panel
+        if notifyBand { band?.endRunOnBand() }
     }
 
     /// Ask the band to power its GPS for a ~2 min self-test (no workout needed) so you can confirm,
@@ -799,7 +803,7 @@ final class AppModel: ObservableObject {
                 self.ingestLiveHr(HrReading(t: UInt64(i) * 1000, bpm: UInt8(min(180, 120 + Int(40 * f))), conf: 95, sport: 1))
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
-            self?.endRun()
+            self?.endRun(notifyBand: false)
         }
     }
     #endif
