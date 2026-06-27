@@ -1,4 +1,5 @@
 import SwiftUI
+import MapKit
 
 // MARK: - Live run — see the band's GPS run tracking in the app, in real time
 
@@ -78,12 +79,15 @@ struct LiveRunView: View {
                         bigStat(fmtPaceLive(model.runPaceSecPerKm), "/km", "Pace", Theme.Palette.cyan)
                     }
 
-                    // The route, drawing itself as you move.
+                    // The route, drawing itself on the map as you move.
                     if model.runHasGps {
-                        GlassCard(padding: Theme.Space.m) {
+                        GlassCard(padding: Theme.Space.s) {
                             VStack(alignment: .leading, spacing: Theme.Space.s) {
                                 SectionHeader(title: "Your route", trailing: "\(model.runTrack.count) fixes")
-                                RouteTrace(points: model.runTrack).frame(height: 200)
+                                LiveRouteMap(track: model.runTrack)
+                                    .frame(height: 240)
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
+                                    .padding(.horizontal, 2).padding(.bottom, 2)
                             }
                         }
                     } else {
@@ -175,6 +179,47 @@ struct RouteTrace: View {
                 ctx.fill(Path(ellipseIn: CGRect(x: l.x - 6, y: l.y - 6, width: 12, height: 12)), with: .color(color))
                 ctx.fill(Path(ellipseIn: CGRect(x: l.x - 3, y: l.y - 3, width: 6, height: 6)), with: .color(.white))
             }
+        }
+    }
+}
+
+/// A live MapKit route: the polyline grows + the camera follows your latest fix as the band streams
+/// GPS. Used by the live run (the path drawing itself as you move) and the GPS test (a single pin =
+/// "you are here"). track points are CGPoint(x: lon, y: lat).
+struct LiveRouteMap: View {
+    let track: [CGPoint]
+    var interactive: Bool = true
+    @State private var cam: MapCameraPosition = .automatic
+
+    private var coords: [CLLocationCoordinate2D] {
+        track.map { CLLocationCoordinate2D(latitude: $0.y, longitude: $0.x) }
+    }
+
+    var body: some View {
+        Map(position: $cam, interactionModes: interactive ? .all : []) {
+            if coords.count > 1 {
+                MapPolyline(coordinates: coords)
+                    .stroke(Theme.Palette.mint, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            }
+            if let last = coords.last {
+                Annotation("", coordinate: last) {
+                    ZStack {
+                        Circle().fill(Theme.Palette.mint.opacity(0.3)).frame(width: 24, height: 24)
+                        Circle().fill(Theme.Palette.mint).frame(width: 13, height: 13)
+                        Circle().stroke(.white, lineWidth: 2).frame(width: 13, height: 13)
+                    }
+                }
+            }
+        }
+        .mapStyle(.standard(elevation: .flat))
+        .onAppear { recenter() }
+        .onChange(of: track.count) { _, _ in recenter() }
+    }
+
+    private func recenter() {
+        guard let last = coords.last else { return }
+        withAnimation(.easeInOut(duration: 0.4)) {
+            cam = .region(MKCoordinateRegion(center: last, latitudinalMeters: 600, longitudinalMeters: 600))
         }
     }
 }

@@ -169,6 +169,11 @@ struct DevicesView: View {
                 }
 
                 if model.gpsHasFix, let la = model.gpsLastLat, let lo = model.gpsLastLon {
+                    // A real fix → drop a pin on the map right away. No walking needed; this confirms
+                    // GPS is live and where you are the moment it locks.
+                    LiveRouteMap(track: [CGPoint(x: lo, y: la)], interactive: false)
+                        .frame(height: 180)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
                     Text(String(format: "%.5f, %.5f", la, lo))
                         .font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.cyan).monospacedDigit()
                 }

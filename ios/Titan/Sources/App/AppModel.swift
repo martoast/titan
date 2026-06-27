@@ -656,6 +656,7 @@ final class AppModel: ObservableObject {
     private var runLastLon: Double?
     private var runLastSignal: Date?
     private var runSawSport1 = false               // we've seen a sport-tagged frame this run (so a fall back to 0 = ended)
+    private var runSportLostAt: Date?              // when the sport tag first fell to 0 this run (end debounce)
     private var runTicker: Task<Void, Never>?
     private let runEndGapSec: TimeInterval = 90    // fallback only: frames stop entirely (disconnect) this long ⇒ end
 
@@ -679,7 +680,9 @@ final class AppModel: ObservableObject {
         gpsHasFix = fix.lat != nil && fix.lon != nil
         guard let lat = fix.lat, let lon = fix.lon else { return }   // below here needs a real position fix
         gpsLastLat = lat; gpsLastLon = lon
-        startRunIfNeeded()
+        // GPS only EXTENDS a run; it never STARTS one. A run is defined by the workout sport tag (below),
+        // so a bare GPS test (no workout) shows your location without ever popping the run tracker.
+        guard runActive else { return }
         runLastSignal = Date()
         if let la = runLastLat, let lo = runLastLon {
             let d = Self.haversineM(la, lo, lat, lon)
@@ -698,10 +701,16 @@ final class AppModel: ObservableObject {
         if hr.sport == 1 {
             startRunIfNeeded()
             runSawSport1 = true
+            runSportLostAt = nil
             runLastSignal = Date()
         } else if runActive && runSawSport1 {
-            endRun()                                   // sport 1→0 ⇒ the watch finished the workout
-            return
+            // Sport tag fell away. Confirm it's SUSTAINED (a few seconds of frames) before ending, so a
+            // single stray sport==0 reading can't end-and-restart the run in a loop.
+            if let lost = runSportLostAt {
+                if Date().timeIntervalSince(lost) > 4 { endRun(); return }
+            } else {
+                runSportLostAt = Date()
+            }
         }
         if runActive {
             runLiveBpm = Int(hr.bpm)
@@ -715,7 +724,7 @@ final class AppModel: ObservableObject {
         runStartedAt = Date(); runLastSignal = Date()
         runDistanceKm = 0; runElapsedSec = 0; runPaceSecPerKm = 0
         runLastLat = nil; runLastLon = nil; runTrack = []; runMaxBpm = 0; runLiveBpm = nil
-        runSawSport1 = false
+        runSawSport1 = false; runSportLostAt = nil
         showLiveRunSheet = true        // pop the live tracker the moment a run begins
         Haptic.success()
         runTicker?.cancel()
@@ -737,8 +746,9 @@ final class AppModel: ObservableObject {
     func endRun() {
         guard runActive else { return }
         runActive = false
-        runSawSport1 = false
+        runSawSport1 = false; runSportLostAt = nil
         runTicker?.cancel(); runTicker = nil
+        showLiveRunSheet = false       // the run finished on the watch → dismiss the live panel
     }
 
     /// Ask the band to power its GPS for a ~2 min self-test (no workout needed) so you can confirm,
