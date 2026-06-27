@@ -9,6 +9,7 @@
     <key>UIBackgroundModes</key>
     <array>
         <string>bluetooth-central</string>
+        <string>location</string>
         <string>remote-notification</string>
     </array>
 
@@ -18,8 +19,8 @@
     <key>NSHealthUpdateUsageDescription</key>
     <string>Titan writes your recovery, sleep, and workouts to Apple Health.</string>
 
-    <!-- Optional (only with Core Location region monitoring to recover after force-quit) -->
+    <!-- Core Location: the band has no GPS, so the phone provides the route + distance during a run. -->
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Titan uses your location to re-establish band sync after the app is closed.</string>
+    <string>Titan uses your location during a run to map your route and measure distance and pace.</string>
 </dict>
 </plist>

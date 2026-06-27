@@ -130,7 +130,7 @@ captures the **on-watch HRmax** that Pillar 1 needs. Do it outdoors so the **GPS
 | Metric | How to judge | Confidence |
 |---|---|---|
 | Activity type | matches what you actually did | 🟢 ~88% on real data (PAMAP2) |
-| GPS distance / pace | vs a known route or a phone GPS app | 🟢 good (chip-grade GNSS) |
+| GPS distance / pace | vs a known route or a phone GPS app | 🟢 good — **mapped phone-side** (the Bangle.js 2 has NO GPS; the iPhone provides the route + distance during a run, per 08-sensor-research §17) |
 | **Measured HRmax** | highest HR in the hard segment, vs the H10 | 🟢 high (on-watch bpm, in-motion) |
 | VO2max | sanity vs your expectation / a Cooper test | 🟡 ±~5.6 ml/kg/min (it tracks *trend*) |
 | HRR-60s | bigger drop = fitter; track vs your own baseline | 🟡 personal trend, not absolute |

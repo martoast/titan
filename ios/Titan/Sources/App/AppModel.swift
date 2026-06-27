@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import CoreLocation
 import TitanCore
 
 /// In-memory `WindowStore` so the sync queue runs out of the box. Swap for a GRDB/SQLite-backed
@@ -327,13 +328,23 @@ final class AppModel: ObservableObject {
                 self?.pairing = false
                 self?.pairCandidates = []
                 self?.bandBound = ok
-                if !ok { self?.error = "Couldn't find your band. Put it in pairing mode (hold its button 3s) and try again." }
+                if !ok { self?.error = "Couldn't find your band. Put it in pairing mode (swipe to the Status face and click the button) and try again." }
             }
         }
         band.onCandidates = { [weak self] list in
             Task { @MainActor in self?.pairCandidates = list }
         }
         self.syncQueue = queue; self.router = router; self.band = band
+
+        // Phone-side GPS for runs (the band has no GPS chip). Fixes feed the live tracker AND, while a
+        // run is active, the same workout assembler the band's GPS would have → the sealed run gets a
+        // real route + distance with no server change.
+        locator.onAuth = { [weak self] st in
+            Task { @MainActor in self?.locationDenied = (st == .denied || st == .restricted) }
+        }
+        locator.onFix = { [weak self] loc in
+            Task { @MainActor in self?.handlePhoneFix(loc) }
+        }
     }
 
     // MARK: insights + journal
@@ -663,20 +674,20 @@ final class AppModel: ObservableObject {
 
     var runHasGps: Bool { !runTrack.isEmpty }
 
-    // MARK: GPS diagnostics — every T4 updates these (independent of a run), powering the in-app GPS test.
-    @Published var gpsSats = 0
+    // MARK: GPS diagnostics — every phone fix updates these (independent of a run), powering the GPS test.
     @Published var gpsHasFix = false
     @Published var gpsLastLat: Double?
     @Published var gpsLastLon: Double?
     @Published var gpsLastFrameAt: Date?
+    @Published var gpsAccuracyM: Double?           // horizontal accuracy of the last phone fix (metres)
+    @Published var locationDenied = false          // location permission denied/restricted → UI explains
     @Published var gpsTestActive = false           // a user-initiated GPS self-test window is running
     private var gpsTestTimer: Task<Void, Never>?
+    private let locator = RunLocationTracker()      // phone GPS (the band has none)
 
     /// A live GPS fix during a run → accumulate distance (haversine) + extend the trace.
     private func ingestLiveGps(_ fix: GpsFix) {
-        // Record raw status for the GPS test FIRST — even a fix-less "searching" frame (sats only,
-        // lat/lon nil) carries the acquisition progress we want to surface.
-        gpsSats = Int(fix.sats)
+        // Record status for the GPS test FIRST (a fix updates the test screen even outside a run).
         gpsLastFrameAt = Date()
         gpsHasFix = fix.lat != nil && fix.lon != nil
         guard let lat = fix.lat, let lon = fix.lon else { return }   // below here needs a real position fix
@@ -733,6 +744,7 @@ final class AppModel: ObservableObject {
         runLastLat = nil; runLastLon = nil; runTrack = []; runMaxBpm = 0; runLiveBpm = nil
         runSawSport1 = false; runSportLostAt = nil
         showLiveRunSheet = true        // pop the live tracker the moment a run begins
+        updateLocator()                // start phone GPS → route + distance for this run
         Haptic.success()
         runTicker?.cancel()
         runTicker = Task { @MainActor [weak self] in
@@ -759,22 +771,43 @@ final class AppModel: ObservableObject {
         runSawSport1 = false; runSportLostAt = nil
         runTicker?.cancel(); runTicker = nil
         showLiveRunSheet = false       // dismiss the live panel
+        updateLocator()                // stop phone GPS unless a test is still using it
         if notifyBand { band?.endRunOnBand() }
     }
 
-    /// Ask the band to power its GPS for a ~2 min self-test (no workout needed) so you can confirm,
-    /// before a real run, that GPS acquires end-to-end. While it's on, the band streams satellite
-    /// counts (and a fix once it locks) which land in the gps* fields and drive the GPS test screen.
+    /// A phone GPS fix (during a run, or a GPS test). Feeds the live tracker + the GPS-test screen, and
+    /// — while a run is active — the workout assembler, so the saved run gets a real route + distance.
+    private func handlePhoneFix(_ loc: CLLocation) {
+        gpsAccuracyM = loc.horizontalAccuracy
+        let t = UInt64(max(0, loc.timestamp.timeIntervalSince1970) * 1000)
+        let fix = GpsFix(t: t, sats: 0,
+                         speedKmh: max(0, loc.speed) * 3.6,
+                         alt: loc.altitude,
+                         lat: loc.coordinate.latitude,
+                         lon: loc.coordinate.longitude)
+        ingestLiveGps(fix)                                // live UI + gps* fields (+ run track if a run is live)
+        if runActive { router?.ingestPhoneGps(fix) }      // seal pipeline → route + distance on the saved run
+    }
+
+    /// Phone GPS runs only while a run or a GPS test is active (battery).
+    private func updateLocator() {
+        if runActive || gpsTestActive { locator.start() } else { locator.stop() }
+    }
+
+    /// Confirm the phone's GPS can find you, before a real run. Powers location for ~30 s and drops a
+    /// pin on the map once it locks (usually a few seconds). The band has no GPS — runs are mapped by
+    /// the phone — so this tests the phone's location.
     func startGpsTest() {
-        startBandIfPaired()
-        band?.testGps()
         gpsTestActive = true
-        gpsSats = 0; gpsHasFix = false; gpsLastLat = nil; gpsLastLon = nil; gpsLastFrameAt = nil
+        gpsHasFix = false; gpsLastLat = nil; gpsLastLon = nil; gpsLastFrameAt = nil; gpsAccuracyM = nil
         Haptic.tap()
+        updateLocator()
         gpsTestTimer?.cancel()
         gpsTestTimer = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 125_000_000_000)   // ~match the band's 120 s test window
-            self?.gpsTestActive = false
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            guard let self else { return }
+            self.gpsTestActive = false
+            self.updateLocator()
         }
     }
 

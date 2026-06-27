@@ -28,6 +28,14 @@ public final class FrameRouter {
 
     public init(queue: SyncQueue) { self.queue = queue }
 
+    /// Inject a phone GPS fix into the SAME workout assembler the band's T4 frames would feed, so a run
+    /// tracked by the iPhone (the band has no GPS) seals with a real route + GPS distance — the existing
+    /// server route pass needs no change. Only call while a workout/run is open; addGps would otherwise
+    /// open a phantom workout.
+    public func ingestPhoneGps(_ fix: GpsFix) {
+        if let w = wa.addGps(fix) { submit(.workout(w)) }
+    }
+
     /// Feed a chunk of bytes from a CoreBluetooth notification.
     public func ingest(_ data: Data) {
         rx.append(data)

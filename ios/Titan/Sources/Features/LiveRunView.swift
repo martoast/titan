@@ -94,7 +94,7 @@ struct LiveRunView: View {
                         GlassCard {
                             HStack(spacing: Theme.Space.m) {
                                 Image(systemName: "location.magnifyingglass").foregroundStyle(Theme.Palette.amber)
-                                Text("Searching for GPS… distance starts once your band gets a lock.")
+                                Text("Searching for GPS… your phone maps the route once it gets a lock.")
                                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                             }
                         }

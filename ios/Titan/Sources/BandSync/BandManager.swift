@@ -145,13 +145,6 @@ public final class BandManager: NSObject {
         central.scanForPeripherals(withServices: nil)   // didDiscover only accepts our bound id
     }
 
-    /// GPS self-test (C4): ask the connected band to power its GPS for ~2 min with no workout, so the
-    /// user can confirm GPS acquires before a real run. No-op if the band isn't connected.
-    public func testGps() {
-        guard let p = band, p.state == .connected, let rx = rxChar else { return }
-        p.writeValue(Data("C4:\n".utf8), for: rx, type: .withoutResponse)
-    }
-
     /// End the run on the band (C0): when you tap "End run" in the app, the band finishes too. No-op if
     /// not connected (then the band keeps recording until you finish on its RUN face).
     public func endRunOnBand() {
