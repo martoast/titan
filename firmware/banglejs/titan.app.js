@@ -219,6 +219,7 @@ var state = {
   workoutManual: false,// started by hand (a gym session) → only ends by hand, not on a motion lull
   gps: false,          // is the GPS receiver powered right now? (a subset of a workout)
   gpsFix: false,       // do we have a satellite fix yet?
+  gpsSats: 0,          // satellites in view (UI + the app's GPS self-test acquisition readout)
   speed: 0             // last GPS speed (m/s), UI only
 };
 
@@ -669,10 +670,35 @@ function powerGps(on) {
   if (!on) { state.gpsFix = false; state.speed = 0; lastAltitude = null; }
 }
 
+// GPS self-test (triggered by the app's C4 command): power the receiver for a fixed window with NO
+// workout, so the user can confirm GPS acquires before a real run. While it's on, onGPS streams
+// satellite counts (live, even before a fix) so the app shows acquisition progress, and a full fix
+// once it locks. Stands down after the window unless a real workout has since claimed GPS.
+var gpsTestTimer = null;
+function startGpsTest() {
+  if (!state.streaming) startStreaming();   // ensure the event/power context is live
+  powerGps(true);
+  try { Bangle.buzz(150); } catch (e) {}    // haptic ack so you know the test armed
+  if (page === RUN_PAGE && uiVisible) drawUI();
+  if (gpsTestTimer) clearTimeout(gpsTestTimer);
+  gpsTestTimer = setTimeout(function () {
+    gpsTestTimer = null;
+    if (!state.workout) powerGps(false);    // don't kill GPS if a run started during the test
+  }, 120000);
+}
+
 function onGPS(g) {
   if (!state.gps) return;
   state.gpsFix = isFinite(g.fix) ? !!g.fix : (g.satellites > 3);
-  if (!state.gpsFix || g.speed === undefined || isNaN(g.speed)) return;
+  state.gpsSats = g.satellites | 0;
+  if (!state.gpsFix || g.speed === undefined || isNaN(g.speed)) {
+    // No usable fix yet. While CONNECTED, still report acquisition progress (satellites, no coords)
+    // so the app's GPS self-test shows "searching · N sats" instead of a dead screen. Offline we stay
+    // quiet (don't bloat the overnight log with fix-less search frames). Repaint a live GPS face.
+    if (state.connected) emitGpsFrame(0, null, state.gpsSats, null, null);
+    if (uiVisible && (page === RUN_PAGE)) drawUI();
+    return;
+  }
   state.speed = g.speed; // Bangle GPS speed is km/h on most builds; server treats it as such
   // Prefer barometric altitude (smoother for grade); fall back to GPS altitude.
   var alt = (lastAltitude !== null) ? lastAltitude : (isNaN(g.alt) ? null : g.alt);
@@ -1237,7 +1263,8 @@ function drawRun() {
     g.drawString("0.00", cx, 92);
     g.setFont("6x8", 1); g.drawString("km", cx, 118);
     g.setColor(state.gpsFix ? C.mint : C.amber); g.setFont("6x8", 1);
-    g.drawString(state.gpsFix ? "GPS READY" : "GPS SEARCHING", cx, 132);
+    g.drawString(state.gpsFix ? ("GPS READY · " + state.gpsSats + " sats")
+                              : ("GPS SEARCHING · " + state.gpsSats), cx, 132);
     drawAction("START", false, null, C.mint);
     return;
   }
@@ -1607,6 +1634,8 @@ Bluetooth.on("data", function (d) {
     } else if (line.substr(0, 2) === "C3") {      // "sync now" — flush the overnight ring on demand
       try { emitStepFrame(); } catch (e) {}        // push today's step total too
       flushLog();
+    } else if (line.substr(0, 2) === "C4") {      // GPS self-test — power GPS ~2 min with no workout
+      try { startGpsTest(); } catch (e) {}
     }
   }
 });

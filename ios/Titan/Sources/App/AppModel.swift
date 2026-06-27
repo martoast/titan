@@ -655,14 +655,30 @@ final class AppModel: ObservableObject {
     private var runLastLat: Double?
     private var runLastLon: Double?
     private var runLastSignal: Date?
+    private var runSawSport1 = false               // we've seen a sport-tagged frame this run (so a fall back to 0 = ended)
     private var runTicker: Task<Void, Never>?
-    private let runEndGapSec: TimeInterval = 90    // sport frames stop for this long ⇒ run ended
+    private let runEndGapSec: TimeInterval = 90    // fallback only: frames stop entirely (disconnect) this long ⇒ end
 
     var runHasGps: Bool { !runTrack.isEmpty }
 
+    // MARK: GPS diagnostics — every T4 updates these (independent of a run), powering the in-app GPS test.
+    @Published var gpsSats = 0
+    @Published var gpsHasFix = false
+    @Published var gpsLastLat: Double?
+    @Published var gpsLastLon: Double?
+    @Published var gpsLastFrameAt: Date?
+    @Published var gpsTestActive = false           // a user-initiated GPS self-test window is running
+    private var gpsTestTimer: Task<Void, Never>?
+
     /// A live GPS fix during a run → accumulate distance (haversine) + extend the trace.
     private func ingestLiveGps(_ fix: GpsFix) {
-        guard let lat = fix.lat, let lon = fix.lon else { return }   // need a real position fix
+        // Record raw status for the GPS test FIRST — even a fix-less "searching" frame (sats only,
+        // lat/lon nil) carries the acquisition progress we want to surface.
+        gpsSats = Int(fix.sats)
+        gpsLastFrameAt = Date()
+        gpsHasFix = fix.lat != nil && fix.lon != nil
+        guard let lat = fix.lat, let lon = fix.lon else { return }   // below here needs a real position fix
+        gpsLastLat = lat; gpsLastLon = lon
         startRunIfNeeded()
         runLastSignal = Date()
         if let la = runLastLat, let lo = runLastLon {
@@ -676,8 +692,17 @@ final class AppModel: ObservableObject {
     }
 
     /// A sport-tagged HR reading (sport==1) means a workout is live; drive the live bpm + start gate.
+    /// When the watch ENDS the workout it keeps streaming HR but the sport tag falls back to 0 — that
+    /// transition is our prompt to close the live run immediately (instead of waiting out the 90s gap).
     private func ingestLiveHr(_ hr: HrReading) {
-        if hr.sport == 1 { startRunIfNeeded(); runLastSignal = Date() }
+        if hr.sport == 1 {
+            startRunIfNeeded()
+            runSawSport1 = true
+            runLastSignal = Date()
+        } else if runActive && runSawSport1 {
+            endRun()                                   // sport 1→0 ⇒ the watch finished the workout
+            return
+        }
         if runActive {
             runLiveBpm = Int(hr.bpm)
             runMaxBpm = max(runMaxBpm, Int(hr.bpm))
@@ -690,6 +715,7 @@ final class AppModel: ObservableObject {
         runStartedAt = Date(); runLastSignal = Date()
         runDistanceKm = 0; runElapsedSec = 0; runPaceSecPerKm = 0
         runLastLat = nil; runLastLon = nil; runTrack = []; runMaxBpm = 0; runLiveBpm = nil
+        runSawSport1 = false
         showLiveRunSheet = true        // pop the live tracker the moment a run begins
         Haptic.success()
         runTicker?.cancel()
@@ -711,7 +737,24 @@ final class AppModel: ObservableObject {
     func endRun() {
         guard runActive else { return }
         runActive = false
+        runSawSport1 = false
         runTicker?.cancel(); runTicker = nil
+    }
+
+    /// Ask the band to power its GPS for a ~2 min self-test (no workout needed) so you can confirm,
+    /// before a real run, that GPS acquires end-to-end. While it's on, the band streams satellite
+    /// counts (and a fix once it locks) which land in the gps* fields and drive the GPS test screen.
+    func startGpsTest() {
+        startBandIfPaired()
+        band?.testGps()
+        gpsTestActive = true
+        gpsSats = 0; gpsHasFix = false; gpsLastLat = nil; gpsLastLon = nil; gpsLastFrameAt = nil
+        Haptic.tap()
+        gpsTestTimer?.cancel()
+        gpsTestTimer = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 125_000_000_000)   // ~match the band's 120 s test window
+            self?.gpsTestActive = false
+        }
     }
 
     private func recomputePace() {

@@ -145,6 +145,13 @@ public final class BandManager: NSObject {
         central.scanForPeripherals(withServices: nil)   // didDiscover only accepts our bound id
     }
 
+    /// GPS self-test (C4): ask the connected band to power its GPS for ~2 min with no workout, so the
+    /// user can confirm GPS acquires before a real run. No-op if the band isn't connected.
+    public func testGps() {
+        guard let p = band, p.state == .connected, let rx = rxChar else { return }
+        p.writeValue(Data("C4:\n".utf8), for: rx, type: .withoutResponse)
+    }
+
     /// Force a fresh connection attempt when we're paired but stuck — advertised-but-never-connected,
     /// a half-open link, or a Bluetooth stack that's wedged. Tears down any existing connection to the
     /// bound band, drops the cached write char, then re-arms connect AND restarts a scan so we catch

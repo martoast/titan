@@ -66,6 +66,8 @@ struct DevicesView: View {
                         }
                     }
                 }
+
+                gpsTestCard
             }
 
             if !model.isBandPaired {
@@ -78,7 +80,7 @@ struct DevicesView: View {
                             if model.pairCandidates.isEmpty {
                                 HStack(spacing: Theme.Space.s) {
                                     ProgressView().tint(Theme.Palette.indigo)
-                                    Text("Searching… make sure the band shows a code (hold its button 3s).")
+                                    Text("Searching… make sure the band shows a code (swipe to the Status face, then click the button).")
                                         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
                                 }.padding(.vertical, 6)
                             } else {
@@ -106,7 +108,7 @@ struct DevicesView: View {
                         VStack(alignment: .leading, spacing: Theme.Space.m) {
                             SectionHeader(title: "Pair your band")
                             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                                pairStep("1", "On the band, triple-tap the button until it shows PAIR + a code.")
+                                pairStep("1", "On the band, swipe to the Status face and click the button — it shows PAIR + a code.")
                                 pairStep("2", "Tap Pair below, then pick that code in the app.")
                             }
                             Text("We bind to the exact band you pick — so two bands side by side never cross-connect.")
@@ -141,6 +143,53 @@ struct DevicesView: View {
         }
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         .titanScreen("Band", glow: model.bandConnected ? Theme.Palette.mint : Theme.Palette.indigo)
+    }
+
+    // GPS self-test: prove the band's GNSS acquires end-to-end before a real run. One tap powers the
+    // receiver for ~2 min; satellites climb and a fix appears once outdoors with sky.
+    private var gpsHeard: Bool { model.gpsLastFrameAt != nil }
+    private var gpsTestCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                SectionHeader(title: "GPS test", trailing: model.gpsTestActive ? "TESTING" : nil)
+
+                // Big status pill: idle → searching (amber, sats) → fix (green, sats).
+                HStack(spacing: Theme.Space.m) {
+                    Image(systemName: model.gpsHasFix ? "location.fill" : (gpsHeard || model.gpsTestActive ? "location.magnifyingglass" : "location.slash"))
+                        .font(.title2)
+                        .foregroundStyle(model.gpsHasFix ? Theme.Palette.mint : (gpsHeard || model.gpsTestActive ? Theme.Palette.amber : Theme.Palette.textFaint))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.gpsHasFix ? "GPS FIX" : (gpsHeard || model.gpsTestActive ? "Searching…" : "Not tested yet"))
+                            .font(Theme.Font.body.weight(.bold))
+                            .foregroundStyle(model.gpsHasFix ? Theme.Palette.mint : Theme.Palette.text)
+                        Text(gpsHeard || model.gpsTestActive ? "\(model.gpsSats) satellites" : "Tap below, then step outside.")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).monospacedDigit()
+                    }
+                    Spacer()
+                }
+
+                if model.gpsHasFix, let la = model.gpsLastLat, let lo = model.gpsLastLon {
+                    Text(String(format: "%.5f, %.5f", la, lo))
+                        .font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.cyan).monospacedDigit()
+                }
+
+                Button { model.startGpsTest() } label: {
+                    HStack(spacing: 8) {
+                        if model.gpsTestActive { ProgressView().tint(.white) }
+                        else { Image(systemName: "location.viewfinder") }
+                        Text(model.gpsTestActive ? "Testing GPS…" : "Run GPS test")
+                    }
+                    .font(Theme.Font.body.weight(.semibold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                    .foregroundStyle(Theme.Palette.text)
+                }.disabled(model.gpsTestActive)
+
+                Text("Powers the band's GPS for ~2 min. Step outside with a clear view of the sky — satellites climb and you'll get a fix within ~30–60s. Indoors it may never lock.")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+            }
+        }
     }
 
     private var hero: some View {
