@@ -366,3 +366,116 @@ def estimate_series(
         "cadence_collision": collisions,
         "summary": summary,
     }
+
+
+# --- Time-domain peak tracker (the DEFAULT in-motion estimator) ------------------------------------
+# Why this is the default and the spectral notch (estimate_series) is not: measured on real
+# ECG-referenced data (PhysioNet Wrist-PPG-During-Exercise, Jarchi & Casson, scripts/proto_inmotion_
+# compare.py), the accel cadence-notch only beats simple peak detection for CYCLING (wrist still, legs
+# at a distinct frequency). For WALKING and RUNNING the wrist swings at a cadence whose harmonics
+# blanket the HR band, so notching deletes the pulse — the notch scored ~74-84 bpm MAE there vs ~12
+# (walk) / ~24 (run) for time-domain peak detection. So we detect beats on the pulse itself and apply
+# a causal continuity tracker; the notch path stays available for an explicit cycling caller.
+PEAKTRACK_MAX_JUMP_BPM = 12.0   # reject a per-window estimate that jumps more than this (half/double lock)
+
+
+def _detect_beats(ppg: np.ndarray, fs: float) -> np.ndarray:
+    """Beat times (s) over the whole signal. NeuroKit's PPG pipeline (Elgendi) when available — the
+    detector our HRV path uses and the proto validated — else a scipy band-pass + find_peaks fallback."""
+    ppg = np.nan_to_num(np.asarray(ppg, dtype=float))
+    try:
+        import neurokit2 as nk  # lazy: keeps the module importable without nk (e.g. unit tests)
+        _, info = nk.ppg_process(ppg, sampling_rate=fs)
+        pk = np.asarray(info.get("PPG_Peaks", []), dtype=float)
+        if pk.size >= 2:
+            return pk / fs
+    except Exception:
+        pass
+    from scipy.signal import find_peaks
+    sig = _bandpass(ppg, fs)
+    min_dist = max(1, int(fs / HR_HI_HZ))                 # >= 0.27 s apart (<=222 bpm)
+    pk, _ = find_peaks(sig, distance=min_dist, prominence=0.3 * np.std(sig) + 1e-9)
+    return pk.astype(float) / fs
+
+
+def peaktrack_series(
+    ppg: Sequence[float],
+    fs_ppg: float,
+    seed_bpm: Optional[float] = None,
+    win_s: float = WIN_S,
+    step_s: float = STEP_S,
+    min_confidence: float = MIN_CONFIDENCE,
+    max_jump_bpm: float = PEAKTRACK_MAX_JUMP_BPM,
+) -> dict:
+    """In-motion HR by time-domain peak detection + causal continuity tracking (no accelerometer).
+
+    Same return shape as estimate_series. Per window: HR = 60 / median(plausible inter-beat interval);
+    confidence = beat-interval regularity (a clean pulse is metronomic, motion scatters it). A causal
+    tracker rejects per-window jumps > max_jump_bpm (the peak detector's occasional half/double lock),
+    easing toward instead of snapping. Low-confidence windows are flagged unreliable (held, not trusted).
+    """
+    ppg = np.nan_to_num(np.asarray(ppg, dtype=float))
+    fs_ppg = float(fs_ppg)
+    win = int(round(win_s * fs_ppg))
+    step = max(1, int(round(step_s * fs_ppg)))
+    empty = {
+        "t": [], "bpm": [], "confidence": [], "reliable": [], "cadence_collision": [],
+        "summary": {"hr_mean": None, "hr_max": None, "hr_min": None, "coverage": 0.0, "n_windows": 0},
+    }
+    if win <= 0 or ppg.size < win:
+        return empty
+
+    beats = _detect_beats(ppg, fs_ppg)
+    ibi_lo, ibi_hi = 1.0 / HR_HI_HZ, 1.0 / HR_LO_HZ        # plausible IBI band (s): 0.27 .. 1.43
+
+    times: list[float] = []
+    raw_bpm: list[float] = []
+    confs: list[float] = []
+    for s in range(0, ppg.size - win + 1, step):
+        times.append(round((s + win / 2.0) / fs_ppg, 2))
+        lo, hi = s / fs_ppg, (s + win) / fs_ppg
+        seg = beats[(beats >= lo) & (beats < hi)]
+        bpm, conf = float("nan"), 0.0
+        if seg.size >= 3:
+            ibis = np.diff(seg)
+            ibis = ibis[(ibis >= ibi_lo) & (ibis <= ibi_hi)]
+            if ibis.size >= 2:
+                bpm = float(60.0 / np.median(ibis))
+                cv = float(np.std(ibis) / (np.mean(ibis) + 1e-9))   # interval regularity
+                conf = float(np.clip((1.0 - min(cv, 0.4) / 0.4) * 100.0, 0.0, 100.0))
+        raw_bpm.append(bpm)
+        confs.append(conf)
+
+    bpms: list[Optional[float]] = []
+    reliable: list[bool] = []
+    n_good = 0
+    prev = float(seed_bpm) if (seed_bpm is not None and np.isfinite(seed_bpm)) else None
+    for bpm, conf in zip(raw_bpm, confs):
+        ok = bool(np.isfinite(bpm)) and conf >= min_confidence
+        if np.isfinite(bpm):
+            if prev is None or abs(bpm - prev) <= max_jump_bpm:
+                prev = bpm
+            else:
+                prev = prev + np.sign(bpm - prev) * max_jump_bpm * 0.5   # ease toward, don't snap
+        if ok:
+            n_good += 1
+        bpms.append(round(float(prev), 1) if prev is not None and np.isfinite(prev) else None)
+        reliable.append(ok)
+
+    n = len(times)
+    rel_vals = [b for b, r in zip(bpms, reliable) if r and b is not None]
+    summary = {
+        "hr_mean": round(float(np.mean(rel_vals)), 1) if rel_vals else None,
+        "hr_max": round(float(np.max(rel_vals)), 1) if rel_vals else None,
+        "hr_min": round(float(np.min(rel_vals)), 1) if rel_vals else None,
+        "coverage": round(n_good / n, 3) if n else 0.0,
+        "n_windows": n,
+    }
+    return {
+        "t": times,
+        "bpm": bpms,
+        "confidence": confs,
+        "reliable": reliable,
+        "cadence_collision": [False] * n,
+        "summary": summary,
+    }

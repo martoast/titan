@@ -33,6 +33,28 @@ a vendor blob Espruino doesn't ship).
 
 ---
 
+## UPDATE 2026-06-27 (PM) — measured on real ECG data; in-motion approach reversed
+
+Downloaded the PhysioNet harness dataset and measured against ECG. **Big finding: our spectral
+accel-notch in-motion method was WORSE than plain peak-detection for walk/run** (median ~75–84 vs
+~12/24 bpm MAE), because the wrist-swing cadence harmonics blanket the HR band and the notch deletes
+the pulse. It only ever won for cycling. The Viterbi change (validated only on synthetic data) slightly
+worsened the real aggregate via confident lock-in.
+
+**Action taken:** time-domain **peak-tracking is now the DEFAULT** in-motion estimator
+(`inmotion_hr.peaktrack_series`, wired in `routers/inmotion_hr.py`); the accel-notch + Viterbi path
+(`estimate_series`) is reserved for an explicit `activity=cycle/bike` caller. Measured peaktrack: walk
+**12.3**, run **23.7**, worst-record **30.5** (vs notch's 134) — robust, no catastrophic failures.
+
+**BeliefPPG: prototyped, verdict NO.** Installed + ran the pretrained model on the same data. Typical
+(median) running ~19 (better than 24) and single digits on good-signal records, BUT bimodal —
+catastrophic blow-ups (78–113 bpm) on bad-signal subjects, *worse* than peaktrack on walking, and it's
+the wrong sensor domain (would need a fine-tuning data campaign on our band) + drags TensorFlow into the
+image. Modest, unreliable gain for large cost. Tool: `scripts/proto_inmotion_compare.py`.
+
+**The real fix for running + lifting is a BLE chest strap** — see `tasks/chest-strap/scope.md` (~2 days,
+no firmware, no new backend deps). Wrist PPG stays the rest/sleep/HRV signal it's good at.
+
 ## Implementation status (2026-06-27)
 
 **Shipped this session (Tier 0 + Tier 1 server-side):**

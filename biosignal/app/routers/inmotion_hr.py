@@ -29,6 +29,10 @@ class InMotionHRRequest(BaseModel):
     seed_bpm: Optional[float] = Field(default=None, description="Prior HR (e.g. resting HR) to seed the tracker.")
     min_confidence: float = Field(default=core.MIN_CONFIDENCE, ge=0, le=100,
                                   description="Window confidence below which HR is held (unreliable).")
+    activity: Optional[str] = Field(default=None, description=(
+        "Activity hint. 'cycle'/'bike' uses the accel cadence-notch tracker (wrist still, legs at a "
+        "distinct frequency — where it wins). Anything else (walk/run/strength/None) uses time-domain "
+        "peak tracking, which is materially more accurate there (validated on PhysioNet vs ECG)."))
 
 
 class InMotionHRResponse(BaseModel):
@@ -41,14 +45,29 @@ class InMotionHRResponse(BaseModel):
     summary: dict = Field(..., description="hr_mean/max/min over reliable windows, coverage, n_windows.")
 
 
+_CYCLING = {"cycle", "cycling", "bike", "biking", "ride"}
+
+
 @router.post("/inmotion-hr", response_model=InMotionHRResponse)
 async def process_inmotion_hr(req: InMotionHRRequest) -> InMotionHRResponse:
+    cycling = (req.activity or "").strip().lower() in _CYCLING
     try:
-        out = core.estimate_series(
-            ppg=req.ppg, fs_ppg=req.fs_ppg,
-            accel_x=req.accel_x, accel_y=req.accel_y, accel_z=req.accel_z, fs_acc=req.fs_acc,
-            seed_bpm=req.seed_bpm, min_confidence=req.min_confidence,
-        )
+        if cycling:
+            # Wrist still, legs at a distinct frequency → the accel cadence-notch + Viterbi wins here.
+            out = core.estimate_series(
+                ppg=req.ppg, fs_ppg=req.fs_ppg,
+                accel_x=req.accel_x, accel_y=req.accel_y, accel_z=req.accel_z, fs_acc=req.fs_acc,
+                seed_bpm=req.seed_bpm, min_confidence=req.min_confidence,
+            )
+            out["summary"]["method"] = "accel_notch"
+        else:
+            # Walk / run / strength / unknown: time-domain peak tracking — the cadence-notch deletes the
+            # pulse when wrist-swing harmonics blanket the HR band (PhysioNet vs ECG: ~12-24 vs ~74-84).
+            out = core.peaktrack_series(
+                ppg=req.ppg, fs_ppg=req.fs_ppg,
+                seed_bpm=req.seed_bpm, min_confidence=req.min_confidence,
+            )
+            out["summary"]["method"] = "peaktrack"
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"In-motion HR estimation failed: {exc}")
     return InMotionHRResponse(algo_version=ALGO_VERSION, **out)

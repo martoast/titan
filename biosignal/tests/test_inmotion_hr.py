@@ -83,6 +83,33 @@ def test_holds_last_good_under_noise():
     assert tail_bpm and all(abs(b - 120) < 25 for b in tail_bpm)  # held, not wild
 
 
+def test_peaktrack_recovers_clean_hr():
+    """Time-domain peak tracker (the default) recovers a clean 120 bpm pulse and flags it reliable."""
+    fs = 25.0
+    ppg, ax, ay, az, t = _synth(fs, dur=30, hr_hz=2.0, motion_hz=1.5, hr_amp=1.0, motion_amp=0.0)
+    out = core.peaktrack_series(ppg, fs)
+    assert out["summary"]["hr_mean"] is not None
+    assert abs(out["summary"]["hr_mean"] - 120) < 8, out["summary"]
+    assert out["summary"]["coverage"] > 0.5
+    assert len(out["bpm"]) == len(out["t"]) == len(out["confidence"]) == len(out["reliable"])
+
+
+def test_endpoint_defaults_to_peaktrack_and_cycling_uses_notch():
+    """No activity (or walk/run) → peaktrack; cycling → the accel-notch tracker. The router routes."""
+    fs = 25.0
+    ppg, ax, ay, az, t = _synth(fs, dur=20, hr_hz=2.2, motion_hz=1.4, hr_amp=0.5, motion_amp=0.8)
+    base = {"ppg": ppg.tolist(), "fs_ppg": fs,
+            "accel_x": ax.tolist(), "accel_y": ay.tolist(), "accel_z": az.tolist(), "fs_acc": fs,
+            "min_confidence": 20}
+    r_default = client.post("/process/inmotion-hr", json=base)
+    assert r_default.status_code == 200, r_default.text
+    assert r_default.json()["summary"]["method"] == "peaktrack"
+
+    r_bike = client.post("/process/inmotion-hr", json={**base, "activity": "cycle"})
+    assert r_bike.status_code == 200, r_bike.text
+    assert r_bike.json()["summary"]["method"] == "accel_notch"
+
+
 def test_http_contract():
     fs = 25.0
     ppg, ax, ay, az, t = _synth(fs, dur=20, hr_hz=2.2, motion_hz=1.4, hr_amp=0.5, motion_amp=0.8)
