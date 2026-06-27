@@ -657,6 +657,7 @@ final class AppModel: ObservableObject {
     private var runLastSignal: Date?
     private var runSawSport1 = false               // we've seen a sport-tagged frame this run (so a fall back to 0 = ended)
     private var runSportLostAt: Date?              // when the sport tag first fell to 0 this run (end debounce)
+    private var lastSportWas1 = false              // the previous HR frame's sport tag — so we start on the RISING edge only
     private var runTicker: Task<Void, Never>?
     private let runEndGapSec: TimeInterval = 90    // fallback only: frames stop entirely (disconnect) this long ⇒ end
 
@@ -699,17 +700,23 @@ final class AppModel: ObservableObject {
     /// transition is our prompt to close the live run immediately (instead of waiting out the 90s gap).
     private func ingestLiveHr(_ hr: HrReading) {
         if hr.sport == 1 {
-            startRunIfNeeded()
-            runSawSport1 = true
-            runSportLostAt = nil
-            runLastSignal = Date()
-        } else if runActive && runSawSport1 {
-            // Sport tag fell away. Confirm it's SUSTAINED (a few seconds of frames) before ending, so a
-            // single stray sport==0 reading can't end-and-restart the run in a loop.
-            if let lost = runSportLostAt {
-                if Date().timeIntervalSince(lost) > 4 { endRun(); return }
-            } else {
-                runSportLostAt = Date()
+            // Start ONLY on the rising edge (a workout just began). Starting on the level would re-open
+            // the run on the very next frame after you end it — while the band is still mid-workout and
+            // streaming sport==1 — which looped it back open forever. Now an ended run stays ended until
+            // the workout actually stops (sport→0) and a new one begins.
+            if !lastSportWas1 { startRunIfNeeded() }
+            lastSportWas1 = true
+            if runActive { runSawSport1 = true; runSportLostAt = nil; runLastSignal = Date() }
+        } else {
+            lastSportWas1 = false
+            if runActive && runSawSport1 {
+                // Sport tag fell away. Confirm it's SUSTAINED (a few seconds) before ending, so a single
+                // stray sport==0 reading can't end-and-restart the run.
+                if let lost = runSportLostAt {
+                    if Date().timeIntervalSince(lost) > 4 { endRun(); return }
+                } else {
+                    runSportLostAt = Date()
+                }
             }
         }
         if runActive {
@@ -782,6 +789,7 @@ final class AppModel: ObservableObject {
         Task { @MainActor [weak self] in
             for i in 0..<seconds {
                 guard let self else { return }
+                if i > 0 && !self.runActive { return }   // user ended the run → stop feeding
                 let f = Double(i) / Double(seconds)
                 let r = 220.0
                 let th = 2 * Double.pi * f
