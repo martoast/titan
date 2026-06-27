@@ -403,29 +403,56 @@ function writeLogFrame() {
   logMotion = 0;
 }
 
-// Morning sync: stream the whole ring (oldest segment → newest), erasing each as it's sent, then reset.
+// Morning sync — drain the ring oldest→newest, but in SMALL CHUNKS spread over time so a big backlog
+// (a long offline stretch, e.g. a few hours at the gym) NEVER blocks the watch's event loop or floods
+// the BLE buffer. We send a few frames, then yield via setTimeout; it self-schedules until the ring is
+// empty, and pauses cleanly on disconnect (resuming on the next connect). This replaces the old single
+// blocking loop that froze the watch while it dumped megabytes ("the fat dump" that bricked it).
+var FLUSH_CHUNK = 2;          // frames per tick
+var FLUSH_GAP_MS = 300;       // pause between ticks (~matches the ~2.5 KB/s BLE link, so the buffer never piles up)
+var flushTimer = null;        // self-scheduling drain timer (null = not draining)
+var flushK = 0;               // segments processed so far this drain
+var flushSeg = 0;             // segment index currently being drained
+var flushSf = null;           // the open StorageFile (holds read position across ticks)
+
 function flushLog() {
-  if (!state.connected) return;
-  writeLogFrame(); // flush any partial T2 frame first
-  for (var k = 1; k <= CFG.LOG_SEGMENTS; k++) {
-    var seg = (logSeg + k) % CFG.LOG_SEGMENTS;   // (logSeg+1) is the oldest; logSeg itself is newest
-    var sf;
-    try { sf = require("Storage").open(logName(seg), "r"); } catch (err) { continue; }
-    var line = sf.readLine();
-    while (line !== undefined) {
-      var trimmed = line.charCodeAt(line.length - 1) === 10 ? line.substr(0, line.length - 1) : line;
-      if (trimmed.length) {
-        try { Bluetooth.println(trimmed); state.framesSent++; }
-        catch (err) { return; } // link died mid-sync — keep what's left, retry next connect
-      }
-      line = sf.readLine();
+  if (!state.connected || flushTimer || flushSf) return;   // already draining (or no link)
+  writeLogFrame();             // flush any partial T2 frame into the ring first
+  flushK = 0; flushSf = null;
+  flushTimer = setTimeout(flushTick, 0);
+}
+
+function flushTick() {
+  flushTimer = null;
+  if (!state.connected) { flushSf = null; return; }        // link gone → pause; next connect resumes
+
+  if (!flushSf) {                                           // need to open the next segment
+    if (flushK >= CFG.LOG_SEGMENTS) {                       // whole ring drained → reset
+      logSeg = 0; logSegBytes = 0; state.logged = 0;
+      if (uiVisible) drawUI();
+      return;
     }
-    try { require("Storage").open(logName(seg), "r").erase(); } catch (e) {}
+    flushSeg = (logSeg + 1 + flushK) % CFG.LOG_SEGMENTS;    // (logSeg+1) is the oldest, logSeg the newest
+    try { flushSf = require("Storage").open(logName(flushSeg), "r"); } catch (e) { flushSf = null; }
+    if (!flushSf) { flushK++; flushTimer = setTimeout(flushTick, 0); return; }
   }
-  logSeg = 0;
-  logSegBytes = 0;
-  state.logged = 0;
-  if (uiVisible) drawUI();
+
+  for (var i = 0; i < FLUSH_CHUNK; i++) {
+    var line = flushSf.readLine();
+    if (line === undefined) {                               // segment exhausted → erase + advance
+      try { require("Storage").open(logName(flushSeg), "r").erase(); } catch (e) {}
+      flushSf = null; flushK++;
+      if (uiVisible) drawUI();
+      flushTimer = setTimeout(flushTick, FLUSH_GAP_MS);
+      return;
+    }
+    var trimmed = line.charCodeAt(line.length - 1) === 10 ? line.substr(0, line.length - 1) : line;
+    if (trimmed.length) {
+      try { Bluetooth.println(trimmed); state.framesSent++; }
+      catch (err) { flushSf = null; return; }               // BLE buffer full / link blip → stop, retry next connect
+    }
+  }
+  flushTimer = setTimeout(flushTick, FLUSH_GAP_MS);
 }
 
 // Reset the in-RAM frame to empty.
@@ -818,17 +845,18 @@ function emitStepFrame() {
 function onConnect() {
   if (state.connected) return;   // idempotent: the NRF event and the poll can both fire
   state.connected = true;
-  // Whoop-style always-on: once the app is paired/connected, stream automatically so HR flows and the
-  // auto-detector can see your workouts without a tap. (One tap still stops it if you want it off.)
-  if (!state.streaming) startStreaming();
-  reconcileHrm();   // a phone is here now → leave any duty-cycle, go continuous for real-time data
+  // NOTE: connecting NO LONGER force-starts REC. Recording is the user's choice (Heart face: 1 click =
+  // workout, 2 clicks = capture on/off) and persists across reboots via the titan.run pref — so turning
+  // it off STAYS off. Auto-starting on every connect meant a stray gym session kept logging and then
+  // tried to dump it all on connect, freezing the watch.
+  if (state.streaming) reconcileHrm();   // already recording → a phone is here, go continuous for real-time data
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
   // Sync today's step total right away (captures a walk taken while the phone was left behind).
   setTimeout(emitStepFrame, 1800);
-  // Entering the live/workout path: sample accel at 25 Hz for the classifier.
+  // Match accel cadence to the current state (workout vs idle).
   applyAccelRate();
-  // Give the link a beat to settle, then sync the overnight log (morning sync).
+  // Give the link a beat to settle, then drain the overnight log IN CHUNKS (never a blocking dump).
   setTimeout(flushLog, 1500);
   if (uiVisible) drawUI();
 }
@@ -1697,6 +1725,7 @@ E.on("kill", function () {
   if (altTimer) clearInterval(altTimer);
   if (stepTimer) clearInterval(stepTimer);
   if (swTimer) clearInterval(swTimer);
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; flushSf = null; }   // stop a chunked drain
   stopRestDuty();
   if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
