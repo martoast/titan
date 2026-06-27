@@ -50,6 +50,7 @@ class MobileRunsController extends Controller
             'relative_effort' => $session->relative_effort,
             'avg_hr' => $session->avg_hr,
             'max_hr' => $session->max_hr,
+            'workout_hrv_ms' => $session->workout_hrv_ms !== null ? (float) $session->workout_hrv_ms : null,
             'calories_kcal' => $session->calories_kcal,
             'vo2max' => $session->vo2max !== null ? (float) $session->vo2max : null,
             'hrr_bpm' => $session->hrr_bpm !== null ? (float) $session->hrr_bpm : null,

@@ -34,9 +34,10 @@ public final class StrapManager: NSObject {
         public let rssi: Int
     }
 
-    /// A heart-rate reading (bpm) with the phone-clock timestamp it arrived (ms since epoch, the same
-    /// base the band syncs to, so it lines up in the workout assembler).
-    public var onHr: ((UInt8, UInt64) -> Void)?
+    /// A heart-rate reading: bpm, any beat-to-beat RR intervals in the same packet (ms; empty if the
+    /// strap doesn't send them), and the phone-clock timestamp it arrived (ms since epoch — the same
+    /// base the band syncs to, so it lines up in the workout assembler). RR drives in-workout HRV.
+    public var onHr: ((UInt8, [Double], UInt64) -> Void)?
     public var onConnectionChange: ((Bool) -> Void)?
     public var onBattery: ((Int) -> Void)?
     public var onPaired: ((Bool) -> Void)?
@@ -104,17 +105,29 @@ public final class StrapManager: NSObject {
         ])
     }
 
-    /// Parse a Heart Rate Measurement (0x2A37): flags byte, then 8- or 16-bit HR. (RR intervals, if
-    /// present, follow — reserved for a future in-workout-HRV pass; we read bpm here.)
-    private func parseHr(_ d: Data) -> UInt8? {
+    /// Parse a Heart Rate Measurement (0x2A37): flags byte, then 8- or 16-bit HR, optional energy-
+    /// expended (2 B), then optional RR intervals (uint16, 1/1024 s). Returns (bpm, RR in ms). RR is
+    /// empty when the strap doesn't include it — keeps the strap usable for HR alone.
+    private func parseHr(_ d: Data) -> (bpm: UInt8, rrMs: [Double])? {
         guard d.count >= 2 else { return nil }
         let flags = d[0]
+        var i = 1
+        let bpm: Int
         if flags & 0x01 == 0 {
-            return d[1]                                   // uint8 bpm
+            bpm = Int(d[i]); i += 1
+        } else {
+            guard i + 2 <= d.count else { return nil }
+            bpm = Int(d[i]) | (Int(d[i + 1]) << 8); i += 2
         }
-        guard d.count >= 3 else { return nil }
-        let bpm16 = UInt16(d[1]) | (UInt16(d[2]) << 8)    // uint16 bpm
-        return UInt8(min(bpm16, 255))
+        if flags & 0x08 != 0 { i += 2 }                   // energy expended present → skip 2 bytes
+        var rr: [Double] = []
+        if flags & 0x10 != 0 {                            // RR intervals present
+            while i + 2 <= d.count {
+                let raw = Int(d[i]) | (Int(d[i + 1]) << 8); i += 2
+                rr.append(Double(raw) / 1024.0 * 1000.0)  // 1/1024 s → ms
+            }
+        }
+        return (UInt8(min(bpm, 255)), rr)
     }
 }
 
@@ -187,8 +200,8 @@ extension StrapManager: CBPeripheralDelegate {
             if let pct = d.first { onBattery?(Int(pct)) }
             return
         }
-        if ch.uuid == Self.HR_MEASUREMENT, let bpm = parseHr(d), bpm > 0 {
-            onHr?(bpm, UInt64(Date().timeIntervalSince1970 * 1000))
+        if ch.uuid == Self.HR_MEASUREMENT, let r = parseHr(d), r.bpm > 0 {
+            onHr?(r.bpm, r.rrMs, UInt64(Date().timeIntervalSince1970 * 1000))
         }
     }
 }

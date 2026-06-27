@@ -252,6 +252,7 @@ struct RunDetailView: View {
             if let gain = d?.elevation_gain_m { tile(imperial ? "\(Int(Double(gain) * 3.28084))" : "\(gain)", "Elev gain", Theme.Palette.text, imperial ? "ft" : "m") }
             if let hr = d?.avg_hr { tile("\(hr)", "Avg HR", Theme.Palette.text, "bpm") }
             if let hr = d?.max_hr { tile("\(hr)", "Max HR", Theme.Palette.text, "bpm") }
+            if let hrv = d?.workout_hrv_ms { tile("\(Int(hrv.rounded()))", "HRV", Theme.Palette.cyan, "ms") }
             if let re = d?.relative_effort { tile("\(re)", "Effort", Theme.Palette.pink) }
             if let c = d?.calories_kcal { tile("\(c)", "Calories", Theme.Palette.text, "kcal") }
             if let v = d?.vo2max { tile(String(format: "%.1f", v), "VO₂max", Theme.Palette.mint) }

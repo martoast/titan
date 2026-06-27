@@ -155,6 +155,8 @@ class SealActivityJob implements ShouldQueue
         $fs = 25;
         $start = $end = null;
         $windowHrSource = null;   // 'chest_strap' if a paired strap drove HR (reference-grade)
+        $rr = [];                 // strap beat-to-beat RR intervals (ms) → in-workout HRV (optional)
+        $workoutHrv = null;
 
         foreach ($session as $ingestion) {
             $w = $this->loadWindow($ingestion);
@@ -176,6 +178,7 @@ class SealActivityJob implements ShouldQueue
             $unit = $w['accel_unit'] ?? $unit;
             $fs = (int) ($w['accel_fs'] ?? $fs);
             $windowHrSource = $w['hr_source'] ?? $windowHrSource;
+            $this->append($rr, $w['hr_rr_ms'] ?? []);
             $start = $start ?? ($ingestion->window_start ?? null);
             $end = $ingestion->window_end ?? $end;
         }
@@ -200,6 +203,20 @@ class SealActivityJob implements ShouldQueue
             // A paired chest strap drove HR — reference-grade (immune to the motion/grip that wreck
             // wrist PPG). Trust the window's hr_bpm outright; skip the PPG recompute entirely.
             $hrSource = 'chest_strap';
+            // Bonus: if the strap sent beat-to-beat RR intervals, compute in-workout HRV (RMSSD) — a
+            // parasympathetic-load signal the wrist can't give under motion. Optional: straps that omit
+            // RR (or too few beats) just leave it null.
+            if (count($rr) >= 30) {
+                try {
+                    $h = $biosignal->processHrv(['ibi_ms' => array_map('floatval', $rr)]);
+                    $rmssd = $h['metrics']['rmssd'] ?? null;
+                    if ($rmssd !== null) {
+                        $workoutHrv = round((float) $rmssd, 2);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('[Biosignal] workout HRV failed', ['profile_id' => $profile->id, 'error' => $e->getMessage()]);
+                }
+            }
         } else {
             $im = $this->inMotionHr($profile, $start, $end, $biosignal);
             if ($im !== null) {
@@ -315,6 +332,7 @@ class SealActivityJob implements ShouldQueue
                 'max_hr' => $maxHr,
                 'hr_source' => $hrSource,
                 'hr_quality' => $hrQuality,
+                'workout_hrv_ms' => $workoutHrv,
                 'hr_zones' => $hrZones,
                 'trimp' => $sess['trimp'] ?? null,
                 'calories_kcal' => isset($sess['calories_kcal']) ? (int) round($sess['calories_kcal']) : null,

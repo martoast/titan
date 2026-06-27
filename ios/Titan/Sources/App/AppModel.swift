@@ -324,14 +324,14 @@ final class AppModel: ObservableObject {
             if !ok { self?.error = "Couldn't find a heart-rate strap. Wet the electrodes, put it on, and try again." }
         } }
         s.onCandidates = { [weak self] list in Task { @MainActor in self?.strapCandidates = list } }
-        s.onHr = { [weak self] bpm, t in Task { @MainActor in self?.ingestStrapHr(bpm, t) } }
+        s.onHr = { [weak self] bpm, rr, t in Task { @MainActor in self?.ingestStrapHr(bpm, rr, t) } }
         strap = s
         strapPaired = s.isBound
     }
 
     /// A live strap reading: drive the HR display and, during a workout, feed the SAME assembler the
     /// band HR feeds (so the sealed workout gets reference-grade, chest-strap-tagged HR).
-    private func ingestStrapHr(_ bpm: UInt8, _ t: UInt64) {
+    private func ingestStrapHr(_ bpm: UInt8, _ rr: [Double], _ t: UInt64) {
         strapBpm = Int(bpm)
         liveBpm = Int(bpm)                                  // strap wins the live readout when present
         if runActive {
@@ -339,7 +339,7 @@ final class AppModel: ObservableObject {
             runMaxBpm = max(runMaxBpm, Int(bpm))
             runLastSignal = Date()                          // a strap-only treadmill run stays alive
         }
-        router?.ingestStrapHr(bpm: bpm, t: t)
+        router?.ingestStrapHr(bpm: bpm, rr: rr, t: t)       // rr (may be empty) → in-workout HRV at seal
     }
 
     var isStrapPaired: Bool { strap?.isBound ?? false }

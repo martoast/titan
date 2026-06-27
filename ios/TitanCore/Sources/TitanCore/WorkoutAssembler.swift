@@ -18,6 +18,8 @@ public struct WorkoutWindow: Codable, Equatable {
     public let src: String            // "banglejs2"
     public let hr_source: String?     // "chest_strap" when a paired strap drove HR (reference-grade);
                                       // nil = wrist (server may recompute from raw PPG). Optional → omitted when nil.
+    public let hr_rr_ms: [Int]?       // beat-to-beat RR intervals (ms) from a strap → in-workout HRV.
+                                      // nil/omitted when no strap RR (wrist PPG can't give these under motion).
 }
 
 /// Accumulates the live frames of a workout and emits `kind=workout` windows. Port of the JS
@@ -31,6 +33,7 @@ public final class WorkoutAssembler {
     private var active = false
     private var accel: [AccelSample] = []
     private var hr: [HrReading] = []
+    private var rr: [(t: UInt64, ms: Double)] = []   // strap beat-to-beat intervals (ms) → in-workout HRV
     private var gps: [GpsFix] = []
     private var lastActivityT: UInt64 = 0
     private var winStart: UInt64 = 0
@@ -40,7 +43,7 @@ public final class WorkoutAssembler {
     }
 
     private func reset() {
-        active = false; accel = []; hr = []; gps = []; lastActivityT = 0; winStart = 0
+        active = false; accel = []; hr = []; rr = []; gps = []; lastActivityT = 0; winStart = 0
     }
 
     private func gapFinalize(_ t: UInt64) -> WorkoutWindow? {
@@ -56,6 +59,7 @@ public final class WorkoutAssembler {
         let w = build(t)
         accel = accel.filter { $0.t >= t }
         hr = hr.filter { $0.t >= t }
+        rr = rr.filter { $0.t >= t }
         gps = gps.filter { $0.t >= t }
         winStart = gps.first?.t ?? t
         return w
@@ -92,9 +96,12 @@ public final class WorkoutAssembler {
     /// strap at rest must not fabricate a workout); it provides reference-grade HR that wins over the
     /// wrist PPG when the window is built, and bumps the activity clock so the strap keeps a no-GPS
     /// session (treadmill, lifting) alive between the band's sport frames.
-    @discardableResult public func addStrapHr(bpm: UInt8, t: UInt64) -> WorkoutWindow? {
+    @discardableResult public func addStrapHr(bpm: UInt8, rr: [Double] = [], t: UInt64) -> WorkoutWindow? {
         guard active else { return nil }
         hr.append(HrReading(t: t, bpm: bpm, conf: 100, sport: 1, source: .chestStrap))
+        for ms in rr where ms >= 250 && ms <= 2000 {   // physiologic guard (30–240 bpm) before HRV
+            self.rr.append((t: t, ms: ms))
+        }
         lastActivityT = max(lastActivityT, t)
         return periodic(t)
     }
@@ -124,7 +131,9 @@ public final class WorkoutAssembler {
     }
 
     private func build(_ endT: UInt64) -> WorkoutWindow? {
-        Self.buildWorkoutWindow(accel: accel, hr: hr, gps: gps, startT: winStart, endT: endT, minMs: MIN_MS)
+        let rrMs = rr.filter { $0.t >= winStart && $0.t <= endT }.map { $0.ms }
+        return Self.buildWorkoutWindow(accel: accel, hr: hr, gps: gps, rrMs: rrMs,
+                                       startT: winStart, endT: endT, minMs: MIN_MS)
     }
 
     private static let iso: ISO8601DateFormatter = {
@@ -135,6 +144,7 @@ public final class WorkoutAssembler {
 
     /// Pure builder — port of `buildWorkoutWindow`.
     public static func buildWorkoutWindow(accel: [AccelSample], hr: [HrReading], gps: [GpsFix],
+                                          rrMs: [Double] = [],
                                           startT: UInt64, endT: UInt64, minMs: UInt64) -> WorkoutWindow? {
         guard endT >= startT, endT - startT >= minMs, accel.count >= 25 else { return nil }
         let ax = accel.map { Int($0.ax) }, ay = accel.map { Int($0.ay) }, az = accel.map { Int($0.az) }
@@ -186,7 +196,8 @@ public final class WorkoutAssembler {
             accel_fs: accelFs, accel_unit: "mg",
             hr_bpm: hrBySec, accel_counts: counts,
             gps: .init(speed_kmh: speedBySec, grade: grade, track: track),
-            src: "banglejs2", hr_source: hrSource)
+            src: "banglejs2", hr_source: hrSource,
+            hr_rr_ms: rrMs.isEmpty ? nil : rrMs.map { Int($0.rounded()) })
     }
 
     /// Bucket timestamped events into per-second slots, carrying last value forward; nil→0.

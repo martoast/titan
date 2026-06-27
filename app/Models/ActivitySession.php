@@ -16,7 +16,7 @@ class ActivitySession extends Model
     protected $fillable = [
         'profile_id', 'source', 'visibility', 'started_at', 'ended_at', 'duration_min',
         'activity_type', 'activity_confidence',
-        'distance_km', 'distance_source', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'hr_zones', 'trimp', 'calories_kcal',
+        'distance_km', 'distance_source', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'workout_hrv_ms', 'hr_zones', 'trimp', 'calories_kcal',
         'vo2max', 'fitness_level', 'hrr_bpm', 'updated_via',
         // Run route + analytics (biosignal /process/route).
         'route_polyline', 'route_bounds', 'moving_time_s', 'avg_pace_s_per_km', 'gap_s_per_km',
@@ -31,6 +31,7 @@ class ActivitySession extends Model
             'activity_confidence' => 'float',
             'distance_km' => 'float',
             'hr_quality' => 'float',
+            'workout_hrv_ms' => 'float',
             'hr_zones' => 'array',
             'trimp' => 'float',
             'vo2max' => 'float',

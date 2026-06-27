@@ -4,8 +4,10 @@
 > ActivitySealTest 10/10 + WorkoutReaction/StableHrMax 7/7. Files: `StrapManager.swift` (new),
 > `HrReading.source` + `WorkoutAssembler.addStrapHr`/`hr_source` (TitanCore), `FrameRouter.ingestStrapHr`,
 > `AppModel` strap wiring + pairing, `DevicesView.strapCard`, `project.yml` permission copy,
-> `SealActivityJob` chest-strap precedence, `WorkoutCoach` note. (RR-interval in-workout HRV = the one
-> deferred bonus.) iOS ships via your Xcode/TestFlight build; server auto-deploys.
+> `SealActivityJob` chest-strap precedence, `WorkoutCoach` note. **In-workout HRV (RR intervals →
+> RMSSD) now also built** (StrapManager parses RR, rides the window as `hr_rr_ms`, seal computes RMSSD
+> via `/process/hrv` → `activity_sessions.workout_hrv_ms`, shown as an "HRV" tile on the run detail) —
+> optional, null when the strap omits RR. iOS ships via your Xcode/TestFlight build; server auto-deploys.
 
 **Date:** 2026-06-27
 **Why:** Measured on real ECG data (`tasks/hr-accuracy/findings.md`), wrist PPG during running is ~24 bpm

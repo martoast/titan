@@ -42,8 +42,8 @@ public final class FrameRouter {
     /// Inject a chest-strap HR reading into the SAME workout assembler the band's HR feeds, so a
     /// workout recorded with a strap seals with reference-grade HR (tagged `chest_strap`) instead of
     /// motion-corrupted wrist PPG. Only supplements an open workout — never opens one.
-    public func ingestStrapHr(bpm: UInt8, t: UInt64) {
-        if let w = wa.addStrapHr(bpm: bpm, t: t) { submit(.workout(w)) }
+    public func ingestStrapHr(bpm: UInt8, rr: [Double] = [], t: UInt64) {
+        if let w = wa.addStrapHr(bpm: bpm, rr: rr, t: t) { submit(.workout(w)) }
     }
 
     /// Feed a chunk of bytes from a CoreBluetooth notification.

@@ -554,6 +554,7 @@ struct RunDetail: Codable, Equatable, Identifiable {
     let relative_effort: Int?
     let avg_hr: Int?
     let max_hr: Int?
+    let workout_hrv_ms: Double?
     let calories_kcal: Int?
     let vo2max: Double?
     let hrr_bpm: Double?
