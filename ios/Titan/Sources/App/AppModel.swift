@@ -864,10 +864,28 @@ final class AppModel: ObservableObject {
         if notifyBand { band?.endRunOnBand() }
     }
 
+    /// Worst horizontal accuracy (m) we'll trust. Coarse cell/Wi-Fi fixes at run start (often 65–1400 m)
+    /// and urban-canyon outliers zigzag the route and inflate distance, so we keep them OUT of the live
+    /// track AND the sealed/server route entirely. 50 m is generous (real GNSS outdoors is ~5–15 m).
+    private static let maxFixAccuracyM = 50.0
+    /// Reject an impossible jump from the last good fix (GPS spike) before it reaches the map.
+    private static let maxFixJumpM = 200.0
+
     /// A phone GPS fix (during a run, or a GPS test). Feeds the live tracker + the GPS-test screen, and
     /// — while a run is active — the workout assembler, so the saved run gets a real route + distance.
     private func handlePhoneFix(_ loc: CLLocation) {
+        // Always surface the latest accuracy/heartbeat for the GPS-test screen ("finding… ±N m")…
         gpsAccuracyM = loc.horizontalAccuracy
+        gpsLastFrameAt = Date()
+        // …but only ACT on a usable fix. Negative accuracy = invalid; too-imprecise = would corrupt the
+        // route. This single gate cleans both the live MapKit trace and the Mapbox-rendered sealed route.
+        let acc = loc.horizontalAccuracy
+        guard acc > 0, acc <= Self.maxFixAccuracyM else { return }
+        // Drop a teleport spike: if it's implausibly far from the last good point, it's GPS error.
+        if let la = runLastLat, let lo = runLastLon,
+           Self.haversineM(la, lo, loc.coordinate.latitude, loc.coordinate.longitude) > Self.maxFixJumpM {
+            return
+        }
         let t = UInt64(max(0, loc.timestamp.timeIntervalSince1970) * 1000)
         let fix = GpsFix(t: t, sats: 0,
                          speedKmh: max(0, loc.speed) * 3.6,

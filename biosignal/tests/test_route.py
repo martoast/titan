@@ -67,6 +67,23 @@ def test_too_short_track_is_invalid():
     assert route.analyze([])["valid"] is False
 
 
+def test_drop_spikes_removes_gps_outlier():
+    # A realistic ~3 m/s track with one injected teleport spike (~5 km jump for a single sample).
+    track = [{"t": i * 1000, "lat": 37.7694 + i * 0.00003, "lon": -122.4862, "alt": 0.0} for i in range(20)]
+    track[10] = {"t": 10_000, "lat": 37.82, "lon": -122.40, "alt": 0.0}   # spike
+    clean = route.drop_spikes(track)
+    assert len(clean) == 19                                   # exactly the spike dropped
+    assert all(p["lat"] < 37.78 for p in clean)              # the outlier is gone
+    # And analyze() (which calls drop_spikes) gives a sane distance, not one inflated by the 5 km jump.
+    assert route.analyze(track)["distance_km"] < 0.2
+
+
+def test_drop_spikes_keeps_real_movement():
+    # Fast but legitimate (cycling ~15 m/s) must NOT be dropped.
+    track = [{"t": i * 1000, "lat": 37.0 + i * 0.000135, "lon": -122.0, "alt": 0.0} for i in range(10)]
+    assert len(route.drop_spikes(track)) == 10
+
+
 def test_polyline_encoding_matches_reference():
     # Google's canonical example.
     poly = route.encode_polyline([(38.5, -120.2), (40.7, -120.95), (43.252, -126.453)])

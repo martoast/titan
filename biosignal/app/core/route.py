@@ -45,6 +45,24 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_R * math.asin(min(1.0, math.sqrt(a)))
 
 
+def drop_spikes(track: Sequence[dict], max_speed_mps: float = 50.0) -> List[dict]:
+    """Drop GPS outliers — a point implying an impossible speed from the last KEPT point is sensor
+    error, not movement, and would spike the polyline / inflate distance. 50 m/s (180 km/h) is well
+    above any run/walk/bike, so real movement is never dropped. Defense-in-depth: the phone already
+    accuracy-gates fixes, but this guards the route against any stray point from any source."""
+    pts = [p for p in track if p.get("lat") is not None and p.get("lon") is not None]
+    if len(pts) < 2:
+        return pts
+    out = [pts[0]]
+    for p in pts[1:]:
+        dt = (p["t"] - out[-1]["t"]) / 1000.0
+        d = haversine(out[-1]["lat"], out[-1]["lon"], p["lat"], p["lon"])
+        if dt > 0 and d / dt > max_speed_mps:
+            continue
+        out.append(p)
+    return out
+
+
 def cumulative_distance(track: Sequence[dict]) -> List[float]:
     """Cumulative distance (metres) at each track point; first point = 0."""
     cum = [0.0]
@@ -317,7 +335,7 @@ def analyze(track: Sequence[dict], hr1: Optional[Sequence[float]] = None,
     """Full run-route analysis. ``track`` = [{t(ms), lat, lon, alt?}, …] (coord-bearing fixes only,
     ascending time). ``hr1`` = 1 Hz HR aligned to the run start. ``units`` picks the headline split
     unit (we always compute both km and mile splits)."""
-    track = [p for p in track if p.get("lat") is not None and p.get("lon") is not None]
+    track = drop_spikes(track)   # coord-only + impossible-jump rejection → clean route/distance/polyline
     if len(track) < 2:
         return {"valid": False, "reason": "insufficient_track"}
 
