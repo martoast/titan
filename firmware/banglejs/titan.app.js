@@ -23,16 +23,20 @@
  *
  * --- HRM-raw field assumptions (IMPORTANT) ----------------------------------
  * Espruino's 'HRM-raw' event object `e` is firmware/sensor dependent. On
- * Bangle.js 2 (VC31B) the fields seen in the wild are:
- *   e.raw   : raw ADC value of the current PPG channel (integer)
- *   e.vcPPG : VC31 "filtered/processed" PPG value (integer, the one the HRM
- *             algorithm consumes) — present on VC31B builds
- *   e.filt  : an additional filtered value on some builds
- *   e.adc   : sometimes present (raw ADC, alt name)
- * We prefer e.vcPPG (the documented raw-PPG field in the hardware plan), fall
- * back to e.raw, then e.filt/e.adc, then 0. If your firmware exposes a
- * different field, adjust PPG_FIELDS below. We send whichever we picked plus a
- * channel tag so the server knows the provenance.
+ * Bangle.js 2 (VC31B), per the Espruino source (jswrap_bangle.c / hrm_vc31.c):
+ *   e.raw   : the DE-GLITCHED PPG value, == (vcPPG + vcPPGoffs) * 2. The offset
+ *             cancels the discontinuities that the sensor's auto-exposure / LED
+ *             current steps inject — this is the field to reprocess server-side.
+ *   e.vcPPG : the bare sensor ADC reading. JUMPS whenever the auto-exposure/gain
+ *             changes (a step artifact every few seconds), so it is NOT clean for
+ *             our spectral/HRV math without also tracking e.vcPPGoffs.
+ *   e.filt  : Espruino's own band-passed value — 16-bit and CLIPS, so it loses
+ *             peaks under good perfusion. Avoid for server reprocessing.
+ *   e.adc   : sometimes present (alt raw ADC name).
+ * We prefer e.raw (de-glitched), fall back to e.vcPPG, then e.filt/e.adc, then 0.
+ * Community consensus (espruino #6309/#7232, majorinput.co.uk) is: use `raw`, not
+ * `filt` (clips) and not bare `vcPPG` (exposure-step jumps). We send whichever we
+ * picked plus a channel tag so the server knows the provenance.
  *
  * The 'HRM' event (not raw) gives e.bpm + e.confidence — we use that only for
  * the on-watch UI, never for the data stream.
@@ -44,7 +48,9 @@
 // ----- Configuration --------------------------------------------------------
 var CFG = {
   // Which HRM-raw fields to try, in priority order. First present wins.
-  PPG_FIELDS: ["vcPPG", "raw", "filt", "adc"],
+  // `raw` first: it is (vcPPG+vcPPGoffs)*2, de-glitched across auto-exposure/gain
+  // steps (vcPPG alone jumps; filt clips at 16-bit). See the field notes above.
+  PPG_FIELDS: ["raw", "vcPPG", "filt", "adc"],
   // How many samples to accumulate before emitting one BLE frame.
   // Smaller = lower latency, larger = less BLE/base64 overhead. 12 samples
   // (~0.5 s of PPG) keeps each frame comfortably under the 244-byte ATT MTU.
@@ -141,6 +147,13 @@ var CFG = {
   SLEEP_DUTY: true,                  // master switch for overnight sleep duty-cycling
   SLEEP_DUTY_ON_MS: 30000,           // 30 s clean HRV burst (settle + a solid RR series)
   SLEEP_DUTY_PERIOD_MS: 180000,      // one burst every 3 min (~17% duty); widen ON if HRV looks thin
+  // Accel-gate the bursts (Whoop's "sample only when still"): wrist PPG is only HRV-grade when the wrist
+  // is still, and a burst fired mid-toss just spends LED energy on noise the server rejects. If we're
+  // moving when a burst is due, SKIP it and re-check soon (cheap) rather than burn a full 30 s ON window;
+  // the next still moment captures the reading. Over a night there are ample still windows, so this both
+  // saves battery AND raises signal quality. motionEMA is the always-on accel signal (gating is free).
+  SLEEP_STILL_MOTION: 0.07,          // motionEMA below this = still enough for a clean HRV burst
+  SLEEP_DUTY_RETRY_MS: 25000,        // if moving when a burst is due, re-check this soon (not a full period)
 
   // Overnight the screen should stay dark through tossing/turning — the LCD backlight is ~17 mA (~57x
   // idle) and wrist-twist against a pillow can fire it hundreds of times a night. During a sleep
@@ -981,6 +994,14 @@ function sleepModeActive() {
 
 function sleepDutyTick() {
   if (!sleepModeActive()) { stopSleepDuty(); return; }
+  // Accel-gate: only burst when the wrist is still (clean HRV) — if moving, defer and re-check shortly
+  // instead of wasting a 30 s ON window on motion noise. sleepDutyOnTimer doubles as the retry timer
+  // here (we're not in an ON window when moving, so there's no off-timer to clobber).
+  if (motionEMA > CFG.SLEEP_STILL_MOTION) {
+    if (sleepDutyOnTimer) clearTimeout(sleepDutyOnTimer);
+    sleepDutyOnTimer = setTimeout(sleepDutyTick, CFG.SLEEP_DUTY_RETRY_MS);
+    return;
+  }
   try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
   applyHrmMode();   // 25 Hz rest cadence → clean RR + raw PPG for HRV during the burst
   if (sleepDutyOnTimer) clearTimeout(sleepDutyOnTimer);

@@ -44,6 +44,14 @@ N_ACCEL_PEAKS = 3    # number of motion frequencies (cadence + harmonics) to sup
 TRACK_SIGMA_BPM = 12.0   # continuity prior width — how far HR may plausibly move between windows
 COLLISION_HZ = 0.12  # if |HR - dominant cadence| < this, flag a cadence collision (HR ≈ motion)
 MIN_CONFIDENCE = 55  # below this a window is unreliable → hold last good (tunable; see validation)
+# Viterbi global-tracking weights (estimate_series). A window's pull on the HR path scales with its own
+# spectral peakiness (a confident window pins the path; a noisy/ambiguous one lets the smoothness prior
+# carry the estimate THROUGH it — the principled replacement for greedy hold-last-good). OBS_GAIN sets
+# how strongly a clean peak can overcome the continuity cost of moving (tuned so a sharp peak can follow
+# a real HR change but noise cannot drag the path onto a motion harmonic). SEED_SIGMA_BPM is the prior
+# width around a supplied seed HR for the first window.
+OBS_GAIN = 12.0
+SEED_SIGMA_BPM = 20.0
 
 
 def _bandpass(x: np.ndarray, fs: float) -> np.ndarray:
@@ -140,6 +148,65 @@ def estimate_window(
     }
 
 
+def _suppressed_psd(
+    ppg_win: np.ndarray, fs_ppg: float,
+    ax: np.ndarray, ay: np.ndarray, az: np.ndarray, fs_acc: float,
+) -> tuple[np.ndarray, Optional[np.ndarray], float]:
+    """One window → (freqs Hz, accel-suppressed in-band PPG PSD, dominant cadence Hz).
+
+    This is the spectral front-end shared by estimate_window and the Viterbi tracker: band-pass the
+    PPG, take its Welch PSD over the HR band, and soft-notch the accelerometer's cadence + harmonics.
+    Returns psd=None when the window has no usable spectrum (the Viterbi pass treats that as a
+    no-information window and lets continuity carry the estimate through it).
+    """
+    fp, pp = _band_spectrum(_bandpass(ppg_win, fs_ppg), fs_ppg)
+    if pp.size < 3 or not np.any(pp > 0):
+        return fp, None, float("nan")
+    pp_supp = pp.copy()
+    cadence_hz = float("nan")
+    ax = np.nan_to_num(np.asarray(ax, dtype=float))
+    ay = np.nan_to_num(np.asarray(ay, dtype=float))
+    az = np.nan_to_num(np.asarray(az, dtype=float))
+    if ax.size and ay.size and az.size:
+        mag = np.sqrt(ax ** 2 + ay ** 2 + az ** 2)
+        fa, pa = _band_spectrum(_bandpass(mag, fs_acc), fs_acc)
+        if pa.size:
+            top = fa[np.argsort(pa)[-N_ACCEL_PEAKS:]]
+            cadence_hz = float(fa[int(np.argmax(pa))])
+            for mf in top:
+                pp_supp = pp_supp * (1 - NOTCH_DEPTH * np.exp(-((fp - mf) ** 2) / (2 * NOTCH_SIGMA ** 2)))
+    if not np.any(pp_supp > 0):
+        return fp, None, cadence_hz
+    return fp, pp_supp, cadence_hz
+
+
+def _parabolic_bpm(psd: np.ndarray, bpm_grid: np.ndarray, k: int) -> float:
+    """Sub-bin peak location (parabolic interpolation over the 3 bins around k) → bpm. Removes the
+    Welch bin-quantization error from the chosen peak. Falls back to the bin center at the edges."""
+    if k <= 0 or k >= psd.size - 1:
+        return float(bpm_grid[k])
+    y0, y1, y2 = float(psd[k - 1]), float(psd[k]), float(psd[k + 1])
+    denom = y0 - 2 * y1 + y2
+    if denom == 0:
+        return float(bpm_grid[k])
+    offset = 0.5 * (y0 - y2) / denom
+    offset = max(-1.0, min(1.0, offset))
+    return float(bpm_grid[k] + offset * (bpm_grid[1] - bpm_grid[0]))
+
+
+def _confidence_at(psd: np.ndarray, fp: np.ndarray, k: int, cadence_hz: float) -> tuple[float, bool]:
+    """Confidence (0-100) of the peak at bin k = spectral concentration within ±COLLISION_HZ, halved on
+    a cadence collision. Same definition as estimate_window, evaluated at the Viterbi-chosen bin."""
+    peak_f = float(fp[k])
+    near = np.abs(fp - peak_f) <= COLLISION_HZ
+    concentration = float(psd[near].sum() / (psd.sum() + 1e-12))
+    confidence = float(np.clip(concentration * 140.0, 0.0, 100.0))
+    collision = bool(np.isfinite(cadence_hz) and abs(peak_f - cadence_hz) <= COLLISION_HZ)
+    if collision:
+        confidence *= 0.5
+    return round(confidence, 1), collision
+
+
 def estimate_series(
     ppg: Sequence[float],
     fs_ppg: float,
@@ -152,11 +219,19 @@ def estimate_series(
     step_s: float = STEP_S,
     min_confidence: float = MIN_CONFIDENCE,
 ) -> dict:
-    """Sliding-window in-motion HR over a whole workout window.
+    """Sliding-window in-motion HR over a whole workout window, tracked with a GLOBAL Viterbi pass.
 
-    Returns per-window arrays plus a summary. Low-confidence windows HOLD the previous good value
-    and are flagged `reliable=False` (we never emit a fabricated number); `coverage` is the fraction
-    of windows that cleared the confidence bar on their own.
+    Instead of greedily committing each window to its own spectral peak (and holding-last-good when a
+    window is poor — which freezes through cadence collisions and drifts on dropouts), we treat the HR
+    track as the most-likely path through the time × frequency trellis: each window's accel-suppressed
+    PSD is the observation likelihood (weighted by its own peakiness, so a clean window pins the path
+    and a noisy one defers to continuity), and a Gaussian transition prior (TRACK_SIGMA_BPM) enforces
+    that HR changes slowly. Because the path sees the whole recording, it bridges a bad window using the
+    good windows on BOTH sides and won't lock onto a motion harmonic — the WFPV/BeliefPPG result.
+
+    Per-window arrays follow the path; `reliable` still flags low-confidence windows (we never claim a
+    fabricated number is trustworthy), and `coverage` is the fraction of windows that clear the bar on
+    their own. The chosen peak is parabolically interpolated for sub-bin (sub-Welch-quantization) bpm.
     """
     ppg = np.nan_to_num(np.asarray(ppg, dtype=float))
     fs_ppg = float(fs_ppg)
@@ -169,51 +244,119 @@ def estimate_series(
     step = max(1, int(round(step_s * fs_ppg)))
     awin = int(round(win_s * fs_acc))
 
+    empty = {
+        "t": [], "bpm": [], "confidence": [], "reliable": [], "cadence_collision": [],
+        "summary": {"hr_mean": None, "hr_max": None, "hr_min": None, "coverage": 0.0, "n_windows": 0},
+    }
+    if win <= 0 or ppg.size < win:
+        return empty
+
+    # --- Pass 1: per-window accel-suppressed spectra on a COMMON frequency grid ----------------------
     times: list[float] = []
-    bpms: list[float] = []
+    psds: list[Optional[np.ndarray]] = []
+    cadences: list[float] = []
+    fp_ref: Optional[np.ndarray] = None
+    for s in range(0, ppg.size - win + 1, step):
+        times.append(round((s + win / 2.0) / fs_ppg, 2))
+        a0 = int(round((s / fs_ppg) * fs_acc))
+        a1 = min(ax.size, a0 + awin) if ax.size else 0
+        fp, psd, cad = _suppressed_psd(
+            ppg[s:s + win], fs_ppg,
+            ax[a0:a1] if ax.size else ax,
+            ay[a0:a1] if ay.size else ay,
+            az[a0:a1] if az.size else az,
+            fs_acc,
+        )
+        if psd is not None and fp_ref is None:
+            fp_ref = fp
+        psds.append(psd)
+        cadences.append(cad)
+
+    n = len(times)
+    # No window produced a usable spectrum → all unknown.
+    if fp_ref is None:
+        return {
+            "t": times, "bpm": [None] * n, "confidence": [0.0] * n,
+            "reliable": [False] * n, "cadence_collision": [False] * n,
+            "summary": {"hr_mean": None, "hr_max": None, "hr_min": None, "coverage": 0.0, "n_windows": n},
+        }
+
+    fp = fp_ref
+    k_bins = fp.size
+    bpm_grid = fp * 60.0
+
+    # Observation matrix: obs[t, k] = OBS_GAIN · peakiness_t² · normalized_PSD_t[k]. The SQUARED
+    # peakiness is what separates a clean window (sharp peak ⇒ strong pull on the path) from a
+    # noisy/ambiguous one (flat spectrum ⇒ ~zero pull, so the transition prior carries the estimate
+    # THROUGH it — the principled, interpolated replacement for greedy hold-last-good; without the
+    # square, residual noise peakiness accumulates over many windows and can drag the path off-track).
+    # A missing or grid-mismatched window contributes a flat (zero) row → pure continuity.
+    obs = np.zeros((n, k_bins), dtype=float)
+    peakiness = np.zeros(n, dtype=float)
+    for t, psd in enumerate(psds):
+        if psd is None or psd.size != k_bins:
+            continue
+        total = psd.sum()
+        if total <= 0:
+            continue
+        norm = psd / total
+        peak = float(norm.max())
+        peakiness[t] = peak
+        obs[t] = OBS_GAIN * (peak ** 2) * norm
+
+    # --- Pass 2: Viterbi over the window sequence ---------------------------------------------------
+    diff = bpm_grid[None, :] - bpm_grid[:, None]            # diff[j, k] = bpm[k] - bpm[j]
+    trans = -(diff ** 2) / (2.0 * TRACK_SIGMA_BPM ** 2)     # log transition prior (rows=from, cols=to)
+
+    delta = obs[0].copy()
+    if seed_bpm is not None and np.isfinite(seed_bpm):
+        delta = delta - ((bpm_grid - float(seed_bpm)) ** 2) / (2.0 * SEED_SIGMA_BPM ** 2)
+    psi = np.zeros((n, k_bins), dtype=int)
+    for t in range(1, n):
+        scored = delta[:, None] + trans                    # K×K: best previous bin j for each next bin k
+        psi[t] = np.argmax(scored, axis=0)
+        delta = scored[psi[t], np.arange(k_bins)] + obs[t]
+
+    path = np.zeros(n, dtype=int)
+    path[-1] = int(np.argmax(delta))
+    for t in range(n - 1, 0, -1):
+        path[t - 1] = psi[t, path[t]]
+
+    # --- Pass 3: read out bpm / confidence along the path ------------------------------------------
+    bpms: list[Optional[float]] = []
     confs: list[float] = []
     reliable: list[bool] = []
     collisions: list[bool] = []
-
-    prev = float(seed_bpm) if (seed_bpm is not None and np.isfinite(seed_bpm)) else None
-    last_good = prev
     n_good = 0
-
-    if ppg.size >= win and win > 0:
-        # Map each PPG window's time span onto the accel stream (the two run at independent rates).
-        for s in range(0, ppg.size - win + 1, step):
-            t_center = (s + win / 2.0) / fs_ppg
-            a0 = int(round((s / fs_ppg) * fs_acc))
-            a1 = min(ax.size, a0 + awin) if ax.size else 0
-            est = estimate_window(
-                ppg[s:s + win], fs_ppg,
-                ax[a0:a1] if ax.size else ax,
-                ay[a0:a1] if ay.size else ay,
-                az[a0:a1] if az.size else az,
-                fs_acc, prev,
-            )
-            bpm, conf = est["bpm"], est["confidence"]
-            ok = bool(np.isfinite(bpm)) and conf >= min_confidence
+    last_good: Optional[float] = None
+    for t in range(n):
+        k = int(path[t])
+        psd = psds[t]
+        if psd is not None and psd.size == k_bins and peakiness[t] > 0:
+            conf, collision = _confidence_at(psd, fp, k, cadences[t])
+            ok = conf >= min_confidence
             if ok:
+                bpm = round(_parabolic_bpm(psd, bpm_grid, k), 1)   # trusted → sub-bin refine
                 last_good = bpm
-                prev = bpm  # only advance the tracker on a trusted estimate (don't chase noise)
                 n_good += 1
-                out_bpm = bpm
             else:
-                out_bpm = last_good if last_good is not None else None
-            times.append(round(t_center, 2))
-            bpms.append(round(float(out_bpm), 1) if out_bpm is not None and np.isfinite(out_bpm) else None)
-            confs.append(conf)
-            reliable.append(ok)
-            collisions.append(bool(est["cadence_collision"]))
+                bpm = round(float(bpm_grid[k]), 1)                 # not trusted → the smooth held path value
+        else:
+            conf, collision, ok = 0.0, False, False
+            bpm = round(float(bpm_grid[k]), 1)                     # no spectrum → carried by continuity
+        bpms.append(bpm)
+        confs.append(conf)
+        reliable.append(ok)
+        collisions.append(collision)
+        _ = last_good  # path is already continuous; last_good kept only for parity/debugging
 
     rel_vals = [b for b, r in zip(bpms, reliable) if r and b is not None]
     summary = {
         "hr_mean": round(float(np.mean(rel_vals)), 1) if rel_vals else None,
         "hr_max": round(float(np.max(rel_vals)), 1) if rel_vals else None,
         "hr_min": round(float(np.min(rel_vals)), 1) if rel_vals else None,
-        "coverage": round(n_good / len(bpms), 3) if bpms else 0.0,
-        "n_windows": len(bpms),
+        "coverage": round(n_good / n, 3) if n else 0.0,
+        "n_windows": n,
     }
     return {
         "t": times,

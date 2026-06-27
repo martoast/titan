@@ -123,6 +123,29 @@ PPG_PROC_HZ = 250  # interpolate low-rate PPG up to this before peak detection
 SLEEP_EPOCH_SEC = 30  # per-epoch grid for sleep-staging features
 
 
+def _upslope_fiducials(clean: np.ndarray, peaks: np.ndarray) -> np.ndarray:
+    """Beat-timing reference at the MAX-UPSLOPE point, not the systolic apex.
+
+    The systolic peak is the flattest part of the pulse (low dV/dt), so sample noise translates into
+    large horizontal jitter there — inflating RMSSD. The steepest-rise point (first-derivative maximum
+    on the upstroke into each beat) has the highest dV/dt and is the lowest-jitter fiducial vs the ECG
+    R-peak (fiducial-point literature: PMC9280335, arXiv 2301.02906). For each beat we take the
+    derivative maximum in the interval (previous systolic peak, this systolic peak]. One fiducial per
+    beat after the first; returns an empty array if it can't (caller falls back to the systolic peaks).
+    """
+    peaks = np.asarray(peaks, dtype=int)
+    if clean.size < 3 or peaks.size < 2:
+        return np.empty(0, dtype=int)
+    d = np.gradient(clean)
+    fids: list[int] = []
+    for i in range(1, peaks.size):
+        a, b = int(peaks[i - 1]), int(peaks[i])
+        if b - a < 2 or a < 0 or b > d.size:
+            continue
+        fids.append(a + int(np.argmax(d[a:b])))
+    return np.asarray(fids, dtype=int)
+
+
 def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float, Optional[dict]]:
     """Raw PPG → IBI (ms) using nk.ppg_process (band-pass 0.5-8 Hz, Elgendi peaks).
 
@@ -150,7 +173,13 @@ def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float,
     peaks_idx = np.asarray(info.get("PPG_Peaks", []), dtype=int)
     if peaks_idx.size < 2:
         return np.array([]), 0.0, None
-    ibi_ms = np.diff(peaks_idx) / proc_rate * 1000.0
+    # Beat timing off the MAX-UPSLOPE fiducial (lower jitter than the flat systolic apex → cleaner
+    # RMSSD). Falls back to the systolic peaks if the derivative pass can't produce a usable series.
+    clean_sig = np.asarray(signals.get("PPG_Clean", []), dtype=float)
+    fid_idx = _upslope_fiducials(clean_sig, peaks_idx) if clean_sig.size else np.empty(0, dtype=int)
+    if fid_idx.size < 2:
+        fid_idx = peaks_idx
+    ibi_ms = np.diff(fid_idx) / proc_rate * 1000.0
     quality = np.asarray(signals.get("PPG_Quality", []), dtype=float)
     quality_mean = float(np.nanmean(quality)) if quality.size else 0.0
 
@@ -161,8 +190,9 @@ def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float,
     dur_sec = ppg.size / proc_rate if proc_rate else 0.0
     if dur_sec >= 1.0:
         n_ep = max(1, int(round(dur_sec / SLEEP_EPOCH_SEC)))
-        peak_t = peaks_idx / proc_rate  # beat times (s)
-        ibi_t = peak_t[1:]              # each ibi_ms[i] ends at peak_t[i+1]
+        peak_t = peaks_idx / proc_rate  # systolic beat times (s) — for coarse per-epoch HR
+        fid_t = fid_idx / proc_rate     # upslope fiducial times — these align with ibi_ms above
+        ibi_t = fid_t[1:] if fid_t.size >= 2 else peak_t[1:]  # each ibi_ms[i] ends at fid_t[i+1]
         ep_hr, ep_motion, ep_rmssd = [], [], []
         for e in range(n_ep):
             lo, hi = e * SLEEP_EPOCH_SEC, (e + 1) * SLEEP_EPOCH_SEC
