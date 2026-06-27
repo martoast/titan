@@ -154,6 +154,7 @@ class SealActivityJob implements ShouldQueue
         $unit = 'ms2';
         $fs = 25;
         $start = $end = null;
+        $windowHrSource = null;   // 'chest_strap' if a paired strap drove HR (reference-grade)
 
         foreach ($session as $ingestion) {
             $w = $this->loadWindow($ingestion);
@@ -174,6 +175,7 @@ class SealActivityJob implements ShouldQueue
             }
             $unit = $w['accel_unit'] ?? $unit;
             $fs = (int) ($w['accel_fs'] ?? $fs);
+            $windowHrSource = $w['hr_source'] ?? $windowHrSource;
             $start = $start ?? ($ingestion->window_start ?? null);
             $end = $ingestion->window_end ?? $end;
         }
@@ -194,16 +196,22 @@ class SealActivityJob implements ShouldQueue
         // on-chip bpm — now far better itself, since the firmware forces sport mode during workouts.
         $hrSource = $hr1 ? 'onchip' : null;
         $hrQuality = null;
-        $im = $this->inMotionHr($profile, $start, $end, $biosignal);
-        if ($im !== null) {
-            $cov = (float) ($im['summary']['coverage'] ?? 0.0);
-            $mean = $im['summary']['hr_mean'] ?? null;
-            if ($mean !== null && $cov >= self::MIN_HR_COVERAGE) {
-                $imSeries = $this->expandTo1Hz($im['bpm'] ?? [], self::HR_WINDOW_STEP_S);
-                if ($imSeries !== []) {
-                    $hr1 = $imSeries;
-                    $hrSource = 'ppg_inmotion';
-                    $hrQuality = round($cov, 3);
+        if ($windowHrSource === 'chest_strap') {
+            // A paired chest strap drove HR — reference-grade (immune to the motion/grip that wreck
+            // wrist PPG). Trust the window's hr_bpm outright; skip the PPG recompute entirely.
+            $hrSource = 'chest_strap';
+        } else {
+            $im = $this->inMotionHr($profile, $start, $end, $biosignal);
+            if ($im !== null) {
+                $cov = (float) ($im['summary']['coverage'] ?? 0.0);
+                $mean = $im['summary']['hr_mean'] ?? null;
+                if ($mean !== null && $cov >= self::MIN_HR_COVERAGE) {
+                    $imSeries = $this->expandTo1Hz($im['bpm'] ?? [], self::HR_WINDOW_STEP_S);
+                    if ($imSeries !== []) {
+                        $hr1 = $imSeries;
+                        $hrSource = 'ppg_inmotion';
+                        $hrQuality = round($cov, 3);
+                    }
                 }
             }
         }

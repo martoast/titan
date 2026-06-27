@@ -71,7 +71,11 @@ class WorkoutCoach
             default => 'How\'d it go? Tell me what you did and I\'ll log the details.',
         };
 
-        $hr = ($s->hr_source === 'ppg_inmotion') ? ' (HR motion-corrected from your raw signal)' : '';
+        $hr = match ($s->hr_source) {
+            'chest_strap' => ' (HR from your chest strap)',
+            'ppg_inmotion' => ' (HR motion-corrected from your raw signal)',
+            default => '',
+        };
 
         return [
             'title' => "{$emoji} {$type} done",

@@ -21,11 +21,16 @@ public struct GpsFix: Equatable {
         self.t = t; self.sats = sats; self.speedKmh = speedKmh; self.alt = alt; self.lat = lat; self.lon = lon
     }
 }
+/// Where an HR reading came from. Wrist PPG is motion-corrupted under load; a chest strap is
+/// reference-grade, so the workout builder prefers strap readings and tags the window accordingly.
+public enum HrSource: String, Equatable { case wristPpg, chestStrap }
+
 public struct HrReading: Equatable {
     public let t: UInt64; public let bpm: UInt8; public let conf: UInt8
     public let sport: UInt8   // band sport-mode tag: 0 rest · 1 run/general (incl. lifting) · 2 bike
-    public init(t: UInt64, bpm: UInt8, conf: UInt8, sport: UInt8 = 0) {
-        self.t = t; self.bpm = bpm; self.conf = conf; self.sport = sport
+    public let source: HrSource
+    public init(t: UInt64, bpm: UInt8, conf: UInt8, sport: UInt8 = 0, source: HrSource = .wristPpg) {
+        self.t = t; self.bpm = bpm; self.conf = conf; self.sport = sport; self.source = source
     }
 }
 public struct AccelSample: Equatable {

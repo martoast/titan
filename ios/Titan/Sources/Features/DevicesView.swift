@@ -81,6 +81,8 @@ struct DevicesView: View {
             // Phone GPS (band has none) — shown regardless of band connection.
             if model.isBandPaired { gpsTestCard }
 
+            strapCard
+
             if !model.isBandPaired {
                 if model.pairing {
                     GlassCard {
@@ -210,6 +212,98 @@ struct DevicesView: View {
 
                     Text("Your band has no GPS, so runs are mapped by your iPhone. Tap to confirm it can find you — a pin drops in a few seconds.")
                         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+        }
+    }
+
+    // Chest-strap HR (Polar H10 etc.) — accurate running + lifting HR the wrist can't do. Independent
+    // of the band; both run at once. The band stays your 24/7 rest/sleep/recovery sensor.
+    @ViewBuilder private var strapCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                if model.strapPairing {
+                    SectionHeader(title: "Pick your strap")
+                    Text("Put the strap on (wet the electrodes) so it powers up, then tap it below.")
+                        .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+                    if model.strapCandidates.isEmpty {
+                        HStack(spacing: Theme.Space.s) {
+                            ProgressView().tint(Theme.Palette.indigo)
+                            Text("Searching for heart-rate straps…")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        }.padding(.vertical, 6)
+                    } else {
+                        ForEach(model.strapCandidates) { cand in
+                            Button { model.bindStrap(cand.id) } label: {
+                                HStack(spacing: Theme.Space.m) {
+                                    Image(systemName: "heart.circle.fill").foregroundStyle(Theme.Palette.pink)
+                                    Text(cand.name).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                                    Spacer()
+                                    SignalBars(rssi: cand.rssi)
+                                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+                                }
+                                .padding(.vertical, 11).padding(.horizontal, Theme.Space.m)
+                                .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                            }.buttonStyle(PressCard())
+                        }
+                    }
+                    Button { model.cancelStrapPairing() } label: {
+                        Text("Cancel").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    }.frame(maxWidth: .infinity)
+                } else if model.isStrapPaired {
+                    SectionHeader(title: "Heart-rate strap",
+                                  trailing: model.strapConnected ? "CONNECTED" : "searching")
+                    HStack(spacing: Theme.Space.m) {
+                        Image(systemName: model.strapConnected ? "heart.fill" : "heart.slash")
+                            .font(.title2)
+                            .foregroundStyle(model.strapConnected ? Theme.Palette.pink : Theme.Palette.textFaint)
+                            .symbolEffect(.pulse, options: model.strapConnected ? .repeating : .nonRepeating)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.strapConnected ? "Connected" : "Waiting for strap")
+                                .font(Theme.Font.body.weight(.bold))
+                                .foregroundStyle(model.strapConnected ? Theme.Palette.pink : Theme.Palette.text)
+                            Text(model.strapConnected
+                                 ? "Used for workout HR. Wrist stays on recovery."
+                                 : "Put it on (wet electrodes) — it connects automatically.")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer()
+                        if model.strapConnected, let bpm = model.strapBpm {
+                            HStack(spacing: 5) {
+                                Text("\(bpm)").font(Theme.Font.num(24)).contentTransition(.numericText())
+                                Text("BPM").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            }
+                        }
+                    }
+                    if let batt = model.strapBattery {
+                        HStack(spacing: 6) {
+                            Image(systemName: batteryIcon(batt)).foregroundStyle(batteryColor(batt))
+                            Text("\(batt)%").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).monospacedDigit()
+                            Text("strap").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        }
+                    }
+                    Button { model.forgetStrap() } label: {
+                        Text("Forget strap").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    }
+                } else {
+                    SectionHeader(title: "Add a heart-rate strap", trailing: "optional")
+                    Text("Wrist HR is great for rest and sleep, but a chest strap (Polar H10, Garmin, Wahoo…) is far more accurate for running and lifting. Pair one and Titan uses it automatically during workouts.")
+                        .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+                    Button {
+                        Haptic.rigid()
+                        model.startStrapPairing()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "heart.text.square.fill")
+                            Text("Pair a strap")
+                        }
+                        .font(Theme.Font.body.weight(.semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                        .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                        .foregroundStyle(Theme.Palette.text)
+                    }
                 }
             }
         }

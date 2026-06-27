@@ -50,6 +50,13 @@ final class AppModel: ObservableObject {
     @Published var bandIdle = false        // power-saving: we released the live link, band is duty-cycling
     @Published var bandBattery: Int?       // band battery % (BLE Battery Service), last-known
     @Published var waveform: [Double] = []  // recent PPG for the live trace
+    // Chest-strap (workout HR): a separate BLE device from the band; both run at once.
+    @Published var strapPaired = false
+    @Published var strapConnected = false
+    @Published var strapBpm: Int?          // last live HR from the strap
+    @Published var strapBattery: Int?
+    @Published var strapPairing = false
+    @Published var strapCandidates: [StrapManager.StrapCandidate] = []
     @Published var error: String?
     @Published var loading = false
 
@@ -92,6 +99,7 @@ final class AppModel: ObservableObject {
     private var band: BandManager?
     private var router: FrameRouter?
     private var syncQueue: SyncQueue?
+    private var strap: StrapManager?
 
     var isLoggedIn: Bool { user != nil }
 
@@ -107,6 +115,7 @@ final class AppModel: ObservableObject {
         if let d = try? await api.dashboard() { dashboard = d }
         startBandIfPaired()
         bandBound = band?.isBound ?? false
+        startStrap()                                  // resume a paired chest strap (independent of the band)
         await loadHealthStatus()
         if healthConnected { await syncAppleHealth() }   // keep Apple Health fresh on launch
     }
@@ -295,6 +304,70 @@ final class AppModel: ObservableObject {
         liveBpm = nil
         error = nil
         await pairBand()
+    }
+
+    // MARK: chest strap (workout HR)
+
+    /// Create the strap manager once (independent of the band / server creds). Idempotent.
+    private func startStrap() {
+        guard strap == nil else { return }
+        let s = StrapManager()
+        s.onConnectionChange = { [weak self] up in Task { @MainActor in
+            self?.strapConnected = up
+            if !up { self?.strapBpm = nil }
+        } }
+        s.onBattery = { [weak self] pct in Task { @MainActor in self?.strapBattery = pct } }
+        s.onPaired = { [weak self] ok in Task { @MainActor in
+            self?.strapPairing = false
+            self?.strapCandidates = []
+            self?.strapPaired = ok
+            if !ok { self?.error = "Couldn't find a heart-rate strap. Wet the electrodes, put it on, and try again." }
+        } }
+        s.onCandidates = { [weak self] list in Task { @MainActor in self?.strapCandidates = list } }
+        s.onHr = { [weak self] bpm, t in Task { @MainActor in self?.ingestStrapHr(bpm, t) } }
+        strap = s
+        strapPaired = s.isBound
+    }
+
+    /// A live strap reading: drive the HR display and, during a workout, feed the SAME assembler the
+    /// band HR feeds (so the sealed workout gets reference-grade, chest-strap-tagged HR).
+    private func ingestStrapHr(_ bpm: UInt8, _ t: UInt64) {
+        strapBpm = Int(bpm)
+        liveBpm = Int(bpm)                                  // strap wins the live readout when present
+        if runActive {
+            runLiveBpm = Int(bpm)
+            runMaxBpm = max(runMaxBpm, Int(bpm))
+            runLastSignal = Date()                          // a strap-only treadmill run stays alive
+        }
+        router?.ingestStrapHr(bpm: bpm, t: t)
+    }
+
+    var isStrapPaired: Bool { strap?.isBound ?? false }
+
+    func startStrapPairing() {
+        startStrap()
+        strapCandidates = []
+        strapPairing = true
+        strap?.startPairing()
+    }
+
+    func bindStrap(_ id: UUID) {
+        Haptic.success()
+        strap?.bind(to: id)
+    }
+
+    func cancelStrapPairing() {
+        strap?.cancelPairing()
+        strapPairing = false
+        strapCandidates = []
+    }
+
+    func forgetStrap() {
+        strap?.unbind()
+        strapPaired = false
+        strapConnected = false
+        strapBpm = nil
+        strapBattery = nil
     }
 
     /// Paired = we have server creds AND a band bound to this phone's BLE identity.

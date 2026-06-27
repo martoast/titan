@@ -16,6 +16,8 @@ public struct WorkoutWindow: Codable, Equatable {
     public let accel_counts: [Int]    // per-30s activity
     public let gps: Gps
     public let src: String            // "banglejs2"
+    public let hr_source: String?     // "chest_strap" when a paired strap drove HR (reference-grade);
+                                      // nil = wrist (server may recompute from raw PPG). Optional → omitted when nil.
 }
 
 /// Accumulates the live frames of a workout and emits `kind=workout` windows. Port of the JS
@@ -86,6 +88,17 @@ public final class WorkoutAssembler {
 
     public func addHr(_ h: HrReading) { if active { hr.append(h) } }
 
+    /// A chest-strap HR reading. Supplements an ALREADY-OPEN workout (it never opens one — wearing a
+    /// strap at rest must not fabricate a workout); it provides reference-grade HR that wins over the
+    /// wrist PPG when the window is built, and bumps the activity clock so the strap keeps a no-GPS
+    /// session (treadmill, lifting) alive between the band's sport frames.
+    @discardableResult public func addStrapHr(bpm: UInt8, t: UInt64) -> WorkoutWindow? {
+        guard active else { return nil }
+        hr.append(HrReading(t: t, bpm: bpm, conf: 100, sport: 1, source: .chestStrap))
+        lastActivityT = max(lastActivityT, t)
+        return periodic(t)
+    }
+
     /// T5 with a sport-mode tag — the band's "I'm in a workout" signal. This is what OPENS a workout
     /// when you're connected INDOORS (no GPS/T4, and T6 is suppressed while connected): the band keeps
     /// sending sport>0 HR throughout the session, and the live T1 accel fills it in via addAccel.
@@ -128,7 +141,13 @@ public final class WorkoutAssembler {
         let accelFs = max(1, Int((Double(accel.count) * 1000 / Double(max(endT - startT, 1))).rounded()))
         let secs = max(1, Int((Double(endT - startT) / 1000).rounded(.up)))
 
-        let hrBySec = perSecond(hr.map { ($0.t, Double($0.bpm)) }, startT, secs).map { Int($0) }
+        // Prefer chest-strap HR when present — it's reference-grade and immune to the motion/grip that
+        // wreck wrist PPG. If ANY strap reading is in the window, build HR from strap readings only and
+        // tag the window so the server trusts it outright (skips the PPG recompute).
+        let strapHr = hr.filter { $0.source == .chestStrap }
+        let hrForSeries = strapHr.isEmpty ? hr : strapHr
+        let hrSource = strapHr.isEmpty ? nil : "chest_strap"
+        let hrBySec = perSecond(hrForSeries.map { ($0.t, Double($0.bpm)) }, startT, secs).map { Int($0) }
         let speedBySec = perSecond(gps.map { ($0.t, $0.speedKmh) }, startT, secs)
         let altBySec = perSecond(gps.map { ($0.t, $0.alt) }, startT, secs)
 
@@ -167,7 +186,7 @@ public final class WorkoutAssembler {
             accel_fs: accelFs, accel_unit: "mg",
             hr_bpm: hrBySec, accel_counts: counts,
             gps: .init(speed_kmh: speedBySec, grade: grade, track: track),
-            src: "banglejs2")
+            src: "banglejs2", hr_source: hrSource)
     }
 
     /// Bucket timestamped events into per-second slots, carrying last value forward; nil→0.

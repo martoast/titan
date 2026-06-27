@@ -31,7 +31,7 @@ targets:
         UIBackgroundModes:
           - bluetooth-central
           - location
-        NSBluetoothAlwaysUsageDescription: "Titan connects to your recovery band to sync your biosignals in the background."
+        NSBluetoothAlwaysUsageDescription: "Titan connects to your recovery band and an optional heart-rate chest strap to sync your biosignals in the background."
         NSLocationWhenInUseUsageDescription: "Titan uses your location during a run to map your route and measure distance and pace. The band has no GPS, so your phone does it."
         NSMicrophoneUsageDescription: "Titan uses your microphone so you can dictate messages to your coach by voice."
         NSCameraUsageDescription: "Titan uses your camera to snap meals for instant macros and to capture progress photos."
