@@ -5,6 +5,7 @@ import SwiftUI
 struct DevicesView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -158,13 +159,64 @@ struct DevicesView: View {
         .titanScreen("Band", glow: model.bandConnected ? Theme.Palette.mint : Theme.Palette.indigo)
     }
 
-    // Run GPS test. The band has no GPS chip — runs are mapped by the PHONE — so this confirms the
-    // iPhone's location is working: tap, and a pin drops on the map in a few seconds.
+    // Run GPS test. The band has no GPS chip — runs are mapped by the PHONE — so this proves, on the spot,
+    // that a real run will track: permission granted, Precise Location on, and a stream of run-grade fixes.
+    private var gpsIcon: String {
+        if model.gpsTestActive { return "location.magnifyingglass" }
+        switch model.gpsReadiness {
+        case .ready?:      return "checkmark.circle.fill"
+        case .denied?:     return "location.slash.fill"
+        case .preciseOff?: return "scope"
+        case .weakSignal?: return "exclamationmark.triangle.fill"
+        case nil:          return "location"
+        }
+    }
+    private var gpsTint: Color {
+        if model.gpsTestActive { return Theme.Palette.amber }
+        switch model.gpsReadiness {
+        case .ready?:                  return Theme.Palette.mint
+        case .denied?, .preciseOff?:   return Theme.Palette.pink
+        case .weakSignal?:             return Theme.Palette.amber
+        case nil:                      return Theme.Palette.textFaint
+        }
+    }
+    private var gpsTitle: String {
+        if model.gpsTestActive { return "Locating…" }
+        switch model.gpsReadiness {
+        case .ready?:      return "Ready to run"
+        case .denied?:     return "Location off"
+        case .preciseOff?: return "Precise Location off"
+        case .weakSignal?: return "Weak signal"
+        case nil:          return "Not tested yet"
+        }
+    }
     private var gpsSubText: String {
-        if model.locationDenied { return "Tap Settings to allow location." }
-        if model.gpsHasFix { return model.gpsAccuracyM.map { "Accurate to ±\(Int($0)) m" } ?? "Located" }
-        if model.gpsTestActive { return "Finding your location…" }
-        return "Tap to check your phone's GPS."
+        if model.gpsTestActive {
+            return model.gpsAccuracyM.map { "Finding you… ±\(Int($0)) m" } ?? "Finding your location…"
+        }
+        switch model.gpsReadiness {
+        case .ready(let acc)?: return "Your runs will map. Locked to ±\(Int(acc)) m."
+        case .denied?:         return "Allow location so runs can map."
+        case .preciseOff?:     return "Turn on Precise Location for run mapping."
+        case .weakSignal(let best)?:
+            return best.map { "Best was ±\(Int($0)) m — too coarse. Try outside." }
+                ?? "No fix — try outside with a clear view of the sky."
+        case nil: return "Tap to confirm a run will track before you go."
+        }
+    }
+    /// What the user should DO when the test fails (shown below the status, color-matched to the verdict).
+    private var gpsGuidance: (text: String, settings: Bool)? {
+        if model.gpsTestActive { return nil }
+        switch model.gpsReadiness {
+        case .denied?:
+            return ("Enable Location for Titan in Settings → Privacy → Location Services, then test again.", true)
+        case .preciseOff?:
+            return ("In Settings → Titan → Location, turn ON “Precise Location”. Without it, runs map to the wrong block.", true)
+        case .weakSignal?:
+            return ("Step outside with a clear view of the sky and test again — walls and roofs block GPS.", false)
+        default:
+            return nil
+        }
     }
     private var gpsTestCard: some View {
         GlassCard {
@@ -172,47 +224,91 @@ struct DevicesView: View {
                 SectionHeader(title: "Run GPS (phone)", trailing: model.gpsTestActive ? "TESTING" : nil)
 
                 HStack(spacing: Theme.Space.m) {
-                    Image(systemName: model.locationDenied ? "location.slash.fill" : (model.gpsHasFix ? "location.fill" : (model.gpsTestActive ? "location.magnifyingglass" : "location")))
-                        .font(.title2)
-                        .foregroundStyle(model.locationDenied ? Theme.Palette.pink : (model.gpsHasFix ? Theme.Palette.mint : (model.gpsTestActive ? Theme.Palette.amber : Theme.Palette.textFaint)))
+                    Image(systemName: gpsIcon)
+                        .font(.title2).foregroundStyle(gpsTint)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(model.locationDenied ? "Location off" : (model.gpsHasFix ? "Located" : (model.gpsTestActive ? "Locating…" : "Not tested yet")))
+                        Text(gpsTitle)
                             .font(Theme.Font.body.weight(.bold))
-                            .foregroundStyle(model.gpsHasFix ? Theme.Palette.mint : Theme.Palette.text)
+                            .foregroundStyle(gpsTint == Theme.Palette.textFaint ? Theme.Palette.text : gpsTint)
                         Text(gpsSubText)
                             .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     }
                     Spacer()
+                    if model.gpsTestActive {
+                        Text("\(model.gpsTestProgress)/3")
+                            .font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.amber).monospacedDigit()
+                    }
                 }
 
-                if model.gpsHasFix, let la = model.gpsLastLat, let lo = model.gpsLastLon {
+                // Proof it's your REAL, live location — the map centres on the actual fix (no placeholder),
+                // and the readout (coords · accuracy · "updated Ns ago") visibly ticks as fixes stream in.
+                // Only ever shown for a fix captured DURING this test (never stale run/demo data), so the
+                // map can't mislead you with a location you're not actually at.
+                if (model.gpsTestActive || model.gpsReadiness != nil),
+                   model.gpsHasFix, let la = model.gpsLastLat, let lo = model.gpsLastLon {
                     LiveRouteMap(track: [CGPoint(x: lo, y: la)], interactive: false)
                         .frame(height: 180)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
-                    Text(String(format: "%.5f, %.5f", la, lo))
-                        .font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.cyan).monospacedDigit()
-                }
-
-                if model.locationDenied {
-                    Text("Enable Location for Titan in Settings → Privacy → Location Services to map your runs.")
-                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.pink)
-                } else {
-                    Button { model.startGpsTest() } label: {
-                        HStack(spacing: 8) {
-                            if model.gpsTestActive { ProgressView().tint(.white) }
-                            else { Image(systemName: "location.viewfinder") }
-                            Text(model.gpsTestActive ? "Locating…" : "Test location")
+                        .overlay(alignment: .topLeading) {
+                            if model.gpsTestActive {
+                                HStack(spacing: 5) {
+                                    Circle().fill(Theme.Palette.mint).frame(width: 7, height: 7)
+                                    Text("LIVE").font(Theme.Font.label.weight(.bold)).tracking(1).foregroundStyle(.white)
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(.black.opacity(0.55), in: Capsule()).padding(8)
+                            }
                         }
-                        .font(Theme.Font.body.weight(.semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
-                        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
-                        .foregroundStyle(Theme.Palette.text)
-                    }.disabled(model.gpsTestActive)
-
-                    Text("Your band has no GPS, so runs are mapped by your iPhone. Tap to confirm it can find you — a pin drops in a few seconds.")
-                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                        HStack(spacing: 8) {
+                            Text(String(format: "%.5f, %.5f", la, lo))
+                                .font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.cyan).monospacedDigit()
+                            if let acc = model.gpsAccuracyM {
+                                Text("±\(Int(acc)) m").font(Theme.Font.micro)
+                                    .foregroundStyle(acc <= 50 ? Theme.Palette.mint : Theme.Palette.amber)
+                            }
+                            Spacer()
+                            if let at = model.gpsLastFrameAt {
+                                let age = Int(ctx.date.timeIntervalSince(at))
+                                Text(age <= 1 ? "just now" : "\(age)s ago")
+                                    .font(Theme.Font.micro)
+                                    .foregroundStyle(age <= 3 ? Theme.Palette.textDim : Theme.Palette.amber)
+                            }
+                        }
+                    }
                 }
+
+                if let g = gpsGuidance {
+                    Text(g.text)
+                        .font(Theme.Font.micro).foregroundStyle(gpsTint)
+                    if g.settings {
+                        Button { openURL(URL(string: UIApplication.openSettingsURLString)!) } label: {
+                            Text("Open Settings")
+                                .font(Theme.Font.body.weight(.semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                                .foregroundStyle(Theme.Palette.text)
+                        }
+                    }
+                }
+
+                Button { model.startGpsTest() } label: {
+                    HStack(spacing: 8) {
+                        if model.gpsTestActive { ProgressView().tint(.white) }
+                        else { Image(systemName: "location.viewfinder") }
+                        Text(model.gpsTestActive ? "Locating… (\(model.gpsTestProgress)/3)"
+                                                 : (model.gpsReadiness == nil ? "Test location" : "Test again"))
+                    }
+                    .font(Theme.Font.body.weight(.semibold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                    .foregroundStyle(Theme.Palette.text)
+                }.disabled(model.gpsTestActive)
+
+                Text("Your band has no GPS, so runs are mapped by your iPhone. This checks the exact conditions a run needs — permission, Precise Location, and a steady signal — so you never waste a run.")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
             }
         }
     }

@@ -418,8 +418,19 @@ final class AppModel: ObservableObject {
         // Phone-side GPS for runs (the band has no GPS chip). Fixes feed the live tracker AND, while a
         // run is active, the same workout assembler the band's GPS would have → the sealed run gets a
         // real route + distance with no server change.
-        locator.onAuth = { [weak self] st in
-            Task { @MainActor in self?.locationDenied = (st == .denied || st == .restricted) }
+        locator.onAuth = { [weak self] st, acc in
+            Task { @MainActor in
+                guard let self else { return }
+                self.locationDenied = (st == .denied || st == .restricted)
+                let authorized = (st == .authorizedWhenInUse || st == .authorizedAlways)
+                self.gpsPreciseOff = authorized && (acc == .reducedAccuracy)
+                // If a test is waiting on a fix that can never qualify, fail it now — don't make the user
+                // stare at "Locating…" for 30 s when the cause (no permission / Precise off) is known.
+                if self.gpsTestActive {
+                    if self.locationDenied { self.finishGpsTest(.denied) }
+                    else if self.gpsPreciseOff { self.finishGpsTest(.preciseOff) }
+                }
+            }
         }
         locator.onFix = { [weak self] loc in
             Task { @MainActor in self?.handlePhoneFix(loc) }
@@ -760,9 +771,24 @@ final class AppModel: ObservableObject {
     @Published var gpsLastFrameAt: Date?
     @Published var gpsAccuracyM: Double?           // horizontal accuracy of the last phone fix (metres)
     @Published var locationDenied = false          // location permission denied/restricted → UI explains
+    @Published var gpsPreciseOff = false           // authorized but "Precise Location" is OFF → fixes too coarse
     @Published var gpsTestActive = false           // a user-initiated GPS self-test window is running
+    @Published var gpsTestProgress = 0             // good (run-grade) fixes seen so far this test
+    @Published var gpsReadiness: GpsReadiness?     // last test verdict (nil = never tested)
     private var gpsTestTimer: Task<Void, Never>?
+    private var gpsTestBestAccuracy: Double?        // best accuracy seen this test (for the weak-signal report)
+    private static let gpsTestRequiredFixes = 3     // a run needs a STREAM of fixes — prove 3 good ones land
     private let locator = RunLocationTracker()      // phone GPS (the band has none)
+
+    /// The outcome of the in-app GPS test: does the phone actually meet a real run's conditions, right now?
+    /// A run needs (1) location permission, (2) Precise Location ON, and (3) a stream of fixes accurate
+    /// enough to survive the run's ≤50 m gate. The test checks all three and reports one clear verdict.
+    enum GpsReadiness: Equatable {
+        case ready(accuracyM: Double)   // ✓ run will track — got `requiredFixes` run-grade fixes
+        case denied                     // location permission off → Settings
+        case preciseOff                 // permission on but Precise Location off → fixes too coarse for a run
+        case weakSignal(bestM: Double?) // permission + precise OK, but no run-grade fix in the window (indoors?)
+    }
 
     // MARK: live steps — the band's persistent day total, streamed ~every 15 s while connected.
     @Published var bandStepsToday = 0
@@ -864,36 +890,59 @@ final class AppModel: ObservableObject {
         if notifyBand { band?.endRunOnBand() }
     }
 
-    /// Worst horizontal accuracy (m) we'll trust. Coarse cell/Wi-Fi fixes at run start (often 65–1400 m)
-    /// and urban-canyon outliers zigzag the route and inflate distance, so we keep them OUT of the live
-    /// track AND the sealed/server route entirely. 50 m is generous (real GNSS outdoors is ~5–15 m).
+    /// Worst horizontal accuracy (m) we'll trust INTO THE SAVED ROUTE. Coarse cell/Wi-Fi fixes at run
+    /// start (often 65–1400 m) and urban-canyon outliers zigzag the route and inflate distance, so we keep
+    /// them out of the sealed/server route. The LIVE dot is shown regardless (you must see where you are
+    /// right away) — this only gates what gets persisted. 50 m is generous (real GNSS outdoors is ~5–15 m).
     private static let maxFixAccuracyM = 50.0
-    /// Reject an impossible jump from the last good fix (GPS spike) before it reaches the map.
+    /// Reject an impossible jump from the last good fix (GPS spike) before it reaches the saved route.
     private static let maxFixJumpM = 200.0
 
-    /// A phone GPS fix (during a run, or a GPS test). Feeds the live tracker + the GPS-test screen, and
-    /// — while a run is active — the workout assembler, so the saved run gets a real route + distance.
+    /// A phone GPS fix (during a run, or a GPS test). Two jobs, deliberately separated:
+    ///   1. LIVE DISPLAY — show your real location the instant ANY valid fix lands, even while GPS is
+    ///      still sharpening from a coarse warm-up fix. This is what the GPS test and the live map read;
+    ///      gating it behind ≤50 m was the bug that left the user staring at a blank/placeholder map.
+    ///   2. SAVED ROUTE — strict: only run-grade (≤50 m, non-teleport) fixes extend the persisted track,
+    ///      accumulate distance, and feed the seal pipeline, so the saved run stays clean.
     private func handlePhoneFix(_ loc: CLLocation) {
-        // Always surface the latest accuracy/heartbeat for the GPS-test screen ("finding… ±N m")…
-        gpsAccuracyM = loc.horizontalAccuracy
-        gpsLastFrameAt = Date()
-        // …but only ACT on a usable fix. Negative accuracy = invalid; too-imprecise = would corrupt the
-        // route. This single gate cleans both the live MapKit trace and the Mapbox-rendered sealed route.
         let acc = loc.horizontalAccuracy
-        guard acc > 0, acc <= Self.maxFixAccuracyM else { return }
-        // Drop a teleport spike: if it's implausibly far from the last good point, it's GPS error.
-        if let la = runLastLat, let lo = runLastLon,
-           Self.haversineM(la, lo, loc.coordinate.latitude, loc.coordinate.longitude) > Self.maxFixJumpM {
-            return
+        gpsAccuracyM = acc
+        gpsLastFrameAt = Date()
+        guard acc > 0 else { return }                 // invalid reading = no real position; ignore entirely
+        let lat = loc.coordinate.latitude, lon = loc.coordinate.longitude
+
+        // (1) LIVE — surface the dot immediately, however coarse. Refines as accuracy improves.
+        gpsHasFix = true
+        gpsLastLat = lat; gpsLastLon = lon
+
+        // GPS TEST — every valid fix updates "best accuracy" so we can report it; only run-grade fixes
+        // count toward "ready" (the exact bar the saved route uses), and we want a STREAM, not one lock.
+        if gpsTestActive {
+            gpsTestBestAccuracy = min(gpsTestBestAccuracy ?? acc, acc)
+            if acc <= Self.maxFixAccuracyM {
+                gpsTestProgress += 1
+                if gpsTestProgress >= Self.gpsTestRequiredFixes { finishGpsTest(.ready(accuracyM: acc)) }
+            }
         }
+
+        // (2) SAVED ROUTE — only while a run is live. Any fix proves the phone's alive (keeps the run
+        // open); only an accurate, non-teleport fix actually extends the route + distance.
+        guard runActive else { return }
+        runLastSignal = Date()
+        guard acc <= Self.maxFixAccuracyM else { return }
+        if let la = runLastLat, let lo = runLastLon,
+           Self.haversineM(la, lo, lat, lon) > Self.maxFixJumpM { return }   // drop a GPS teleport spike
+        if let la = runLastLat, let lo = runLastLon {
+            let d = Self.haversineM(la, lo, lat, lon)
+            if d.isFinite && d < Self.maxFixJumpM { runDistanceKm += d / 1000 }
+        }
+        runLastLat = lat; runLastLon = lon
+        runTrack.append(CGPoint(x: lon, y: lat))
+        if runTrack.count > 3000 { runTrack.removeFirst(runTrack.count - 3000) }
+        recomputePace()
         let t = UInt64(max(0, loc.timestamp.timeIntervalSince1970) * 1000)
-        let fix = GpsFix(t: t, sats: 0,
-                         speedKmh: max(0, loc.speed) * 3.6,
-                         alt: loc.altitude,
-                         lat: loc.coordinate.latitude,
-                         lon: loc.coordinate.longitude)
-        ingestLiveGps(fix)                                // live UI + gps* fields (+ run track if a run is live)
-        if runActive { router?.ingestPhoneGps(fix) }      // seal pipeline → route + distance on the saved run
+        router?.ingestPhoneGps(GpsFix(t: t, sats: 0, speedKmh: max(0, loc.speed) * 3.6,
+                                      alt: loc.altitude, lat: lat, lon: lon))   // seal pipeline → saved route
     }
 
     /// Phone GPS runs only while a run or a GPS test is active (battery).
@@ -901,21 +950,37 @@ final class AppModel: ObservableObject {
         if runActive || gpsTestActive { locator.start() } else { locator.stop() }
     }
 
-    /// Confirm the phone's GPS can find you, before a real run. Powers location for ~30 s and drops a
-    /// pin on the map once it locks (usually a few seconds). The band has no GPS — runs are mapped by
-    /// the phone — so this tests the phone's location.
+    /// Verify — right here, before you head out — that a real run will actually track. The band has no
+    /// GPS, so runs are mapped by the phone; this checks the EXACT conditions a run needs: permission is
+    /// granted, "Precise Location" is on, and a stream of fixes is landing accurate enough to survive the
+    /// run's ≤50 m gate. It ends with one verdict (ready / denied / precise-off / weak signal) so you
+    /// never burn a run discovering the phone couldn't see the sky.
     func startGpsTest() {
         gpsTestActive = true
+        gpsReadiness = nil
+        gpsTestProgress = 0; gpsTestBestAccuracy = nil
         gpsHasFix = false; gpsLastLat = nil; gpsLastLon = nil; gpsLastFrameAt = nil; gpsAccuracyM = nil
         Haptic.tap()
         updateLocator()
+        // Reflect a known-bad permission state immediately (and re-check once the system answers a fresh
+        // prompt — the onAuth handler short-circuits the test if permission/precise come back wrong).
+        locator.emitAuth()
         gpsTestTimer?.cancel()
         gpsTestTimer = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 30_000_000_000)
-            guard let self else { return }
-            self.gpsTestActive = false
-            self.updateLocator()
+            guard let self, self.gpsTestActive else { return }   // already finished (ready/denied/precise)
+            self.finishGpsTest(.weakSignal(bestM: self.gpsTestBestAccuracy))
         }
+    }
+
+    /// Close the GPS test with a verdict, stop the locator (unless a run still needs it), and signal it.
+    private func finishGpsTest(_ verdict: GpsReadiness) {
+        guard gpsTestActive else { return }
+        gpsTestTimer?.cancel(); gpsTestTimer = nil
+        gpsTestActive = false
+        gpsReadiness = verdict
+        updateLocator()
+        if case .ready = verdict { Haptic.success() } else { Haptic.warning() }
     }
 
     private func recomputePace() {

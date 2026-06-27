@@ -11,8 +11,10 @@ final class RunLocationTracker: NSObject, CLLocationManagerDelegate {
 
     /// A fresh, accurate fix. Delivered on the main thread (CLLocationManager was created there).
     var onFix: ((CLLocation) -> Void)?
-    /// Authorization changed (so the UI can prompt / show "enable location").
-    var onAuth: ((CLAuthorizationStatus) -> Void)?
+    /// Authorization changed (so the UI can prompt / show "enable location"). Includes the precise-vs-
+    /// reduced accuracy grant — with "Precise Location" OFF, fixes arrive at ~km accuracy and a run
+    /// can't track, so the GPS test must catch it.
+    var onAuth: ((CLAuthorizationStatus, CLAccuracyAuthorization) -> Void)?
 
     override init() {
         super.init()
@@ -24,6 +26,11 @@ final class RunLocationTracker: NSObject, CLLocationManagerDelegate {
     }
 
     var status: CLAuthorizationStatus { mgr.authorizationStatus }
+    var accuracyAuthorization: CLAccuracyAuthorization { mgr.accuracyAuthorization }
+
+    /// Push the current authorization to the UI on demand (the GPS test reads it the instant it starts,
+    /// without waiting for the system to fire a change it may already be past).
+    func emitAuth() { onAuth?(mgr.authorizationStatus, mgr.accuracyAuthorization) }
 
     func start() {
         running = true
@@ -44,22 +51,32 @@ final class RunLocationTracker: NSObject, CLLocationManagerDelegate {
     }
 
     private func beginUpdates() {
-        // Keep tracking with the screen off during a run (we only ever enable this while running).
-        mgr.allowsBackgroundLocationUpdates = true
+        // Keep tracking with the screen off during a run. CRITICAL: setting allowsBackgroundLocationUpdates
+        // = true throws an Objective-C exception (→ hard crash) if "location" is missing from the build's
+        // UIBackgroundModes, or if we're not yet authorized. That can happen on a stale/misconfigured build
+        // and would crash the app the instant a run starts. Guard on the ACTUAL Info.plist + auth so the
+        // worst case is foreground-only tracking, never a crash.
+        let bgModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        let authed = mgr.authorizationStatus == .authorizedAlways || mgr.authorizationStatus == .authorizedWhenInUse
+        mgr.allowsBackgroundLocationUpdates = bgModes.contains("location") && authed
         mgr.startUpdatingLocation()
     }
 
     func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
-        onAuth?(m.authorizationStatus)
+        onAuth?(m.authorizationStatus, m.accuracyAuthorization)
         if running, m.authorizationStatus == .authorizedWhenInUse || m.authorizationStatus == .authorizedAlways {
             beginUpdates()
         }
     }
 
     func locationManager(_ m: CLLocationManager, didUpdateLocations locs: [CLLocation]) {
+        // Pass through any fix with a real position (accuracy > 0) that isn't a stale cached one. We do NOT
+        // drop coarse fixes here — the app layer shows your dot immediately (even while GPS sharpens) and
+        // applies the strict route-quality gate itself. Dropping coarse fixes here is what made the test /
+        // live run look "stuck" with no location during warm-up.
         guard let loc = locs.last,
-              loc.horizontalAccuracy > 0, loc.horizontalAccuracy < 100,   // drop garbage / no-fix readings
-              loc.timestamp.timeIntervalSinceNow > -10 else { return }      // and stale cached fixes
+              loc.horizontalAccuracy > 0,
+              loc.timestamp.timeIntervalSinceNow > -15 else { return }
         onFix?(loc)
     }
 
