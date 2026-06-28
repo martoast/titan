@@ -887,6 +887,9 @@ final class AppModel: ObservableObject {
         runTicker?.cancel(); runTicker = nil
         showLiveRunSheet = false       // dismiss the live panel
         updateLocator()                // stop phone GPS unless a test is still using it
+        // Seal the workout window NOW. Previously a workout only sealed on disconnect or after a 120s idle
+        // gap, so finishing while the band stayed connected (app in foreground) saved NOTHING. Force it.
+        router?.sealWorkout()
         if notifyBand { band?.endRunOnBand() }
     }
 

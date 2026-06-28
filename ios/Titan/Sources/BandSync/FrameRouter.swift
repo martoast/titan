@@ -140,6 +140,13 @@ public final class FrameRouter {
         }
     }
 
+    /// Force-seal the current workout window NOW — the run ended on either side (watch sport→0, or the
+    /// user tapped End). Without this a workout only sealed on disconnect or after a 120s idle gap, so
+    /// finishing while the band stayed connected saved nothing. Idempotent: no-op if no workout is open.
+    public func sealWorkout() {
+        if let w = wa.flush() { submit(.workout(w)) }
+    }
+
     /// On disconnect / app suspend: flush trailing partial windows so nothing is lost.
     public func flush(live: Bool) {
         if let w = ppg.flush(live: live) { submit(.ppg(w)) }

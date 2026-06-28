@@ -87,6 +87,15 @@ final class WorkoutAssemblerTests: XCTestCase {
         XCTAssertNil(wa.addGps(GpsFix(t: start - 250_000, sats: 8, speedKmh: 5, alt: 10, lat: 37, lon: -122)))
     }
 
+    // A corrupt/unsynced band clock can yield a window spanning days; building per-second arrays for
+    // that allocates gigabytes → OOM crash. It must be rejected (nil), not built.
+    func testAbsurdDurationRejectedNotOOM() {
+        let accel = (0...30).map { _ in AccelSample(t: 0, ax: 1, ay: 1, az: 1000) }
+        let w = WorkoutAssembler.buildWorkoutWindow(accel: accel, hr: [], gps: [],
+                                                    startT: 0, endT: 25 * 3600 * 1000, minMs: 60_000)
+        XCTAssertNil(w)
+    }
+
     func testGapFinalizesPriorWorkout() {
         let wa = WorkoutAssembler(endGapMs: 60_000)
         let s: UInt64 = 1_000_000

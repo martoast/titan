@@ -29,6 +29,9 @@ public final class WorkoutAssembler {
     public let END_GAP_MS: UInt64
     public let FLUSH_MS: UInt64
     public let MIN_MS: UInt64
+    /// Largest plausible single workout window. Beyond this the timestamps are corrupt (bad band clock),
+    /// and computing per-second arrays would allocate gigabytes → OOM. Used to reject, not crash.
+    static let MAX_WINDOW_MS: UInt64 = 24 * 3600 * 1000
 
     private var active = false
     private var accel: [AccelSample] = []
@@ -151,6 +154,10 @@ public final class WorkoutAssembler {
                                           rrMs: [Double] = [],
                                           startT: UInt64, endT: UInt64, minMs: UInt64) -> WorkoutWindow? {
         guard endT >= startT, endT - startT >= minMs, accel.count >= 25 else { return nil }
+        // Corruption guard: a single window can't plausibly span more than a day. A bad/unsynced band
+        // clock (mixed epochs) can make endT-startT enormous → `secs` huge → a multi-GB array alloc
+        // below → OOM crash that also loses the workout. Reject the corrupt window instead of dying.
+        guard endT - startT <= Self.MAX_WINDOW_MS else { return nil }
         let ax = accel.map { Int($0.ax) }, ay = accel.map { Int($0.ay) }, az = accel.map { Int($0.az) }
         let accelFs = max(1, Int((Double(accel.count) * 1000 / Double(max(endT - startT, 1))).rounded()))
         let secs = max(1, Int((Double(endT - startT) / 1000).rounded(.up)))
