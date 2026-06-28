@@ -85,6 +85,27 @@ struct ProfileView: View {
             .sheet(isPresented: $showCommunity) { CommunitySettingsView() }
             .task { await model.loadCommunitySettings() }
 
+            // Surfaces the last crash captured by CrashReporter (any build) so we can see exactly what
+            // died after an unreproducible crash. Tap to copy; long flow: read me the first few lines.
+            if let crash = CrashReporter.lastCrash {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        HStack {
+                            Label("Last crash", systemImage: "exclamationmark.triangle.fill")
+                                .font(Theme.Font.body.weight(.bold)).foregroundStyle(Theme.Palette.pink)
+                            Spacer()
+                            Button("Copy") { UIPasteboard.general.string = crash; Haptic.tap() }
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.cyan)
+                            Button("Clear") { CrashReporter.clear(); Haptic.tap() }
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        }
+                        Text(crash).font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Theme.Palette.textDim).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+
             #if DEBUG
             Button { Haptic.tap(); model.simulateLiveRun() } label: {
                 GlassCard {

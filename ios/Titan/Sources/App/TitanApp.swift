@@ -5,7 +5,7 @@ struct TitanApp: App {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 
-    init() { Appearance.apply() }
+    init() { CrashReporter.install(); Appearance.apply() }
 
     var body: some Scene {
         WindowGroup {
