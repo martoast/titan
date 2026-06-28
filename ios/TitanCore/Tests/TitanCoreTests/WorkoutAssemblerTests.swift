@@ -72,6 +72,21 @@ final class WorkoutAssemblerTests: XCTestCase {
         XCTAssertNil(wa.flush())  // < MIN_MS and < 25 samples
     }
 
+    // Regression: opening the app mid-workout flushes buffered frames; one can arrive with a timestamp
+    // PREDATING when the workout opened (winStart). periodic() used to do `t - winStart` on UInt64 →
+    // arithmetic-overflow TRAP (the real-device crash). It must now no-op safely on an older frame.
+    func testNonMonotonicFrameDoesNotUnderflowPeriodic() {
+        let wa = WorkoutAssembler()
+        let start: UInt64 = 2_000_000_000
+        wa.addWorkoutHr(HrReading(t: start, bpm: 120, conf: 96, sport: 1))   // opens; winStart = start
+        // Older HR frame (the crash trigger) — must return nil, not trap.
+        XCTAssertNil(wa.addWorkoutHr(HrReading(t: start - 500_000, bpm: 121, conf: 96, sport: 1)))
+        // The other periodic() caller: an older strap reading.
+        XCTAssertNil(wa.addStrapHr(bpm: 122, rr: [], t: start - 1_000_000))
+        // An older GPS fix too (addGps → periodic).
+        XCTAssertNil(wa.addGps(GpsFix(t: start - 250_000, sats: 8, speedKmh: 5, alt: 10, lat: 37, lon: -122)))
+    }
+
     func testGapFinalizesPriorWorkout() {
         let wa = WorkoutAssembler(endGapMs: 60_000)
         let s: UInt64 = 1_000_000

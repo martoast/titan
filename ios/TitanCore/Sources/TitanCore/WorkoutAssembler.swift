@@ -55,7 +55,11 @@ public final class WorkoutAssembler {
     private func open(_ t: UInt64) { if !active { active = true; winStart = t } }
 
     private func periodic(_ t: UInt64) -> WorkoutWindow? {
-        guard active, t - winStart >= FLUSH_MS else { return nil }
+        // Underflow-safe: a frame whose timestamp PREDATES winStart (older buffered data flushed on
+        // reconnect, or a non-monotonic stream when the band switches rest→workout) must never do
+        // `t - winStart` on UInt64 — it wraps and TRAPS. This is the crash seen opening the app
+        // mid-workout. An out-of-order / older frame simply doesn't trigger a periodic flush.
+        guard active, t >= winStart, t - winStart >= FLUSH_MS else { return nil }
         let w = build(t)
         accel = accel.filter { $0.t >= t }
         hr = hr.filter { $0.t >= t }
