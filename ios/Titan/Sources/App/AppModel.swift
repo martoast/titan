@@ -897,6 +897,9 @@ final class AppModel: ObservableObject {
     private static let maxFixAccuracyM = 50.0
     /// Reject an impossible jump from the last good fix (GPS spike) before it reaches the saved route.
     private static let maxFixJumpM = 200.0
+    /// Smallest move that counts as real progress. With continuous (~1 Hz) fixes, anything under this is
+    /// GPS jitter while you're standing still — excluding it keeps the route clean and the distance honest.
+    private static let minMoveM = 3.0
 
     /// A phone GPS fix (during a run, or a GPS test). Two jobs, deliberately separated:
     ///   1. LIVE DISPLAY — show your real location the instant ANY valid fix lands, even while GPS is
@@ -926,15 +929,17 @@ final class AppModel: ObservableObject {
         }
 
         // (2) SAVED ROUTE — only while a run is live. Any fix proves the phone's alive (keeps the run
-        // open); only an accurate, non-teleport fix actually extends the route + distance.
+        // open); only an accurate fix that reflects REAL movement extends the route + distance. Now that
+        // fixes stream continuously (~1 Hz), a min-move gate is what stops standing-still GPS jitter from
+        // blobbing the track and inventing distance.
         guard runActive else { return }
         runLastSignal = Date()
         guard acc <= Self.maxFixAccuracyM else { return }
-        if let la = runLastLat, let lo = runLastLon,
-           Self.haversineM(la, lo, lat, lon) > Self.maxFixJumpM { return }   // drop a GPS teleport spike
         if let la = runLastLat, let lo = runLastLon {
             let d = Self.haversineM(la, lo, lat, lon)
-            if d.isFinite && d < Self.maxFixJumpM { runDistanceKm += d / 1000 }
+            guard d.isFinite, d <= Self.maxFixJumpM else { return }   // drop a GPS teleport spike
+            if d < Self.minMoveM { return }                          // stationary jitter — ignore entirely
+            runDistanceKm += d / 1000
         }
         runLastLat = lat; runLastLon = lon
         runTrack.append(CGPoint(x: lon, y: lat))

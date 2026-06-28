@@ -21,7 +21,11 @@ final class RunLocationTracker: NSObject, CLLocationManagerDelegate {
         mgr.delegate = self
         mgr.desiredAccuracy = kCLLocationAccuracyBest
         mgr.activityType = .fitness
-        mgr.distanceFilter = 5            // a point roughly every 5 m of movement
+        // Stream fixes continuously (~1 Hz), NOT only after 5 m of movement. A distance filter starves
+        // the GPS test when you stand still (it got one fix then nothing → stuck at 1/3) and stalls a run
+        // when you pause at a light. The app de-jitters the saved route itself (a min-move gate), so we
+        // want the steady stream here.
+        mgr.distanceFilter = kCLDistanceFilterNone
         mgr.pausesLocationUpdatesAutomatically = false
     }
 
