@@ -27,6 +27,7 @@ public final class FrameRouter {
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
+    private var lastSamplesEmit = Date.distantPast   // throttles the live-stats UI feed to ≤10 Hz
     private var lastStepsKey = ""               // dedupe identical step summaries (don't upload while still)
 
     public init(queue: SyncQueue) { self.queue = queue }
@@ -75,7 +76,15 @@ public final class FrameRouter {
             if recentTs.count > 1, let f = recentTs.first, let l = recentTs.last, l > f {
                 hz = Int((Double(recentTs.count) * 1000 / Double(l - f)).rounded())
             }
-            onSamples?(totalSamples, recentPpg, hz)
+            // Throttle the live UI feed to ≤10 Hz. The band streams T1 continuously while connected, and
+            // republishing the waveform/stats through the app-wide AppModel on EVERY frame (on the main
+            // thread) invalidates the whole SwiftUI tree + spawns a Task each time — the "High energy +
+            // steadily climbing memory" seen while just sitting connected. 10 Hz is smooth for a live trace.
+            let now = Date()
+            if now.timeIntervalSince(lastSamplesEmit) >= 0.1 {
+                lastSamplesEmit = now
+                onSamples?(totalSamples, recentPpg, hz)
+            }
             for w in ppg.add(frame.samples) { submit(.ppg(w)) }
             wa.addAccel(frame.samples)                    // buffered only if a workout is open
             if let last = frame.samples.last?.t {
