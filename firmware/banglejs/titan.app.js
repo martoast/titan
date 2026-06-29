@@ -1294,10 +1294,9 @@ function drawHeart() {
   if (bpm) arc(cx, cy, r, 8, 0, hrFrac(bpm), hrColor(bpm));
   g.setColor(C.white); g.setFont("Vector", 50); g.setFontAlign(0, 0);
   g.drawString((bpm || "--") + "", cx, cy);
-  // Link status (this face replaces the old Status face). Workouts live on the Run/Lift faces now —
-  // the Heart button owns the connection: pair when offline, sync-now when linked; 2× toggles capture.
-  g.setColor(state.connected ? C.mint : C.amber); g.setFont("6x8", 1); g.setFontAlign(0, 0);
-  g.drawString(state.connected ? "LINKED" : (state.streaming ? "LOGGING" : "NOT LINKED"), cx, cy + 40);
+  // Workouts live on the Run/Lift faces now; the Heart button owns the connection (the old Status face
+  // is gone): pair when offline, sync-now when linked; 2× toggles capture. The button label + the top
+  // bar's LIVE/LOG already show the link state, so there's no tiny status line to squint at.
   if (state.connected) drawAction("SYNC", false, "CAPTURE", C.heart);
   else drawAction("PAIR BAND", false, "CAPTURE", C.heart);
 }
@@ -1375,12 +1374,8 @@ function drawRun() {
   topBar();
   tabTitle("RUN", C.mint);
   if (!runActive) {
-    g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
-    g.drawString("0.00", cx, 92);
-    g.setFont("6x8", 1); g.drawString("km", cx, 118);
-    g.setColor(state.gpsFix ? C.mint : C.amber); g.setFont("6x8", 1);
-    g.drawString(state.gpsFix ? ("GPS READY · " + state.gpsSats + " sats")
-                              : ("GPS SEARCHING · " + state.gpsSats), cx, 132);
+    g.setColor(C.dim); g.setFont("Vector", 34); g.setFontAlign(0, 0);
+    g.drawString("0.00 km", cx, 104);
     drawAction("START", false, null, C.mint);
     return;
   }
@@ -1434,8 +1429,7 @@ function drawLift() {
   tabTitle("LIFT", C.amber);
   if (!liftActive) {
     g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
-    g.drawString("0:00", cx, 96);
-    g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("tap to start a lift", cx, 132);
+    g.drawString("0:00", cx, 104);
     drawAction("START", false, null, C.amber);
     return;
   }
