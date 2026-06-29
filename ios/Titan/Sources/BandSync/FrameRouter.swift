@@ -109,8 +109,12 @@ public final class FrameRouter {
             }
         case "T5:":
             if let hr = FrameDecoder.decodeT5(payload) {
-                onBpm?(hr.bpm)
-                onHr?(hr)
+                // The LIVE bpm readout must reflect only the CURRENT reading. On reconnect/sync the band
+                // replays its offline ring as T5 lines carrying OLD bpm values; feeding those to the live
+                // display made it jitter (live 100 vs replayed 125/127). Show only live frames. The window
+                // builder + 24/7 trend below still ingest the backlog (that's how offline data is sealed).
+                if Self.frameIsLive(hr.t) { onBpm?(hr.bpm) }
+                onHr?(hr)   // ingestLiveHr applies the same liveness gate for the run/lift state machine
                 // A sport-tagged reading OPENS/extends a workout — this is how a connected indoor
                 // session (no GPS, no T6) becomes a sealable workout window.
                 if let w = wa.addWorkoutHr(hr) { submit(.workout(w)) }
@@ -168,6 +172,15 @@ public final class FrameRouter {
         // On a real disconnect, drop any half-received frame — the firmware re-flushes from scratch on
         // reconnect, so stale partial bytes would otherwise corrupt the first frame of the new stream.
         if !live { rx.removeAll(keepingCapacity: false) }
+    }
+
+    /// A frame is "live" if its band timestamp (ms epoch, C2-synced) is within ~60s of now. Replayed
+    /// offline-backlog frames carry old timestamps and must not touch live UI. t==0 (unstamped) → treat
+    /// as live (legacy path). Mirrors the gate in AppModel.ingestLiveHr.
+    static func frameIsLive(_ t: UInt64) -> Bool {
+        if t == 0 { return true }
+        let nowMs = UInt64(Date().timeIntervalSince1970 * 1000)
+        return nowMs <= t || nowMs - t <= 60_000
     }
 
     private func submit(_ w: AnyWindow) { Task { await queue.submit(w) } }
