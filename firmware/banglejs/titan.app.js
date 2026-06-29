@@ -1743,6 +1743,14 @@ Bluetooth.on("data", function (d) {
       flushLog();
     } else if (line.substr(0, 2) === "C4") {      // GPS self-test — power GPS ~2 min with no workout
       try { startGpsTest(); } catch (e) {}
+    } else if (line.substr(0, 3) === "C5:") {     // live run distance (m) from the phone. The band has no
+      try {                                        // GPS, so the PHONE owns the route + distance and pushes
+        var rd = JSON.parse(line.substr(3));       // it here ~1 Hz so the Run face shows the same number.
+        if (typeof rd.d === "number" && runActive) {
+          runDistM = rd.d;
+          if (page === RUN_PAGE && uiVisible) drawUI();
+        }
+      } catch (e) { /* malformed — ignore */ }
     }
   }
 });

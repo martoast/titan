@@ -395,8 +395,9 @@ final class AppModel: ObservableObject {
         router.onHr = { [weak self] hr in Task { @MainActor in self?.ingestLiveHr(hr) } }
         router.onSteps = { [weak self] s in
             Task { @MainActor in
-                // Live "steps today" from the band. Trust it only if it's for the current local day.
-                if s.date == Self.localDayString() { self?.bandStepsToday = s.steps; self?.bandStepsAt = Date() }
+                // Live "steps today" from the band. Accept today ±1 day so a timezone/midnight clock skew
+                // between the watch and phone doesn't silently drop every frame (steps stuck at 0).
+                if Self.bandDateIsCurrent(s.date) { self?.bandStepsToday = s.steps; self?.bandStepsAt = Date() }
             }
         }
         let band = BandManager(router: router)
@@ -803,6 +804,18 @@ final class AppModel: ObservableObject {
         return f.string(from: Date())
     }
 
+    /// Is the band's T8 date string within ±1 day of the phone's local date? An EXACT match silently
+    /// dropped every step frame whenever the watch's clock was a timezone/midnight off the phone (e.g. a
+    /// UTC-set band while the phone is in UTC-7) — steps froze at 0 while HR streamed fine. ±1 tolerates
+    /// that skew but still rejects a genuinely stale day flushed on reconnect.
+    static func bandDateIsCurrent(_ ymd: String) -> Bool {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = .current; f.timeZone = .current
+        guard let d = f.date(from: ymd) else { return false }
+        let cal = Calendar.current
+        let diff = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day ?? 99
+        return abs(diff) <= 1
+    }
+
     /// A live GPS fix during a run → accumulate distance (haversine) + extend the trace.
     private func ingestLiveGps(_ fix: GpsFix) {
         // Record status for the GPS test FIRST (a fix updates the test screen even outside a run).
@@ -884,6 +897,8 @@ final class AppModel: ObservableObject {
                 guard let self, self.runActive else { break }
                 if let s = self.runStartedAt { self.runElapsedSec = Int(Date().timeIntervalSince(s)) }
                 self.recomputePace()
+                self.band?.sendRunDistance(self.runDistanceKm * 1000)   // mirror distance to the watch Run face
+
                 if let last = self.runLastSignal, Date().timeIntervalSince(last) > self.runEndGapSec {
                     self.endRun()
                 }

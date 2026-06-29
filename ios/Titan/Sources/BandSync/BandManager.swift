@@ -152,6 +152,14 @@ public final class BandManager: NSObject {
         p.writeValue(Data("C0:\n".utf8), for: rx, type: .withoutResponse)
     }
 
+    /// Push the live run distance (metres) to the band's Run face (C5). The band has no GPS — the phone
+    /// owns the route + distance — so without this the watch shows time but a frozen 0.00 km. No-op if
+    /// not connected. Sent ~1 Hz while a run is live.
+    public func sendRunDistance(_ meters: Double) {
+        guard let p = band, p.state == .connected, let rx = rxChar else { return }
+        p.writeValue(Data("C5:{\"d\":\(Int(meters.rounded()))}\n".utf8), for: rx, type: .withoutResponse)
+    }
+
     /// Force a fresh connection attempt when we're paired but stuck — advertised-but-never-connected,
     /// a half-open link, or a Bluetooth stack that's wedged. Tears down any existing connection to the
     /// bound band, drops the cached write char, then re-arms connect AND restarts a scan so we catch
