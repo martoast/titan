@@ -755,6 +755,7 @@ final class AppModel: ObservableObject {
     private var runStartedAt: Date?
     private var runLastLat: Double?
     private var runLastLon: Double?
+    private var runLastFixAt: Date?                // timestamp of the last accepted route fix (speed gate)
     private var runLastSignal: Date?
     private var runSawSport1 = false               // we've seen a sport-tagged frame this run (so a fall back to 0 = ended)
     private var runSportLostAt: Date?              // when the sport tag first fell to 0 this run (end debounce)
@@ -833,9 +834,13 @@ final class AppModel: ObservableObject {
             // streaming sport==1 — which looped it back open forever. AND: after you tap End, the watch's
             // sport tag can flicker (end→restart, or a dropped C0) and produce a fresh 0→1 edge that
             // instantly re-popped the run — the "ending loop" where you had to force-quit. So during the
-            // post-end grace window we ignore the rising edge entirely.
-            if !lastSportWas1, !autoStartSuppressed { startRunIfNeeded() }
-            lastSportWas1 = true
+            // post-end grace window we ignore sport==1 ENTIRELY — including leaving lastSportWas1 untouched,
+            // so a genuinely new workout started within the grace (interval training) is still seen as a
+            // fresh rising edge once the grace expires (don't consume the edge).
+            if !autoStartSuppressed {
+                if !lastSportWas1 { startRunIfNeeded() }
+                lastSportWas1 = true
+            }
             if runActive { runSawSport1 = true; runSportLostAt = nil; runLastSignal = Date() }
         } else {
             lastSportWas1 = false
@@ -867,7 +872,7 @@ final class AppModel: ObservableObject {
         runActive = true
         runStartedAt = Date(); runLastSignal = Date()
         runDistanceKm = 0; runElapsedSec = 0; runPaceSecPerKm = 0
-        runLastLat = nil; runLastLon = nil; runTrack = []; runMaxBpm = 0; runLiveBpm = nil
+        runLastLat = nil; runLastLon = nil; runLastFixAt = nil; runTrack = []; runMaxBpm = 0; runLiveBpm = nil
         runSawSport1 = false; runSportLostAt = nil
         showLiveRunSheet = true        // pop the live tracker the moment a run begins
         updateLocator()                // start phone GPS → route + distance for this run
@@ -911,8 +916,11 @@ final class AppModel: ObservableObject {
     /// them out of the sealed/server route. The LIVE dot is shown regardless (you must see where you are
     /// right away) — this only gates what gets persisted. 50 m is generous (real GNSS outdoors is ~5–15 m).
     private static let maxFixAccuracyM = 50.0
-    /// Reject an impossible jump from the last good fix (GPS spike) before it reaches the saved route.
-    private static let maxFixJumpM = 200.0
+    /// Reject only an IMPLAUSIBLE-SPEED jump (a true GPS spike), scaled by elapsed time. A large jump over
+    /// a large gap (tunnel, urban canyon, background coalescing) is REAL travel and must be accepted — the
+    /// old fixed 200 m cap froze the run forever after one such gap (anchor never advanced). 20 m/s (72 km/h)
+    /// is faster than any run/ride, so only genuine GPS errors (km-scale jumps in ~1 s) get rejected.
+    private static let maxRunSpeedMps = 20.0
     /// Smallest move that counts as real progress. With continuous (~1 Hz) fixes, anything under this is
     /// GPS jitter while you're standing still — excluding it keeps the route clean and the distance honest.
     private static let minMoveM = 3.0
@@ -951,13 +959,21 @@ final class AppModel: ObservableObject {
         guard runActive else { return }
         runLastSignal = Date()
         guard acc <= Self.maxFixAccuracyM else { return }
-        if let la = runLastLat, let lo = runLastLon {
+        if let la = runLastLat, let lo = runLastLon, let lastT = runLastFixAt {
             let d = Self.haversineM(la, lo, lat, lon)
-            guard d.isFinite, d <= Self.maxFixJumpM else { return }   // drop a GPS teleport spike
-            if d < Self.minMoveM { return }                          // stationary jitter — ignore entirely
+            guard d.isFinite else { return }
+            if d < Self.minMoveM { return }                          // stationary jitter — ignore, keep anchor
+            let dt = max(0.5, loc.timestamp.timeIntervalSince(lastT))
+            if d > Self.maxRunSpeedMps * dt {
+                // Implausible speed = a true GPS spike. Don't trust its distance, but RE-ANCHOR to it so the
+                // NEXT fix measures from here and tracking resumes. (The old code returned without advancing
+                // the anchor → every later fix stayed >cap → run distance/route frozen for good.)
+                runLastLat = lat; runLastLon = lon; runLastFixAt = loc.timestamp
+                return
+            }
             runDistanceKm += d / 1000
         }
-        runLastLat = lat; runLastLon = lon
+        runLastLat = lat; runLastLon = lon; runLastFixAt = loc.timestamp
         runTrack.append(CGPoint(x: lon, y: lat))
         if runTrack.count > 3000 { runTrack.removeFirst(runTrack.count - 3000) }
         recomputePace()

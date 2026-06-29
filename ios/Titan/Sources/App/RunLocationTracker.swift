@@ -74,14 +74,14 @@ final class RunLocationTracker: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ m: CLLocationManager, didUpdateLocations locs: [CLLocation]) {
-        // Pass through any fix with a real position (accuracy > 0) that isn't a stale cached one. We do NOT
-        // drop coarse fixes here — the app layer shows your dot immediately (even while GPS sharpens) and
-        // applies the strict route-quality gate itself. Dropping coarse fixes here is what made the test /
-        // live run look "stuck" with no location during warm-up.
-        guard let loc = locs.last,
-              loc.horizontalAccuracy > 0,
-              loc.timestamp.timeIntervalSinceNow > -15 else { return }
-        onFix?(loc)
+        // Forward EVERY qualifying fix in the batch, in order — not just locs.last. CoreLocation coalesces
+        // multiple fixes into one callback (notably the first burst after a suspension/background gap);
+        // taking only the last drops the intermediate points, collapsing the route to a chord and — if that
+        // chord is long — tripping the run's spike guard. We do NOT drop coarse fixes here (the app layer
+        // shows the dot live and applies the route-quality gate); only invalid (≤0) and stale ones go.
+        for loc in locs where loc.horizontalAccuracy > 0 && loc.timestamp.timeIntervalSinceNow > -15 {
+            onFix?(loc)
+        }
     }
 
     func locationManager(_ m: CLLocationManager, didFailWithError error: Error) { /* transient — keep trying */ }
