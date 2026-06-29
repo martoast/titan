@@ -893,10 +893,12 @@ function emitStepFrame() {
 function onConnect() {
   if (state.connected) return;   // idempotent: the NRF event and the poll can both fire
   state.connected = true;
-  // NOTE: connecting NO LONGER force-starts REC. Recording is the user's choice (Heart face: 1 click =
-  // workout, 2 clicks = capture on/off) and persists across reboots via the titan.run pref — so turning
-  // it off STAYS off. Auto-starting on every connect meant a stray gym session kept logging and then
-  // tried to dump it all on connect, freezing the watch.
+  // Paired! If the pairing code was on screen, drop it and show the now-linked Heart face.
+  if (pairTimer) exitPairing();
+  // NOTE: connecting NO LONGER force-starts REC. Recording is the user's choice (Heart face: 2 clicks =
+  // capture on/off) and persists across reboots via the titan.run pref — so turning it off STAYS off.
+  // Auto-starting on every connect meant a stray gym session kept logging and then tried to dump it all
+  // on connect, freezing the watch.
   if (state.streaming) reconcileHrm();   // already recording → a phone is here, go continuous for real-time data
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
