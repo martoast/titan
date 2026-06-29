@@ -60,7 +60,8 @@ class ProcessWindowJob implements ShouldQueue
 
             match ($ingestion->kind) {
                 'ibi', 'ppg_raw' => $this->processHrv($ingestion, $biosignal, $window),
-                // Sleep/activity sealing is P2 -- leave queued for the seal jobs.
+                'workout' => $this->processWorkout($ingestion, $window),
+                // Sleep sealing is driven by SealNightJob -- leave queued for it.
                 default => $ingestion->update(['status' => DeviceIngestion::STATUS_QUEUED]),
             };
         } catch (\Throwable $e) {
@@ -208,6 +209,27 @@ class ProcessWindowJob implements ShouldQueue
                 'epoch_rmssd' => $result['epoch_rmssd'] ?? null,
             ], fn ($v) => $v !== null),
         ]);
+    }
+
+    /**
+     * Workout path: a `kind=workout` window (the band/phone streams one every ~3 min during a run,
+     * plus a final one when it ends). SealActivityJob is the authority that groups a session's windows
+     * into one activity_sessions row — so we leave this window QUEUED for it, but trigger a seal pass
+     * NOW instead of waiting for the every-15-min scheduler.
+     *
+     * Whoop-style: the phone tags the final window with `ended` (user/watch tapped End). That is an
+     * explicit "this session is over", so we seal it immediately rather than waiting QUIET_MINUTES for
+     * the stream to fall quiet. Mid-run windows (no flag) still dispatch a seal — which promptly catches
+     * any PRIOR finished session — but the live one keeps streaming until its quiet/ended signal.
+     *
+     * @param  array<string,mixed>  $window
+     */
+    private function processWorkout(DeviceIngestion $ingestion, array $window): void
+    {
+        $ingestion->update(['status' => DeviceIngestion::STATUS_QUEUED]);
+
+        $ended = ($window['ended'] ?? false) === true;
+        SealActivityJob::dispatch($ingestion->profile_id, $ended)->afterCommit();
     }
 
     private function fail(DeviceIngestion $ingestion, string $message): void

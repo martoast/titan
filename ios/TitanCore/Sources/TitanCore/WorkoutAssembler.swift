@@ -20,6 +20,9 @@ public struct WorkoutWindow: Codable, Equatable {
                                       // nil = wrist (server may recompute from raw PPG). Optional → omitted when nil.
     public let hr_rr_ms: [Int]?       // beat-to-beat RR intervals (ms) from a strap → in-workout HRV.
                                       // nil/omitted when no strap RR (wrist PPG can't give these under motion).
+    public let ended: Bool?           // true ONLY on the final window of a run the user/watch explicitly
+                                      // ended → the server seals it immediately (Whoop-style), instead of
+                                      // waiting for the stream to fall quiet. nil/omitted on mid-run windows.
 }
 
 /// Accumulates the live frames of a workout and emits `kind=workout` windows. Port of the JS
@@ -129,18 +132,20 @@ public final class WorkoutAssembler {
     /// Live: T1 keeps device-time moving so a workout's end-gap is detected.
     @discardableResult public func tick(_ deviceNowT: UInt64) -> WorkoutWindow? { gapFinalize(deviceNowT) }
 
-    /// Force-emit whatever is buffered (disconnect / settled sync burst).
-    public func flush() -> WorkoutWindow? {
+    /// Force-emit whatever is buffered (disconnect / settled sync burst). `ended` tags the result as the
+    /// definitive end of the run (set by FrameRouter.sealWorkout when the user/watch tapped End) so the
+    /// server seals it at once; a plain disconnect flush leaves it false (the seal scheduler is the safety net).
+    public func flush(ended: Bool = false) -> WorkoutWindow? {
         guard active else { return nil }
-        let w = build(lastActivityT != 0 ? lastActivityT : winStart)
+        let w = build(lastActivityT != 0 ? lastActivityT : winStart, ended: ended)
         reset()
         return w
     }
 
-    private func build(_ endT: UInt64) -> WorkoutWindow? {
+    private func build(_ endT: UInt64, ended: Bool = false) -> WorkoutWindow? {
         let rrMs = rr.filter { $0.t >= winStart && $0.t <= endT }.map { $0.ms }
         return Self.buildWorkoutWindow(accel: accel, hr: hr, gps: gps, rrMs: rrMs,
-                                       startT: winStart, endT: endT, minMs: MIN_MS)
+                                       startT: winStart, endT: endT, minMs: MIN_MS, ended: ended)
     }
 
     private static let iso: ISO8601DateFormatter = {
@@ -152,7 +157,8 @@ public final class WorkoutAssembler {
     /// Pure builder — port of `buildWorkoutWindow`.
     public static func buildWorkoutWindow(accel: [AccelSample], hr: [HrReading], gps: [GpsFix],
                                           rrMs: [Double] = [],
-                                          startT: UInt64, endT: UInt64, minMs: UInt64) -> WorkoutWindow? {
+                                          startT: UInt64, endT: UInt64, minMs: UInt64,
+                                          ended: Bool = false) -> WorkoutWindow? {
         guard endT >= startT, endT - startT >= minMs, accel.count >= 25 else { return nil }
         // Corruption guard: a single window can't plausibly span more than a day. A bad/unsynced band
         // clock (mixed epochs) can make endT-startT enormous → `secs` huge → a multi-GB array alloc
@@ -208,7 +214,8 @@ public final class WorkoutAssembler {
             hr_bpm: hrBySec, accel_counts: counts,
             gps: .init(speed_kmh: speedBySec, grade: grade, track: track),
             src: "banglejs2", hr_source: hrSource,
-            hr_rr_ms: rrMs.isEmpty ? nil : rrMs.map { Int($0.rounded()) })
+            hr_rr_ms: rrMs.isEmpty ? nil : rrMs.map { Int($0.rounded()) },
+            ended: ended ? true : nil)
     }
 
     /// Bucket timestamped events into per-second slots, carrying last value forward; nil→0.

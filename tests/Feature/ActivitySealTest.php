@@ -230,6 +230,67 @@ class ActivitySealTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_explicit_end_seals_immediately_despite_recent_window(): void
+    {
+        // Whoop-style: when the phone tags the run's final window `ended` (user/watch tapped End),
+        // ProcessWindowJob dispatches SealActivityJob(force: true). It must seal at once — NOT wait
+        // QUIET_MINUTES for the stream to fall quiet (the sibling test proves the no-force case waits).
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 30.0, 'mean_hr' => 150.0, 'trimp' => 58.0, 'calories_kcal' => 370,
+                'activity_type' => 'run', 'activity_confidence' => 0.95,
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 50.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'high', 'fitness_percentile_band' => 3, 'hrr' => null]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        // Just ended (within QUIET_MINUTES) — without force this would be left for later.
+        $this->storeWorkoutWindow($profile->id, endsAgoMin: 1);
+
+        dispatch_sync(new SealActivityJob($profile->id, force: true));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($session, 'an explicit end must seal immediately');
+        $this->assertSame('run', $session->activity_type);
+        $this->assertSame(DeviceIngestion::STATUS_SEALED, DeviceIngestion::first()->status);
+    }
+
+    public function test_explicit_end_still_seals_a_short_run(): void
+    {
+        // A deliberately-ended run shorter than MIN_SESSION_MIN must still be saved — the floor only
+        // exists to filter stray motion blips, not intentional short workouts.
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 2.0, 'mean_hr' => 140.0, 'trimp' => 8.0, 'calories_kcal' => 30,
+                'activity_type' => 'run', 'activity_confidence' => 0.9,
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 50.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'high', 'fitness_percentile_band' => 3, 'hrr' => null]),
+            '*' => Http::response([]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        $this->storeShortWorkoutWindow($profile->id);   // ~2 min — below MIN_SESSION_MIN (5)
+
+        // Without force the short window is discarded (sealed as a no-op, no session row).
+        dispatch_sync(new SealActivityJob($profile->id));
+        $this->assertSame(0, ActivitySession::count());
+
+        // ...but an explicit end keeps it.
+        $this->storeShortWorkoutWindow($profile->id, uidSuffix: '-b');
+        dispatch_sync(new SealActivityJob($profile->id, force: true));
+        $this->assertSame(1, ActivitySession::count());
+    }
+
     public function test_non_locomotion_workout_seals_a_strength_session(): void
     {
         Storage::fake('raw');
@@ -412,6 +473,33 @@ class ActivitySealTest extends TestCase
             'batch_uid' => 'indoor-'.$profileId, 'profile_id' => $profileId, 'source' => 'titan_band',
             'kind' => 'workout', 'object_key' => $key, 'window_start' => $start, 'window_end' => $end,
             'status' => DeviceIngestion::STATUS_QUEUED,
+        ]);
+    }
+
+    /** A short (~2 min) workout window — below MIN_SESSION_MIN — to prove the explicit-end floor bypass. */
+    private function storeShortWorkoutWindow(int $profileId, string $uidSuffix = ''): void
+    {
+        $fs = 25;
+        $durMin = 2;
+        $hr = array_fill(0, $durMin * 60, 140);
+        $m = $durMin * 60 * $fs;
+        $ax = $ay = array_fill(0, $m, 0.0);
+        $az = array_fill(0, $m, 9.8);
+        $counts = array_fill(0, max(1, (int) ($durMin * 2)), 40);
+        $end = CarbonImmutable::now()->subMinutes(1);
+        $start = $end->subMinutes($durMin);
+        $window = [
+            'kind' => 'workout', 'start' => $start->toIso8601ZuluString(), 'end' => $end->toIso8601ZuluString(),
+            'accel_xyz' => ['x' => $ax, 'y' => $ay, 'z' => $az], 'accel_fs' => $fs, 'accel_unit' => 'ms2',
+            'accel_counts' => $counts, 'hr_bpm' => $hr,
+            'gps' => ['speed_kmh' => array_fill(0, $durMin * 60, 10.0), 'grade' => array_fill(0, $durMin * 60, 0.0), 'track' => []],
+        ];
+        $key = "raw/{$profileId}/short-test{$uidSuffix}.ndjson.gz";
+        Storage::disk('raw')->put($key, gzencode(json_encode($window)));
+        DeviceIngestion::create([
+            'batch_uid' => 'short-'.$profileId.$uidSuffix, 'profile_id' => $profileId,
+            'source' => 'titan_band', 'kind' => 'workout', 'object_key' => $key,
+            'window_start' => $start, 'window_end' => $end, 'status' => DeviceIngestion::STATUS_QUEUED,
         ]);
     }
 

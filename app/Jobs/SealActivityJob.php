@@ -60,7 +60,12 @@ class SealActivityJob implements ShouldQueue
 
     public int $backoff = 15;
 
-    public function __construct(public int $profileId)
+    /**
+     * @param  bool  $force  The most recent session ended explicitly (phone tagged the final window
+     *                       `ended` — user/watch tapped End). Seal it NOW, bypassing the QUIET_MINUTES
+     *                       wait and the MIN_SESSION_MIN floor, so a just-finished run appears at once.
+     */
+    public function __construct(public int $profileId, public bool $force = false)
     {
         $this->onQueue('biosignal');
     }
@@ -83,12 +88,17 @@ class SealActivityJob implements ShouldQueue
             return;
         }
 
-        foreach ($this->groupIntoSessions($windows) as $session) {
-            if (! $this->sessionIsComplete($session)) {
+        // An explicit end (force) seals only the LATEST session — the one whose final window carried
+        // the `ended` flag. Older unsealed sessions still follow the normal quiet rule.
+        $sessions = $this->groupIntoSessions($windows);
+        $lastKey = array_key_last($sessions);
+        foreach ($sessions as $idx => $session) {
+            $forceThis = $this->force && $idx === $lastKey;
+            if (! $this->sessionIsComplete($session, $forceThis)) {
                 continue; // still streaming -- let it finish
             }
             try {
-                $this->sealSession($profile, $biosignal, $session);
+                $this->sealSession($profile, $biosignal, $session, $forceThis);
             } catch (\Throwable $e) {
                 Log::warning('[Biosignal] activity seal failed', [
                     'profile_id' => $profile->id, 'error' => $e->getMessage(),
@@ -133,8 +143,12 @@ class SealActivityJob implements ShouldQueue
     }
 
     /** Complete once quiescent (>QUIET_MINUTES since the last window) or it ended in the past. */
-    private function sessionIsComplete(\Illuminate\Support\Collection $session): bool
+    private function sessionIsComplete(\Illuminate\Support\Collection $session, bool $force = false): bool
     {
+        if ($force) {
+            return true; // explicit end signal — don't wait for the stream to fall quiet
+        }
+
         $lastEnd = $session
             ->map(fn (DeviceIngestion $i) => $i->window_end ?? $i->window_start ?? $i->created_at)
             ->filter()->map(fn ($t) => CarbonImmutable::parse($t))->max();
@@ -148,7 +162,7 @@ class SealActivityJob implements ShouldQueue
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $session
      */
-    private function sealSession(Profile $profile, BiosignalClient $biosignal, \Illuminate\Support\Collection $session): void
+    private function sealSession(Profile $profile, BiosignalClient $biosignal, \Illuminate\Support\Collection $session, bool $force = false): void
     {
         $ax = $ay = $az = $hr1 = $counts = $speed = $grade = $track = [];
         $unit = 'ms2';
@@ -185,7 +199,10 @@ class SealActivityJob implements ShouldQueue
 
         $startIso = $start ? CarbonImmutable::parse($start)->toIso8601ZuluString() : null;
         $durationMin = ($start && $end) ? abs(CarbonImmutable::parse($start)->diffInMinutes(CarbonImmutable::parse($end))) : null;
-        if ($durationMin !== null && $durationMin < self::MIN_SESSION_MIN) {
+        // An explicitly-ended run is intentional — seal it even if short. The floor only filters stray
+        // motion blips that auto-opened a session; a 1-min minimum still rejects a pure accidental tap.
+        $minMinutes = $force ? 1 : self::MIN_SESSION_MIN;
+        if ($durationMin !== null && $durationMin < $minMinutes) {
             $session->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
 
             return;
