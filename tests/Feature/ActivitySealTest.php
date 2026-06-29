@@ -291,6 +291,78 @@ class ActivitySealTest extends TestCase
         $this->assertSame(1, ActivitySession::count());
     }
 
+    public function test_watch_lift_choice_overrides_a_run_classification(): void
+    {
+        // The user started a LIFT from the watch's heart-rate tab. Even if the accel classifier calls
+        // it a 'run' (and a stray GPS fix leaked in), the explicit choice wins: sealed as strength,
+        // no route map, and the gym analyzer runs to log sets/reps.
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 30.0, 'mean_hr' => 150.0, 'trimp' => 58.0, 'calories_kcal' => 370,
+                'activity_type' => 'run', 'activity_confidence' => 0.92,   // classifier says RUN…
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 50.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'high', 'fitness_percentile_band' => 3, 'hrr' => null]),
+            '*/process/gym' => Http::response(['algo_version' => 'v1', 'sets' => [
+                ['exercise' => 'squats', 'reps' => 10, 'confidence' => 1.0, 'is_lift' => true],
+            ], 'summary' => ['n_sets' => 1, 'total_reps' => 10, 'exercises' => []]]),
+            '*/process/route' => Http::response(['valid' => true, 'distance_km' => 5.0, 'polyline' => 'abc']),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        // …but the watch said LIFT, and a GPS fix leaked in.
+        $track = [
+            ['t' => 1750000000000, 'lat' => 37.7749, 'lon' => -122.4194, 'alt' => 10.0],
+            ['t' => 1750000001000, 'lat' => 37.7750, 'lon' => -122.4193, 'alt' => 11.0],
+        ];
+        $this->storeWorkoutWindow($profile->id, track: $track, activityKind: 'strength');
+
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($session);
+        $this->assertSame('strength', $session->activity_type);     // choice wins over the 'run' guess
+        $this->assertNull($session->route_polyline);                // no map on a lift
+        $this->assertEqualsWithDelta(1.0, $session->activity_confidence, 0.001);
+        $this->assertNotNull(\App\Models\Workout::where('profile_id', $profile->id)->first());  // gym analysis ran
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/process/route'));   // route pass skipped
+    }
+
+    public function test_watch_run_choice_overrides_a_non_locomotion_classification(): void
+    {
+        // The user started a RUN from the watch's running tab. Even if the classifier is unsure and
+        // returns 'other', the explicit choice keeps it cardio — no phantom strength/gym analysis.
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 30.0, 'mean_hr' => 150.0, 'trimp' => 58.0, 'calories_kcal' => 370,
+                'activity_type' => 'other', 'activity_confidence' => 0.4,   // classifier unsure
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 50.0, 'plusminus' => 5.6,
+                'methods' => ['demographic'], 'fitness_level' => 'high', 'fitness_percentile_band' => 3, 'hrr' => null]),
+            '*/process/step-distance' => Http::response(['estimated' => true, 'distance_km' => 5.2, 'steps' => 5000, 'stride_m' => 1.04, 'cadence_spm' => 166.0]),
+            '*' => Http::response([]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        $this->storeWorkoutWindow($profile->id, activityKind: 'run');   // no track (treadmill), watch says RUN
+
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($session);
+        $this->assertSame('run', $session->activity_type);          // choice wins over 'other'
+        $this->assertNull(\App\Models\Workout::where('profile_id', $profile->id)->first());  // NOT sealed as strength
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/process/gym'));   // gym analysis skipped
+    }
+
     public function test_non_locomotion_workout_seals_a_strength_session(): void
     {
         Storage::fake('raw');
@@ -503,7 +575,7 @@ class ActivitySealTest extends TestCase
         ]);
     }
 
-    private function storeWorkoutWindow(int $profileId, int $endsAgoMin = 60, array $track = []): void
+    private function storeWorkoutWindow(int $profileId, int $endsAgoMin = 60, array $track = [], ?string $activityKind = null): void
     {
         $n = 1800; // 30 min @ 1 Hz HR / GPS
         $hr = $speed = $grade = [];
@@ -530,6 +602,9 @@ class ActivitySealTest extends TestCase
             'accel_counts' => $counts, 'hr_bpm' => $hr,
             'gps' => ['speed_kmh' => $speed, 'grade' => $grade, 'track' => $track],
         ];
+        if ($activityKind !== null) {
+            $window['activity_kind'] = $activityKind;
+        }
 
         $key = "raw/{$profileId}/workout-test.ndjson.gz";
         Storage::disk('raw')->put($key, gzencode(json_encode($window)));

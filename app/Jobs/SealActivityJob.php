@@ -171,6 +171,9 @@ class SealActivityJob implements ShouldQueue
         $windowHrSource = null;   // 'chest_strap' if a paired strap drove HR (reference-grade)
         $rr = [];                 // strap beat-to-beat RR intervals (ms) → in-workout HRV (optional)
         $workoutHrv = null;
+        $kindHint = null;         // the user's EXPLICIT choice on the watch: 'run' (running tab, GPS) vs
+                                  // 'strength'/'lift' (heart-rate tab, no GPS). When present it is authoritative
+                                  // over the post-hoc accel classifier — a gym session is never re-guessed as a run.
 
         foreach ($session as $ingestion) {
             $w = $this->loadWindow($ingestion);
@@ -192,6 +195,7 @@ class SealActivityJob implements ShouldQueue
             $unit = $w['accel_unit'] ?? $unit;
             $fs = (int) ($w['accel_fs'] ?? $fs);
             $windowHrSource = $w['hr_source'] ?? $windowHrSource;
+            $kindHint = $w['activity_kind'] ?? $kindHint;
             $this->append($rr, $w['hr_rr_ms'] ?? []);
             $start = $start ?? ($ingestion->window_start ?? null);
             $end = $ingestion->window_end ?? $end;
@@ -286,6 +290,19 @@ class SealActivityJob implements ShouldQueue
 
         $sess = $activity['sessions'][0] ?? [];
 
+        // The watch's explicit choice wins over the accel classifier. A 'strength'/'lift' session is
+        // sealed as strength (no route, gym analysis) even if the motion briefly looked like a run; a
+        // 'run' session stays cardio even if the classifier was unsure. No hint → trust the classifier.
+        $liftHint = in_array($kindHint, ['lift', 'strength', 'hiit', 'yoga'], true);
+        $runHint = in_array($kindHint, ['run', 'walk', 'hike', 'cycle', 'swim', 'row'], true);
+        $cardioTypes = ['run', 'walk', 'cycle', 'stairs', 'hike'];
+        $activityType = $sess['activity_type'] ?? null;
+        if ($liftHint) {
+            $activityType = 'strength';
+        } elseif ($runHint && ! in_array($activityType, $cardioTypes, true)) {
+            $activityType = $kindHint === 'walk' ? 'walk' : 'run';
+        }
+
         $fitness = $biosignal->processFitness(array_filter([
             'age' => $profileBits['age'],
             'sex' => $profileBits['sex'],
@@ -302,8 +319,9 @@ class SealActivityJob implements ShouldQueue
 
         // Run route → the Strava-style summary (map polyline + splits + elevation + best efforts +
         // Relative Effort). Only when we actually have a GPS track; the geometry stands on its own,
-        // so a failure here never blocks sealing the session.
-        $route = $this->routeMetrics($biosignal, $track, $hr1, (int) ($profileBits['hr_max'] ?? 0));
+        // so a failure here never blocks sealing the session. A lift never gets a route — even a stray
+        // GPS fix that leaked in shouldn't paint a map on a gym session.
+        $route = $liftHint ? [] : $this->routeMetrics($biosignal, $track, $hr1, (int) ($profileBits['hr_max'] ?? 0));
 
         // Prefer the route's GPS-integrated distance, then the activity pass, then speed·time.
         $distance = ($route['distance_km'] ?? null)
@@ -315,7 +333,7 @@ class SealActivityJob implements ShouldQueue
         // No GPS distance at all (indoor / treadmill / never locked) → estimate it from the accel
         // cadence + the user's height, so an indoor run still gets distance + pace + all the HR stats
         // (just no map). Honest 'steps' source label. Failure here never blocks the seal.
-        if ($distance === null && $ax && $ay && $az && ($profileBits['height_cm'] ?? 0) > 0 && $durationMin > 0) {
+        if ($distance === null && ! $liftHint && $ax && $ay && $az && ($profileBits['height_cm'] ?? 0) > 0 && $durationMin > 0) {
             try {
                 $est = $biosignal->estimateStepDistance([
                     'accel_xyz' => ['x' => $ax, 'y' => $ay, 'z' => $az],
@@ -323,7 +341,7 @@ class SealActivityJob implements ShouldQueue
                     'accel_unit' => $unit,
                     'duration_s' => $durationMin * 60,
                     'height_cm' => $profileBits['height_cm'],
-                    'activity_type' => $sess['activity_type'] ?? null,
+                    'activity_type' => $activityType,
                 ]);
                 if (($est['estimated'] ?? false) && ($est['distance_km'] ?? 0) > 0) {
                     $distance = $est['distance_km'];
@@ -341,8 +359,9 @@ class SealActivityJob implements ShouldQueue
                 'source' => $session->first()->source ?? 'titan_band',
                 'ended_at' => $end ? CarbonImmutable::parse($end) : null,
                 'duration_min' => isset($sess['duration_min']) ? (int) round($sess['duration_min']) : $durationMin,
-                'activity_type' => $sess['activity_type'] ?? null,
-                'activity_confidence' => $sess['activity_confidence'] ?? null,
+                'activity_type' => $activityType,
+                // The watch chose the type → full confidence; otherwise the classifier's own score.
+                'activity_confidence' => ($liftHint || $runHint) ? 1.0 : ($sess['activity_confidence'] ?? null),
                 'distance_km' => $distance,
                 'distance_source' => $distanceSource,
                 'avg_hr' => isset($sess['mean_hr']) ? (int) round($sess['mean_hr']) : ($hr1 ? (int) round(array_sum($hr1) / count($hr1)) : null),
@@ -372,9 +391,10 @@ class SealActivityJob implements ShouldQueue
             ], fn ($v) => $v !== null),
         );
 
-        // Strength path: if this ISN'T locomotion (run/walk/cycle/stairs) and we have 3-axis accel,
-        // it's likely a lifting session → run the gym analyzer and log exercises + sets + reps.
-        $isCardio = in_array($sess['activity_type'] ?? '', ['run', 'walk', 'cycle', 'stairs'], true);
+        // Strength path: if this ISN'T locomotion and we have 3-axis accel, it's a lifting session →
+        // run the gym analyzer and log exercises + sets + reps. The explicit 'strength' hint forces
+        // this on; an explicit 'run' hint (now a cardio $activityType) correctly skips it.
+        $isCardio = in_array($activityType, $cardioTypes, true);
         if (! $isCardio && $ax && $ay && $az) {
             $this->sealStrength($profile, $biosignal, $log, $ax, $ay, $az, $fs, $unit, $startIso, $durationMin);
         }

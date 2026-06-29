@@ -50,15 +50,61 @@ class MobileRunsController extends Controller
             'relative_effort' => $session->relative_effort,
             'avg_hr' => $session->avg_hr,
             'max_hr' => $session->max_hr,
+            // Time-in-HR-zone + training load — the stats that headline a LIFT summary (the average is
+            // dragged down by inter-set rest, so the peak + minutes in the red tell the real story).
+            'hr_zones' => $session->hr_zones,
+            'trimp' => $session->trimp !== null ? (float) $session->trimp : null,
+            'hr_quality' => $session->hr_quality !== null ? (float) $session->hr_quality : null,
             'workout_hrv_ms' => $session->workout_hrv_ms !== null ? (float) $session->workout_hrv_ms : null,
             'calories_kcal' => $session->calories_kcal,
             'vo2max' => $session->vo2max !== null ? (float) $session->vo2max : null,
+            'fitness_level' => $session->fitness_level,
             'hrr_bpm' => $session->hrr_bpm !== null ? (float) $session->hrr_bpm : null,
             'bounds' => $session->route_bounds,
             'polyline' => $session->route_polyline,
-            'map_url_large' => $session->staticMapUrl(900, 520),
+            'map_url_large' => $session->hasRoute() ? $session->staticMapUrl(900, 520) : null,
+            // Strength detail (exercises + sets/reps) for a lifting session — null for a run.
+            'strength' => $this->strengthDetail($profile, $session),
             'units' => $imperial ? 'imperial' : 'metric',
         ]);
+    }
+
+    /**
+     * Detected exercises + sets for a lifting session. The strength seal writes a Workout keyed on the
+     * same (profile, started_at) as the ActivitySession (see SealActivityJob::sealStrength), so we look
+     * it up by that. Returns null for a cardio run (no Workout) so the client can branch on its presence.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function strengthDetail(\App\Models\Profile $profile, ActivitySession $session): ?array
+    {
+        if ($session->activity_type !== 'strength' || $session->started_at === null) {
+            return null;
+        }
+
+        $workout = $profile->workouts()
+            ->where('performed_at', $session->started_at)
+            ->with(['exercises.exercise', 'exercises.sets'])
+            ->first();
+        if (! $workout) {
+            return null;
+        }
+
+        $exercises = $workout->exercises->map(fn ($we) => [
+            'name' => $we->exercise?->name ?? 'Exercise',
+            'muscle_group' => $we->exercise?->muscle_group,
+            'sets' => $we->sets->map(fn ($s) => [
+                'set_number' => $s->set_number,
+                'reps' => $s->reps,
+                'weight_kg' => $s->weight_kg !== null ? (float) $s->weight_kg : null,
+            ])->values(),
+        ])->values();
+
+        return [
+            'total_sets' => $workout->exercises->sum(fn ($we) => $we->sets->count()),
+            'total_reps' => $workout->exercises->sum(fn ($we) => $we->sets->sum('reps')),
+            'exercises' => $exercises,
+        ];
     }
 
     /** The list-row shape — shared by index + the header of show. */

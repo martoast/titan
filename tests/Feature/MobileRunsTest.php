@@ -53,4 +53,47 @@ class MobileRunsTest extends TestCase
         $this->withHeader('Authorization', "Bearer {$otherToken}")
             ->getJson("/api/me/runs/{$session->id}")->assertNotFound();
     }
+
+    public function test_lift_detail_returns_hr_zones_and_strength_sets(): void
+    {
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        [, $token] = ApiToken::mint($user, 'ios', ['*']);
+
+        $startedAt = now()->subHour();
+        $session = ActivitySession::create([
+            'profile_id' => $profile->id, 'source' => 'titan_band',
+            'started_at' => $startedAt, 'ended_at' => now()->subMinutes(20), 'duration_min' => 40,
+            'activity_type' => 'strength', 'avg_hr' => 118, 'max_hr' => 165,
+            'hr_zones' => ['z1' => 5, 'z2' => 10, 'z3' => 15, 'z4' => 8, 'z5' => 2],
+            'trimp' => 44.5, 'calories_kcal' => 280, 'vo2max' => 50.0, 'fitness_level' => 'high',
+            'updated_via' => 'biosignal:sealed',
+        ]);
+
+        // The strength seal writes a Workout keyed on the same (profile, started_at).
+        $exercise = \App\Models\Exercise::firstOrCreate(['slug' => 'squats'],
+            ['name' => 'Squats', 'muscle_group' => 'legs', 'category' => 'compound', 'equipment' => 'barbell']);
+        $workout = \App\Models\Workout::create([
+            'profile_id' => $profile->id, 'performed_at' => $startedAt, 'name' => 'Gym session',
+            'duration_min' => 40, 'updated_via' => 'biosignal:sealed',
+        ]);
+        $we = \App\Models\WorkoutExercise::create(['workout_id' => $workout->id, 'exercise_id' => $exercise->id, 'order' => 0]);
+        \App\Models\WorkoutSet::create(['workout_exercise_id' => $we->id, 'set_number' => 1, 'reps' => 10, 'weight_kg' => 0]);
+        \App\Models\WorkoutSet::create(['workout_exercise_id' => $we->id, 'set_number' => 2, 'reps' => 8, 'weight_kg' => 0]);
+
+        $detail = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson("/api/me/runs/{$session->id}")->assertOk();
+
+        // A lift has no map, but it has the HR-zone story + VO2max + sets/reps.
+        $detail->assertJsonPath('activity_type', 'strength')
+            ->assertJsonPath('map_url_large', null)
+            ->assertJsonPath('polyline', null)
+            ->assertJsonPath('hr_zones.z5', 2)
+            ->assertJsonPath('trimp', 44.5)
+            ->assertJsonPath('vo2max', 50)   // 50.0 serializes to 50 in JSON
+            ->assertJsonPath('strength.total_sets', 2)
+            ->assertJsonPath('strength.total_reps', 18)
+            ->assertJsonPath('strength.exercises.0.name', 'Squats')
+            ->assertJsonPath('strength.exercises.0.sets.0.reps', 10);
+    }
 }
