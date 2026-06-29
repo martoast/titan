@@ -394,8 +394,15 @@ class SealActivityJob implements ShouldQueue
         // Strength path: if this ISN'T locomotion and we have 3-axis accel, it's a lifting session →
         // run the gym analyzer and log exercises + sets + reps. The explicit 'strength' hint forces
         // this on; an explicit 'run' hint (now a cardio $activityType) correctly skips it.
+        //
+        // Safety net for a hint-less lift (the band's `activity_kind` frame didn't arrive): the accel
+        // classifier has NO 'strength' class, so a low-motion lift can be misread as 'walk'/'stairs'.
+        // With no GPS locomotion evidence (no track, no speed) and no explicit run hint, let the gym
+        // analyzer try anyway — sealStrength only overrides to 'strength' when it actually detects sets,
+        // so a real GPS-less treadmill run (no sets) is untouched.
         $isCardio = in_array($activityType, $cardioTypes, true);
-        if (! $isCardio && $ax && $ay && $az) {
+        $noLocomotion = empty($track) && empty($speed);
+        if ((! $isCardio || (! $runHint && $noLocomotion)) && $ax && $ay && $az) {
             $this->sealStrength($profile, $biosignal, $log, $ax, $ay, $az, $fs, $unit, $startIso, $durationMin);
         }
 

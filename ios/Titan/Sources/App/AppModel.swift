@@ -253,10 +253,20 @@ final class AppModel: ObservableObject {
         guard band != nil else { return }
         connectionReleaseTask?.cancel()
         connectionReleaseTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 120_000_000_000)   // 2-min grace
-            guard let self, !Task.isCancelled else { return }
-            self.band?.setDesiredConnection(false)
-            self.bandIdle = true
+            // Wait out the grace — but NEVER drop the link while a workout is live. The band's sport-tagged
+            // HR (T5) is the ONLY way the app sees the watch end the run (sport→0). Release it mid-workout
+            // and we stop getting frames entirely: the 4 s end-debounce never fires, the run hangs "active",
+            // and the next reconnect re-pops it (the "ended on the watch but the app didn't" + reopen loop).
+            // So poll past the grace and only release once the run has actually ended.
+            repeat {
+                try? await Task.sleep(nanoseconds: 120_000_000_000)   // 2-min grace
+                guard let self, !Task.isCancelled else { return }
+                if !self.runActive {
+                    self.band?.setDesiredConnection(false)
+                    self.bandIdle = true
+                    return
+                }
+            } while !Task.isCancelled
         }
     }
 
@@ -853,6 +863,15 @@ final class AppModel: ObservableObject {
     /// When the watch ENDS the workout it keeps streaming HR but the sport tag falls back to 0 — that
     /// transition is our prompt to close the live run immediately (instead of waiting out the 90s gap).
     private func ingestLiveHr(_ hr: HrReading) {
+        // Only LIVE frames drive the run/lift state machine. On app open the band REPLAYS its offline
+        // ring as ordinary "T5:" lines (flushLog / C3 sync), each carrying its original old timestamp.
+        // Those buffered sport tags (sport==1 during a past workout, then 0 after) must NOT start/stop
+        // the live session — replayed at flush speed they oscillate runActive and reopen a phantom run
+        // long after the 12 s end-grace: that is the end-and-reopen loop. (T2/PPG already gets a separate
+        // off-live-path builder for exactly this reason; T5 needs the same guard.) The 24/7 HR trend keeps
+        // every reading separately in FrameRouter, so it's unaffected.
+        let nowMs = UInt64(Date().timeIntervalSince1970 * 1000)
+        if hr.t != 0, nowMs > hr.t, nowMs - hr.t > 60_000 { return }   // stale backlog frame → ignore
         if hr.sport == 1 {
             // Start ONLY on the rising edge (a workout just began). Starting on the level would re-open
             // the run on the very next frame after you end it — while the band is still mid-workout and
