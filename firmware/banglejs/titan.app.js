@@ -1222,12 +1222,14 @@ function tabTitle(t, col) {
 function drawAction(primary, active, secondary, accent, y) {
   var cx = g.getWidth() / 2;
   if (y === undefined) y = 150;
-  g.setFont("6x8", 2); g.setColor(active ? C.rec : (accent || C.mint));
-  var tw = g.stringWidth(primary), gx = cx - (tw + 14) / 2;
-  g.fillCircle(gx + 4, y, 4);                                   // single-click dot
-  g.setFontAlign(-1, 0); g.drawString(primary, gx + 14, y);
+  if (primary) {                                               // a face with no single-click action omits it
+    g.setFont("6x8", 2); g.setColor(active ? C.rec : (accent || C.mint));
+    var tw = g.stringWidth(primary), gx = cx - (tw + 14) / 2;
+    g.fillCircle(gx + 4, y, 4);                                 // single-click dot
+    g.setFontAlign(-1, 0); g.drawString(primary, gx + 14, y);
+  }
   if (secondary) {
-    var y2 = y + 16;
+    var y2 = primary ? y + 16 : y;
     g.setFont("6x8", 1); g.setColor(C.dim);
     var tw2 = g.stringWidth(secondary), gx2 = cx - (tw2 + 16) / 2;
     g.fillCircle(gx2 + 3, y2, 2); g.fillCircle(gx2 + 9, y2, 2); // double-click dots
@@ -1294,11 +1296,9 @@ function drawHeart() {
   if (bpm) arc(cx, cy, r, 8, 0, hrFrac(bpm), hrColor(bpm));
   g.setColor(C.white); g.setFont("Vector", 50); g.setFontAlign(0, 0);
   g.drawString((bpm || "--") + "", cx, cy);
-  // Workouts live on the Run/Lift faces now; the Heart button owns the connection (the old Status face
-  // is gone): pair when offline, sync-now when linked; 2× toggles capture. The button label + the top
-  // bar's LIVE/LOG already show the link state, so there's no tiny status line to squint at.
-  if (state.connected) drawAction("SYNC", false, "CAPTURE", C.heart);
-  else drawAction("PAIR BAND", false, "CAPTURE", C.heart);
+  // Workouts live on the Run/Lift faces now. The Heart button: 1× toggles idle ↔ recording, 2× pairs /
+  // reconnects (the old Status face is gone; the app auto-syncs on open, so there's no manual SYNC).
+  drawAction(state.streaming ? "RECORDING" : "IDLE", state.streaming, "PAIR", C.heart);
 }
 
 // Page 1 — CLOCK: big time + date (timezone synced from the phone).
@@ -1625,8 +1625,8 @@ function exitPairing() {
 // on — one click does the obvious thing, a double-click the secondary thing, matching the on-screen
 // dots. There is NO global gesture: pairing (rare, setup) lives on the Heart face, so a stray burst
 // while you're tallying reps on the Counter can never stop recording or pop a pairing screen.
-//   1 click  → primary:    Heart=pair/sync · Stopwatch=timer · Counter=+1 · Run=run · Lift=lift
-//   2 clicks → secondary:  Heart=capture · Stopwatch=sleep · Counter=reset
+//   1 click  → primary:    Heart=record on/off · Stopwatch=timer · Counter=+1 · Run=run · Lift=lift
+//   2 clicks → secondary:  Heart=pair/reconnect · Stopwatch=sleep · Counter=reset
 var tapCount = 0, tapTimer = null;
 var TAP_GAP = 0.4;    // seconds; a new click within this window extends the burst
 
@@ -1634,15 +1634,14 @@ function handleTaps(n) {
   // HEART face owns the connection (the old Status face is gone): pair when offline / sync when linked
   // on 1×, capture toggle on 2×. Workouts are NEVER started here anymore — that's the Run/Lift faces.
   if (page === HEART_PAGE) {
-    if (n >= 2) { try { Bangle.buzz(80); } catch (e) {} toggleStreaming(); return; }   // capture toggle
-    if (!state.connected) {
+    if (n >= 2) {                                   // 2× → pair / reconnect (frees the radio, shows the code)
       try { Bangle.buzz(120); } catch (e) {}
-      if (state.streaming) stopStreaming();        // back to idle, then show the pairing code
+      if (state.streaming) stopStreaming();         // drop to idle so the radio is free to advertise
       enterPairing();
-    } else {
-      try { Bangle.buzz(60); } catch (e) {}
-      emitStepFrame(); flushLog();                 // linked → sync now
+      return;
     }
+    try { Bangle.buzz(80); } catch (e) {}           // 1× → toggle idle ↔ recording
+    toggleStreaming();
     return;
   }
   if (n >= 2) {

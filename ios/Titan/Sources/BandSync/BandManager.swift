@@ -145,6 +145,14 @@ public final class BandManager: NSObject {
         central.scanForPeripherals(withServices: nil)   // didDiscover only accepts our bound id
     }
 
+    /// Opening the app while ALREADY connected → force a flush (C3) so the latest steps + any data
+    /// buffered since the last flush reach the phone (and the server) right now. The reconnect path
+    /// already auto-flushes on connect, so this only covers the still-linked case. No-op if not connected.
+    public func flushIfConnected() {
+        guard let p = band, p.state == .connected, let rx = rxChar else { return }
+        p.writeValue(Data("C3:\n".utf8), for: rx, type: .withoutResponse)
+    }
+
     /// End the run on the band (C0): when you tap "End run" in the app, the band finishes too. No-op if
     /// not connected (then the band keeps recording until you finish on its RUN face).
     public func endRunOnBand() {

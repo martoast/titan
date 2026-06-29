@@ -235,12 +235,16 @@ final class AppModel: ObservableObject {
 
     private var connectionReleaseTask: Task<Void, Never>?
 
-    /// App came forward (or a workout/sync) → hold a live link.
+    /// App came forward (or a workout/sync) → hold a live link AND pull the band's data now. If the link
+    /// dropped while we were away, setDesiredConnection reconnects and the firmware auto-flushes on connect;
+    /// if we're still connected, flushIfConnected forces a C3 so opening the app always pushes the latest
+    /// steps + any buffered data to the server. Either way, just opening Titan syncs the band.
     func holdConnection() {
         connectionReleaseTask?.cancel(); connectionReleaseTask = nil
         startBandIfPaired()
         bandIdle = false
         band?.setDesiredConnection(true)
+        band?.flushIfConnected()
     }
 
     /// App went to the background → after a short grace (survives quick app switches), release the link
