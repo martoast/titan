@@ -698,18 +698,32 @@ function workoutKind() {
   return "strength";                                           // lift / hiit / yoga / other → the no-route summary
 }
 
-// Announce the active workout's kind to the phone (one newline-JSON frame). Sent on workout start and
-// on (re)connect, so a phone that joins mid-session still learns it. The phone stamps each workout
-// window with it; the server seals run-vs-lift by the user's CHOICE, not a post-hoc accel guess.
+// Announce the active workout's kind to the phone (one newline-JSON frame). Sent on workout start, on
+// (re)connect, AND re-sent every few seconds while a workout streams — a single TA frame can be lost in
+// the BLE burst at workout start, and if the phone was already connected there's no reconnect to re-emit
+// it. Repeating is cheap (~25 B) and idempotent on the phone, so a dropped frame self-heals within
+// seconds. The phone stamps each workout window with it; the server seals run-vs-lift by the user's CHOICE.
+var lastKindEmit = 0;     // getTime() of the last TA frame (throttles the periodic re-emit)
 function emitActivityKind() {
   if (!state.connected || !state.workout) return;
   var k = workoutKind();
   if (!k) return;
+  lastKindEmit = getTime();
   try { Bluetooth.println("TA:" + JSON.stringify({ k: k })); } catch (e) {}
 }
 
+// Called from the 1 Hz loop: re-announce the kind every ~8 s while a workout streams (self-heals a
+// dropped TA without flooding the link).
+function tickActivityKind() {
+  if (!state.connected || !state.workout) return;
+  if (getTime() - lastKindEmit >= 8) emitActivityKind();
+}
+
 function startWorkout(manual) {
-  if (state.workout) { if (manual) state.workoutManual = true; return; }
+  // Already in a workout: if this is a MANUAL face press (Run/Lift) promoting an open session, still
+  // announce the kind — the early-return previously skipped emitActivityKind(), so the phone never
+  // learned it was a lift and showed a run. Now it always tells the phone.
+  if (state.workout) { if (manual) { state.workoutManual = true; emitActivityKind(); } return; }
   state.workout = true;
   state.workoutManual = !!manual;
   powerGps(true);          // try for outdoor pace; dropped after GPS_FIX_TIMEOUT if no fix
@@ -1569,8 +1583,8 @@ queueClockTick();
 // The edge events above stay as the fast path; this just heals their flakiness.
 setInterval(function () {
   var up = NRF.getSecurityStatus().connected;
-  if (up === state.connected) return;
-  if (up) onConnect(); else onDisconnect();
+  if (up !== state.connected) { if (up) onConnect(); else onDisconnect(); }
+  tickActivityKind();   // re-announce a live workout's kind so a dropped TA frame self-heals
 }, 1000);
 
 // Hardware button toggles capture.
