@@ -759,6 +759,8 @@ final class AppModel: ObservableObject {
     private var runSawSport1 = false               // we've seen a sport-tagged frame this run (so a fall back to 0 = ended)
     private var runSportLostAt: Date?              // when the sport tag first fell to 0 this run (end debounce)
     private var lastSportWas1 = false              // the previous HR frame's sport tag — so we start on the RISING edge only
+    private var suppressAutoStartUntil: Date?      // after an end, ignore the band's lingering sport tag this long
+    private static let endRestartGraceSec: TimeInterval = 12   // how long to suppress auto-restart after an end
     private var runTicker: Task<Void, Never>?
     private let runEndGapSec: TimeInterval = 90    // fallback only: frames stop entirely (disconnect) this long ⇒ end
 
@@ -828,9 +830,11 @@ final class AppModel: ObservableObject {
         if hr.sport == 1 {
             // Start ONLY on the rising edge (a workout just began). Starting on the level would re-open
             // the run on the very next frame after you end it — while the band is still mid-workout and
-            // streaming sport==1 — which looped it back open forever. Now an ended run stays ended until
-            // the workout actually stops (sport→0) and a new one begins.
-            if !lastSportWas1 { startRunIfNeeded() }
+            // streaming sport==1 — which looped it back open forever. AND: after you tap End, the watch's
+            // sport tag can flicker (end→restart, or a dropped C0) and produce a fresh 0→1 edge that
+            // instantly re-popped the run — the "ending loop" where you had to force-quit. So during the
+            // post-end grace window we ignore the rising edge entirely.
+            if !lastSportWas1, !autoStartSuppressed { startRunIfNeeded() }
             lastSportWas1 = true
             if runActive { runSawSport1 = true; runSportLostAt = nil; runLastSignal = Date() }
         } else {
@@ -849,6 +853,13 @@ final class AppModel: ObservableObject {
             runLiveBpm = Int(hr.bpm)
             runMaxBpm = max(runMaxBpm, Int(hr.bpm))
         }
+    }
+
+    /// True while we're in the post-end grace window — a recently-ended run must not be auto-restarted by
+    /// the watch's still-flowing sport tag.
+    private var autoStartSuppressed: Bool {
+        if let until = suppressAutoStartUntil, Date() < until { return true }
+        return false
     }
 
     private func startRunIfNeeded() {
@@ -884,6 +895,8 @@ final class AppModel: ObservableObject {
         guard runActive else { return }
         runActive = false
         runSawSport1 = false; runSportLostAt = nil
+        // Block the band's lingering/flickering sport tag from instantly re-popping the run (the end loop).
+        suppressAutoStartUntil = Date().addingTimeInterval(Self.endRestartGraceSec)
         runTicker?.cancel(); runTicker = nil
         showLiveRunSheet = false       // dismiss the live panel
         updateLocator()                // stop phone GPS unless a test is still using it
