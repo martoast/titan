@@ -11,6 +11,24 @@ final class CoachViewModel: ObservableObject {
     @Published var pendingImage: Data?         // photo staged in the composer, awaiting send
     private var conversationId: Int?
 
+    /// Shrink a captured photo to a chat-bubble thumbnail (≤480 px, modest JPEG). Used only for the copy
+    /// retained in `messages`; the original full-res Data is what gets uploaded to the coach.
+    static func bubbleThumbnail(_ data: Data, maxDim: CGFloat = 480) -> Data {
+        guard let img = UIImage(data: data) else { return data }
+        let longest = max(img.size.width, img.size.height)
+        guard longest > maxDim else {
+            // already small enough in dimensions; still recompress if the byte payload is large
+            return data.count > 200_000 ? (img.jpegData(compressionQuality: 0.6) ?? data) : data
+        }
+        let scale = maxDim / longest
+        let size = CGSize(width: img.size.width * scale, height: img.size.height * scale)
+        let fmt = UIGraphicsImageRendererFormat.default(); fmt.scale = 1; fmt.opaque = true
+        let scaled = UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
+            img.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return scaled.jpegData(compressionQuality: 0.6) ?? data
+    }
+
     /// Send button entry point — routes to a photo send when one is staged, otherwise plain text.
     func submit(api: APIClient) {
         if pendingImage != nil { sendPhoto(api: api) } else { send(api: api) }
@@ -51,7 +69,10 @@ final class CoachViewModel: ObservableObject {
         Haptic.tap()
         let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
         input = ""; pendingImage = nil; sending = true
-        messages.append(ChatMessage(role: .user, text: caption, imageData: imageData))
+        // Retain only a small THUMBNAIL in the (session-long, always-alive) messages array — the bubble
+        // shows it at ~220pt. The full-res `imageData` is still uploaded below; keeping the original
+        // multi-MB JPEG per photo all day climbed memory toward jetsam.
+        messages.append(ChatMessage(role: .user, text: caption, imageData: Self.bubbleThumbnail(imageData)))
         var assistant = ChatMessage(role: .assistant, text: "", streaming: true)
         messages.append(assistant)
         let idx = messages.count - 1

@@ -20,14 +20,14 @@ struct BodyView: View {
 
 private struct ProgressSection: View {
     @EnvironmentObject var model: AppModel
-    @State private var pendingImage: Data?
+    @State private var pending: ImageData?           // set ONCE when a photo is picked → stable sheet id
     @State private var viewing: ProgressPhoto?
 
     private let cols = [GridItem(.flexible(), spacing: Theme.Space.s), GridItem(.flexible(), spacing: Theme.Space.s)]
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
-            PhotoSourceButton(onImage: { pendingImage = $0 }) {
+            PhotoSourceButton(onImage: { pending = ImageData(data: $0) }) {
                 GlassCard(padding: Theme.Space.l) {
                     HStack(spacing: Theme.Space.m) {
                         ZStack {
@@ -50,7 +50,7 @@ private struct ProgressSection: View {
             gallery
         }
         .task { await model.loadProgress() }
-        .sheet(item: Binding(get: { pendingImage.map { ImageData(data: $0) } }, set: { if $0 == nil { pendingImage = nil } })) { wrap in
+        .sheet(item: $pending) { wrap in
             AddProgressSheet(imageData: wrap.data)
         }
         .sheet(item: $viewing) { PhotoViewerSheet(photo: $0) }

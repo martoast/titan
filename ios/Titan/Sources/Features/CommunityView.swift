@@ -377,6 +377,7 @@ private struct FindAthletes: View {
     @State private var query = ""
     @State private var results: [Athlete] = []
     @State private var searching = false
+    @State private var searchTask: Task<Void, Never>?
     var body: some View {
         VStack(spacing: Theme.Space.m) {
             HStack(spacing: Theme.Space.s) {
@@ -384,7 +385,7 @@ private struct FindAthletes: View {
                 TextField("Find by name or @username", text: $query)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .foregroundStyle(Theme.Palette.text)
-                    .onSubmit { Task { await runSearch() } }
+                    .onSubmit { searchTask?.cancel(); searchTask = Task { await runSearch(for: query) } }
                 if searching { ProgressView().controlSize(.mini) }
             }
             .padding(.vertical, 12).padding(.horizontal, Theme.Space.m)
@@ -410,13 +411,22 @@ private struct FindAthletes: View {
             ForEach(results) { a in AthleteRow(athlete: a) }
         }
         .onChange(of: query) { _, q in
-            if q.count >= 2 { Task { await runSearch() } } else { results = [] }
+            searchTask?.cancel()                       // cancel the in-flight search for the old query
+            guard q.count >= 2 else { results = []; searching = false; return }
+            searchTask = Task { await runSearch(for: q) }
         }
     }
 
-    private func runSearch() async {
-        searching = true; defer { searching = false }
-        results = (try? await model.api.searchAthletes(query)) ?? []
+    /// Debounced + cancellable + query-pinned: only the latest query's results are shown. Without this,
+    /// fast typing raced N requests and an earlier (slower) one could overwrite the latest with stale hits.
+    private func runSearch(for q: String) async {
+        try? await Task.sleep(nanoseconds: 300_000_000)   // debounce keystrokes
+        if Task.isCancelled { return }
+        searching = true
+        let found = (try? await model.api.searchAthletes(q)) ?? []
+        if Task.isCancelled || q != query { return }      // a newer query superseded this one — drop it
+        results = found
+        searching = false
     }
 }
 
