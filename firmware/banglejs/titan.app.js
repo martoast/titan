@@ -285,10 +285,17 @@ var primed = null;        // active coach-primed activity, or null
 var cmdBuf = "";          // inbound NUS command line buffer
 var pairUntil = 0;        // pairing-mode end time (getTime); 0 = not pairing. drawUI() reads pairTimer.
 var pairTimer = null;     // pairing-screen redraw interval, or null
-var PAGES = 7;            // swipeable faces: 0 Heart · 1 Clock · 2 Steps · 3 Status · 4 Stopwatch · 5 Counter · 6 Run
-var STOPWATCH_PAGE = 4;   // the Stopwatch face (button 1×: plain timer · button 2×: log as sleep)
-var COUNTER_PAGE = 5;     // the Counter face (button 1×: +1 · button 2×: reset to zero)
-var RUN_PAGE = 6;         // the Run face (button 1×: start/finish a GPS-tracked run → the app's route map)
+// Swipeable faces. Status is gone (link/pairing/sync folded into the Heart face); Run and Lift are the
+// two workout triggers — each its own dedicated face with a button + timer, so there's no ambiguity
+// about what you're starting. Named constants everywhere (no bare indices) to keep dispatch in sync.
+var HEART_PAGE = 0;       // HR + link status; button 1×: pair (offline) / sync (linked) · 2×: capture toggle
+var CLOCK_PAGE = 1;
+var STEPS_PAGE = 2;
+var STOPWATCH_PAGE = 3;   // button 1×: plain timer · 2×: log as sleep
+var COUNTER_PAGE = 4;     // button 1×: +1 · 2×: reset to zero
+var RUN_PAGE = 5;         // button 1×: start/finish a GPS-tracked RUN → the app's route map
+var LIFT_PAGE = 6;        // button 1×: start/finish a no-GPS LIFTING workout → the app's strength summary
+var PAGES = 7;            // 0 Heart · 1 Clock · 2 Steps · 3 Stopwatch · 4 Counter · 5 Run · 6 Lift
 var page = 0;             // current face (swipe to change)
 // Run face state — a GPS-tracked run started from the watch; the workout's T4 coords build the route.
 var runActive = false;    // a run is being tracked
@@ -296,6 +303,9 @@ var runStartMs = 0;       // run start (device ms)
 var runDistM = 0;         // accumulated distance (m), summed from GPS fixes (haversine)
 var runLastLat = null, runLastLon = null;  // last coord, for the distance increment
 var runTimer = null;      // 1 Hz repaint while the run face is live (so the timer ticks)
+var liftActive = false;   // a lifting workout is being tracked from the Lift face (no GPS)
+var liftStartMs = 0;      // lift start (device ms)
+var liftTimer = null;     // 1 Hz repaint while the lift face is live (so the timer ticks)
 var clockTickTimer = null; // minute-boundary redraw for the clock face
 
 // Default timezone so the clock reads correctly out of the box without a phone: Tijuana / Baja
@@ -674,6 +684,30 @@ function updateAutoDetect() {
   }
 }
 
+// The activity kind for the phone's UX + the server's authoritative seal: "run" (Run face, GPS) vs
+// "strength" (Heart-face manual workout = lifting/gym), passing a primed locomotion type through.
+// Returns null for an AUTO-started workout (motion-detected, intent unknown) so the server classifies
+// it from accel instead of us forcing a guess. Mirrors app/Support/ActivityPriming canonical types.
+function workoutKind() {
+  if (runActive) return "run";
+  if (liftActive) return "strength";                          // Lift face → strength, never a route
+  if (!state.workoutManual) return null;                       // auto-started → let the server classify
+  var t = primed && primed.type;
+  if (t === "run" || t === "walk" || t === "hike" || t === "row" || t === "swim") return t;
+  if (t === "cycle" || t === "bike" || t === "cycling") return "cycle";
+  return "strength";                                           // lift / hiit / yoga / other → the no-route summary
+}
+
+// Announce the active workout's kind to the phone (one newline-JSON frame). Sent on workout start and
+// on (re)connect, so a phone that joins mid-session still learns it. The phone stamps each workout
+// window with it; the server seals run-vs-lift by the user's CHOICE, not a post-hoc accel guess.
+function emitActivityKind() {
+  if (!state.connected || !state.workout) return;
+  var k = workoutKind();
+  if (!k) return;
+  try { Bluetooth.println("TA:" + JSON.stringify({ k: k })); } catch (e) {}
+}
+
 function startWorkout(manual) {
   if (state.workout) { if (manual) state.workoutManual = true; return; }
   state.workout = true;
@@ -681,6 +715,7 @@ function startWorkout(manual) {
   powerGps(true);          // try for outdoor pace; dropped after GPS_FIX_TIMEOUT if no fix
   reconcileHrm();          // continuous HRM + motion-tolerant SPORT mode + 50 Hz PPG (heavy-lifting fix)
   applyAccelRate();        // 25 Hz accel for the classifier, even offline
+  emitActivityKind();      // tell the phone run vs lift right away (a re-emit follows on any reconnect)
   if (manual) { try { Bangle.buzz(120); } catch (e) {} }
   if (uiVisible) drawUI();
 }
@@ -867,6 +902,8 @@ function onConnect() {
   if (woAccel.length) writeWorkoutAccelFrame();
   // Sync today's step total right away (captures a walk taken while the phone was left behind).
   setTimeout(emitStepFrame, 1800);
+  // Re-announce an in-progress workout's kind so a phone that connected mid-session shows run vs lift.
+  if (state.workout) setTimeout(emitActivityKind, 1700);
   // Match accel cadence to the current state (workout vs idle).
   applyAccelRate();
   // Give the link a beat to settle, then drain the overnight log IN CHUNKS (never a blocking dump).
@@ -1255,9 +1292,12 @@ function drawHeart() {
   if (bpm) arc(cx, cy, r, 8, 0, hrFrac(bpm), hrColor(bpm));
   g.setColor(C.white); g.setFont("Vector", 50); g.setFontAlign(0, 0);
   g.drawString((bpm || "--") + "", cx, cy);
-  // Button action: a workout (sport-mode HR) is the marquee gesture — one click starts/ends it.
-  // A double-click is the rarely-needed capture master toggle.
-  drawAction(state.workout ? "END" : "WORKOUT", state.workout, state.workout ? null : "CAPTURE", C.heart);
+  // Link status (this face replaces the old Status face). Workouts live on the Run/Lift faces now —
+  // the Heart button owns the connection: pair when offline, sync-now when linked; 2× toggles capture.
+  g.setColor(state.connected ? C.mint : C.amber); g.setFont("6x8", 1); g.setFontAlign(0, 0);
+  g.drawString(state.connected ? "LINKED" : (state.streaming ? "LOGGING" : "NOT LINKED"), cx, cy + 40);
+  if (state.connected) drawAction("SYNC", false, "CAPTURE", C.heart);
+  else drawAction("PAIR BAND", false, "CAPTURE", C.heart);
 }
 
 // Page 1 — CLOCK: big time + date (timezone synced from the phone).
@@ -1283,27 +1323,9 @@ function drawSteps() {
   g.setColor(C.cyan); g.setFont("6x8", 2); g.drawString("TODAY", W / 2, 150);
 }
 
-// Page 3 — STATUS: a few big, readable operational rows.
-function drawStatus() {
-  var W = g.getWidth();
-  tabTitle("STATUS", C.cyan);
-  var y = 70;
-  function row(label, val, col) {
-    g.setFont("6x8", 1); g.setFontAlign(-1, 0); g.setColor(C.cyan); g.drawString(label, 14, y - 6);
-    g.setFont("6x8", 2); g.setFontAlign(1, 0); g.setColor(col); g.drawString(val, W - 14, y);
-    y += 28;
-  }
-  row("LINK", state.connected ? "LIVE" : (state.streaming ? "LOGGING" : "OFF"), state.connected ? C.mint : C.amber);
-  row("BATTERY", state.battery + "%" + (state.charging ? (state.battery >= 100 ? " FULL" : " CHG") : ""),
-      state.charging ? C.cyan : (state.battery < 20 ? C.rec : C.mint));
-  row("SAMPLES", state.ppgCount + "", C.white);
-  row("SYNCED", state.framesSent + "", C.cyan);
-  // This is the setup face: pair from here when not linked; sync on demand (and re-pair) when linked.
-  if (state.connected) drawAction("SYNC NOW", false, "PAIR", C.cyan);
-  else drawAction("PAIR BAND", false, null, C.cyan);
-}
+// (The STATUS face was removed — its link/battery/sync/pairing role now lives on the Heart face.)
 
-// Page 5 — STOPWATCH (doubles as the sleep timer). Button 1× = plain timer; button 2× = run it as
+// STOPWATCH (doubles as the sleep timer). Button 1× = plain timer; button 2× = run it as
 // a logged SLEEP session. Shows the elapsed time big, with the mode + how to stop.
 function drawStopwatch() {
   var W = g.getWidth(), cx = W / 2;
@@ -1380,7 +1402,7 @@ function runTap() {
     runActive = true;
     runStartMs = Math.round(getTime() * 1000);
     runDistM = 0; runLastLat = null; runLastLon = null;
-    primed = { type: "run", accelHz: 12.5 };   // pin the run profile (sport mode + cadence)
+    primed = { type: "run", gps: true, accelHz: 12.5 };   // pin the run profile (sport mode + cadence + GPS)
     if (!state.streaming) startStreaming();     // make sure the session is captured offline too
     startWorkout(true);                         // manual workout → arms GPS now (no motion gate)
     if (runTimer) clearInterval(runTimer);
@@ -1401,6 +1423,56 @@ function finishRun() {
   if (uiVisible) drawUI();
 }
 
+// Page — LIFT: a no-GPS gym/lifting workout you start from the watch (the counterpart to the Run face).
+// Click to start (a manual workout pinned as "strength", GPS OFF); the live timer + HR show here, and
+// the app/server seal it as a strength session (HR zones / VO₂max / sets), never a run. Click to finish.
+function drawLift() {
+  var W = g.getWidth(), cx = W / 2;
+  topBar();
+  tabTitle("LIFT", C.amber);
+  if (!liftActive) {
+    g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
+    g.drawString("0:00", cx, 96);
+    g.setColor(C.dim); g.setFont("6x8", 1); g.drawString("tap to start a lift", cx, 132);
+    drawAction("START", false, null, C.amber);
+    return;
+  }
+  var sec = (getTime() * 1000 - liftStartMs) / 1000;
+  g.setColor(C.white); g.setFont("Vector", 44); g.setFontAlign(0, 0);
+  g.drawString(fmtMMSS(sec), cx, 88);
+  var bpm = state.bpm || 0;
+  g.setColor(bpm ? C.heart : C.dim); g.setFont("Vector", 26);
+  g.drawString((bpm || "--") + " bpm", cx, 128);
+  drawAction("FINISH", true, null, C.amber, 158);
+}
+
+// Button on the Lift face: start or finish a lifting workout. Mirrors runTap but with NO GPS — a gym
+// session needs none, and the "lift" prime makes the phone/server seal it as strength.
+function liftTap() {
+  if (liftActive) finishLift();
+  else {
+    liftActive = true;
+    liftStartMs = Math.round(getTime() * 1000);
+    primed = { type: "lift", gps: false, accelHz: 25 };   // pin the strength profile; no GPS
+    if (!state.streaming) startStreaming();     // capture it offline too
+    startWorkout(true);                         // manual workout → emits TA kind "strength", buzzes its ack
+    powerGps(false);                            // override startWorkout's default GPS power-on
+    if (liftTimer) clearInterval(liftTimer);
+    liftTimer = setInterval(function () { if (page === LIFT_PAGE) drawUI(); }, 1000);   // tick the timer
+    if (uiVisible) drawUI();
+  }
+}
+
+// Finish the active lift — from the Lift-face button OR a C0 the app sends when you tap "End" in the phone.
+function finishLift() {
+  if (!liftActive) return;
+  liftActive = false;
+  if (liftTimer) { clearInterval(liftTimer); liftTimer = null; }
+  endWorkout();                                 // → sport 0; the app ends its live workout on the sport drop
+  try { Bangle.buzz(60); } catch (e) {}
+  if (uiVisible) drawUI();
+}
+
 // Dispatcher: clears, draws the current page + page dots. All sensor-event drawUI() calls
 // just repaint whichever face you're on.
 function drawUI() {
@@ -1408,12 +1480,12 @@ function drawUI() {
   if (pairTimer) return;            // pairing screen owns the display
   if (!Bangle.isLCDOn()) return;    // power: don't redraw while the screen is asleep
   g.reset(); g.setColor(C.bg); g.fillRect(0, 0, g.getWidth(), g.getHeight());
-  if (page === 1) drawClock();
-  else if (page === 2) drawSteps();
-  else if (page === 3) drawStatus();
+  if (page === CLOCK_PAGE) drawClock();
+  else if (page === STEPS_PAGE) drawSteps();
   else if (page === STOPWATCH_PAGE) drawStopwatch();
   else if (page === COUNTER_PAGE) drawCounter();
   else if (page === RUN_PAGE) drawRun();
+  else if (page === LIFT_PAGE) drawLift();
   else drawHeart();
   pageDots();
 }
@@ -1486,7 +1558,7 @@ function queueClockTick() {
   if (clockTickTimer) clearTimeout(clockTickTimer);
   clockTickTimer = setTimeout(function () {
     clockTickTimer = null;
-    if (page === 1) drawUI();   // clock face shows the time
+    if (page === CLOCK_PAGE) drawUI();   // clock face shows the time
     queueClockTick();
   }, 60000 - (Date.now() % 60000) + 50);
 }
@@ -1555,24 +1627,25 @@ function exitPairing() {
 // the watch) and cannot be intercepted, so we never use holds. We count clicks in a quick burst and
 // act once it settles. The button is the SOLE way to act, and it's CONTEXT-AWARE to the face you're
 // on — one click does the obvious thing, a double-click the secondary thing, matching the on-screen
-// dots. There is NO global gesture: pairing (rare, setup) lives on the Status face, so a stray burst
+// dots. There is NO global gesture: pairing (rare, setup) lives on the Heart face, so a stray burst
 // while you're tallying reps on the Counter can never stop recording or pop a pairing screen.
-//   1 click  → primary:    Heart=workout · Stopwatch=timer · Counter=+1 · Run=run · Status=sync/pair
-//   2 clicks → secondary:  Heart=capture · Stopwatch=sleep · Counter=reset · Status=pair
+//   1 click  → primary:    Heart=pair/sync · Stopwatch=timer · Counter=+1 · Run=run · Lift=lift
+//   2 clicks → secondary:  Heart=capture · Stopwatch=sleep · Counter=reset
 var tapCount = 0, tapTimer = null;
 var TAP_GAP = 0.4;    // seconds; a new click within this window extends the burst
 
 function handleTaps(n) {
-  // STATUS face = setup/diagnostics, and the only home for pairing. Not connected → any click pairs
-  // (that's why you came here). Connected → 1× syncs the ring now, 2× re-enters pairing.
-  if (page === 3) {
-    if (!state.connected || n >= 2) {
+  // HEART face owns the connection (the old Status face is gone): pair when offline / sync when linked
+  // on 1×, capture toggle on 2×. Workouts are NEVER started here anymore — that's the Run/Lift faces.
+  if (page === HEART_PAGE) {
+    if (n >= 2) { try { Bangle.buzz(80); } catch (e) {} toggleStreaming(); return; }   // capture toggle
+    if (!state.connected) {
       try { Bangle.buzz(120); } catch (e) {}
       if (state.streaming) stopStreaming();        // back to idle, then show the pairing code
       enterPairing();
     } else {
       try { Bangle.buzz(60); } catch (e) {}
-      emitStepFrame(); flushLog();                 // 1× while connected → sync now
+      emitStepFrame(); flushLog();                 // linked → sync now
     }
     return;
   }
@@ -1581,18 +1654,15 @@ function handleTaps(n) {
     // tiny "nothing here" so a stray double is felt but does nothing.
     if (page === STOPWATCH_PAGE) { try { Bangle.buzz(80); } catch (e) {} swSleepToggle(); }
     else if (page === COUNTER_PAGE) { resetCounter(); }              // resetCounter() buzzes
-    else if (page === 0) { try { Bangle.buzz(80); } catch (e) {} toggleStreaming(); }  // Heart → CAPTURE toggle
     else { try { Bangle.buzz(20); } catch (e) {} }
     return;
   }
   // Single click → the PRIMARY action of the face you're on. Because it's the button (not a touch),
   // it can never mis-fire while you swipe across a face.
-  if (page === 0) {                                                  // Heart → start/end a WORKOUT
-    if (!state.streaming) startStreaming();                          // power the HR sensor first
-    toggleManualWorkout();                                           // start/stop buzzes its own ack
-  } else if (page === STOPWATCH_PAGE) swTap();                       // start / stop the timer
+  if (page === STOPWATCH_PAGE) swTap();                              // start / stop the timer
   else if (page === COUNTER_PAGE) bumpCounter();                     // +1
   else if (page === RUN_PAGE) runTap();                              // start / finish the run
+  else if (page === LIFT_PAGE) liftTap();                            // start / finish the lift
   else { try { Bangle.buzz(20); } catch (e) {} }                     // info face → nothing to do
 }
 
@@ -1612,11 +1682,6 @@ setWatch(function () {
     handleTaps(n);
   }, TAP_GAP * 1000);
 }, BTN1, { repeat: true, edge: "falling" });
-
-function toggleManualWorkout() {
-  if (state.workout && state.workoutManual) { endWorkout(); try { Bangle.buzz(60); } catch (e) {} }
-  else startWorkout(true);   // startWorkout buzzes its own start ack
-}
 
 // ----- Stopwatch + sleep (the Stopwatch face) -------------------------------
 // One face, two uses. Button 1× = a plain stopwatch (general timer, nothing logged). Button 2× on
@@ -1730,13 +1795,14 @@ Bluetooth.on("data", function (d) {
     } else if (line.substr(0, 2) === "C0") {      // stand down / "End run" tapped in the app
       primed = null;
       if (runActive) finishRun();                  // a Run-face run → finish it (also ends the workout)
+      else if (liftActive) finishLift();           // a Lift-face workout → finish it
       else if (state.workout && state.workoutManual) endWorkout();
     } else if (line.substr(0, 3) === "C2:") {     // set time + timezone from the phone
       try {
         var c = JSON.parse(line.substr(3));       // { t: unixSeconds (UTC), tz: hoursOffset }
         if (typeof c.tz === "number") E.setTimeZone(c.tz);
         if (typeof c.t === "number") setTime(c.t);
-        if (page === 1) drawUI();
+        if (page === CLOCK_PAGE) drawUI();
       } catch (err) { /* malformed — ignore */ }
     } else if (line.substr(0, 2) === "C3") {      // "sync now" — flush the overnight ring on demand
       try { emitStepFrame(); } catch (e) {}        // push today's step total too

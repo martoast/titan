@@ -23,6 +23,9 @@ public struct WorkoutWindow: Codable, Equatable {
     public let ended: Bool?           // true ONLY on the final window of a run the user/watch explicitly
                                       // ended → the server seals it immediately (Whoop-style), instead of
                                       // waiting for the stream to fall quiet. nil/omitted on mid-run windows.
+    public let activity_kind: String? // the user's EXPLICIT watch choice: "run" (running tab, GPS) vs
+                                      // "strength" (heart-rate tab, lifting). Authoritative on the server
+                                      // over the accel classifier. nil for an auto-started/unprimed workout.
 }
 
 /// Accumulates the live frames of a workout and emits `kind=workout` windows. Port of the JS
@@ -43,6 +46,10 @@ public final class WorkoutAssembler {
     private var gps: [GpsFix] = []
     private var lastActivityT: UInt64 = 0
     private var winStart: UInt64 = 0
+    /// The user's explicit watch choice for the OPEN workout ("run"/"strength"), set from the band's
+    /// `TA:` frame. Stamped onto every window built for this session; cleared when the session resets so
+    /// a later auto-started workout (no `TA:`) carries no hint and the server classifies it.
+    public var activityKind: String?
 
     public init(endGapMs: UInt64 = 120_000, flushMs: UInt64 = 180_000, minMs: UInt64 = 60_000) {
         END_GAP_MS = endGapMs; FLUSH_MS = flushMs; MIN_MS = minMs
@@ -50,6 +57,7 @@ public final class WorkoutAssembler {
 
     private func reset() {
         active = false; accel = []; hr = []; rr = []; gps = []; lastActivityT = 0; winStart = 0
+        activityKind = nil   // a fresh session re-learns its kind from the next `TA:` (or stays unhinted)
     }
 
     private func gapFinalize(_ t: UInt64) -> WorkoutWindow? {
@@ -145,7 +153,8 @@ public final class WorkoutAssembler {
     private func build(_ endT: UInt64, ended: Bool = false) -> WorkoutWindow? {
         let rrMs = rr.filter { $0.t >= winStart && $0.t <= endT }.map { $0.ms }
         return Self.buildWorkoutWindow(accel: accel, hr: hr, gps: gps, rrMs: rrMs,
-                                       startT: winStart, endT: endT, minMs: MIN_MS, ended: ended)
+                                       startT: winStart, endT: endT, minMs: MIN_MS, ended: ended,
+                                       activityKind: activityKind)
     }
 
     private static let iso: ISO8601DateFormatter = {
@@ -158,7 +167,7 @@ public final class WorkoutAssembler {
     public static func buildWorkoutWindow(accel: [AccelSample], hr: [HrReading], gps: [GpsFix],
                                           rrMs: [Double] = [],
                                           startT: UInt64, endT: UInt64, minMs: UInt64,
-                                          ended: Bool = false) -> WorkoutWindow? {
+                                          ended: Bool = false, activityKind: String? = nil) -> WorkoutWindow? {
         guard endT >= startT, endT - startT >= minMs, accel.count >= 25 else { return nil }
         // Corruption guard: a single window can't plausibly span more than a day. A bad/unsynced band
         // clock (mixed epochs) can make endT-startT enormous → `secs` huge → a multi-GB array alloc
@@ -215,7 +224,7 @@ public final class WorkoutAssembler {
             gps: .init(speed_kmh: speedBySec, grade: grade, track: track),
             src: "banglejs2", hr_source: hrSource,
             hr_rr_ms: rrMs.isEmpty ? nil : rrMs.map { Int($0.rounded()) },
-            ended: ended ? true : nil)
+            ended: ended ? true : nil, activity_kind: activityKind)
     }
 
     /// Bucket timestamped events into per-second slots, carrying last value forward; nil→0.

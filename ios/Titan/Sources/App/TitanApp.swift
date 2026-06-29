@@ -52,6 +52,8 @@ struct RootView: View {
                     .transition(.opacity)
                     // A run streaming from the band pops the live tracker from any tab.
                     .fullScreenCover(isPresented: $model.showLiveRunSheet) { LiveRunView().environmentObject(model) }
+                    // The moment a workout ends, show its summary (run map/splits or lift HR/zones/sets).
+                    .sheet(item: $model.workoutSummary) { s in WorkoutSummaryView(summary: s).environmentObject(model) }
                 } else {
                     OnboardingView().transition(.move(edge: .trailing))
                 }

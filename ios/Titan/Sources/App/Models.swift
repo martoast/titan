@@ -554,12 +554,61 @@ struct RunDetail: Codable, Equatable, Identifiable {
     let relative_effort: Int?
     let avg_hr: Int?
     let max_hr: Int?
+    let hr_zones: HrZones?
+    let trimp: Double?
+    let hr_quality: Double?
     let workout_hrv_ms: Double?
     let calories_kcal: Int?
     let vo2max: Double?
+    let fitness_level: String?
     let hrr_bpm: Double?
     let map_url_large: String?
+    // Strength detail (exercises + sets/reps) for a lifting session; nil for a run.
+    let strength: StrengthDetail?
     let units: String?
+
+    var isLift: Bool { activity_type == "strength" }
+}
+
+/// Time-in-HR-zone (minutes) — the headline of a lift summary, where avg HR understates the effort.
+struct HrZones: Codable, Equatable {
+    let z1: Int?; let z2: Int?; let z3: Int?; let z4: Int?; let z5: Int?
+}
+
+struct StrengthDetail: Codable, Equatable {
+    let total_sets: Int?
+    let total_reps: Int?
+    let exercises: [StrengthExercise]?
+}
+
+struct StrengthExercise: Codable, Equatable, Identifiable {
+    let name: String
+    let muscle_group: String?
+    let sets: [StrengthSet]?
+    var id: String { name }
+}
+
+struct StrengthSet: Codable, Equatable, Identifiable {
+    let set_number: Int
+    let reps: Int?
+    let weight_kg: Double?
+    var id: Int { set_number }
+}
+
+/// The post-workout summary shown the moment a workout ends: live stats right away, enriched with the
+/// sealed server detail (zones/splits/VO₂max/sets) a few seconds later. Branches run vs lift on `kind`.
+struct WorkoutSummaryState: Identifiable {
+    let id = UUID()
+    let kind: String              // "run" | "strength"
+    let distanceKm: Double
+    let elapsedSec: Int
+    let maxBpm: Int
+    let startedAt: Date?
+    let hasGps: Bool
+    var detail: RunDetail?        // enriched from the server once sealed
+    var loading = true
+    var failed = false
+    var isLift: Bool { kind == "strength" || kind == "lift" || detail?.isLift == true }
 }
 
 enum APIError: LocalizedError {

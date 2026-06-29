@@ -24,6 +24,9 @@ public final class FrameRouter {
     public var onHr: ((HrReading) -> Void)?
     /// Live day-step total from the band (T8) — for the in-app "steps today" readout.
     public var onSteps: ((StepDailySummary) -> Void)?
+    /// The user's explicit workout choice from the band's `TA:` frame: "run" (running tab) vs
+    /// "strength" (heart-rate tab / lifting). Drives the app's run-vs-lift UX + the sealed summary.
+    public var onActivityKind: ((String) -> Void)?
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
@@ -117,6 +120,15 @@ public final class FrameRouter {
         case "T6:":
             let acc = FrameDecoder.decodeT6(payload)
             if let w = wa.addWorkoutAccel(acc) { submit(.workout(w)) }
+        case "TA:":
+            // Activity kind for THIS workout (JSON {"k":"run"|"strength"}). The band sends it on workout
+            // start and on reconnect. Stamp the assembler so every window seals with the user's choice,
+            // and tell the app so it shows the right live screen (run map vs lift HR) + summary.
+            if let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
+               let k = obj["k"] as? String, !k.isEmpty {
+                wa.activityKind = k
+                onActivityKind?(k)
+            }
         case "T7:":
             break  // ambient baro (floors) — server-side; not on the live upload path yet
         case "T8:":

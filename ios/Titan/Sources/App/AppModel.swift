@@ -400,6 +400,7 @@ final class AppModel: ObservableObject {
                 if Self.bandDateIsCurrent(s.date) { self?.bandStepsToday = s.steps; self?.bandStepsAt = Date() }
             }
         }
+        router.onActivityKind = { [weak self] k in Task { @MainActor in self?.setWorkoutKind(k) } }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in self?.bandConnected = up } }
         band.onBattery = { [weak self] pct in Task { @MainActor in self?.bandBattery = pct } }
@@ -746,6 +747,12 @@ final class AppModel: ObservableObject {
     // MARK: live run (the band streams a GPS run → watch it tracking in real time)
 
     @Published var runActive = false
+    /// The active (or just-finished) workout's kind, set from the band's `TA:` frame. "run" = the
+    /// running tab (GPS, route, distance); "strength" = the heart-rate tab (lifting, no GPS). Default
+    /// "run" preserves the historical behavior for an auto-started/unhinted workout. [[titan-strava-runs]]
+    @Published var workoutKind = "run"
+    /// A lift session: no GPS, no map/distance — the live screen + summary headline HR/zones/VO₂max.
+    var isLift: Bool { workoutKind == "strength" || workoutKind == "lift" }
     @Published var runDistanceKm = 0.0
     @Published var runElapsedSec = 0
     @Published var runPaceSecPerKm = 0
@@ -753,6 +760,7 @@ final class AppModel: ObservableObject {
     @Published var runMaxBpm = 0
     @Published var runTrack: [CGPoint] = []        // streamed coords for the live trace (x=lon, y=lat)
     @Published var showLiveRunSheet = false        // drives the full-screen live tracker (app-wide)
+    @Published var workoutSummary: WorkoutSummaryState?   // set on end → shows the post-workout summary sheet
     private var runStartedAt: Date?
     private var runLastLat: Double?
     private var runLastLon: Double?
@@ -880,6 +888,19 @@ final class AppModel: ObservableObject {
         return false
     }
 
+    /// The band told us this workout's kind (`TA:` frame). Switch the live experience: a lift drops GPS
+    /// + any route/distance that leaked in before the kind arrived; a run (re)arms the phone locator.
+    /// Robust to ordering — the first sport==1 frame may open the workout before `TA:` lands.
+    func setWorkoutKind(_ k: String) {
+        let norm = (k == "lift") ? "strength" : k
+        guard norm != workoutKind else { return }
+        workoutKind = norm
+        if isLift {
+            runTrack = []; runDistanceKm = 0; runPaceSecPerKm = 0   // a lift has no route/distance
+        }
+        updateLocator()   // start/stop phone GPS to match (no GPS for a lift)
+    }
+
     private func startRunIfNeeded() {
         guard !runActive else { return }
         runActive = true
@@ -924,6 +945,39 @@ final class AppModel: ObservableObject {
         // gap, so finishing while the band stayed connected (app in foreground) saved NOTHING. Force it.
         router?.sealWorkout()
         if notifyBand { band?.endRunOnBand() }
+
+        // Show the post-workout summary immediately from the live stats, then enrich it once the server
+        // seals (Whoop-style instant seal makes that quick). Skip a non-session (e.g. a stray 0-second blip).
+        if runElapsedSec >= 10 || runDistanceKm > 0.05 {
+            workoutSummary = WorkoutSummaryState(
+                kind: workoutKind, distanceKm: runDistanceKm, elapsedSec: runElapsedSec,
+                maxBpm: runMaxBpm, startedAt: runStartedAt, hasGps: runHasGps)
+            fetchSealedSummary(startedAt: runStartedAt)
+        }
+        workoutKind = "run"   // reset to the default for the next workout (TA overrides on a real lift)
+    }
+
+    /// Poll the server for the just-sealed session and enrich the summary (zones, splits, VO₂max, sets).
+    /// Thanks to the instant `ended`-flag seal this usually lands in a few seconds; we retry briefly and
+    /// fall back to the live-stats-only summary if it doesn't (the seal still completes server-side).
+    private func fetchSealedSummary(startedAt: Date?) {
+        Task { @MainActor [weak self] in
+            for attempt in 0..<8 {
+                try? await Task.sleep(nanoseconds: attempt == 0 ? 2_000_000_000 : 3_000_000_000)
+                guard let self, self.workoutSummary != nil else { return }   // dismissed
+                guard let runs = try? await self.api.runs() else { continue }
+                // Newest session at/after this run's start (within a few minutes) is ours.
+                let match = runs.first { r in
+                    guard let started = startedAt, let iso = r.started_at,
+                          let d = ISO8601DateFormatter().date(from: iso) else { return startedAt == nil }
+                    return abs(d.timeIntervalSince(started)) < 600
+                } ?? runs.first
+                guard let match, let detail = try? await self.api.runDetail(match.id) else { continue }
+                if var s = self.workoutSummary { s.detail = detail; s.loading = false; self.workoutSummary = s }
+                return
+            }
+            if var s = self?.workoutSummary { s.loading = false; s.failed = true; self?.workoutSummary = s }
+        }
     }
 
     /// Worst horizontal accuracy (m) we'll trust INTO THE SAVED ROUTE. Coarse cell/Wi-Fi fixes at run
@@ -999,7 +1053,8 @@ final class AppModel: ObservableObject {
 
     /// Phone GPS runs only while a run or a GPS test is active (battery).
     private func updateLocator() {
-        if runActive || gpsTestActive { locator.start() } else { locator.stop() }
+        // A lift never uses GPS — only a run or the GPS self-test powers the phone locator.
+        if (runActive && !isLift) || gpsTestActive { locator.start() } else { locator.stop() }
     }
 
     /// Verify — right here, before you head out — that a real run will actually track. The band has no

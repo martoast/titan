@@ -13,14 +13,16 @@ struct LiveRunBanner: View {
             HStack(spacing: Theme.Space.m) {
                 ZStack {
                     Circle().fill(Theme.Palette.mint.opacity(0.18)).frame(width: 44, height: 44)
-                    Image(systemName: "figure.run").font(.title3).foregroundStyle(Theme.Palette.mint)
+                    Image(systemName: model.isLift ? "dumbbell.fill" : "figure.run").font(.title3).foregroundStyle(Theme.Palette.mint)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Circle().fill(Theme.Palette.pink).frame(width: 7, height: 7).opacity(pulse ? 0.3 : 1)
-                        Text("LIVE RUN").font(Theme.Font.label.weight(.bold)).tracking(1).foregroundStyle(Theme.Palette.pink)
+                        Text(model.isLift ? "LIVE LIFT" : "LIVE RUN").font(Theme.Font.label.weight(.bold)).tracking(1).foregroundStyle(Theme.Palette.pink)
                     }
-                    Text("\(fmtElapsed(model.runElapsedSec)) · \(distLive(model.runDistanceKm)) km")
+                    Text(model.isLift
+                         ? "\(fmtElapsed(model.runElapsedSec)) · lifting"
+                         : "\(fmtElapsed(model.runElapsedSec)) · \(distLive(model.runDistanceKm)) km")
                         .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).monospacedDigit()
                 }
                 Spacer()
@@ -57,7 +59,7 @@ struct LiveRunView: View {
                     HStack {
                         HStack(spacing: 7) {
                             Circle().fill(Theme.Palette.pink).frame(width: 8, height: 8)
-                            Text(model.runHasGps ? "LIVE RUN" : "LIVE WORKOUT").font(Theme.Font.label.weight(.bold)).tracking(1.5).foregroundStyle(Theme.Palette.pink)
+                            Text(model.isLift ? "LIVE LIFT" : "LIVE RUN").font(Theme.Font.label.weight(.bold)).tracking(1.5).foregroundStyle(Theme.Palette.pink)
                         }
                         Spacer()
                         Button { Haptic.tap(); dismiss() } label: {
@@ -74,13 +76,21 @@ struct LiveRunView: View {
                     }
                     .padding(.top, Theme.Space.m)
 
+                    // Run shows distance + pace; a lift has neither — show the heart instead.
                     HStack(spacing: Theme.Space.m) {
-                        bigStat(distLive(model.runDistanceKm), "km", "Distance", Theme.Palette.mint)
-                        bigStat(fmtPaceLive(model.runPaceSecPerKm), "/km", "Pace", Theme.Palette.cyan)
+                        if model.isLift {
+                            bigStat(model.runLiveBpm.map { "\($0)" } ?? "—", "bpm", "Heart", Theme.Palette.pink)
+                            bigStat(model.runMaxBpm > 0 ? "\(model.runMaxBpm)" : "—", "max", "Peak", Theme.Palette.amber)
+                        } else {
+                            bigStat(distLive(model.runDistanceKm), "km", "Distance", Theme.Palette.mint)
+                            bigStat(fmtPaceLive(model.runPaceSecPerKm), "/km", "Pace", Theme.Palette.cyan)
+                        }
                     }
 
-                    // The route, drawing itself on the map as you move.
-                    if model.runHasGps {
+                    // The route, drawing itself on the map as you move. A lift has no GPS → no map.
+                    if model.isLift {
+                        EmptyView()
+                    } else if model.runHasGps {
                         GlassCard(padding: Theme.Space.s) {
                             VStack(alignment: .leading, spacing: Theme.Space.s) {
                                 SectionHeader(title: "Your route", trailing: "\(model.runTrack.count) fixes")
@@ -119,11 +129,13 @@ struct LiveRunView: View {
                         }
                     }
 
-                    Text("Tracking live from your band. Keep going — it seals to a full run summary when you finish.")
+                    Text(model.isLift
+                         ? "Tracking your lift from the band. Keep going — it seals to a strength summary when you finish."
+                         : "Tracking live from your band. Keep going — it seals to a full run summary when you finish.")
                         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).multilineTextAlignment(.center)
 
                     Button(role: .destructive) { Haptic.rigid(); confirmEnd = true } label: {
-                        Text("End run").font(Theme.Font.body.weight(.semibold))
+                        Text(model.isLift ? "End lift" : "End run").font(Theme.Font.body.weight(.semibold))
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
                             .background(Theme.Palette.card, in: Capsule()).overlay(Capsule().stroke(Theme.Palette.cardStroke))
                             .foregroundStyle(Theme.Palette.pink)
@@ -133,9 +145,11 @@ struct LiveRunView: View {
                 .padding(.horizontal, Theme.Space.m)
             }
         }
-        .confirmationDialog("End this run? This finishes it on your band too and saves the summary.",
+        .confirmationDialog(model.isLift
+                            ? "End this lift? This finishes it on your band too and saves the summary."
+                            : "End this run? This finishes it on your band too and saves the summary.",
                             isPresented: $confirmEnd, titleVisibility: .visible) {
-            Button("End run", role: .destructive) { model.endRun(); dismiss() }
+            Button(model.isLift ? "End lift" : "End run", role: .destructive) { model.endRun(); dismiss() }
             Button("Keep going", role: .cancel) {}
         }
     }
