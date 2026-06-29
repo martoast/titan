@@ -5,11 +5,20 @@ import Foundation
 /// Endpoints: routes/api.php (login, me/dashboard, devices/pair, coach/*).
 final class APIClient {
     let baseURL: URL
-    var token: String?
     private let session: URLSession
 
+    // The bearer token is WRITTEN on the main actor (login/logout) but READ off the cooperative pool by
+    // the async request helpers (Swift runs a nonisolated async fn's body off-main). A plain `var` is a
+    // data race on a refcounted String? — torn/stale reads (auth loop) or an over-release crash. Guard it.
+    private var _token: String?
+    private let tokenLock = NSLock()
+    var token: String? {
+        get { tokenLock.lock(); defer { tokenLock.unlock() }; return _token }
+        set { tokenLock.lock(); defer { tokenLock.unlock() }; _token = newValue }
+    }
+
     init(baseURL: URL, token: String? = nil, session: URLSession = .shared) {
-        self.baseURL = baseURL; self.token = token; self.session = session
+        self.baseURL = baseURL; self._token = token; self.session = session
     }
 
     // MARK: requests

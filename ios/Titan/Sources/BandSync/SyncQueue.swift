@@ -64,6 +64,11 @@ public actor SyncQueue {
     private static let maxUnpersisted = 500
     private static let log = Logger(subsystem: "org.titan.band", category: "sync")
 
+    /// Timer-backed retry so a transient failure (server down, 5xx, 429, transport) doesn't wedge the
+    /// queue until the next new window or network-path CHANGE. Exponential backoff, capped.
+    private var retryTask: Task<Void, Never>?
+    private var backoffStep = 0
+
     public init(store: WindowStore, client: IngestClient, onUploaded: (@Sendable (Int) -> Void)? = nil) {
         self.store = store; self.client = client; self.onUploaded = onUploaded
         monitor.pathUpdateHandler = { [weak self] path in
@@ -92,6 +97,7 @@ public actor SyncQueue {
     public func drain() async {
         guard online, !draining else { return }
         draining = true; defer { draining = false }
+        retryTask?.cancel(); retryTask = nil   // we're draining now — fold in any scheduled retry
 
         // Keep the app alive long enough to empty the queue after a background BLE wake.
         let assertion = BackgroundAssertion()
@@ -109,16 +115,44 @@ public actor SyncQueue {
         while online, let batch = try? store.pending(limit: 1), let item = batch.first {
             switch await client.ship(window: item.window) {
             case .accepted, .duplicate:
-                try? store.remove(id: item.id)
+                do {
+                    try store.remove(id: item.id)
+                } catch {
+                    // The DELETE failed (disk full / IO error). If we continued we'd re-select this same
+                    // head row forever (the server returns `duplicate`), spinning network + battery and
+                    // blocking every newer window. Stop and retry later instead of looping.
+                    Self.log.error("remove failed after upload; pausing drain to avoid a re-upload loop")
+                    scheduleRetry(); return
+                }
                 uploadedCount += 1
                 onUploaded?(uploadedCount)
+                backoffStep = 0
             case .rejected(let status, _):
-                // 4xx (except 429) = won't ever succeed → drop so the queue can't wedge.
-                if status == 429 { try? store.bumpAttempt(id: item.id); return }
-                try? store.remove(id: item.id)
+                // Only a TRUE client error (4xx, not 429) is permanent → drop so the queue can't wedge on
+                // one bad window. 5xx / status 0 (server down, deploy, gateway hiccup, non-HTTP, encode)
+                // are transient — KEEP the window and retry, or a routine restart silently eats the buffer.
+                if (400..<500).contains(status) && status != 429 {
+                    try? store.remove(id: item.id)
+                } else {
+                    try? store.bumpAttempt(id: item.id); scheduleRetry(); return
+                }
             case .transport:
-                try? store.bumpAttempt(id: item.id); return  // retry later
+                try? store.bumpAttempt(id: item.id); scheduleRetry(); return  // retry on a timer
             }
+        }
+        if online { backoffStep = 0 }   // queue emptied while online → reset backoff
+    }
+
+    /// Re-attempt the drain after an exponential backoff (2,4,…,300s cap) so a transient failure recovers
+    /// without needing a new window or a network-path change. Only one retry is ever pending.
+    private func scheduleRetry() {
+        retryTask?.cancel()
+        let delaySec = min(300, 1 << min(backoffStep, 8))   // 2 << step would start at 2; 1<<step → 1,2,4,…
+        backoffStep += 1
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(2, delaySec)) * 1_000_000_000)
+            if Task.isCancelled { return }
+            await self?.drain()
         }
     }
 }

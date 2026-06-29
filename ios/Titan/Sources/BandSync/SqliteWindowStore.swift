@@ -81,17 +81,21 @@ final class SqliteWindowStore: WindowStore {
 
     func remove(id: Int64) throws {
         lock.lock(); defer { lock.unlock() }
-        deleteRow(id: id)
+        // Surface a failed DELETE (disk full / IO error). If we swallow it, the row survives and the
+        // drain re-selects the same head row forever — an infinite re-upload loop that wedges the queue.
+        guard deleteRow(id: id) else { throw StoreError.step }
     }
 
-    /// Delete a row. The CALLER must already hold `lock` (NSLock is non-recursive — re-locking from
-    /// the same thread deadlocks). Used by both `remove(id:)` and `pending`'s corrupt-row drop.
-    private func deleteRow(id: Int64) {
+    /// Delete a row; returns whether the DELETE actually completed. The CALLER must already hold `lock`
+    /// (NSLock is non-recursive — re-locking from the same thread deadlocks). Used by both `remove(id:)`
+    /// and `pending`'s corrupt-row drop.
+    @discardableResult
+    private func deleteRow(id: Int64) -> Bool {
         var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "DELETE FROM windows WHERE id = ?;", -1, &stmt, nil)
+        guard sqlite3_prepare_v2(db, "DELETE FROM windows WHERE id = ?;", -1, &stmt, nil) == SQLITE_OK else { return false }
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_int64(stmt, 1, id)
-        sqlite3_step(stmt)
+        return sqlite3_step(stmt) == SQLITE_DONE
     }
 
     func bumpAttempt(id: Int64) throws {
