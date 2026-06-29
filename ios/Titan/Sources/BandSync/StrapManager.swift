@@ -138,9 +138,12 @@ extension StrapManager: CBCentralManagerDelegate {
         guard let id = boundId else { return }
         if let p = c.retrievePeripherals(withIdentifiers: [id]).first {
             strap = p; p.delegate = self
-            if p.state != .connected { reconnect(p) }
+            if p.state != .connected { reconnect(p) }   // connect() pends until in range — no scan needed
+        } else {
+            // Only scan if we can't retrieve the bound strap. A perpetual service-filtered scan (which iOS
+            // honors in the background) was draining battery all day even with the strap already connected.
+            c.scanForPeripherals(withServices: [Self.HR_SERVICE])
         }
-        c.scanForPeripherals(withServices: [Self.HR_SERVICE])
     }
 
     public func centralManager(_ c: CBCentralManager, willRestoreState dict: [String: Any]) {
@@ -169,6 +172,8 @@ extension StrapManager: CBCentralManagerDelegate {
     }
 
     public func centralManager(_ c: CBCentralManager, didConnect p: CBPeripheral) {
+        c.stopScan()   // connected — stop the (background-honored) HR-service scan; a connected strap won't
+                       // re-advertise, so didDiscover can't stop it. Reconnect uses connect(), not a scan.
         onConnectionChange?(true)
         p.discoverServices([Self.HR_SERVICE, Self.BATTERY_SERVICE])
     }

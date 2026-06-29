@@ -229,6 +229,8 @@ extension BandManager: CBCentralManagerDelegate {
     }
 
     public func centralManager(_ c: CBCentralManager, didConnect p: CBPeripheral) {
+        c.stopScan()   // we're connected — stop the discovery scan (a connected band never re-advertises,
+                       // so didDiscover can't stop it; without this an unfiltered scan ran all session)
         onConnectionChange?(true)
         p.discoverServices([Self.NUS_SERVICE, Self.BATTERY_SERVICE])
     }
