@@ -415,6 +415,8 @@ final class AppModel: ObservableObject {
             }
         }
         router.onActivityKind = { [weak self] k in Task { @MainActor in self?.setWorkoutKind(k) } }
+        // The watch finished the workout → end + seal it on the app, deterministically (no sport-tag guessing).
+        router.onWorkoutEnd = { [weak self] in Task { @MainActor in self?.endRun(notifyBand: false) } }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in self?.bandConnected = up } }
         band.onBattery = { [weak self] pct in Task { @MainActor in self?.bandBattery = pct } }

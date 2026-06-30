@@ -740,6 +740,11 @@ function endWorkout() {
   state.workoutManual = false;
   primed = null;           // clear any coach priming so a later auto-workout doesn't inherit its rate
   powerGps(false);
+  // Tell the phone the workout is OVER, explicitly. Don't make it infer the end from the sport tag
+  // dropping to 0 — at rest the HRM duty-cycles, so those sport==0 frames may never arrive, and the
+  // app would leave the workout hanging "live" (never closing, never sealing). This deterministic
+  // signal makes the app close + seal the moment you finish on the watch.
+  if (state.connected) { try { Bluetooth.println("TA:" + JSON.stringify({ k: "end" })); } catch (e) {} }
   if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
   reconcileHrm();          // back to rest: continuous if connected, else duty-cycle the HRM
   applyAccelRate();

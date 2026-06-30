@@ -27,6 +27,9 @@ public final class FrameRouter {
     /// The user's explicit workout choice from the band's `TA:` frame: "run" (running tab) vs
     /// "strength" (heart-rate tab / lifting). Drives the app's run-vs-lift UX + the sealed summary.
     public var onActivityKind: ((String) -> Void)?
+    /// The band says the workout is OVER (`TA:{"k":"end"}` — user finished on the watch). Deterministic
+    /// end signal so the app closes + seals immediately instead of inferring it from the sport tag.
+    public var onWorkoutEnd: (() -> Void)?
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
@@ -130,8 +133,12 @@ public final class FrameRouter {
             // and tell the app so it shows the right live screen (run map vs lift HR) + summary.
             if let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
                let k = obj["k"] as? String, !k.isEmpty {
-                wa.activityKind = k
-                onActivityKind?(k)
+                if k == "end" {
+                    onWorkoutEnd?()   // watch finished the workout → close + seal now (don't infer from sport)
+                } else {
+                    wa.activityKind = k
+                    onActivityKind?(k)
+                }
             }
         case "T7:":
             break  // ambient baro (floors) — server-side; not on the live upload path yet
