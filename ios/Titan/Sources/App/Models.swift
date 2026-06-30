@@ -515,6 +515,8 @@ struct RunSummary: Codable, Equatable, Identifiable {
     let avg_pace_s_per_km: Int?
     let has_route: Bool
     let map_thumb_url: String?
+
+    var isLift: Bool { activity_type == "strength" }
 }
 
 struct RunsResponse: Codable, Equatable { let runs: [RunSummary] }

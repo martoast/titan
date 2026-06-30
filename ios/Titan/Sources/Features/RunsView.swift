@@ -36,14 +36,14 @@ struct RunsSection: View {
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                SectionHeader(title: "Recent runs")
+                SectionHeader(title: "Recent workouts")
                 if loading {
                     VStack(spacing: 8) { Shimmer().frame(height: 60).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip)); Shimmer().frame(height: 60).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip)) }
                 } else if runs.isEmpty {
                     VStack(spacing: 6) {
                         Image(systemName: "figure.run").font(.system(size: 30)).foregroundStyle(Theme.Palette.textFaint)
-                        Text("No runs yet").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                        Text("Tap the Run face on your band and head out — your route, splits and pace land here.")
+                        Text("No workouts yet").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                        Text("Tap the Run or Lift face on your band — runs land here with your route + splits, lifts with your HR zones + sets.")
                             .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
@@ -58,7 +58,14 @@ struct RunsSection: View {
             }
         }
         .task { await load() }
-        .sheet(item: $selected) { run in RunDetailView(runId: run.id, fallback: run).environmentObject(model) }
+        .sheet(item: $selected) { run in
+            // A lift gets the strength summary (HR zones / VO₂max / sets); a run gets the Strava detail.
+            if run.isLift {
+                LiftDetailView(runId: run.id, fallback: run).environmentObject(model)
+            } else {
+                RunDetailView(runId: run.id, fallback: run).environmentObject(model)
+            }
+        }
     }
 
     private func load() async {
@@ -69,19 +76,25 @@ struct RunsSection: View {
 
 private struct RunRow: View {
     let run: RunSummary
+    private var tint: Color { run.isLift ? Theme.Palette.amber : Theme.Palette.mint }
     var body: some View {
         HStack(spacing: Theme.Space.m) {
             ZStack {
-                RoundedRectangle(cornerRadius: Theme.Radius.chip).fill(Theme.Palette.mint.opacity(0.12)).frame(width: 44, height: 44)
-                Image(systemName: icon).foregroundStyle(Theme.Palette.mint).font(.system(size: 18, weight: .semibold))
+                RoundedRectangle(cornerRadius: Theme.Radius.chip).fill(tint.opacity(0.12)).frame(width: 44, height: 44)
+                Image(systemName: icon).foregroundStyle(tint).font(.system(size: 18, weight: .semibold))
             }
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(distance).font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.text)
+                    Text(headline).font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.text)
                     Text(run.title).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                 }
                 HStack(spacing: 8) {
-                    if let p = run.avg_pace_s_per_km { Text("\(RunFmt.pace(Double(p))) /km").foregroundStyle(Theme.Palette.textDim) }
+                    // A run shows pace; a lift shows duration (it has no distance/pace).
+                    if run.isLift {
+                        if let m = run.duration_min { Text(RunFmt.dur(m * 60)).foregroundStyle(Theme.Palette.textDim) }
+                    } else if let p = run.avg_pace_s_per_km {
+                        Text("\(RunFmt.pace(Double(p))) /km").foregroundStyle(Theme.Palette.textDim)
+                    }
                     Text(RunFmt.dayLabel(run.started_at)).foregroundStyle(Theme.Palette.textFaint)
                 }.font(Theme.Font.micro)
             }
@@ -91,9 +104,18 @@ private struct RunRow: View {
         .padding(Theme.Space.s)
         .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
     }
-    private var distance: String { run.distance_km.map { String(format: "%.2f km", $0) } ?? "Run" }
+    // Lift: the title carries the type ("Strength") so lead with duration; run: the distance.
+    private var headline: String {
+        if run.isLift { return run.duration_min.map { RunFmt.dur($0 * 60) } ?? "Lift" }
+        return run.distance_km.map { String(format: "%.2f km", $0) } ?? "Run"
+    }
     private var icon: String {
-        switch run.activity_type { case "cycle": return "bicycle"; case "walk": return "figure.walk"; default: return "figure.run" }
+        switch run.activity_type {
+        case "strength": return "dumbbell.fill"
+        case "cycle": return "bicycle"
+        case "walk": return "figure.walk"
+        default: return "figure.run"
+        }
     }
 }
 
