@@ -57,9 +57,12 @@ class DeviceIngestionController extends Controller
             return response()->json(['error' => 'invalid_body'], 422);
         }
 
+        // Accept a ULID (the web bridge) OR a 16-64 char hex id (the iOS app derives a STABLE
+        // sha256-prefix uid so retries dedupe server-side). Anything else is rejected — the uid is
+        // embedded in the raw-disk object key, so the charset must stay path-safe.
         $batchUid = (string) ($payload['batch_uid'] ?? '');
-        if ($batchUid === '' || ! Str::isUlid($batchUid)) {
-            return response()->json(['error' => 'batch_uid must be a ULID'], 422);
+        if ($batchUid === '' || ! (Str::isUlid($batchUid) || preg_match('/^[0-9a-fA-F]{16,64}$/', $batchUid))) {
+            return response()->json(['error' => 'batch_uid must be a ULID or hex id'], 422);
         }
 
         // Size / count guards.

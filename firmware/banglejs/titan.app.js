@@ -726,12 +726,24 @@ function startWorkout(manual) {
   if (state.workout) { if (manual) { state.workoutManual = true; emitActivityKind(); } return; }
   state.workout = true;
   state.workoutManual = !!manual;
-  powerGps(true);          // try for outdoor pace; dropped after GPS_FIX_TIMEOUT if no fix
+  // Try for outdoor pace (dropped after GPS_FIX_TIMEOUT if no fix) — unless the primed activity
+  // explicitly declines GPS (a lift/swim), so starting one never flicker-powers the receiver.
+  powerGps(!(primed && primed.gps === false));
   reconcileHrm();          // continuous HRM + motion-tolerant SPORT mode + 50 Hz PPG (heavy-lifting fix)
   applyAccelRate();        // 25 Hz accel for the classifier, even offline
   emitActivityKind();      // tell the phone run vs lift right away (a re-emit follows on any reconnect)
   if (manual) { try { Bangle.buzz(120); } catch (e) {} }
   if (uiVisible) drawUI();
+}
+
+// Announce "workout over" to the phone. Sent from endWorkout and RE-SENT twice shortly after —
+// a single unacknowledged BLE line can be lost right at the finish (buffer full from the final data
+// burst, or a momentary link flap), which left the app's live run hanging open forever. The phone's
+// end handler is idempotent, so duplicates are free. Guarded: a NEW workout started in the retry
+// window cancels the pending "end" (it would kill the fresh session).
+function emitWorkoutEnd() {
+  if (!state.connected || state.workout) return;
+  try { Bluetooth.println("TA:" + JSON.stringify({ k: "end" })); } catch (e) {}
 }
 
 function endWorkout() {
@@ -743,8 +755,11 @@ function endWorkout() {
   // Tell the phone the workout is OVER, explicitly. Don't make it infer the end from the sport tag
   // dropping to 0 — at rest the HRM duty-cycles, so those sport==0 frames may never arrive, and the
   // app would leave the workout hanging "live" (never closing, never sealing). This deterministic
-  // signal makes the app close + seal the moment you finish on the watch.
-  if (state.connected) { try { Bluetooth.println("TA:" + JSON.stringify({ k: "end" })); } catch (e) {} }
+  // signal makes the app close + seal the moment you finish on the watch; the delayed re-sends make
+  // it survive a dropped line.
+  emitWorkoutEnd();
+  setTimeout(emitWorkoutEnd, 1200);
+  setTimeout(emitWorkoutEnd, 3500);
   if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
   reconcileHrm();          // back to rest: continuous if connected, else duty-cycle the HRM
   applyAccelRate();

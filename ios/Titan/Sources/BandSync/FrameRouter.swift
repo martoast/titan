@@ -11,7 +11,11 @@ public final class FrameRouter {
     private let ppg = PpgWindowBuilder()           // live T1 PPG
     private let ppgLog = PpgWindowBuilder()        // flushed T2 PPG — SEPARATE so old buffered timestamps
                                                    // never interleave with live T1 (would be non-monotonic)
-    private let wa = WorkoutAssembler()
+    private let wa = WorkoutAssembler()            // the LIVE workout (current-timestamp frames)
+    private let waLog = WorkoutAssembler()         // replayed offline-ring frames (old timestamps) —
+                                                   // SEPARATE for the same reason ppgLog is: a backlog
+                                                   // T4/T5/T6 flushed mid-run must never splice old
+                                                   // coords/HR into the live session's sealed window
     private let hrTrend = HrTrendBuilder()         // 24/7 HR graph — per-minute points from every T5
     private let queue: SyncQueue
     private var maxDeviceT: UInt64 = 0
@@ -96,6 +100,7 @@ public final class FrameRouter {
             if let last = frame.samples.last?.t {
                 maxDeviceT = max(maxDeviceT, last)
                 if let w = wa.tick(maxDeviceT) { submit(.workout(w)) }   // close a finished workout
+                if let w = waLog.tick(maxDeviceT) { submit(.workout(w)) } // …and a drained offline one
             }
         case "T2:":
             // Compact offline/overnight PPG, flushed on reconnect. Its own decoder (PPG-only, 2-B
@@ -107,8 +112,14 @@ public final class FrameRouter {
             for w in ppgLog.add(frame.samples) { submit(.ppg(w)) }
         case "T4:":
             if let fix = FrameDecoder.decodeT4(payload) {
-                onGps?(fix)
-                if let w = wa.addGps(fix) { submit(.workout(w)) }
+                if Self.frameIsLive(fix.t) {
+                    onGps?(fix)                    // only a CURRENT fix may drive the live map/distance
+                    if let w = wa.addGps(fix) { submit(.workout(w)) }
+                } else {
+                    // Replayed from the offline ring (a phone-free outdoor workout) → its own assembler,
+                    // so yesterday's coords can't teleport into a live run's route or distance.
+                    if let w = waLog.addGps(fix) { submit(.workout(w)) }
+                }
             }
         case "T5:":
             if let hr = FrameDecoder.decodeT5(payload) {
@@ -119,14 +130,27 @@ public final class FrameRouter {
                 if Self.frameIsLive(hr.t) { onBpm?(hr.bpm) }
                 onHr?(hr)   // ingestLiveHr applies the same liveness gate for the run/lift state machine
                 // A sport-tagged reading OPENS/extends a workout — this is how a connected indoor
-                // session (no GPS, no T6) becomes a sealable workout window.
-                if let w = wa.addWorkoutHr(hr) { submit(.workout(w)) }
+                // session (no GPS, no T6) becomes a sealable workout window. Live frames feed the live
+                // assembler; replayed backlog (old timestamps) feeds its own, so a ring flush mid-run
+                // can't merge an old offline session into the one currently streaming.
+                if Self.frameIsLive(hr.t) {
+                    if let w = wa.addWorkoutHr(hr) { submit(.workout(w)) }
+                } else {
+                    if let w = waLog.addWorkoutHr(hr) { submit(.workout(w)) }
+                }
                 // ...and the 24/7 trend, which keeps EVERY reading (rest or active) for the all-day graph.
                 if let w = hrTrend.add(t: hr.t, bpm: hr.bpm, conf: hr.conf) { submit(.hrTrend(w)) }
             }
         case "T6:":
+            // T6 is only ever LOGGED offline and flushed later, so it's backlog by construction —
+            // route by timestamp anyway so a just-logged tail (an offline workout that reconnected
+            // seconds ago) still joins the live session it belongs to.
             let acc = FrameDecoder.decodeT6(payload)
-            if let w = wa.addWorkoutAccel(acc) { submit(.workout(w)) }
+            if let first = acc.first, !Self.frameIsLive(first.t) {
+                if let w = waLog.addWorkoutAccel(acc) { submit(.workout(w)) }
+            } else {
+                if let w = wa.addWorkoutAccel(acc) { submit(.workout(w)) }
+            }
         case "TA:":
             // Activity kind for THIS workout (JSON {"k":"run"|"strength"}). The band sends it on workout
             // start and on reconnect. Stamp the assembler so every window seals with the user's choice,
@@ -175,6 +199,7 @@ public final class FrameRouter {
         if let w = ppg.flush(live: live) { submit(.ppg(w)) }
         if let w = ppgLog.flush(live: live) { submit(.ppg(w)) }
         if let w = wa.flush() { submit(.workout(w)) }
+        if let w = waLog.flush() { submit(.workout(w)) }
         if let w = hrTrend.flush() { submit(.hrTrend(w)) }
         // On a real disconnect, drop any half-received frame — the firmware re-flushes from scratch on
         // reconnect, so stale partial bytes would otherwise corrupt the first frame of the new stream.

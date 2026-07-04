@@ -168,7 +168,14 @@ public final class WorkoutAssembler {
                                           rrMs: [Double] = [],
                                           startT: UInt64, endT: UInt64, minMs: UInt64,
                                           ended: Bool = false, activityKind: String? = nil) -> WorkoutWindow? {
-        guard endT >= startT, endT - startT >= minMs, accel.count >= 25 else { return nil }
+        guard endT >= startT else { return nil }
+        // The min-duration / min-accel floor filters noise blips on PERIODIC windows only. The final
+        // `ended` window must ALWAYS emit — it carries the flag the server force-seals on. A run whose
+        // tail since the last 3-min periodic flush was <60s used to return nil here, so the server
+        // never saw `ended`: no instant seal, and a short workout was silently never uploaded at all.
+        if !ended {
+            guard endT - startT >= minMs, accel.count >= 25 else { return nil }
+        }
         // Corruption guard: a single window can't plausibly span more than a day. A bad/unsynced band
         // clock (mixed epochs) can make endT-startT enormous → `secs` huge → a multi-GB array alloc
         // below → OOM crash that also loses the workout. Reject the corrupt window instead of dying.

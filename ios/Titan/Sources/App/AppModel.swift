@@ -991,12 +991,14 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: attempt == 0 ? 2_000_000_000 : 3_000_000_000)
                 guard let self, self.workoutSummary != nil else { return }   // dismissed
                 guard let runs = try? await self.api.runs() else { continue }
-                // Newest session at/after this run's start (within a few minutes) is ours.
+                // Newest session at/after this run's start (within a few minutes) is ours. NO generic
+                // newest-run fallback when we know our start time — before the seal lands that would
+                // match some OLD run and present its splits/route as this workout's summary.
                 let match = runs.first { r in
                     guard let started = startedAt, let iso = r.started_at,
                           let d = ISO8601DateFormatter().date(from: iso) else { return startedAt == nil }
                     return abs(d.timeIntervalSince(started)) < 600
-                } ?? runs.first
+                } ?? (startedAt == nil ? runs.first : nil)
                 guard let match, let detail = try? await self.api.runDetail(match.id) else { continue }
                 if var s = self.workoutSummary { s.detail = detail; s.loading = false; self.workoutSummary = s }
                 return

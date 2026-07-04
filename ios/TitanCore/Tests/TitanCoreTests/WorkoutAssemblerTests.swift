@@ -72,6 +72,27 @@ final class WorkoutAssemblerTests: XCTestCase {
         XCTAssertNil(wa.flush())  // < MIN_MS and < 25 samples
     }
 
+    // Regression: the FINAL window of an explicitly-ended workout must ALWAYS emit — even when the
+    // tail since the last periodic flush is under MIN_MS / 25 accel samples. Dropping it lost the
+    // `ended` flag (no instant server seal) and silently discarded short workouts entirely.
+    func testEndedFlushEmitsEvenWhenTailIsShort() {
+        let wa = WorkoutAssembler()
+        let start: UInt64 = 2_000_000_000
+        wa.addWorkoutHr(HrReading(t: start, bpm: 130, conf: 96, sport: 1))       // opens the workout
+        wa.addWorkoutHr(HrReading(t: start + 20_000, bpm: 140, conf: 96, sport: 1)) // 20s < MIN_MS
+        let w = try! XCTUnwrap(wa.flush(ended: true))
+        XCTAssertEqual(w.ended, true)
+        XCTAssertEqual(w.kind, "workout")
+        XCTAssertNil(wa.flush())   // state fully reset afterwards
+    }
+
+    // …but the mid-run PERIODIC path keeps its noise floor: a short un-ended flush still returns nil.
+    func testUnendedShortFlushStillFiltered() {
+        let wa = WorkoutAssembler()
+        wa.addWorkoutHr(HrReading(t: 1_000_000, bpm: 130, conf: 96, sport: 1))
+        XCTAssertNil(wa.flush(ended: false))
+    }
+
     // Regression: opening the app mid-workout flushes buffered frames; one can arrive with a timestamp
     // PREDATING when the workout opened (winStart). periodic() used to do `t - winStart` on UInt64 →
     // arithmetic-overflow TRAP (the real-device crash). It must now no-op safely on an older frame.
