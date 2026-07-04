@@ -258,10 +258,15 @@ def compute_hrv_metrics(clean_ibi_ms: np.ndarray) -> dict:
 
 
 def resting_hr_from_ibi(ibi_ms: np.ndarray, window_beats: int = 30) -> Optional[float]:
-    """Resting HR = min of windowed medians over the night (03-algorithms.md §4).
+    """Resting HR = a LOW PERCENTILE of windowed medians over the night (03-algorithms.md §4).
 
-    HR = 60000 / IBI(ms). We take rolling windows of `window_beats`, the median HR of
-    each, and return the minimum — the most trustworthy wearable metric.
+    HR = 60000 / IBI(ms). We take rolling windows of `window_beats` and the median HR of each,
+    then return the 5th percentile of those medians — the night's "floor" without being the single
+    lowest window. The old `min` was structurally biased toward the one lowest window, so a short
+    stretch of surviving doubled/missed-beat IBIs (each still < 2000 ms = 30 bpm, so it passes the
+    physiologic gate) or a brief bradycardic dip pulled RHR far too low — and RHR feeds Uth-Sørensen
+    VO2max (15.3·HRmax/HRrest), which is steeply inflated by a too-low RHR. The 5th percentile keeps
+    the resting-floor meaning while rejecting a lone bad window.
     """
     ibi_ms = _to_array(ibi_ms)
     if ibi_ms.size == 0:
@@ -273,7 +278,7 @@ def resting_hr_from_ibi(ibi_ms: np.ndarray, window_beats: int = 30) -> Optional[
         np.median(hr[i : i + window_beats])
         for i in range(0, len(hr) - window_beats + 1, max(window_beats // 2, 1))
     ]
-    return float(np.min(medians))
+    return float(np.percentile(medians, 5))
 
 
 def process_hrv(

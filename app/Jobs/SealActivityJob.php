@@ -176,6 +176,8 @@ class SealActivityJob implements ShouldQueue
         $windowHrSource = null;   // 'chest_strap' if a paired strap drove HR (reference-grade)
         $rr = [];                 // strap beat-to-beat RR intervals (ms) → in-workout HRV (optional)
         $workoutHrv = null;
+        $imReliableMean = null;   // in-motion estimator's mean/max over RELIABLE windows only (headline HR)
+        $imReliableMax = null;
         $kindHint = null;         // the user's EXPLICIT choice on the watch: 'run' (running tab, GPS) vs
                                   // 'strength'/'lift' (heart-rate tab, no GPS). When present it is authoritative
                                   // over the post-hoc accel classifier — a gym session is never re-guessed as a run.
@@ -254,6 +256,11 @@ class SealActivityJob implements ShouldQueue
                         $hr1 = $imSeries;
                         $hrSource = 'ppg_inmotion';
                         $hrQuality = round($cov, 3);
+                        // The estimator computed these over its RELIABLE windows only; keep them to
+                        // headline avg/max instead of recomputing from the mixed (held-included) series.
+                        $imReliableMean = is_numeric($mean) ? (float) $mean : null;
+                        $imReliableMax = isset($im['summary']['hr_max']) && is_numeric($im['summary']['hr_max'])
+                            ? (float) $im['summary']['hr_max'] : null;
                     }
                 }
             }
@@ -264,8 +271,19 @@ class SealActivityJob implements ShouldQueue
         if ($counts === []) {
             $counts = $this->countsFromAccel($ax, $ay, $az, $fs);
         }
-        $hrEpoch = $this->downsample($hr1, $fs * 30);
-        $maxHr = $hr1 ? (int) round(max($hr1)) : null;
+        // $hr1 is a 1 Hz series (per-second HR), so a 30-s epoch is 30 samples — NOT $fs*30 (=750),
+        // which confused "epoch = fs·30 accel samples" (true for accel_counts) with the HR cadence.
+        // With the wrong stride hrEpoch came out ~25× too short, so activity.py's `len(hr) >= end`
+        // gate always failed and HR was silently dropped from TRIMP/calories (they fell back to the
+        // accel-only proxy — badly understating a low-motion, high-HR lift).
+        $hrEpoch = $this->downsample($hr1, 30);
+        // Peak HR: prefer the in-motion estimator's RELIABLE-window max; otherwise a robust high
+        // percentile of the series — NOT a raw max(). A single PPG-spike or cadence-lock sample in
+        // the on-chip series used to define max_hr, which stableHrMax() then RATCHETS into the
+        // profile's permanent observed_hr_max — deflating %HRR (and thus intensity/TRIMP/calories/
+        // VO2) for every future workout. The percentile rejects lone spikes.
+        $maxHr = $imReliableMax !== null ? (int) round($imReliableMax)
+               : ($hr1 ? (int) round($this->robustMax($hr1)) : null);
 
         $profileBits = $this->profileBits($profile, $maxHr);
 
@@ -315,8 +333,16 @@ class SealActivityJob implements ShouldQueue
             'height_cm' => $profileBits['height_cm'],
             'resting_hr' => $profileBits['resting_hr'],
             'hr_max' => $profileBits['hr_max'],
+            // hr and speed_kmh MUST be equal length — the fitness endpoint's RunCapture validator
+            // rejects a mismatch with a 422, which (via ->throw()) aborted the ENTIRE seal before the
+            // session row was written, so a run with the accurate ppg_inmotion HR path (whose
+            // expandTo1Hz length ≈ duration−6, vs speed's per-second duration) silently produced NO
+            // session at all. Resample HR (and grade) onto the speed grid so the payload is always
+            // well-formed.
             'run' => ($hr1 && $speed) ? array_filter([
-                'hr' => $hr1, 'speed_kmh' => $speed, 'grade' => $grade ?: null,
+                'hr' => $this->resampleTo($hr1, count($speed)),
+                'speed_kmh' => $speed,
+                'grade' => $grade ? $this->resampleTo($grade, count($speed)) : null,
             ], fn ($v) => $v !== null) : null,
             'workout_hr_bpm' => $hr1 ?: null,
             'hr_fs' => 1.0,
@@ -369,7 +395,11 @@ class SealActivityJob implements ShouldQueue
                 'activity_confidence' => ($liftHint || $runHint) ? 1.0 : ($sess['activity_confidence'] ?? null),
                 'distance_km' => $distance,
                 'distance_source' => $distanceSource,
-                'avg_hr' => isset($sess['mean_hr']) ? (int) round($sess['mean_hr']) : ($hr1 ? (int) round(array_sum($hr1) / count($hr1)) : null),
+                // Prefer the activity pass's mean, then the in-motion estimator's RELIABLE-window mean,
+                // and only fall back to averaging the mixed (held-included) series.
+                'avg_hr' => isset($sess['mean_hr']) ? (int) round($sess['mean_hr'])
+                    : ($imReliableMean !== null ? (int) round($imReliableMean)
+                    : ($hr1 ? (int) round(array_sum($hr1) / count($hr1)) : null)),
                 'max_hr' => $maxHr,
                 'hr_source' => $hrSource,
                 'hr_quality' => $hrQuality,
@@ -671,6 +701,55 @@ class SealActivityJob implements ShouldQueue
         for ($i = 0; $i < count($series); $i += $stride) {
             $slice = array_slice($series, $i, $stride);
             $out[] = round(array_sum($slice) / max(count($slice), 1), 1);
+        }
+
+        return $out;
+    }
+
+    /**
+     * A spike-robust "peak" of a per-second HR series: the given high percentile (default 98th),
+     * so a lone PPG-glitch / cadence-lock sample can't define max_hr (and thus ratchet the profile's
+     * permanent HR-max). For a clean series this sits right at the true peak.
+     *
+     * @param  array<int,float>  $series
+     */
+    private function robustMax(array $series, float $pct = 0.98): float
+    {
+        $vals = array_values(array_filter($series, 'is_numeric'));
+        if ($vals === []) {
+            return 0.0;
+        }
+        sort($vals);
+        $idx = (int) round($pct * (count($vals) - 1));
+
+        return (float) $vals[$idx];
+    }
+
+    /**
+     * Linearly resample a series to exactly $len points (endpoints preserved). Used to put the
+     * in-motion HR series onto the GPS speed's per-second grid so the fitness endpoint's
+     * equal-length requirement always holds.
+     *
+     * @param  array<int,float>  $series
+     * @return array<int,float>
+     */
+    private function resampleTo(array $series, int $len): array
+    {
+        $series = array_values(array_map('floatval', $series));
+        $n = count($series);
+        if ($len <= 0 || $n === 0) {
+            return [];
+        }
+        if ($n === $len) {
+            return $series;
+        }
+        $out = [];
+        for ($i = 0; $i < $len; $i++) {
+            $pos = $len === 1 ? 0.0 : $i * ($n - 1) / ($len - 1);
+            $lo = (int) floor($pos);
+            $hi = min($n - 1, $lo + 1);
+            $frac = $pos - $lo;
+            $out[] = $series[$lo] * (1 - $frac) + $series[$hi] * $frac;
         }
 
         return $out;
