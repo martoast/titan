@@ -380,8 +380,13 @@ function logName(i) { return "titan.l" + i; }
 function appendLog(line) {
   var data = line + "\n";
   var len = data.length;
+  if (flushTimer || flushSf) drainWrites = true;   // a drain is running — its end-of-drain ring reset must not clobber us
   if (logSegBytes + len > CFG.LOG_SEG_BYTES) {
     logSeg = (logSeg + 1) % CFG.LOG_SEGMENTS;
+    // Evicting the segment the DRAIN is currently reading: abandon its remaining lines cleanly
+    // (they're being evicted either way — the ring is full) instead of erasing the file out from
+    // under the open StorageFile reader, which corrupted the drain mid-read.
+    if (flushSf && logSeg === flushSeg) { flushSf = null; flushK++; }
     try { require("Storage").open(logName(logSeg), "r").erase(); } catch (e) {}   // evict the oldest
     logSegBytes = 0;
   }
@@ -437,11 +442,16 @@ var flushTimer = null;        // self-scheduling drain timer (null = not drainin
 var flushK = 0;               // segments processed so far this drain
 var flushSeg = 0;             // segment index currently being drained
 var flushSf = null;           // the open StorageFile (holds read position across ticks)
+var drainBase = 0;            // logSeg LATCHED at drain start — mapping segments from the LIVE logSeg
+                              // shifted mid-drain when appendLog rolled over (skipped one segment,
+                              // re-visited others), so the plan is frozen here instead
+var drainWrites = false;      // did appendLog land data while this drain ran? (guards the ring reset)
 
 function flushLog() {
   if (!state.connected || flushTimer || flushSf) return;   // already draining (or no link)
   writeLogFrame();             // flush any partial T2 frame into the ring first
   flushK = 0; flushSf = null;
+  drainBase = logSeg; drainWrites = false;   // freeze the drain plan against concurrent writes
   flushTimer = setTimeout(flushTick, 0);
 }
 
@@ -451,11 +461,15 @@ function flushTick() {
 
   if (!flushSf) {                                           // need to open the next segment
     if (flushK >= CFG.LOG_SEGMENTS) {                       // whole ring drained → reset
-      logSeg = 0; logSegBytes = 0; state.logged = 0;
+      // Only hard-reset the ring when nothing was written during the (minutes-long) drain —
+      // resetting to segment 0 while appendLog sits on segment K left that data ahead of the
+      // write pointer, to be evicted long before the ring was actually full (silent loss).
+      if (!drainWrites) { logSeg = 0; logSegBytes = 0; state.logged = 0; }
+      else { state.logged = logSegBytes; }                  // keep the live write pointer; counter ≈ current segment
       if (uiVisible) drawUI();
       return;
     }
-    flushSeg = (logSeg + 1 + flushK) % CFG.LOG_SEGMENTS;    // (logSeg+1) is the oldest, logSeg the newest
+    flushSeg = (drainBase + 1 + flushK) % CFG.LOG_SEGMENTS; // frozen plan: (drainBase+1) oldest → drainBase newest
     try { flushSf = require("Storage").open(logName(flushSeg), "r"); } catch (e) { flushSf = null; }
     if (!flushSf) { flushK++; flushTimer = setTimeout(flushTick, 0); return; }
   }
@@ -463,7 +477,11 @@ function flushTick() {
   for (var i = 0; i < FLUSH_CHUNK; i++) {
     var line = flushSf.readLine();
     if (line === undefined) {                               // segment exhausted → erase + advance
-      try { require("Storage").open(logName(flushSeg), "r").erase(); } catch (e) {}
+      // Never erase the segment appendLog is actively writing when writes landed mid-drain — its
+      // just-written lines haven't been read. They re-send next drain; the server dedupes.
+      if (!(drainWrites && flushSeg === logSeg)) {
+        try { require("Storage").open(logName(flushSeg), "r").erase(); } catch (e) {}
+      }
       flushSf = null; flushK++;
       if (uiVisible) drawUI();
       flushTimer = setTimeout(flushTick, FLUSH_GAP_MS);
@@ -1080,6 +1098,12 @@ function sleepDutyTick() {
   if (sleepDutyOnTimer) clearTimeout(sleepDutyOnTimer);
   sleepDutyOnTimer = setTimeout(function () {
     sleepDutyOnTimer = null;
+    // Close the burst's partial T2 frame BEFORE powering down. Left open, it completes early in the
+    // NEXT burst and its durMs spans the ~150s HRM-off gap — the receiver spreads the samples evenly
+    // across that gap, the built windows claim a ~5-7 Hz rate, and the server's sanity gate rejects
+    // the whole night's PPG (no overnight HRV/recovery). One flush per burst keeps every frame's
+    // timeline honest.
+    writeLogFrame();
     // The HRM handler logged HR (T1) + raw PPG (T2) across the burst — just power the LED+AFE back down.
     if (sleepModeActive()) { try { Bangle.setHRMPower(0, "titan"); } catch (e) {} }
   }, CFG.SLEEP_DUTY_ON_MS);

@@ -7,26 +7,34 @@ import SQLite3
 /// FIFO by insertion id; `attempts` supports backoff/inspection.
 final class SqliteWindowStore: WindowStore {
     private var db: OpaquePointer?
+    private let file: String
     private let lock = NSLock()
     private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     /// `path`: a file in Application Support (persists across launches). Defaults under the app's
     /// Application Support directory.
     init(path: String? = nil) {
-        let file = path ?? Self.defaultPath()
-        if !open(file) {
-            // The on-disk DB is unusable (corrupt / failed open). Recreate it once rather than leave
-            // `db` nil and silently swallow every enqueue — losing the whole night's buffer.
-            sqlite3_close(db)
-            db = nil
+        file = path ?? Self.defaultPath()
+        tryOpen()
+    }
+
+    /// Open (or re-open) the database. Deletes + recreates the file ONLY on actual corruption —
+    /// a TRANSIENT open failure (most plausibly iOS Data Protection before first unlock, during a
+    /// background BLE relaunch) used to nuke the entire overnight backlog here. On a transient
+    /// failure `db` stays nil; every public method retries the open, and the SyncQueue's in-memory
+    /// buffer absorbs enqueues until the file becomes readable.
+    private func tryOpen() {
+        let rc = sqlite3_open(file, &db)
+        if rc == SQLITE_OK { ensureSchema(); return }
+        sqlite3_close(db)
+        db = nil
+        if rc == SQLITE_CORRUPT || rc == SQLITE_NOTADB {
             try? FileManager.default.removeItem(atPath: file)
-            _ = open(file)
+            if sqlite3_open(file, &db) == SQLITE_OK { ensureSchema() } else { sqlite3_close(db); db = nil }
         }
     }
 
-    /// Open the database and ensure the schema. Returns false if the handle could not be opened.
-    private func open(_ file: String) -> Bool {
-        guard sqlite3_open(file, &db) == SQLITE_OK else { return false }
+    private func ensureSchema() {
         exec("""
             CREATE TABLE IF NOT EXISTS windows (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,13 +44,19 @@ final class SqliteWindowStore: WindowStore {
             );
         """)
         exec("PRAGMA journal_mode=WAL;")
-        return true
+    }
+
+    /// Caller must hold `lock`. Retries the open if a transient failure left `db` nil.
+    private func ensureOpen() throws {
+        if db == nil { tryOpen() }
+        if db == nil { throw StoreError.prepare }
     }
 
     deinit { sqlite3_close(db) }
 
     func enqueue(_ window: AnyWindow) throws {
         lock.lock(); defer { lock.unlock() }
+        try ensureOpen()
         let data = try JSONEncoder().encode(window)
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, "INSERT INTO windows (payload, created_at) VALUES (?, ?);", -1, &stmt, nil) == SQLITE_OK else {
@@ -56,6 +70,7 @@ final class SqliteWindowStore: WindowStore {
 
     func pending(limit: Int) throws -> [(id: Int64, window: AnyWindow)] {
         lock.lock(); defer { lock.unlock() }
+        try ensureOpen()
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, "SELECT id, payload FROM windows ORDER BY id ASC LIMIT ?;", -1, &stmt, nil) == SQLITE_OK else {
             throw StoreError.prepare
@@ -81,6 +96,7 @@ final class SqliteWindowStore: WindowStore {
 
     func remove(id: Int64) throws {
         lock.lock(); defer { lock.unlock() }
+        try ensureOpen()
         // Surface a failed DELETE (disk full / IO error). If we swallow it, the row survives and the
         // drain re-selects the same head row forever — an infinite re-upload loop that wedges the queue.
         guard deleteRow(id: id) else { throw StoreError.step }
@@ -100,6 +116,7 @@ final class SqliteWindowStore: WindowStore {
 
     func bumpAttempt(id: Int64) throws {
         lock.lock(); defer { lock.unlock() }
+        try ensureOpen()
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, "UPDATE windows SET attempts = attempts + 1 WHERE id = ?;", -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }

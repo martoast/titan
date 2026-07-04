@@ -50,7 +50,10 @@ public struct PpgWindow: Codable, Equatable {
     public let end: String
     public let sample_rate_hz: Int
     public let ppg: [Int16]
-    public let accel_mag_cg: [Int]
+    public let accel_mag_cg: [Int]?  // OMITTED when there's no real accel (the offline T2 log carries
+                                     // none) — sending fabricated zeros overrode the biosignal service's
+                                     // PPG-quality motion proxy with "perfectly still" and wrecked
+                                     // offline sleep staging. nil → the server falls back to the proxy.
     public let src: String           // "banglejs2"
 }
 
@@ -140,6 +143,12 @@ public final class HrTrendBuilder {
 /// `_drainWindows` / `_flushWindow` / `_shipSamples`. Pure: the caller does the actual POST.
 public final class PpgWindowBuilder {
     public static let WINDOW_MS: UInt64 = 120_000
+    /// Inter-sample gap that closes a window early. The band duty-cycles its HRM (rest: 1/min bursts;
+    /// sleep: 30s bursts every 3min), so a chunk must never span an off-gap: the built window's
+    /// claimed rate (count/span) would fall below the server's 10 Hz sanity floor and the WHOLE
+    /// window — a night's worth, window by window — gets rejected at the door. Real capture never
+    /// pauses >2s (25-50 Hz live, ≤40ms spacing inside a T2 frame).
+    public static let MAX_GAP_MS: UInt64 = 2_000
     private var samples: [PpgSample] = []
 
     private static let iso: ISO8601DateFormatter = {
@@ -150,35 +159,54 @@ public final class PpgWindowBuilder {
 
     public init() {}
 
-    /// Feed decoded T1 samples. Returns any COMPLETE 120s windows ready to ship.
+    /// Feed decoded T1 samples. Returns any COMPLETE windows ready to ship — a window closes at
+    /// 120s of contiguous capture OR at a duty-cycle gap (>MAX_GAP_MS), whichever comes first.
     public func add(_ newSamples: [PpgSample]) -> [PpgWindow] {
         samples.append(contentsOf: newSamples)
         var out: [PpgWindow] = []
         while samples.count > 1 {
             let t0 = samples[0].t
-            let last = samples[samples.count - 1].t
-            // Underflow-safe: a non-monotonic buffer (e.g. older buffered data interleaved with live)
-            // must never do `last - t0` when last < t0 — UInt64 wraps and TRAPS. Wait for more instead.
-            guard last >= t0, last - t0 >= Self.WINDOW_MS else { break }
-            let cut = t0 + Self.WINDOW_MS
-            var i = 0
-            while i < samples.count && samples[i].t < cut { i += 1 }
+            var cutIdx: Int? = nil
+            for i in 1..<samples.count {
+                let prev = samples[i - 1].t, cur = samples[i].t
+                // Underflow-safe: a non-monotonic buffer must never subtract wrapped — skip the pair.
+                if cur >= prev, cur - prev > Self.MAX_GAP_MS { cutIdx = i; break }   // burst ended
+                if cur >= t0, cur - t0 >= Self.WINDOW_MS { cutIdx = i; break }       // 120s window full
+            }
+            guard let i = cutIdx else { break }   // no boundary yet — wait for more samples
             let chunk = Array(samples[0..<i])
             samples.removeFirst(i)
-            if let w = Self.build(chunk) { out.append(w) }
+            if let w = Self.build(chunk) { out.append(w) }   // <30-sample orphans are dropped by build
         }
         return out
     }
 
-    /// Flush the trailing partial window (on disconnect / settle). `live` keeps short windows
-    /// collecting (matches the bridge: skip <30s while still connected).
-    public func flush(live: Bool) -> PpgWindow? {
-        guard samples.count >= 1 else { return nil }
+    /// Flush the trailing partial windows (on disconnect / settle). `live` keeps short windows
+    /// collecting (matches the bridge: skip <30s while still connected). Splits at duty-cycle
+    /// gaps for the same reason `add` does — one window per contiguous burst.
+    public func flush(live: Bool) -> [PpgWindow] {
+        guard samples.count >= 1 else { return [] }
         let last = samples[samples.count - 1].t, first = samples[0].t
         let span = last >= first ? last - first : 0          // underflow-safe (see add)
-        if span < 30_000 && live { return nil }
-        let chunk = samples; samples = []
-        return Self.build(chunk)
+        if span < 30_000 && live { return [] }
+        var out: [PpgWindow] = []
+        var tail = samples; samples = []
+        while let gap = Self.firstGapIndex(tail) {
+            if let w = Self.build(Array(tail[0..<gap])) { out.append(w) }
+            tail.removeFirst(gap)
+        }
+        if let w = Self.build(tail) { out.append(w) }
+        return out
+    }
+
+    /// Index of the first sample that begins after a duty-cycle gap, or nil if contiguous.
+    static func firstGapIndex(_ s: [PpgSample]) -> Int? {
+        guard s.count > 1 else { return nil }
+        for i in 1..<s.count {
+            let prev = s[i - 1].t, cur = s[i].t
+            if cur >= prev, cur - prev > Self.MAX_GAP_MS { return i }
+        }
+        return nil
     }
 
     /// Build a ppg_raw window from a sample slice (≥30 samples), matching `_shipSamples`.
@@ -187,13 +215,19 @@ public final class PpgWindowBuilder {
         let startMs = s[0].t, endMs = s[s.count - 1].t
         let durSec = max(1.0, Double(endMs >= startMs ? endMs - startMs : 0) / 1000)
         let rate = max(1, Int((Double(s.count) / durSec).rounded()))
+        // Real accel only. The offline T2 log carries no accel (decodeT2 zero-fills), and shipping
+        // fabricated zeros told the server "perfectly still all night", overriding its PPG-quality
+        // motion proxy and corrupting sleep staging. All-zero => omit (a worn watch always shows
+        // ~1 g of gravity, so genuine accel can never be all-zero).
+        let mags = s.map { accelMagCentiG(ax: $0.ax, ay: $0.ay, az: $0.az) }
+        let hasRealAccel = mags.contains { $0 != 0 }
         return PpgWindow(
             kind: "ppg_raw",
             start: iso.string(from: Date(timeIntervalSince1970: Double(startMs) / 1000)),
             end: iso.string(from: Date(timeIntervalSince1970: Double(endMs) / 1000)),
             sample_rate_hz: rate,
             ppg: s.map { $0.ppg },
-            accel_mag_cg: s.map { accelMagCentiG(ax: $0.ax, ay: $0.ay, az: $0.az) },
+            accel_mag_cg: hasRealAccel ? mags : nil,
             src: "banglejs2"
         )
     }

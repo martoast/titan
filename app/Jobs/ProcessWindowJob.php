@@ -31,7 +31,9 @@ class ProcessWindowJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public int $backoff = 10;
+    /** Spread retries out (30s, then 5min) so a biosignal restart/deploy window — which easily
+     *  outlives three 10-second retries — doesn't mark the whole night's windows FAILED. */
+    public array $backoff = [30, 300];
 
     public function __construct(public string $batchUid)
     {

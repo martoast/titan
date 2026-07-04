@@ -46,7 +46,11 @@ class MobileRunsController extends Controller
             'elevation_loss_m' => $session->elevation_loss_m,
             'elevation_profile' => $session->elevation_profile ?? [],
             'splits' => $session->splits ?? ['km' => [], 'mi' => []],
-            'best_efforts' => $session->best_efforts ?? [],
+            // NULL (not []) when empty: PHP's empty array JSON-encodes as `[]`, but this field is a
+            // MAP — the iOS client decodes [String: BestEffort]?, and `[]` fails the whole RunDetail
+            // decode (every lift + every routeless run showed a "failed" summary). `?:` also catches
+            // a stored-empty array, which round-trips from biosignal's {} through the array cast.
+            'best_efforts' => $session->best_efforts ?: null,
             'relative_effort' => $session->relative_effort,
             'avg_hr' => $session->avg_hr,
             'max_hr' => $session->max_hr,

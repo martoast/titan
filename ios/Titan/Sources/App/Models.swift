@@ -83,7 +83,12 @@ struct Dashboard: Codable {
         let energy: Int?
         let updated_via: String?
         let confidence: Confidence?
-        struct Confidence: Codable { let level: String?; let caveat: String?; let nights_of_data: Int? }
+        struct Confidence: Codable {
+            let level: String?; let caveat: String?; let nights_of_data: Int?
+            // Server keys (RecoveryConfidence::toArray) are `note` + `nights` — without this mapping
+            // both fields silently decoded to nil forever (all-optional struct hides the mismatch).
+            enum CodingKeys: String, CodingKey { case level, caveat = "note", nights_of_data = "nights" }
+        }
     }
     struct Sleep: Codable {
         let duration_min: Int?
@@ -573,8 +578,10 @@ struct RunDetail: Codable, Equatable, Identifiable {
 }
 
 /// Time-in-HR-zone (minutes) — the headline of a lift summary, where avg HR understates the effort.
+/// Double, NOT Int: the server sends fractional minutes (round($sec/60, 1) → e.g. 3.4), and one
+/// non-integer here failed the WHOLE RunDetail decode — a big part of the "summary shows failed" bug.
 struct HrZones: Codable, Equatable {
-    let z1: Int?; let z2: Int?; let z3: Int?; let z4: Int?; let z5: Int?
+    let z1: Double?; let z2: Double?; let z3: Double?; let z4: Double?; let z5: Double?
 }
 
 struct StrengthDetail: Codable, Equatable {

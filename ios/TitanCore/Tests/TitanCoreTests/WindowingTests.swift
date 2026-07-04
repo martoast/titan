@@ -37,9 +37,38 @@ final class WindowingTests: XCTestCase {
         XCTAssertEqual(w.kind, "ppg_raw")
         XCTAssertEqual(w.sample_rate_hz, 25)
         XCTAssertEqual(w.src, "banglejs2")
-        XCTAssertEqual(w.ppg.count, w.accel_mag_cg.count)
-        XCTAssertTrue(w.accel_mag_cg.allSatisfy { $0 == 100 })
-        XCTAssertNotNil(b.flush(live: false))  // trailing remainder
+        XCTAssertEqual(w.ppg.count, w.accel_mag_cg?.count)
+        XCTAssertTrue((w.accel_mag_cg ?? []).allSatisfy { $0 == 100 })
+        XCTAssertFalse(b.flush(live: false).isEmpty)  // trailing remainder
+    }
+
+    // A window must never span a duty-cycle gap: the overnight HRM bursts 30s on / ~150s off, and a
+    // window built across the off-gap claims a ~5 Hz rate → the server's sanity gate rejects it (a
+    // whole night of HRV lost). The builder closes a window at any >2s hole instead.
+    func testWindowBuilderSplitsAtDutyCycleGaps() {
+        let base: UInt64 = 1_750_000_000_000
+        let b = PpgWindowBuilder()
+        // Burst 1: 30s @ 25Hz (750 samples) → gap of ~150s → burst 2: 30s @ 25Hz.
+        let burst1 = (0..<750).map { PpgSample(t: base + UInt64($0) * 40, ppg: 1, ax: 0, ay: 0, az: 1000) }
+        let burst2 = (0..<750).map { PpgSample(t: base + 180_000 + UInt64($0) * 40, ppg: 2, ax: 0, ay: 0, az: 1000) }
+        let wins = b.add(burst1 + burst2)
+        XCTAssertEqual(wins.count, 1)                       // burst 1 closed AT the gap, not at 120s
+        XCTAssertEqual(wins[0].sample_rate_hz, 25)          // true burst rate — NOT count/gap-span ≈ 5
+        let tail = b.flush(live: false)                     // burst 2 ships on flush
+        XCTAssertEqual(tail.count, 1)
+        XCTAssertEqual(tail[0].sample_rate_hz, 25)
+    }
+
+    // The offline T2 log has no accel; the fabricated all-zero mags told the server "perfectly
+    // still all night" and overrode its PPG-quality motion proxy. All-zero accel must be OMITTED.
+    func testAllZeroAccelIsOmittedNotFabricated() {
+        let base: UInt64 = 1_750_000_000_000
+        let s = (0..<60).map { PpgSample(t: base + UInt64($0) * 40, ppg: Int16($0), ax: 0, ay: 0, az: 0) }
+        let w = try! XCTUnwrap(PpgWindowBuilder.build(s))
+        XCTAssertNil(w.accel_mag_cg)
+        // …and the JSON omits the key entirely (the server checks isset()).
+        let obj = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(w)) as! [String: Any]
+        XCTAssertNil(obj["accel_mag_cg"])
     }
 
     func testWindowEncodesToServerShape() throws {

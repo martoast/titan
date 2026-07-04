@@ -195,10 +195,16 @@ class DeviceIngestionService
             ->where('status', '!=', DeviceIngestion::STATUS_SEALED)
             ->whereNotNull('window_end')
             ->max('window_end');
-        if ($latestEnd === null) {
+        if ($latestEnd !== null) {
+            $night = CarbonImmutable::parse($latestEnd)->setTimezone($tz)->toDateString();
+        } elseif (! empty($summary['wake']) && is_numeric($summary['wake'])) {
+            // No unsealed windows (already sealed by the cron, or the night's raw upload failed) —
+            // the user still explicitly marked awake, so key the night off the marker's own wake
+            // timestamp instead of silently dropping their confirmation.
+            $night = CarbonImmutable::createFromTimestamp((int) $summary['wake'], 'UTC')->setTimezone($tz)->toDateString();
+        } else {
             return false;
         }
-        $night = CarbonImmutable::parse($latestEnd)->setTimezone($tz)->toDateString();
         \App\Jobs\SealNightJob::dispatch($connection->profile_id, $night, true)->afterCommit();
 
         return true;

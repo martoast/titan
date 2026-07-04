@@ -94,7 +94,7 @@ struct LiftDetailView: View {
     // MARK: cards
 
     private func zonesCard(_ z: HrZones) -> some View {
-        let zones: [(String, Int, Color)] = [
+        let zones: [(String, Double, Color)] = [
             ("Z1", z.z1 ?? 0, Theme.Palette.cyan), ("Z2", z.z2 ?? 0, Theme.Palette.mint),
             ("Z3", z.z3 ?? 0, Theme.Palette.amber), ("Z4", z.z4 ?? 0, Theme.Palette.pink),
             ("Z5", z.z5 ?? 0, Theme.Palette.violet),
@@ -112,7 +112,7 @@ struct LiftDetailView: View {
                             }
                         }
                         .frame(height: 12)
-                        Text("\(zone.1)m").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 36, alignment: .trailing)
+                        Text("\(Int(zone.1.rounded()))m").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 36, alignment: .trailing)
                     }
                 }
             }
@@ -159,7 +159,7 @@ struct LiftDetailView: View {
 
     // MARK: formatting
 
-    private func zonesTotal(_ z: HrZones) -> Int { (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0) + (z.z4 ?? 0) + (z.z5 ?? 0) }
+    private func zonesTotal(_ z: HrZones) -> Double { (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0) + (z.z4 ?? 0) + (z.z5 ?? 0) }
 
     private var durationText: String {
         let s = (detail?.duration_min ?? fallback.duration_min ?? 0) * 60

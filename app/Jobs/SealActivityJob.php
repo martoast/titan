@@ -101,9 +101,14 @@ class SealActivityJob implements ShouldQueue
                 $this->sealSession($profile, $biosignal, $session, $forceThis);
             } catch (\Throwable $e) {
                 Log::warning('[Biosignal] activity seal failed', [
-                    'profile_id' => $profile->id, 'error' => $e->getMessage(),
+                    'profile_id' => $profile->id, 'attempt' => $this->attempts(), 'error' => $e->getMessage(),
                 ]);
-                // Seal-anyway so a persistently bad session never wedges the queue.
+                // A transient failure (biosignal restarting mid-deploy) must NOT discard the workout:
+                // rethrow so the queue retries. Only the FINAL attempt seals-anyway, so a persistently
+                // bad session can't wedge the queue — but a one-off hiccup no longer eats the run.
+                if ($this->attempts() < $this->tries) {
+                    throw $e;
+                }
                 $session->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
             }
         }

@@ -277,6 +277,13 @@ final class AppModel: ObservableObject {
             let p = try await api.pairDevice()
             Keychain.set(p.device_id, for: Keychain.deviceId)
             Keychain.set(p.secret, for: Keychain.deviceSecret)
+            // RE-pair: the live stack's IngestClient is an immutable struct built with the OLD
+            // device_id/secret — left in place, every upload after a re-pair 401s until the app is
+            // force-restarted. Tear the stack down so startBandIfPaired rebuilds it on fresh creds.
+            if band != nil {
+                band?.unbind()
+                band = nil; router = nil; syncQueue = nil
+            }
             startBandIfPaired()                    // ensures `band` (BandManager) exists
             pairCandidates = []
             pairing = true

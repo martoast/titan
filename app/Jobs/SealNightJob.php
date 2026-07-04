@@ -293,8 +293,13 @@ class SealNightJob implements ShouldQueue
                     // Invalid whole-night signal -- still seal so we don't reprocess endlessly.
                     $ibiWindows->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
                 }
+            } elseif (! $biosignal->configured()) {
+                // Service UNCONFIGURED (missing/typo'd biosignal url after a deploy) is an ops state,
+                // not a data verdict — leave the windows unsealed so the hourly seal cron reprocesses
+                // them once config returns. Sealing here silently discarded whole nights.
+                Log::warning('[Biosignal] night left unsealed: service not configured', ['profile_id' => $profile->id]);
             } else {
-                // Too little data or service unconfigured -- seal to release the night.
+                // Genuinely too little data -- seal to release the night.
                 $ibiWindows->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
             }
 
@@ -473,8 +478,12 @@ class SealNightJob implements ShouldQueue
                 \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
             }
         } catch (\Throwable $e) {
-            Log::warning('[Biosignal] sleep seal failed', ['profile_id' => $profile->id, 'night' => $date, 'error' => $e->getMessage()]);
-            // Seal anyway so a persistently bad night doesn't wedge the queue.
+            Log::warning('[Biosignal] sleep seal failed', ['profile_id' => $profile->id, 'night' => $date, 'attempt' => $this->attempts(), 'error' => $e->getMessage()]);
+            // Transient failure (service restarting) → rethrow so the queue retries; the HRV pass is
+            // idempotent on re-run. Only the FINAL attempt seals-anyway (unwedges a truly bad night).
+            if ($this->attempts() < $this->tries) {
+                throw $e;
+            }
             $sleepWindows->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
         }
     }

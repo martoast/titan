@@ -196,8 +196,8 @@ public final class FrameRouter {
 
     /// On disconnect / app suspend: flush trailing partial windows so nothing is lost.
     public func flush(live: Bool) {
-        if let w = ppg.flush(live: live) { submit(.ppg(w)) }
-        if let w = ppgLog.flush(live: live) { submit(.ppg(w)) }
+        for w in ppg.flush(live: live) { submit(.ppg(w)) }
+        for w in ppgLog.flush(live: live) { submit(.ppg(w)) }
         if let w = wa.flush() { submit(.workout(w)) }
         if let w = waLog.flush() { submit(.workout(w)) }
         if let w = hrTrend.flush() { submit(.hrTrend(w)) }

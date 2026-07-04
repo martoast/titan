@@ -128,11 +128,19 @@ public actor SyncQueue {
                 onUploaded?(uploadedCount)
                 backoffStep = 0
             case .rejected(let status, _):
-                // Only a TRUE client error (4xx, not 429) is permanent → drop so the queue can't wedge on
-                // one bad window. 5xx / status 0 (server down, deploy, gateway hiccup, non-HTTP, encode)
-                // are transient — KEEP the window and retry, or a routine restart silently eats the buffer.
-                if (400..<500).contains(status) && status != 429 {
-                    try? store.remove(id: item.id)
+                // Drop ONLY on a true, permanent client error. 429 (rate limit) and 401 are NOT
+                // permanent: a 401 covers clock skew (>5min signing tolerance) and stale creds after a
+                // re-pair — sustained-but-recoverable states that used to drain-DELETE the entire
+                // backlog one window at a time. status 0 is a deterministic local encode failure —
+                // retrying it forever wedged the queue head, so it drops. 5xx stays retryable.
+                let permanent = status == 0 || ((400..<500).contains(status) && status != 429 && status != 401)
+                if permanent {
+                    if (try? store.remove(id: item.id)) == nil {
+                        // DELETE failed (disk full) — without a pause this loops hot on the same head
+                        // row (the accepted path already guards this; mirror it here).
+                        Self.log.error("remove failed after reject; pausing drain")
+                        scheduleRetry(); return
+                    }
                 } else {
                     try? store.bumpAttempt(id: item.id); scheduleRetry(); return
                 }
