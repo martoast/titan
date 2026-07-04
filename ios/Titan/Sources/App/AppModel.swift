@@ -968,6 +968,13 @@ final class AppModel: ObservableObject {
         guard runActive else { return }
         runActive = false
         runSawSport1 = false; runSportLostAt = nil
+        // Reset the rising-edge tracker. The sport==0 branch of ingestLiveHr resets this before it
+        // ends a run, but the PRIMARY end signal — the watch's TA:{"k":"end"} frame → onWorkoutEnd →
+        // endRun — bypasses that branch, so lastSportWas1 was left stuck TRUE. The NEXT workout's
+        // sport==1 frames then never registered as a rising edge, so startRunIfNeeded never fired:
+        // no live sheet, and on end `guard runActive` no-op'd → no summary AND no instant seal. This
+        // one line is what made every workout after the first watch-ended one silently do nothing.
+        lastSportWas1 = false
         // Block the band's lingering/flickering sport tag from instantly re-popping the run (the end loop).
         suppressAutoStartUntil = Date().addingTimeInterval(Self.endRestartGraceSec)
         runTicker?.cancel(); runTicker = nil
