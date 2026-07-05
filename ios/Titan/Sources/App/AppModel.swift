@@ -126,6 +126,15 @@ final class AppModel: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: Self.lastSeenWorkoutKey) }
     }
 
+    // The bedtime epoch (s) of the most recent NIGHT we've already surfaced, persisted — so a sleep that
+    // synced from the band's ring in the morning (the normal offline case) pops its summary exactly once.
+    private static let lastSeenSleepKey = "titan.lastSeenSleepEpoch"
+    private var lastSeenSleepEpoch: Int {
+        get { UserDefaults.standard.integer(forKey: Self.lastSeenSleepKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastSeenSleepKey) }
+    }
+    private var checkingSyncedSleep = false   // one poller at a time
+
     /// Restore a logged-in session (token already in Keychain): load data + resume band sync.
     func bootstrap() async {
         onboarded = (try? await api.onboardingStatus()) ?? true
@@ -265,6 +274,7 @@ final class AppModel: ObservableObject {
         band?.flushIfConnected()
         pushStepsToBand()         // opening the app tops the watch's Steps face back up to the phone's count
         checkForSyncedWorkout()   // surface any workout that finished while we weren't watching
+        checkForSyncedSleep()     // …and a night that sealed from the ring while we were away
     }
 
     /// Surface a workout that FINISHED while the app wasn't watching — started offline or in the
@@ -295,6 +305,39 @@ final class AppModel: ObservableObject {
                     startedAt: started, hasGps: newest.has_route)
                 s.detail = detail; s.loading = false; s.failed = (detail == nil)
                 self.workoutSummary = s
+                return
+            }
+        }
+    }
+
+    /// Surface a SLEEP that sealed while we weren't watching — the normal overnight case. The phone is
+    /// disconnected while you sleep, so the WAKE marker (T9) only reaches the server when the app
+    /// reconnects and drains the night in the morning; there's no live `TN s:0` then, so `endSleep`
+    /// never fires. This polls for a freshly-sealed night and pops its summary ONCE. Mirrors
+    /// `checkForSyncedWorkout`. No-op during a live sleep or while a summary is already open.
+    func checkForSyncedSleep() {
+        guard isLoggedIn, !sleeping, sleepSummary == nil, !checkingSyncedSleep else { return }
+        checkingSyncedSleep = true
+        Task { @MainActor [weak self] in
+            defer { self?.checkingSyncedSleep = false }
+            for attempt in 0..<6 {
+                try? await Task.sleep(nanoseconds: attempt == 0 ? 2_000_000_000 : 4_000_000_000)
+                guard let self, !self.sleeping, self.sleepSummary == nil else { return }
+                guard let resp = try? await self.api.sleepDetail(), let d = resp.detail,
+                      (d.duration_min ?? 0) > 0, let bedEpoch = d.epoch_sec, bedEpoch > 0 else { continue }
+                // Only a night NEWER than the last one we surfaced (the live path stamps this too, so the
+                // one just shown at wake never re-pops), and recent enough that a morning summary makes sense.
+                guard bedEpoch > self.lastSeenSleepEpoch else { return }
+                let wakeApprox = bedEpoch + (d.duration_min ?? 0) * 60
+                guard Date().timeIntervalSince1970 - Double(wakeApprox) < 18 * 3600 else { self.lastSeenSleepEpoch = bedEpoch; return }
+                self.lastSeenSleepEpoch = bedEpoch
+                self.sleepDetail = resp   // refresh Daily/Recovery too
+                var s = SleepSummaryState(
+                    bedtime: Date(timeIntervalSince1970: Double(bedEpoch)),
+                    wake: Date(timeIntervalSince1970: Double(wakeApprox)),
+                    inBedSec: (d.in_bed_min ?? d.duration_min ?? 0) * 60)
+                s.detail = d; s.assess = resp.assess; s.loading = false
+                self.sleepSummary = s
                 return
             }
         }
@@ -480,7 +523,7 @@ final class AppModel: ObservableObject {
         // The watch finished the workout → end + seal it on the app, deterministically (no sport-tag guessing).
         router.onWorkoutEnd = { [weak self] in Task { @MainActor in self?.endRun(notifyBand: false) } }
         // The band drained its offline ring → a phone-free workout may have just sealed → catch-up summary.
-        router.onBacklogSynced = { [weak self] in Task { @MainActor in self?.checkForSyncedWorkout() } }
+        router.onBacklogSynced = { [weak self] in Task { @MainActor in self?.checkForSyncedWorkout(); self?.checkForSyncedSleep() } }
         // The watch's Sleep face: START → enter the live "Sleeping" state; WAKE → show the sleep summary.
         router.onSleepStart = { [weak self] in Task { @MainActor in self?.sleeping = true } }
         router.onSleepEnd = { [weak self] bed, wake in Task { @MainActor in self?.endSleep(bedSec: bed, wakeSec: wake) } }
@@ -1198,6 +1241,7 @@ final class AppModel: ObservableObject {
         let wake = wakeSec > 0 ? Date(timeIntervalSince1970: Double(wakeSec)) : nil
         let inBed = max(0, wakeSec - bedSec)
         guard inBed >= 600 else { return }   // ignore a <10-min mis-tap; not a real night
+        if bedSec > 0 { lastSeenSleepEpoch = max(lastSeenSleepEpoch, bedSec) }   // don't let the sync path re-pop it
         sleepSummary = SleepSummaryState(bedtime: bed, wake: wake, inBedSec: inBed)
         fetchSealedSleep(bedtimeEpoch: bedSec)
     }
