@@ -102,9 +102,7 @@ struct StrainView: View {
             }
             Color.clear.frame(height: 8)
         }
-        .padding(.horizontal, Theme.Space.m)
-        .background(Theme.Palette.bg.ignoresSafeArea())
-        .navigationTitle("Strain")
+        .titanDetail("Strain", glow: Theme.Palette.cyan)
         .task { await model.loadStrain() }
     }
 

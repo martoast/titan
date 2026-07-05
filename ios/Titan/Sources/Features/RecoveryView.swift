@@ -68,9 +68,7 @@ struct RecoveryView: View {
             }
             Color.clear.frame(height: 8)
         }
-        .padding(.horizontal, Theme.Space.m)
-        .background(Theme.Palette.bg.ignoresSafeArea())
-        .navigationTitle("Recovery")
+        .titanDetail("Recovery", glow: Theme.Palette.mint)
         .animation(Theme.Motion.snappy, value: model.dashboardPhase)
         .task { await model.refresh(); await model.loadTrends() }
     }
@@ -279,9 +277,7 @@ struct SleepView: View {
             }
             Color.clear.frame(height: 8)
         }
-        .padding(.horizontal, Theme.Space.m)
-        .background(Theme.Palette.bg.ignoresSafeArea())
-        .navigationTitle("Sleep")
+        .titanDetail("Sleep", glow: Theme.Palette.indigo)
         .task { await model.loadSleepDetail() }
     }
 
