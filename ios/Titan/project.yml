@@ -54,6 +54,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"            # iPhone
         SWIFT_VERSION: "5.9"
         ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon   # Sources/Assets.xcassets/AppIcon.appiconset
         # Automatic signing — DEVELOPMENT_TEAM is your 10-char Team ID (Apple Development cert OU).
         # A free personal Apple ID team works for on-device dev builds (7-day provisioning).
         CODE_SIGN_STYLE: Automatic
