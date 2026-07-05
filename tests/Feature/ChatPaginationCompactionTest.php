@@ -106,6 +106,37 @@ class ChatPaginationCompactionTest extends TestCase
         $this->assertStringContainsString('bulking', $convo->summary);
     }
 
+    public function test_compaction_consolidates_durable_facts_into_long_term_memory(): void
+    {
+        // The compaction pass harvests durable facts from the turns being archived → the memory book,
+        // so they survive summary compression (recallable later via search_knowledge).
+        $ai = Mockery::mock(AiService::class);
+        $ai->shouldReceive('configured')->andReturn(true);
+        $ai->shouldReceive('chatWithTools')->andReturn('Got it — keep going.');
+        $ai->shouldReceive('json')->andReturn(['facts' => [
+            ['category' => 'dislike', 'content' => 'Hates Romanian deadlifts', 'importance' => 2],
+            ['category' => 'injury', 'content' => 'Left shoulder impingement — avoid overhead press', 'importance' => 3],
+            ['category' => 'not_a_category', 'content' => 'should be dropped', 'importance' => 2],
+        ]]);
+        $ai->shouldReceive('chat')->andReturn('SUMMARY: user is bulking.');
+        $this->app->instance(AiService::class, $ai);
+
+        $u = User::factory()->create();
+        $p = $u->ensureProfile();
+        $convo = $p->conversations()->create(['title' => 'Long chat']);
+        foreach (range(1, 30) as $i) {
+            $convo->messages()->create(['role' => $i % 2 ? 'user' : 'assistant', 'content' => "old msg {$i}"]);
+        }
+
+        app(CoachService::class)->reply($convo->refresh(), $p, 'one more thing');
+
+        $mems = $p->coachMemories()->pluck('content')->all();
+        $this->assertContains('Hates Romanian deadlifts', $mems);
+        $this->assertContains('Left shoulder impingement — avoid overhead press', $mems);
+        $this->assertNotContains('should be dropped', $mems);        // invalid category rejected
+        $this->assertNotNull($convo->refresh()->summary);            // summary still produced
+    }
+
     protected function tearDown(): void
     {
         Mockery::close();

@@ -280,6 +280,12 @@ class CoachService
             return;
         }
 
+        // BEFORE these turns are compressed into the summary, consolidate any durable facts from them
+        // into long-term memory — so nothing important is lost to repeated summarisation. The summary
+        // then carries continuity; the searchable memory/wiki carries permanence (recallable later via
+        // search_knowledge). This is the "save what matters to long-term storage as we compact" step.
+        $this->consolidateMemory($conversation, $fold);
+
         $transcript = $fold->map(fn (ChatMessage $m) => strtoupper($m->role).': '.Str::limit((string) $m->content, 1200))->implode("\n\n");
         $prior = filled($conversation->summary) ? "Existing summary so far:\n{$conversation->summary}\n\n" : '';
 
@@ -297,6 +303,50 @@ class CoachService
             }
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('[coach] compaction failed', ['conversation' => $conversation->id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Harvest durable facts from the turns being archived into the long-term memory book, so they
+     * survive summary compression and stay recallable via search_knowledge. Deduped by
+     * {@see CoachMemoryBook::remember}, so re-running is idempotent. Best-effort + off the request path
+     * (the compaction job) — a failure never blocks compaction; cheap model, conservative extraction.
+     *
+     * @param  \Illuminate\Support\Collection<int,ChatMessage>  $fold
+     */
+    private function consolidateMemory(Conversation $conversation, $fold): void
+    {
+        if (! class_exists(\App\Models\CoachMemory::class) || ! class_exists(\App\Support\CoachMemoryBook::class)) {
+            return;
+        }
+        $profile = $conversation->profile;
+        if ($profile === null) {
+            return;
+        }
+
+        $cats = array_keys(\App\Models\CoachMemory::CATEGORIES);
+        $transcript = $fold->map(fn (ChatMessage $m) => strtoupper($m->role).': '.Str::limit((string) $m->content, 1000))->implode("\n\n");
+
+        try {
+            $out = $this->ai->json([
+                ['role' => 'system', 'content' => 'You are consolidating a health-coaching conversation into long-term memory just BEFORE these older turns get archived. Extract ONLY durable, personal facts worth remembering for months: injuries/limitations, equipment/access, schedule/availability, food likes/dislikes/allergies, loved/hated exercises, what has worked for them, firm commitments, key decisions, and standing goals/targets. IGNORE one-off numbers, day-to-day logs, small talk, and anything transient. Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content":"short specific fact in third person","importance":1-3}]}. Be conservative — only high-signal facts, or an empty list.'],
+                ['role' => 'user', 'content' => "Conversation turns being archived:\n\n".$transcript],
+            ], ['model' => config('services.openai.fast_model'), 'temperature' => 0.2, 'max_tokens' => 500]);
+
+            foreach (($out['facts'] ?? []) as $f) {
+                if (! is_array($f)) {
+                    continue;
+                }
+                $cat = (string) ($f['category'] ?? '');
+                $content = trim((string) ($f['content'] ?? ''));
+                if ($content === '' || ! in_array($cat, $cats, true)) {
+                    continue;
+                }
+                $importance = max(1, min(3, (int) ($f['importance'] ?? 2)));
+                \App\Support\CoachMemoryBook::remember($profile, $cat, $content, $importance, 'compaction');
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[coach] memory consolidation failed', ['conversation' => $conversation->id, 'error' => $e->getMessage()]);
         }
     }
 
