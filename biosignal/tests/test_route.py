@@ -50,6 +50,27 @@ def test_moving_time_excludes_a_pause():
     assert r["moving_time_s"] < r["elapsed_time_s"] - 50          # but not in moving time
 
 
+def test_autopause_excludes_stationary_gps_drift():
+    """Standing still with GPS drift scribbles a path that HAS speed but makes no net progress — it must
+    not count as moving time (Strava-style auto-pause), while a real run's moving time ≈ its elapsed."""
+    import random
+    rng = random.Random(1)
+    lat0, lon0 = 37.7749, -122.4194
+    m_per_deg = 111_320.0
+    t0 = 1_750_000_000_000
+    # 300 s of ~5 m jitter around one spot (each hop > MOVING_SPEED_MIN, but net displacement ~0).
+    drift = [{"t": t0 + i * 1000,
+              "lat": lat0 + rng.uniform(-5, 5) / m_per_deg,
+              "lon": lon0 + rng.uniform(-5, 5) / m_per_deg, "alt": 10.0} for i in range(300)]
+    d = route.analyze(drift)
+    assert d["moving_time_s"] < d["elapsed_time_s"] * 0.4   # most of the 300 s is auto-paused
+    assert d["elapsed_time_s"] > 250                        # …but the wall-clock still elapsed
+
+    run, *_ = _hill_run()                     # a genuine 3 m/s run is untouched by the gate
+    r = route.analyze(run)
+    assert r["moving_time_s"] > r["elapsed_time_s"] * 0.9
+
+
 def test_haversine_known_distance():
     # ~111.32 km per degree of longitude at the equator (1 deg).
     d = route.haversine(0.0, 0.0, 0.0, 1.0)

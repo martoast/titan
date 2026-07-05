@@ -33,6 +33,15 @@ BEST_EFFORT_DISTS = [
 
 MOVING_SPEED_MIN = 0.5  # m/s below this counts as stopped (Strava-style moving-time gate)
 
+# Auto-pause (Strava-style): instantaneous speed alone can't tell a slow jog from standing still with
+# GPS drift — a stationary scribble HAS speed but makes no net PROGRESS. So a second gate asks "over the
+# last few seconds, did the runner actually get anywhere?": net straight-line displacement over a short
+# trailing window. Below this net pace the runner is parked (a red light, or pure drift) and the time
+# doesn't count as moving. A real run/walk clears it by a wide margin; only jitter-in-place fails.
+AUTOPAUSE_WINDOW_S = 30.0       # trailing window over which to measure real progress (long enough that
+                                # random GPS jitter averages out to ~no net displacement)
+AUTOPAUSE_NET_SPEED_MIN = 0.3   # m/s of NET displacement below which you're stopped, not moving
+
 
 # ----- geometry -------------------------------------------------------------------------
 
@@ -141,16 +150,30 @@ def simplify_to_limit(coords: Sequence[Tuple[float, float]], max_points: int = 5
 # ----- time -----------------------------------------------------------------------------
 
 def moving_time_s(track: Sequence[dict]) -> float:
-    """Seconds in motion — sum of inter-point Δt where speed ≥ MOVING_SPEED_MIN (a stop to tie a
-    shoe / wait at a light doesn't count). Falls back toward elapsed if timestamps are sparse."""
+    """Seconds in motion — sum of inter-point Δt for segments that are BOTH fast enough (instantaneous
+    speed ≥ MOVING_SPEED_MIN) AND actually progressing (net displacement over a short trailing window ≥
+    AUTOPAUSE_NET_SPEED_MIN). The second gate is Strava-style auto-pause: it drops time spent standing
+    still with GPS drift (a scribble that has speed but goes nowhere) and time paused at a light, without
+    penalising a real slow run. Falls back toward elapsed if timestamps are sparse."""
     total = 0.0
+    left = 0  # sliding-window start: oldest point still within AUTOPAUSE_WINDOW_S of point i
     for i in range(1, len(track)):
         dt = (track[i]["t"] - track[i - 1]["t"]) / 1000.0
         if dt <= 0:
             continue
         d = haversine(track[i - 1]["lat"], track[i - 1]["lon"], track[i]["lat"], track[i]["lon"])
-        if d / dt >= MOVING_SPEED_MIN:
-            total += dt
+        if d / dt < MOVING_SPEED_MIN:
+            continue
+        # Advance the window start so [left, i] spans ~AUTOPAUSE_WINDOW_S, then measure NET progress.
+        while left < i and (track[i]["t"] - track[left]["t"]) / 1000.0 > AUTOPAUSE_WINDOW_S:
+            left += 1
+        win_dt = (track[i]["t"] - track[left]["t"]) / 1000.0
+        net = haversine(track[left]["lat"], track[left]["lon"], track[i]["lat"], track[i]["lon"])
+        # With a full window, require real net progress; if the window is too short to judge (sparse
+        # fixes at the very start), fall back to the instantaneous gate we already passed.
+        if win_dt >= AUTOPAUSE_WINDOW_S * 0.5 and net / win_dt < AUTOPAUSE_NET_SPEED_MIN:
+            continue
+        total += dt
     return total
 
 
