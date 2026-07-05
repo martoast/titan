@@ -163,8 +163,12 @@ struct FuelSection: View {
 
     private func mealRow(_ meal: Meal) -> some View {
         HStack(spacing: Theme.Space.m) {
-            RemoteImage(url: meal.photo_url)
-                .frame(width: 50, height: 50).clipShape(RoundedRectangle(cornerRadius: 11))
+            // Only show a thumbnail when the meal actually has a photo — otherwise AsyncImage(nil) would
+            // spin forever. A text-logged/manual meal just shows its name + macros.
+            if let photo = meal.photo_url, !photo.isEmpty {
+                RemoteImage(url: photo)
+                    .frame(width: 50, height: 50).clipShape(RoundedRectangle(cornerRadius: 11))
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(meal.name ?? "Meal").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
                 Text("\(meal.calories) kcal · \(Int(meal.protein_g))P · \(Int(meal.carbs_g))C · \(Int(meal.fat_g))F")
@@ -694,17 +698,25 @@ struct CameraPicker: UIViewControllerRepresentable {
     }
 }
 
-/// Async network image with themed loading/failure states.
+/// Async network image with themed loading/failure states. With no URL it shows a calm static
+/// placeholder — never a spinner (AsyncImage(nil) would otherwise stay "loading" forever).
 struct RemoteImage: View {
     let url: String?
     var body: some View {
-        AsyncImage(url: url.flatMap { URL(string: $0) }) { phase in
-            switch phase {
-            case .success(let img): img.resizable().scaledToFill()
-            case .empty: ZStack { Theme.Palette.bg2; ProgressView().tint(Theme.Palette.textFaint) }
-            default: ZStack { Theme.Palette.bg2; Image(systemName: "photo").foregroundStyle(Theme.Palette.textFaint) }
+        if let s = url, !s.isEmpty, let parsed = URL(string: s) {
+            AsyncImage(url: parsed) { phase in
+                switch phase {
+                case .success(let img): img.resizable().scaledToFill()
+                case .empty: ZStack { Theme.Palette.bg2; ProgressView().tint(Theme.Palette.textFaint) }   // genuinely loading
+                default: placeholder
+                }
             }
+        } else {
+            placeholder   // no photo → static, not an endless spinner
         }
+    }
+    private var placeholder: some View {
+        ZStack { Theme.Palette.bg2; Image(systemName: "fork.knife").foregroundStyle(Theme.Palette.textFaint) }
     }
 }
 
