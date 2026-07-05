@@ -159,3 +159,39 @@ def estimate_respiratory_rate(ppg, sample_rate_hz: int) -> dict:
         return {"resp_rate": None, "valid": False, "n_valid": 0, "n_windows": n, "coverage": 0.0}
     return {"resp_rate": round(float(np.median(rrs)), 1), "valid": True,
             "n_valid": len(rrs), "n_windows": n, "coverage": round(len(rrs) / max(n, 1), 2)}
+
+
+# --- RSA respiration from the whole-night IBI series (no waveform needed) --------------------------
+# Overnight, the band captures HRV in short 30 s bursts — too short for waveform respiration (needs
+# ~2 min of pulse). But the aggregated WHOLE-NIGHT inter-beat intervals carry respiratory sinus
+# arrhythmia: breathing modulates the beat-to-beat rate, so the RR series has a peak at the breathing
+# frequency. We resample RR to a uniform grid and read the dominant peak in the 0.15–0.40 Hz
+# (9–24 br/min) band. Robust because a night has thousands of beats. Returns None if too few beats.
+RSA_MIN_BEATS = 120
+RSA_LO_HZ, RSA_HI_HZ = 0.15, 0.40   # 9–24 br/min (adult resting/sleep respiration)
+
+
+def resp_from_ibi(ibi_ms, min_beats: int = RSA_MIN_BEATS):
+    """Respiration (breaths/min) from an IBI series via respiratory sinus arrhythmia, or None."""
+    from scipy.signal import welch
+    from scipy.interpolate import interp1d
+
+    ibi = _to_array(ibi_ms)
+    ibi = ibi[(ibi >= 300.0) & (ibi <= 2000.0)]
+    if ibi.size < min_beats:
+        return None
+    # Beat times (s) at cumulative IBI; RR (ms) sampled at each beat → interpolate to a uniform grid.
+    t = np.cumsum(ibi) / 1000.0
+    t = t - t[0]
+    grid = np.arange(0.0, t[-1], 1.0 / RESAMP_HZ)
+    if grid.size < 64:
+        return None
+    rr = interp1d(t, ibi, kind="cubic", fill_value="extrapolate")(grid)
+    rr = detrend(rr, type="linear")
+    nper = int(min(len(rr), RESAMP_HZ * 120))     # up to a 2-min Welch segment
+    f, p = welch(rr, fs=RESAMP_HZ, nperseg=max(64, nper))
+    band = (f >= RSA_LO_HZ) & (f <= RSA_HI_HZ)
+    if not np.any(band) or float(np.max(p[band])) <= 0.0:
+        return None
+    peak_hz = float(f[band][int(np.argmax(p[band]))])
+    return round(peak_hz * 60.0, 1)

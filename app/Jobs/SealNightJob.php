@@ -242,13 +242,17 @@ class SealNightJob implements ShouldQueue
                 // whole-night signal is valid. A missing flag means an unexpected/erroring
                 // response, not a clean night -- don't present it as a real reading.
                 if (($metrics['valid'] ?? false) === true) {
-                    // Whole-night respiratory rate = median of the per-window RR (each already
-                    // Smart-Fusion gated in the biosignal service). RR needs the PPG waveform, which
-                    // isn't re-sent at seal time, so we aggregate the per-window values, not recompute.
-                    $respRate = $ibiWindows
-                        ->map(fn (DeviceIngestion $i) => $i->result_refs['resp_rate'] ?? null)
-                        ->filter(fn ($v) => is_numeric($v))
-                        ->median();
+                    // Whole-night respiratory rate. PREFER the value the whole-night pass computes from
+                    // the aggregated IBI (RSA) — the band's 30 s bursts are too short for waveform
+                    // respiration, so the per-window PPG estimate is usually absent. Fall back to the
+                    // median of any per-window values (a longer-window device like Polar/Apple provides).
+                    $respRate = $metrics['resp_rate'] ?? null;
+                    if ($respRate === null) {
+                        $respRate = $ibiWindows
+                            ->map(fn (DeviceIngestion $i) => $i->result_refs['resp_rate'] ?? null)
+                            ->filter(fn ($v) => is_numeric($v))
+                            ->median();
+                    }
 
                     // Idempotent re-seal guard: if a MORE complete sealed read already exists
                     // (more beats), keep it -- a re-seal triggered by a lone late window must not

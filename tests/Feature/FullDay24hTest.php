@@ -136,9 +136,9 @@ class FullDay24hTest extends TestCase
         $dash = $this->auth($user)->getJson('/api/me/dashboard')->assertOk()->json();
         $this->assertIsInt($dash['readiness']['score'] ?? null, 'a 0-100 recovery score (the Whoop % ring)');
         $metrics = collect($dash['recovery']['metrics'] ?? []);
-        // HRV, resting HR and sleep performance are always present; respiratory rate is best-effort
-        // (it needs a longer clean window than a single 30 s HRV burst, so a synthetic night can lack it).
-        foreach (['hrv', 'rhr', 'sleep'] as $key) {
+        // All four Whoop recovery metrics present — respiratory rate now comes from the whole-night
+        // IBI (RSA), so a night of 30 s bursts produces it even though no single burst is long enough.
+        foreach (['hrv', 'rhr', 'resp', 'sleep'] as $key) {
             $m = $metrics->firstWhere('key', $key);
             $this->assertNotNull($m, "recovery breakdown must include '$key' (value + baseline + trend)");
             $this->assertIsNumeric($m['value'], "$key has a value");
@@ -212,7 +212,14 @@ class FullDay24hTest extends TestCase
         $meanRr = 60.0 / $hr;
         $beats = [];
         $t = 0.0;
-        while ($t < $durS) { $beats[] = $t; $t += max(0.35, $meanRr + $this->gauss() * $sdnnMs / 1000.0); }
+        // Respiratory sinus arrhythmia: the beat-to-beat interval breathes at ~15 br/min (0.25 Hz), so
+        // the whole-night IBI carries the respiratory signal the RSA estimator reads (± noise for HRV).
+        $respHz = 0.25;
+        while ($t < $durS) {
+            $beats[] = $t;
+            $rsa = 0.045 * sin(2 * M_PI * $respHz * $t);
+            $t += max(0.35, $meanRr + $rsa + $this->gauss() * $sdnnMs / 1000.0);
+        }
         $n = $durS * $fs;
         $out = [];
         for ($i = 0; $i < $n; $i++) {

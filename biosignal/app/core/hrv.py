@@ -343,6 +343,16 @@ def process_hrv(
         except Exception:
             resp_rate = None  # RR is secondary; never fail the HRV request on it.
 
+    # 3c. Whole-night respiration from the IBI series (RSA) when the waveform path couldn't give it —
+    # the band's 30 s overnight HRV bursts are too short for waveform respiration, but the aggregated
+    # whole-night RR carries respiratory sinus arrhythmia. Robust with hundreds+ of beats.
+    if resp_rate is None and clean.size >= 120:
+        try:
+            from .respiration import resp_from_ibi
+            resp_rate = resp_from_ibi(clean)
+        except Exception:
+            resp_rate = None
+
     # 4. Quality gate (03-algorithms.md §1: >=97% beat accuracy; suppress poor signal).
     valid = (
         clean.size >= MIN_VALID_BEATS
