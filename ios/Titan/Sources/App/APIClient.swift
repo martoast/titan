@@ -429,6 +429,32 @@ final class APIClient {
 
     enum CoachEvent { case delta(String), tool(String), done(Int?) }
 
+    // MARK: coach — durable background send (survives the phone suspending)
+
+    /// Durable send: persists the message (+ optional photo) server-side and queues the reply, returning
+    /// immediately with the pending assistant message id to poll. Text-only rides as JSON; a photo turn
+    /// goes multipart. The reply generates off the request path, so locking the phone can't lose it.
+    func coachSendAsync(message: String, imageData: Data?, conversationId: Int?) async throws -> CoachSendResult {
+        let path = conversationId.map { "api/coach/\($0)/send-async" } ?? "api/coach/send-async"
+        if let imageData {
+            var fields: [String: String] = [:]
+            if !message.isEmpty { fields["message"] = message }
+            return try await send(multipart(path, fields: fields, fileField: "photo", fileData: imageData),
+                                  as: CoachSendResult.self)
+        }
+        return try await send(request(path, method: "POST", json: ["message": message]), as: CoachSendResult.self)
+    }
+
+    /// Poll one message — its growing content + status — while a background job fills it in.
+    func coachMessage(_ id: Int) async throws -> CoachMessageState {
+        try await send(request("api/coach/messages/\(id)"), as: CoachMessageState.self)
+    }
+
+    /// Conversation history (for reconcile-on-reopen): the latest page, oldest→newest, with statuses.
+    func coachHistory(conversationId: Int) async throws -> [CoachHistoryMessage] {
+        try await send(request("api/coach/\(conversationId)/messages"), as: CoachHistoryResponse.self).messages
+    }
+
     // MARK: coach — voice + photo (mirror the web app's mic + snap-to-coach)
 
     /// Upload a recorded clip → Whisper (`/api/coach/transcribe`). Returns the text to drop into the

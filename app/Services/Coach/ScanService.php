@@ -29,6 +29,32 @@ class ScanService
     public function scan(Profile $profile, UploadedFile $file, ?string $caption = null): array
     {
         [$data, $path, $imageUrl] = $this->classify($file, $caption);
+
+        return $this->dispatchScan($profile, $data, $path, $imageUrl);
+    }
+
+    /**
+     * Same as scan(), but from a photo ALREADY stored on the `public` disk (the async coach turn: the
+     * controller banks the upload, then a queue job runs the vision + logging off the request path so
+     * it survives the phone suspending).
+     *
+     * @return array{kind:string,logged:bool,image_url:string,reply:string,data:array<string,mixed>}
+     */
+    public function scanStored(Profile $profile, string $path, ?string $caption = null): array
+    {
+        [$data, $imageUrl] = $this->classifyStored($path, $caption);
+
+        return $this->dispatchScan($profile, $data, $path, $imageUrl);
+    }
+
+    /**
+     * Route classified vision data to the right logger (meal / bloodwork / physique / other).
+     *
+     * @param  array<string,mixed>  $data
+     * @return array{kind:string,logged:bool,image_url:string,reply:string,data:array<string,mixed>}
+     */
+    private function dispatchScan(Profile $profile, array $data, string $path, string $imageUrl): array
+    {
         $kind = $data['kind'] ?? 'other';
 
         if ($kind === 'meal' && ! empty($data['meal']) && is_array($data['meal'])) {
@@ -80,7 +106,19 @@ class ScanService
     {
         // Keep the original for the record (meal photo / audit trail).
         $path = $file->store('coach/scans', 'public');
-        $mime = $file->getClientMimeType() ?: 'image/jpeg';
+        [$data, $imageUrl] = $this->classifyStored($path, $caption);
+
+        return [$data, $path, $imageUrl];
+    }
+
+    /**
+     * The vision-classify half, from a photo already on the `public` disk. Returns [$data, $imageUrl].
+     *
+     * @return array{0:array<string,mixed>,1:string}
+     */
+    private function classifyStored(string $path, ?string $caption): array
+    {
+        $mime = Storage::disk('public')->mimeType($path) ?: 'image/jpeg';
         $dataUrl = 'data:'.$mime.';base64,'.base64_encode((string) Storage::disk('public')->get($path));
         $imageUrl = Storage::disk('public')->url($path);
 
@@ -116,7 +154,7 @@ class ScanService
             $data = null;
         }
 
-        return [is_array($data) ? $data : [], $path, $imageUrl];
+        return [is_array($data) ? $data : [], $imageUrl];
     }
 
     /**

@@ -165,6 +165,11 @@ Route::prefix('devices')->group(function () {
 // session routes in routes/titan/coach.php). Bearer-token or session via auth.any.
 Route::middleware('auth.any')->prefix('coach')->group(function () {
     Route::get('/{conversation}/messages', [\App\Http\Controllers\Coach\CoachController::class, 'messages']);
+    // Durable, background send (native app): persists + queues generation, returns immediately. Poll
+    // the pending message for its growing reply. This is the path that survives the phone suspending.
+    Route::post('/send-async', [\App\Http\Controllers\Coach\CoachController::class, 'sendAsync']);
+    Route::post('/{conversation}/send-async', [\App\Http\Controllers\Coach\CoachController::class, 'sendAsync']);
+    Route::get('/messages/{message}', [\App\Http\Controllers\Coach\CoachController::class, 'message']);
     Route::post('/send', [\App\Http\Controllers\Coach\CoachController::class, 'send']);
     Route::post('/{conversation}/send', [\App\Http\Controllers\Coach\CoachController::class, 'send']);
     Route::post('/stream', [\App\Http\Controllers\Coach\CoachController::class, 'stream']);

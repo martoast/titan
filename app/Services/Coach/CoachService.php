@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\Profile;
 use App\Services\Ai\AiService;
 use App\Support\Cycle;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -182,6 +183,73 @@ class CoachService
     }
 
     /**
+     * Background twin of replyStreaming(): fills an ALREADY-PERSISTED placeholder assistant row
+     * ($assistant, status `pending`) with the coach's answer, writing the growing text into the DB as
+     * it generates so a polling client sees it "type" — then marks it `complete` (or `failed`). The
+     * user message is assumed already saved by the caller. Because generation lives in a queue job,
+     * it survives the phone suspending: the request that kicked it off is long gone by the time this
+     * finishes. Never throws — a failure is recorded on the row so the client always sees a resolution.
+     */
+    public function generate(Conversation $conversation, Profile $profile, ChatMessage $assistant, string $userText): void
+    {
+        $userText = trim($userText);
+
+        if (blank($conversation->title)) {
+            $conversation->update(['title' => Str::limit($userText, 48)]);
+        }
+
+        $this->compactIfNeeded($conversation);
+
+        $tools = (new CoachTools($profile, $conversation))->route($userText);
+        $messages = array_merge(
+            [['role' => 'system', 'content' => $this->systemPrompt($profile)]],
+            $this->history($conversation),
+        );
+
+        $assistant->update(['status' => ChatMessage::STATUS_STREAMING]);
+
+        $buffer = '';
+        $lastFlush = microtime(true);
+        // Persist the partial answer at most a few times a second — enough for a live "typing" feel
+        // when the client polls, without hammering the DB on every token.
+        $flush = function (bool $force = false) use (&$buffer, &$lastFlush, $assistant) {
+            $now = microtime(true);
+            if (! $force && ($now - $lastFlush) < 0.4) {
+                return;
+            }
+            $lastFlush = $now;
+            $assistant->forceFill(['content' => $buffer])->saveQuietly();
+        };
+
+        try {
+            $answer = $this->ai->chatWithToolsStreaming(
+                $messages,
+                fn () => $tools->schemas(),
+                fn (string $name, array $args) => $tools->dispatch($name, $args),
+                function (string $token) use (&$buffer, $flush) {
+                    $buffer .= $token;
+                    $flush();
+                },
+                null,
+                ['model' => config('services.openai.coach_model'), 'temperature' => 0.5, 'max_steps' => 8],
+            );
+
+            if (trim($answer) === '') {
+                $answer = "I couldn't generate a response just now -- try rephrasing, or ask again in a moment.";
+            }
+
+            $assistant->update(['content' => $answer, 'status' => ChatMessage::STATUS_COMPLETE]);
+        } catch (\Throwable $e) {
+            Log::warning('[Coach] background generation failed', ['error' => $e->getMessage()]);
+            $assistant->update([
+                'content' => trim($buffer) !== '' ? $buffer
+                    : 'Your coach is offline right now (the AI service is unavailable). Your message was saved -- try again in a moment.',
+                'status' => ChatMessage::STATUS_FAILED,
+            ]);
+        }
+    }
+
+    /**
      * Best-effort: 2-3 short, tappable follow-up questions the user is likely to ask
      * next, given the latest exchange. Returns [] on any failure -- never blocks the chat.
      *
@@ -227,7 +295,11 @@ class CoachService
             $out[] = ['role' => 'system', 'content' => "Summary of the earlier part of this conversation (older turns were condensed to keep context manageable -- treat it as established context):\n".$conversation->summary];
         }
 
-        $q = $conversation->messages()->whereIn('role', ['user', 'assistant']);
+        $q = $conversation->messages()->whereIn('role', ['user', 'assistant'])
+            // Never count/replay an in-flight background placeholder (empty/partial content).
+            // NULL status = legacy/done, so keep it (SQL `NOT IN` would drop NULLs).
+            ->where(fn ($w) => $w->whereNull('status')
+                ->orWhereNotIn('status', [ChatMessage::STATUS_PENDING, ChatMessage::STATUS_STREAMING]));
         if ($conversation->summary_through_id) {
             $q->where('id', '>', $conversation->summary_through_id);
         }
@@ -250,7 +322,11 @@ class CoachService
      */
     private function compactIfNeeded(Conversation $conversation): void
     {
-        $q = $conversation->messages()->whereIn('role', ['user', 'assistant']);
+        $q = $conversation->messages()->whereIn('role', ['user', 'assistant'])
+            // Never count/replay an in-flight background placeholder (empty/partial content).
+            // NULL status = legacy/done, so keep it (SQL `NOT IN` would drop NULLs).
+            ->where(fn ($w) => $w->whereNull('status')
+                ->orWhereNotIn('status', [ChatMessage::STATUS_PENDING, ChatMessage::STATUS_STREAMING]));
         if ($conversation->summary_through_id) {
             $q->where('id', '>', $conversation->summary_through_id);
         }
@@ -266,7 +342,11 @@ class CoachService
      */
     public function compact(Conversation $conversation): void
     {
-        $q = $conversation->messages()->whereIn('role', ['user', 'assistant']);
+        $q = $conversation->messages()->whereIn('role', ['user', 'assistant'])
+            // Never count/replay an in-flight background placeholder (empty/partial content).
+            // NULL status = legacy/done, so keep it (SQL `NOT IN` would drop NULLs).
+            ->where(fn ($w) => $w->whereNull('status')
+                ->orWhereNotIn('status', [ChatMessage::STATUS_PENDING, ChatMessage::STATUS_STREAMING]));
         if ($conversation->summary_through_id) {
             $q->where('id', '>', $conversation->summary_through_id);
         }

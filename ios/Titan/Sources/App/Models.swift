@@ -286,7 +286,34 @@ struct ChatMessage: Identifiable, Equatable {
     var role: Role
     var text: String
     var streaming: Bool = false
-    var imageData: Data? = nil      // a photo attached to a user message — shown inline in its bubble
+    var imageData: Data? = nil      // a locally-attached photo — shown inline (optimistic user bubble)
+    var imageURL: String? = nil     // a server-stored photo (reconciled history) — loaded via AsyncImage
+    var serverId: Int? = nil        // the DB row id — what a background reply is polled by
+}
+
+/// `POST /api/coach[/{id}]/send-async` → the durable send. Persists the turn + queues generation and
+/// returns immediately; the client polls `pending_message_id` for the reply as it's written.
+struct CoachSendResult: Codable {
+    let ok: Bool?
+    let conversation_id: Int?
+    let pending_message_id: Int?
+}
+
+/// `GET /api/coach/messages/{id}` — one message's growing content + lifecycle status (the poll target).
+struct CoachMessageState: Codable {
+    let id: Int
+    let role: String
+    let content: String
+    let status: String?     // pending | streaming | complete | failed | nil(=done)
+}
+
+/// `GET /api/coach/{id}/messages` — history for reconcile-on-reopen.
+struct CoachHistoryResponse: Codable { let messages: [CoachHistoryMessage] }
+struct CoachHistoryMessage: Codable, Identifiable {
+    let id: Int
+    let role: String
+    let content: String
+    let status: String?
 }
 
 /// `POST /api/coach/transcribe` → { ok, text } — Whisper transcription of a recorded voice clip.

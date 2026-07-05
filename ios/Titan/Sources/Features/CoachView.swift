@@ -9,7 +9,15 @@ final class CoachViewModel: ObservableObject {
     @Published var sending = false
     @Published var transcribing = false        // voice clip uploading → text
     @Published var pendingImage: Data?         // photo staged in the composer, awaiting send
-    private var conversationId: Int?
+
+    // The active thread — persisted so a cold relaunch can reload it and surface any reply that
+    // finished while the app was away.
+    private let convKey = "coach.conversationId"
+    private var conversationId: Int? {
+        get { let v = UserDefaults.standard.integer(forKey: convKey); return v == 0 ? nil : v }
+        set { UserDefaults.standard.set(newValue ?? 0, forKey: convKey) }
+    }
+    private var pollTask: Task<Void, Never>?
 
     /// Shrink a captured photo to a chat-bubble thumbnail (≤480 px, modest JPEG). Used only for the copy
     /// retained in `messages`; the original full-res Data is what gets uploaded to the coach.
@@ -29,66 +37,122 @@ final class CoachViewModel: ObservableObject {
         return scaled.jpegData(compressionQuality: 0.6) ?? data
     }
 
-    /// Send button entry point — routes to a photo send when one is staged, otherwise plain text.
-    func submit(api: APIClient) {
-        if pendingImage != nil { sendPhoto(api: api) } else { send(api: api) }
-    }
-
-    func send(api: APIClient, text overrideText: String? = nil) {
+    /// Send button entry point. Text and/or a staged photo go through ONE durable path — the server
+    /// persists the turn and generates the reply on a queue, so you can send and lock the phone and the
+    /// coach still finishes. Chips pass their text via `text`.
+    func submit(api: APIClient, text overrideText: String? = nil) {
         let text = (overrideText ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !sending else { return }
+        let image = pendingImage
+        guard (!text.isEmpty || image != nil), !sending else { return }
         Haptic.tap()
-        input = ""; sending = true
-        messages.append(ChatMessage(role: .user, text: text))
-        var assistant = ChatMessage(role: .assistant, text: "", streaming: true)
-        messages.append(assistant)
-        let idx = messages.count - 1
+        input = ""; pendingImage = nil; sending = true
 
-        Task {
-            do {
-                for try await ev in api.coachStream(message: text, conversationId: conversationId) {
-                    switch ev {
-                    case .delta(let t): assistant.text += t; messages[idx] = assistant
-                    case .tool(let label): withAnimation(Theme.Motion.snappy) { toolStatus = label }
-                    case .done(let cid): conversationId = cid ?? conversationId
-                    }
-                }
-            } catch {
-                assistant.text += (assistant.text.isEmpty ? "" : "\n\n") + "⚠️ \((error as? APIError)?.errorDescription ?? error.localizedDescription)"
+        // Optimistic bubbles: the user's message (thumbnail for a photo) + a pending assistant bubble.
+        messages.append(ChatMessage(role: .user, text: text, imageData: image.map { Self.bubbleThumbnail($0) }))
+        let assistant = ChatMessage(role: .assistant, text: "", streaming: true)
+        messages.append(assistant)
+
+        pollTask?.cancel()
+        pollTask = Task { await deliver(api: api, text: text, image: image, localId: assistant.id) }
+    }
+
+    /// Chip / programmatic send.
+    func send(api: APIClient, text: String) { submit(api: api, text: text) }
+
+    /// POST the message durably (kept alive briefly so a photo upload lands even if the phone locks),
+    /// then poll the pending assistant row until the reply is complete.
+    private func deliver(api: APIClient, text: String, image: Data?, localId: UUID) async {
+        let bg = UIApplication.shared.beginBackgroundTask(withName: "coach-send")
+        func endBG() { if bg != .invalid { UIApplication.shared.endBackgroundTask(bg) } }
+
+        do {
+            let res = try await api.coachSendAsync(message: text, imageData: image, conversationId: conversationId)
+            endBG()
+            if let cid = res.conversation_id { conversationId = cid }
+            guard let pid = res.pending_message_id else {
+                failBubble(localId, "Couldn't reach your coach — please try again."); sending = false; return
             }
-            assistant.streaming = false; messages[idx] = assistant
-            toolStatus = nil; sending = false
-            Haptic.soft()
+            setServerId(localId, pid)
+            await pollReply(api: api, messageId: pid, localId: localId)
+        } catch {
+            endBG()
+            failBubble(localId, "⚠️ \((error as? APIError)?.errorDescription ?? error.localizedDescription)")
+        }
+        sending = false
+        Haptic.soft()
+    }
+
+    /// Poll a message until it's `complete`/`failed`, updating its bubble as the text grows. Transient
+    /// errors (e.g. the app suspended) don't fail the bubble — `reconcile()` resumes on reopen.
+    private func pollReply(api: APIClient, messageId: Int, localId: UUID) async {
+        while !Task.isCancelled {
+            if let st = try? await api.coachMessage(messageId) {
+                applyState(localId, content: st.content, status: st.status)
+                if st.status == "complete" || st.status == "failed" { return }
+            }
+            try? await Task.sleep(nanoseconds: 800_000_000)
         }
     }
 
-    /// Send the staged photo to the coach (snap-to-coach, like the web app). The composer text rides
-    /// along as the caption. The server runs vision, auto-logs what it recognizes, and replies.
-    func sendPhoto(api: APIClient) {
-        guard let imageData = pendingImage, !sending else { return }
-        Haptic.tap()
-        let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        input = ""; pendingImage = nil; sending = true
-        // Retain only a small THUMBNAIL in the (session-long, always-alive) messages array — the bubble
-        // shows it at ~220pt. The full-res `imageData` is still uploaded below; keeping the original
-        // multi-MB JPEG per photo all day climbed memory toward jetsam.
-        messages.append(ChatMessage(role: .user, text: caption, imageData: Self.bubbleThumbnail(imageData)))
-        var assistant = ChatMessage(role: .assistant, text: "", streaming: true)
-        messages.append(assistant)
-        let idx = messages.count - 1
+    // MARK: reconcile-on-reopen
 
-        Task {
-            do {
-                let res = try await api.coachScan(imageData, message: caption.isEmpty ? nil : caption,
-                                                  conversationId: conversationId)
-                conversationId = res.conversation_id ?? conversationId
-                assistant.text = res.reply ?? "I couldn't read that photo — try again."
-            } catch {
-                assistant.text = "⚠️ \((error as? APIError)?.errorDescription ?? error.localizedDescription)"
-            }
-            assistant.streaming = false; messages[idx] = assistant
-            sending = false; Haptic.soft()
+    /// Called on appear + when the app returns to the foreground. On a cold launch it reloads the
+    /// thread from the server (so a reply finished while away is just there); otherwise it resumes
+    /// polling a reply that was still generating when we last backgrounded.
+    func reconcile(api: APIClient) {
+        if messages.isEmpty, conversationId != nil {
+            pollTask?.cancel()
+            pollTask = Task { await loadHistory(api: api) }
+            return
         }
+        resumePendingPoll(api: api)
+    }
+
+    /// Stop polling while backgrounded (requests would just fail); reconcile() restarts it.
+    func pause() { pollTask?.cancel() }
+
+    private func loadHistory(api: APIClient) async {
+        guard let cid = conversationId, let rows = try? await api.coachHistory(conversationId: cid) else { return }
+        messages = rows.filter { $0.role == "user" || $0.role == "assistant" }.map { r in
+            let (body, url) = Self.splitPhoto(r.content)
+            var m = ChatMessage(role: r.role == "user" ? .user : .assistant, text: body)
+            m.imageURL = url
+            m.serverId = r.id
+            m.streaming = (r.status == "pending" || r.status == "streaming")
+            return m
+        }
+        resumePendingPoll(api: api)
+    }
+
+    private func resumePendingPoll(api: APIClient) {
+        guard let m = messages.last, m.role == .assistant, m.streaming, let sid = m.serverId else { return }
+        sending = true
+        pollTask?.cancel()
+        pollTask = Task { await pollReply(api: api, messageId: sid, localId: m.id); sending = false }
+    }
+
+    // MARK: bubble mutation by local id (robust to the array being rebuilt)
+
+    private func index(_ id: UUID) -> Int? { messages.firstIndex { $0.id == id } }
+    private func setServerId(_ id: UUID, _ sid: Int) { if let i = index(id) { messages[i].serverId = sid } }
+    private func failBubble(_ id: UUID, _ text: String) {
+        guard let i = index(id) else { return }
+        messages[i].text = text; messages[i].streaming = false
+    }
+    private func applyState(_ id: UUID, content: String, status: String?) {
+        guard let i = index(id) else { return }
+        if !content.isEmpty { messages[i].text = content }
+        messages[i].streaming = (status == "pending" || status == "streaming")
+    }
+
+    /// Pull a `![photo](url)` out of a stored message → (remaining text, image url).
+    static func splitPhoto(_ content: String) -> (String, String?) {
+        guard let open = content.range(of: "]("), let close = content.range(of: ")", range: open.upperBound..<content.endIndex),
+              content[content.startIndex...].contains("![") else { return (content, nil) }
+        let url = String(content[open.upperBound..<close.lowerBound])
+        var text = content
+        if let mark = content.range(of: "![") { text.removeSubrange(mark.lowerBound..<close.upperBound) }
+        return (text.trimmingCharacters(in: .whitespacesAndNewlines), url.isEmpty ? nil : url)
     }
 
     /// Upload a recorded voice clip → transcription → append into the composer (we don't auto-send,
@@ -114,6 +178,7 @@ struct CoachView: View {
     @StateObject private var recorder = AudioRecorder()
     @FocusState private var focused: Bool
     @State private var pulse = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private let suggestions = ["How's my recovery?", "Plan today's workout", "How did I sleep?", "Log my breakfast"]
 
@@ -148,6 +213,16 @@ struct CoachView: View {
             }
             .navigationTitle("Coach")
             .toolbarColorScheme(.dark, for: .navigationBar)
+            // Surface a reply that generated while away: reload the thread on open, resume any
+            // still-cooking reply when returning to the foreground, pause polling in the background.
+            .task { vm.reconcile(api: model.api) }
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .active: vm.reconcile(api: model.api)
+                case .background: vm.pause()
+                default: break
+                }
+            }
             .alert("Microphone access needed", isPresented: $recorder.denied) {
                 Button("Open Settings") {
                     if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
@@ -306,6 +381,12 @@ private struct Bubble: View {
             VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
                 if let data = msg.imageData, let ui = UIImage(data: data) {
                     Image(uiImage: ui).resizable().scaledToFill()
+                        .frame(maxWidth: 220, maxHeight: 260)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.Palette.cardStroke))
+                } else if let urlStr = msg.imageURL, let url = URL(string: urlStr) {
+                    // A photo reconciled from server history (cold relaunch) — loaded lazily.
+                    AsyncImage(url: url) { img in img.resizable().scaledToFill() } placeholder: { Shimmer() }
                         .frame(maxWidth: 220, maxHeight: 260)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.Palette.cardStroke))

@@ -17,7 +17,13 @@ class ChatMessage extends Model
 
     public const ROLES = ['user', 'assistant', 'tool', 'system'];
 
-    protected $fillable = ['conversation_id', 'role', 'content', 'tool_calls'];
+    /** Background-generation lifecycle for an assistant row (null = user/tool/legacy = already done). */
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_STREAMING = 'streaming';
+    public const STATUS_COMPLETE = 'complete';
+    public const STATUS_FAILED = 'failed';
+
+    protected $fillable = ['conversation_id', 'role', 'content', 'tool_calls', 'status'];
 
     protected function casts(): array
     {

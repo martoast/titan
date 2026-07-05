@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Coach;
 
 use App\Exceptions\AiException;
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateCoachReply;
 use App\Models\ChatMessage;
 use App\Models\Conversation;
 use App\Services\Coach\CoachBriefingService;
@@ -13,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 /**
@@ -85,10 +87,83 @@ class CoachController extends Controller
                 'id' => $m->id,
                 'role' => $m->role,
                 'content' => (string) $m->content,
+                'status' => $m->status,   // null|pending|streaming|complete|failed (for the reconcile-on-reopen client)
             ])->values(),
             'has_more' => $page['has_more'],
             'oldest_id' => $page['oldest_id'],
         ]);
+    }
+
+    /**
+     * Poll one message (the native app's live-reveal + reconcile). Returns the assistant reply's
+     * growing content + status while a background {@see GenerateCoachReply} job fills it in, so the
+     * chat can "type" it out and know when it's done — the same row survives the phone suspending.
+     */
+    public function message(Request $request, ChatMessage $message): JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+        abort_unless($message->conversation?->profile_id === $profile->id, 404);
+
+        return response()->json([
+            'id' => $message->id,
+            'role' => $message->role,
+            'content' => (string) $message->content,
+            'status' => $message->status,
+        ]);
+    }
+
+    /**
+     * Durable send for the native app. Persists the user's message (and banks any photo) + an empty
+     * `pending` assistant placeholder, then hands generation to a queue job and returns IMMEDIATELY.
+     * The reply is produced off the request path, so the user can send + lock the phone and the coach
+     * still finishes — the client polls {@see message()} / reconciles history on reopen. Text and/or
+     * photo in one turn.
+     */
+    public function sendAsync(Request $request, ?Conversation $conversation = null): JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $data = $request->validate([
+            'message' => ['nullable', 'string', 'max:4000'],
+            'photo' => ['nullable', 'image', 'max:12288'],   // ≤ 12 MB
+        ]);
+
+        $text = trim((string) ($data['message'] ?? ''));
+        $hasPhoto = $request->hasFile('photo') && $request->file('photo')->isValid();
+
+        if ($text === '' && ! $hasPhoto) {
+            return response()->json(['ok' => false, 'error' => 'Send a message or a photo.'], 422);
+        }
+
+        if (! $conversation || $conversation->profile_id !== $profile->id) {
+            $conversation = $profile->conversations()->create();
+        }
+
+        // Bank the photo while the request is alive (the upload must land now); the job reads it later.
+        $imagePath = null;
+        $userContent = $text;
+        if ($hasPhoto) {
+            $imagePath = $request->file('photo')->store('coach/scans', 'public');
+            $imageUrl = Storage::disk('public')->url($imagePath);
+            $userContent = ($text !== '' ? $text."\n\n" : '').'![photo]('.$imageUrl.')';
+        }
+
+        $userMsg = $conversation->messages()->create(['role' => 'user', 'content' => $userContent]);
+
+        $assistant = $conversation->messages()->create([
+            'role' => 'assistant',
+            'content' => '',
+            'status' => ChatMessage::STATUS_PENDING,
+        ]);
+
+        GenerateCoachReply::dispatch($conversation->id, $assistant->id, $text, $imagePath);
+
+        return response()->json([
+            'ok' => true,
+            'conversation_id' => $conversation->id,
+            'user_message' => ['id' => $userMsg->id, 'role' => 'user', 'content' => (string) $userMsg->content],
+            'pending_message_id' => $assistant->id,
+        ], 202);
     }
 
     /**
