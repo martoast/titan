@@ -1317,10 +1317,10 @@ function drawAction(primary, active, secondary, accent, y) {
 // So we keep our OWN daily total from the validated `step` event, persisted to flash, so the reported
 // total only ever grows within a day. We don't reinvent step DETECTION (that's the firmware pedometer);
 // we just count its `step` events and bank the total across reboots.
-var STEP_FILE = "titan.steps";    // { d:"YYYY-MM-DD", s:total }
+var STEP_FILE = "titan.stp2";     // { d:"YYYY-MM-DD", s:total } — v2 name discards any pre-fix corrupted total
 var stepDay = "";                 // local date stepTotal belongs to
 var stepTotal = 0;                // persisted day total
-var stepLastUp = 0;               // last cumulative-since-boot count seen from the step event
+var stepLastUp = -1;              // last pedometer cumulative seen (-1 = unset → first event only baselines)
 var stepDirty = false;
 var osDayBase = -1;               // OS "day" step count captured at the START of our day (-1 = unset)
 
@@ -1358,15 +1358,19 @@ function stepRollover() {          // local midnight → close the day, start th
   if (d !== stepDay) { stepDay = d; stepTotal = 0; osDayBase = osRaw(); stepSave(); }
 }
 
-// `up` = the pedometer's running count since boot. Bank the deltas into our persistent daily total.
+// `up` = the pedometer's CUMULATIVE count. It does NOT reset when our app reflashes/reboots (it's the
+// device health counter), but our `stepLastUp` baseline does — so the first event after boot must only
+// LEARN the baseline, never bank `up` as a delta (that banked the device's whole multi-day total into
+// today: the "reflashed and it still shows 14,000" bug). After that, bank real deltas.
 Bangle.on("step", function (up) {
   stepRollover();
+  lastStepAt = getTime();          // cadence heartbeat — feeds the run's auto-pause (independent of banking)
+  if (stepLastUp < 0) { stepLastUp = up; return; }   // first event this boot → baseline only, don't bank
   var delta = up - stepLastUp;
-  if (delta < 0) delta = up;       // pedometer reset (reboot / midnight) → `up` itself is the delta
+  if (delta < 0) delta = up;       // the pedometer counter itself reset (rare) → `up` is the delta
   stepLastUp = up;
   stepTotal += delta;
   stepDirty = true;
-  lastStepAt = getTime();          // cadence heartbeat — feeds the run's auto-pause
 });
 
 function stepCount() {
