@@ -24,12 +24,35 @@ class AiService
         return (bool) config('services.openai.key');
     }
 
-    /** GPT-5 / o-series use `max_completion_tokens`; older models use `max_tokens`. */
-    private function tokenLimitParam(string $model): string
+    /** GPT-5 / o-series reasoning models: use `max_completion_tokens` and reject a non-default temperature. */
+    private function isReasoningModel(string $model): bool
     {
         $m = strtolower($model);
 
-        return (str_starts_with($m, 'gpt-5') || preg_match('/^o\d/', $m)) ? 'max_completion_tokens' : 'max_tokens';
+        return str_starts_with($m, 'gpt-5') || preg_match('/^o\d/', $m) === 1;
+    }
+
+    /** GPT-5 / o-series use `max_completion_tokens`; older models use `max_tokens`. */
+    private function tokenLimitParam(string $model): string
+    {
+        return $this->isReasoningModel($model) ? 'max_completion_tokens' : 'max_tokens';
+    }
+
+    /**
+     * Add `temperature` only for models that accept it. GPT-5 / o-series reject any non-default value
+     * (they'd 400 the whole request), so we simply omit it and let the model use its default.
+     *
+     * @param  array<string,mixed>  $payload
+     * @param  array<string,mixed>  $opts
+     * @return array<string,mixed>
+     */
+    private function withTemperature(array $payload, array $opts, float $default = 0.4): array
+    {
+        if (! $this->isReasoningModel((string) $payload['model'])) {
+            $payload['temperature'] = $opts['temperature'] ?? $default;
+        }
+
+        return $payload;
     }
 
     public function resetUsage(): void
@@ -74,11 +97,10 @@ class AiService
         }
 
         $model = $opts['model'] ?? config('services.openai.chat_model');
-        $payload = [
+        $payload = $this->withTemperature([
             'model' => $model,
             'messages' => $messages,
-            'temperature' => $opts['temperature'] ?? 0.7,
-        ];
+        ], $opts, 0.7);
         if (isset($opts['max_tokens'])) {
             $payload[$this->tokenLimitParam($model)] = $opts['max_tokens'];
         }
@@ -170,11 +192,10 @@ class AiService
         for ($step = 0; $step < $maxSteps; $step++) {
             // Resolve tools each step so the model can load more mid-loop (tool-gating).
             $resolvedTools = $tools instanceof \Closure ? ($tools)() : $tools;
-            $payload = [
+            $payload = $this->withTemperature([
                 'model' => $opts['model'] ?? config('services.openai.chat_model'),
                 'messages' => $messages,
-                'temperature' => $opts['temperature'] ?? 0.4,
-            ];
+            ], $opts);
             if ($resolvedTools !== []) {
                 $payload['tools'] = $resolvedTools;
                 $payload['tool_choice'] = 'auto';
@@ -242,11 +263,10 @@ class AiService
 
         for ($step = 0; $step < $maxSteps; $step++) {
             $resolvedTools = $tools instanceof \Closure ? ($tools)() : $tools;
-            $payload = [
+            $payload = $this->withTemperature([
                 'model' => $opts['model'] ?? config('services.openai.chat_model'),
                 'messages' => $messages,
-                'temperature' => $opts['temperature'] ?? 0.4,
-            ];
+            ], $opts);
             if ($resolvedTools !== []) {
                 $payload['tools'] = $resolvedTools;
                 $payload['tool_choice'] = 'auto';

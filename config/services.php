@@ -98,6 +98,9 @@ return [
         'key' => env('OPENAI_API_KEY'),
         'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
         'chat_model' => env('OPENAI_CHAT_MODEL', 'gpt-4o'),
+        // The live chat coach — optimised for SNAPPINESS. gpt-5.4-mini: fast first-token + tokens/sec,
+        // cheap, streaming + function-calling, reasoning.effort defaults to `none`. Streamed to the app.
+        'coach_model' => env('OPENAI_COACH_MODEL', 'gpt-5.4-mini'),
         'fast_model' => env('OPENAI_FAST_MODEL', 'gpt-4o-mini'),
         'vision_model' => env('OPENAI_VISION_MODEL', 'gpt-4o'),
         'embed_model' => env('OPENAI_EMBED_MODEL', 'text-embedding-3-small'),

@@ -121,7 +121,7 @@ class CoachService
             $messages,
             fn () => $tools->schemas(),   // resolved each step → load_tools can expand mid-loop
             fn (string $name, array $args) => $tools->dispatch($name, $args),
-            ['temperature' => 0.5, 'max_steps' => 8],
+            ['model' => config('services.openai.coach_model'), 'temperature' => 0.5, 'max_steps' => 8],
         );
 
         if (trim($answer) === '') {
@@ -168,7 +168,7 @@ class CoachService
             fn (string $name, array $args) => $tools->dispatch($name, $args),
             $onDelta,
             $onTool === null ? null : fn (string $name, array $args) => $onTool($name, CoachTools::label($name)),
-            ['temperature' => 0.5, 'max_steps' => 8],
+            ['model' => config('services.openai.coach_model'), 'temperature' => 0.5, 'max_steps' => 8],
         );
 
         if (trim($answer) === '') {
