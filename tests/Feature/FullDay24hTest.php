@@ -57,6 +57,22 @@ class FullDay24hTest extends TestCase
             'device_id' => 'band-1', 'device_token_hash' => $this->sharedKey, 'timezone' => 'UTC',
         ]);
 
+        // Seed ~3 weeks of prior sealed nights so the recovery SCORE + per-metric BASELINES exist (the
+        // Whoop screen needs a personal baseline to compare against). Slight day-to-day variation.
+        for ($d = 21; $d >= 1; $d--) {
+            $date = Carbon::today('UTC')->subDays($d)->toDateString();
+            $profile->recoveryLogs()->create([
+                'logged_at' => $date,
+                'hrv_ms' => 60 + ($d % 5) * 3,      // ~60-72 ms baseline
+                'resting_hr' => 50 + ($d % 3),      // ~50-52 bpm
+                'resp_rate' => 15.0 + ($d % 4) * 0.2,
+                'updated_via' => 'biosignal:sealed:seed',
+            ]);
+            $profile->sleepLogs()->create([
+                'slept_at' => $date, 'duration_min' => 430 + ($d % 4) * 15, 'quality' => 80, 'updated_via' => 'seed',
+            ]);
+        }
+
         // ---- OVERNIGHT: 12 clean 30 s HRV bursts across the night (the band's sleep duty-cycle) ----
         $night = Carbon::parse('2026-07-03 23:30:00', 'UTC');   // bed
         $burstEnd = $night;
@@ -112,6 +128,25 @@ class FullDay24hTest extends TestCase
 
         $lift = $sessions->firstWhere('activity_type', 'strength');
         $this->assertNotNull($lift, 'the afternoon lift must seal into a strength activity_sessions row');
+
+        // ---- The WHOOP-style recovery screen: a % score + each metric with a baseline + trend ----
+        $dash = $this->auth($user)->getJson('/api/me/dashboard')->assertOk()->json();
+        $this->assertIsInt($dash['readiness']['score'] ?? null, 'a 0-100 recovery score (the Whoop % ring)');
+        $metrics = collect($dash['recovery']['metrics'] ?? []);
+        foreach (['hrv', 'rhr', 'resp', 'sleep'] as $key) {
+            $m = $metrics->firstWhere('key', $key);
+            $this->assertNotNull($m, "recovery breakdown must include '$key' (value + baseline + trend)");
+            $this->assertIsNumeric($m['value'], "$key has a value");
+            $this->assertNotNull($m['baseline'], "$key has a personal baseline to compare against");
+            $this->assertContains($m['trend'], ['up', 'down', 'flat'], "$key has a trend arrow");
+        }
+    }
+
+    private function auth(User $user): self
+    {
+        [, $token] = \App\Models\ApiToken::mint($user, 'ios', ['*']);
+
+        return $this->withHeader('Authorization', "Bearer {$token}");
     }
 
     // ---- ingest helpers -------------------------------------------------------------------------

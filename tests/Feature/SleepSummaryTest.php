@@ -85,12 +85,15 @@ class SleepSummaryTest extends TestCase
         $complete = new \ReflectionMethod($job, 'nightIsComplete');
         $complete->setAccessible(true);
 
+        // Use the date IN THE SAME TZ we pass ('UTC') — mixing now()->toDateString() (the app tz) with a
+        // 'UTC' tz arg made "today" read as a past night whenever the two calendars differ (near the
+        // UTC/local midnight boundary), spuriously failing the fresh-night assertion.
         $fresh = collect([new DeviceIngestion(['window_end' => now()])]); // ended just now
-        $this->assertTrue($complete->invoke($job, $fresh, now()->toDateString(), 'UTC'));
+        $this->assertTrue($complete->invoke($job, $fresh, now('UTC')->toDateString(), 'UTC'));
 
         // The unconfirmed (cron) path still waits for quiescence on a fresh same-day night.
         $cron = new SealNightJob(1, null, confirmed: false);
-        $this->assertFalse($complete->invoke($cron, $fresh, now()->toDateString(), 'UTC'));
+        $this->assertFalse($complete->invoke($cron, $fresh, now('UTC')->toDateString(), 'UTC'));
     }
 
     public function test_summary_breakdown_includes_stages(): void

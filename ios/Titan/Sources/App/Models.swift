@@ -83,11 +83,19 @@ struct Dashboard: Codable {
         let energy: Int?
         let updated_via: String?
         let confidence: Confidence?
+        let metrics: [Metric]?          // Whoop-style breakdown: each metric with its baseline + trend
         struct Confidence: Codable {
             let level: String?; let caveat: String?; let nights_of_data: Int?
             // Server keys (RecoveryConfidence::toArray) are `note` + `nights` — without this mapping
             // both fields silently decoded to nil forever (all-optional struct hides the mismatch).
             enum CodingKeys: String, CodingKey { case level, caveat = "note", nights_of_data = "nights" }
+        }
+        struct Metric: Codable, Identifiable {
+            let key: String; let label: String; let unit: String
+            let value: Double; let baseline: Double?
+            let trend: String            // "up" | "down" | "flat"
+            let higher_better: Bool; let good: Bool?
+            var id: String { key }
         }
     }
     struct Sleep: Codable {

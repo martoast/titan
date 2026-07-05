@@ -10,13 +10,26 @@ struct RecoveryView: View {
             }
             MetricRing(score: model.dashboard?.readiness?.score, label: "Recovery", size: 180).padding(.top, 6)
 
-            GlassCard {
-                VStack(alignment: .leading, spacing: Theme.Space.m) {
-                    SectionHeader(title: "Vitals", trailing: r?.updated_via)
-                    HStack(spacing: Theme.Space.m) {
-                        Metric(value: r?.hrv_ms.map { "\(Int($0))" } ?? "—", unit: "ms", label: "HRV", color: Theme.Palette.cyan, icon: "waveform.path.ecg")
-                        Metric(value: r?.resting_hr.map { "\(Int($0))" } ?? "—", unit: "bpm", label: "Resting HR", color: Theme.Palette.pink, icon: "heart.fill")
-                        Metric(value: r?.resp_rate.map { String(format: "%.1f", $0) } ?? "—", unit: "br/m", label: "Respiration", color: Theme.Palette.violet, icon: "lungs.fill")
+            // Whoop-style breakdown: each metric with its personal baseline + a trend arrow.
+            if let metrics = r?.metrics, !metrics.isEmpty {
+                GlassCard {
+                    VStack(spacing: 0) {
+                        SectionHeader(title: "Recovery breakdown", trailing: r?.updated_via)
+                        ForEach(metrics) { m in
+                            RecoveryMetricRow(metric: m)
+                            if m.id != metrics.last?.id { Divider().overlay(Theme.Palette.textFaint.opacity(0.25)) }
+                        }
+                    }
+                }
+            } else {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: "Vitals", trailing: r?.updated_via)
+                        HStack(spacing: Theme.Space.m) {
+                            Metric(value: r?.hrv_ms.map { "\(Int($0))" } ?? "—", unit: "ms", label: "HRV", color: Theme.Palette.cyan, icon: "waveform.path.ecg")
+                            Metric(value: r?.resting_hr.map { "\(Int($0))" } ?? "—", unit: "bpm", label: "Resting HR", color: Theme.Palette.pink, icon: "heart.fill")
+                            Metric(value: r?.resp_rate.map { String(format: "%.1f", $0) } ?? "—", unit: "br/m", label: "Respiration", color: Theme.Palette.violet, icon: "lungs.fill")
+                        }
                     }
                 }
             }
@@ -71,6 +84,48 @@ struct RecoveryView: View {
     }
     private func confidenceIcon(_ l: String?) -> String {
         switch l { case "high": return "checkmark.seal.fill"; case "low": return "questionmark.circle.fill"; default: return "hourglass" }
+    }
+}
+
+/// One Whoop-style recovery row: "Heart Rate Variability   65 ▼ / 92" — the value big, a trend arrow
+/// coloured by whether it moved the healthy way, and the personal baseline underneath.
+struct RecoveryMetricRow: View {
+    let metric: Dashboard.Recovery.Metric
+
+    private var valueText: String {
+        metric.unit == "br/min" ? String(format: "%.1f", metric.value) : "\(Int(metric.value.rounded()))"
+    }
+    private var arrow: String { metric.trend == "up" ? "arrow.up" : (metric.trend == "down" ? "arrow.down" : "minus") }
+    private var arrowColor: Color {
+        switch metric.good { case .some(true): return Theme.Palette.mint; case .some(false): return Theme.Palette.amber; default: return Theme.Palette.textDim }
+    }
+    private var icon: String {
+        switch metric.key {
+        case "hrv": return "waveform.path.ecg"
+        case "rhr": return "heart.fill"
+        case "resp": return "lungs.fill"
+        default: return "moon.stars.fill"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: Theme.Space.m) {
+            Image(systemName: icon).font(.system(size: 15)).foregroundStyle(Theme.Palette.textDim).frame(width: 22)
+            Text(metric.label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(valueText).font(Theme.Font.num(22)).foregroundStyle(Theme.Palette.text)
+                    Text(metric.unit == "%" ? "%" : "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Image(systemName: arrow).font(.system(size: 12, weight: .bold)).foregroundStyle(arrowColor)
+                }
+                if let b = metric.baseline {
+                    Text(metric.unit == "br/min" ? String(format: "%.1f", b) : "\(Int(b.rounded()))")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+            }
+        }
+        .padding(.vertical, Theme.Space.s)
     }
 }
 

@@ -26,7 +26,9 @@ class MobileDailyEndpointsTest extends TestCase
     {
         $user = User::factory()->create();
         $profile = $user->ensureProfile();
-        $profile->sleepLogs()->create(['slept_at' => '2026-06-24', 'duration_min' => 462, 'quality' => 88, 'deep_min' => 95, 'rem_min' => 110, 'updated_via' => 'test']);
+        // A RECENT night (relative to today) so it falls inside the sleep-debt window SleepCoach::assess
+        // uses — a hardcoded past date rotted out of that window and made `assess` return null.
+        $profile->sleepLogs()->create(['slept_at' => now()->subDay()->toDateString(), 'duration_min' => 462, 'quality' => 88, 'deep_min' => 95, 'rem_min' => 110, 'updated_via' => 'test']);
 
         $this->auth($user)->getJson('/api/me/sleep')
             ->assertOk()

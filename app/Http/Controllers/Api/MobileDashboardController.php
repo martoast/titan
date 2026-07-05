@@ -36,6 +36,9 @@ class MobileDashboardController extends Controller
             ? $this->safe(fn () => \App\Support\RecoveryConfidence::assess($profile, $rec))
             : null;
 
+        // Whoop-style breakdown: each headline metric with its personal baseline + trend (HRV 65/92 ▼).
+        $recoveryDetail = $this->safe(fn () => \App\Support\RecoveryMetrics::forProfile($profile));
+
         // Biological age — the "how old is your body" hero stat (PhenoAge + Fitness Age combiner).
         $bio = $this->safe(fn () => \App\Support\BiologicalAge::assess($profile));
 
@@ -60,6 +63,9 @@ class MobileDashboardController extends Controller
                 'energy' => $rec->energy,
                 'updated_via' => $rec->updated_via,
                 'confidence' => $confidence,
+                // Per-metric baseline + trend (HRV / RHR / Respiratory Rate / Sleep Performance) for the
+                // Whoop-style recovery breakdown. Each: {key,label,unit,value,baseline,trend,good}.
+                'metrics' => $recoveryDetail['metrics'] ?? null,
             ] : null,
             'sleep' => $sleep ? [
                 'slept_at' => $sleep->slept_at,
