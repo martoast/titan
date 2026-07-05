@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// The screen shown the INSTANT a workout ends — the thing you want to see right after you stop. It
-/// branches on the workout kind the watch chose:
-///   • Run (running tab, GPS) → the Strava-style summary: map, distance, pace, splits, elevation.
-///   • Lift (heart-rate tab)  → the strength summary: HR zones, peak HR, VO₂max, calories, sets/reps.
-/// Live stats render immediately; the rich server-sealed detail fills in a few seconds later (the
-/// `ended`-flag instant seal makes that quick). Presented as a sheet bound to `model.workoutSummary`.
+/// The screen shown the INSTANT a workout ends — the "wow moment." It's built to feel premium: an
+/// immersive hero (the route map for a run, a luminous gradient for a lift) with the headline number
+/// huge and a proud verdict, then a crafted set of stat tiles, an HR-zone bar, and splits/elevation/
+/// sets. Live stats render immediately; the server-sealed detail (map, zones, VO₂max, sets) fills in a
+/// few seconds later and animates in. Bound to `model.workoutSummary`.
 struct WorkoutSummaryView: View {
     let summary: WorkoutSummaryState
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var appeared = false
 
     private var isLift: Bool { summary.isLift }
     private var detail: RunDetail? { summary.detail }
@@ -18,141 +18,245 @@ struct WorkoutSummaryView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: Theme.Space.m) {
-                    hero
-                    if isLift { liftBody } else { runBody }
-                    statusFooter
+            ZStack(alignment: .top) {
+                Theme.Palette.bg.ignoresSafeArea()
+                Theme.Grad.glow(accent).frame(height: 360).opacity(0.35).ignoresSafeArea(edges: .top)
+
+                ScrollView {
+                    VStack(spacing: Theme.Space.m) {
+                        hero
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 18)
+
+                        verdictRow.stagger(appeared, 0.05)
+
+                        bigStats.stagger(appeared, 0.10)
+
+                        if let z = detail?.hr_zones, zonesTotal(z) > 0 {
+                            zonesCard(z).stagger(appeared, 0.15)
+                        }
+
+                        if isLift {
+                            if let s = detail?.strength, let ex = s.exercises, !ex.isEmpty {
+                                setsCard(s, ex).stagger(appeared, 0.2)
+                            } else if summary.loading {
+                                loadingNote("Analyzing your sets…").stagger(appeared, 0.2)
+                            }
+                        } else {
+                            if let prof = detail?.elevation_profile, prof.count >= 2 {
+                                elevationCard(prof).stagger(appeared, 0.2)
+                            }
+                            if let splits = splitsForUnit, !splits.isEmpty {
+                                splitsCard(splits).stagger(appeared, 0.25)
+                            }
+                        }
+
+                        shareRow.stagger(appeared, 0.3)
+                        statusFooter
+                        Color.clear.frame(height: 6)
+                    }
+                    .padding(Theme.Space.m)
                 }
-                .padding(Theme.Space.m)
+                .scrollIndicators(.hidden)
             }
-            .background(Theme.Palette.bg.ignoresSafeArea())
-            .navigationTitle(detail?.title ?? (isLift ? "Lift" : "Run"))
+            .navigationTitle(isLift ? "Lift" : "Run")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }.font(Theme.Font.label).foregroundStyle(accent)
+                    Button("Done") { dismiss() }.font(Theme.Font.label.weight(.bold)).foregroundStyle(accent)
                 }
+            }
+            .onAppear {
+                withAnimation(Theme.Motion.spring) { appeared = true }
+                Haptic.success()
             }
         }
     }
 
-    // MARK: hero — the headline number(s), available from live stats immediately.
+    // MARK: - Hero
 
-    private var hero: some View {
-        VStack(spacing: Theme.Space.s) {
-            Image(systemName: isLift ? "dumbbell.fill" : "figure.run")
-                .font(.system(size: 30, weight: .bold)).foregroundStyle(accent)
-            if isLift {
-                Text(durationText).font(Theme.Font.num(46))
-                Text("time").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-            } else {
-                Text(distanceText).font(Theme.Font.num(46))
-                HStack(spacing: Theme.Space.l) {
-                    heroStat(durationText, "time")
-                    heroStat(paceText, imperial ? "/mi" : "/km")
+    @ViewBuilder private var hero: some View {
+        if isLift { liftHero } else { runHero }
+    }
+
+    /// Run: the route map, full-bleed inside a tall rounded card, with the distance HUGE over a scrim.
+    private var runHero: some View {
+        ZStack(alignment: .bottomLeading) {
+            // The map (or a shimmer while it seals).
+            Group {
+                if let url = detail?.map_url_large ?? summary.detail?.map_url_large, let u = URL(string: url) {
+                    AsyncImage(url: u) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: heroFallback
+                        }
+                    }
+                } else {
+                    heroFallback
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 340)
+            .clipped()
+
+            LinearGradient(colors: [.clear, .black.opacity(0.15), .black.opacity(0.82)],
+                           startPoint: .center, endPoint: .bottom)
+
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                kindChip
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(distanceValue).font(Theme.Font.num(62)).foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 8, y: 2)
+                    Text(distanceUnit).font(Theme.Font.num(22, .semibold)).foregroundStyle(.white.opacity(0.85))
+                }
+                HStack(spacing: Theme.Space.s) {
+                    heroPill("clock", durationText)
+                    heroPill("speedometer", paceText + " " + (imperial ? "/mi" : "/km"))
+                    if let e = detail?.elevation_gain_m, e > 0 { heroPill("mountain.2.fill", "\(elevText(e))") }
+                }
+            }
+            .padding(Theme.Space.m)
+        }
+        .frame(height: 340)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+    }
+
+    /// Lift: a luminous gradient hero with the duration huge + the peak-HR story.
+    private var liftHero: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .fill(LinearGradient(colors: [Theme.Palette.pink.opacity(0.28), Theme.Palette.violet.opacity(0.22), Theme.Palette.bg2],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+            Theme.Grad.glow(Theme.Palette.pink).opacity(0.5)
+
+            VStack(spacing: Theme.Space.xs) {
+                Image(systemName: "dumbbell.fill").font(.system(size: 26, weight: .bold)).foregroundStyle(Theme.Palette.pink)
+                Text(durationText).font(Theme.Font.num(60)).foregroundStyle(.white)
+                Text("STRENGTH").font(Theme.Font.micro).tracking(2).foregroundStyle(.white.opacity(0.6))
+                HStack(spacing: Theme.Space.s) {
+                    if let hr = detail?.max_hr ?? (summary.maxBpm > 0 ? summary.maxBpm : nil) {
+                        heroPill("heart.fill", "\(hr) peak")
+                    }
+                    if let red = redMinutes, red >= 1 { heroPill("flame.fill", "\(red)m in red") }
                 }
                 .padding(.top, 2)
             }
+            .padding(.vertical, Theme.Space.l)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Space.l)
-        .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.Palette.card))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).stroke(Theme.Palette.cardStroke))
+        .frame(height: 260)
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
     }
 
-    private func heroStat(_ v: String, _ l: String) -> some View {
-        VStack(spacing: 1) {
-            Text(v).font(Theme.Font.num(20))
-            Text(l).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-        }
-    }
-
-    // MARK: run body — map + the metric grid + splits/elevation (when sealed).
-
-    private var runBody: some View {
-        VStack(spacing: Theme.Space.m) {
-            if let url = detail?.map_url_large, let u = URL(string: url) {
-                AsyncImage(url: u) { img in
-                    img.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: { mapPlaceholder }
-                .frame(height: 200).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
-            } else if summary.loading && summary.hasGps {
-                mapPlaceholder.frame(height: 200).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
-            }
-            metricGrid(runMetrics)
-            if let prof = detail?.elevation_profile, prof.count >= 2 { elevationCard(prof) }
-        }
-    }
-
-    private var mapPlaceholder: some View {
+    private var heroFallback: some View {
         ZStack {
-            Theme.Palette.bg2
-            ProgressView().tint(Theme.Palette.textFaint)
-        }
-    }
-
-    // MARK: lift body — the HR-zone story + the metric grid + detected sets.
-
-    private var liftBody: some View {
-        VStack(spacing: Theme.Space.m) {
-            if let z = detail?.hr_zones, zonesTotal(z) > 0 { zonesCard(z) }
-            metricGrid(liftMetrics)
-            if let s = detail?.strength, let ex = s.exercises, !ex.isEmpty { setsCard(s, ex) }
-            else if summary.loading { loadingNote("Analyzing your sets…") }
-        }
-    }
-
-    // MARK: shared metric grid
-
-    private func metricGrid(_ items: [(String, String)]) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Space.s) {
-            ForEach(items, id: \.0) { item in
-                VStack(spacing: 2) {
-                    Text(item.1).font(Theme.Font.num(19))
-                    Text(item.0).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-                        .multilineTextAlignment(.center)
+            LinearGradient(colors: [Theme.Palette.cyan.opacity(0.18), Theme.Palette.bg2], startPoint: .top, endPoint: .bottom)
+            if summary.loading {
+                VStack(spacing: 8) {
+                    ProgressView().tint(.white.opacity(0.7))
+                    Text("Mapping your route…").font(Theme.Font.micro).foregroundStyle(.white.opacity(0.7))
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
-                .background(RoundedRectangle(cornerRadius: Theme.Radius.chip).fill(Theme.Palette.card))
+            } else {
+                VStack(spacing: 6) {
+                    Image(systemName: "mappin.slash").font(.system(size: 26)).foregroundStyle(.white.opacity(0.5))
+                    Text("No GPS route").font(Theme.Font.micro).foregroundStyle(.white.opacity(0.6))
+                }
             }
         }
     }
 
-    private var runMetrics: [(String, String)] {
-        var m: [(String, String)] = []
-        if let d = detail {
-            if let avg = d.avg_hr { m.append(("avg hr", "\(avg)")) }
-            m.append(("max hr", "\(d.max_hr ?? summary.maxBpm)"))
-            if let g = d.gap_s_per_km { m.append(("GAP", paceString(g))) }
-            if let e = d.elevation_gain_m { m.append(("elev gain", "\(e) m")) }
-            if let c = d.calories_kcal { m.append(("calories", "\(c)")) }
-            if let v = d.vo2max { m.append(("VO₂max", String(format: "%.1f", v))) }
-            if let re = d.relative_effort { m.append(("effort", "\(re)")) }
-        } else {
-            m.append(("max hr", "\(summary.maxBpm)"))
-            m.append(("distance", distanceText))
+    private var kindChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "figure.run").font(.system(size: 11, weight: .bold))
+            Text("RUN").font(Theme.Font.micro).tracking(1.5)
         }
-        return m
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 
-    private var liftMetrics: [(String, String)] {
-        var m: [(String, String)] = []
-        if let d = detail {
-            if let avg = d.avg_hr { m.append(("avg hr", "\(avg)")) }
-            m.append(("max hr", "\(d.max_hr ?? summary.maxBpm)"))
-            if let v = d.vo2max { m.append(("VO₂max", String(format: "%.1f", v))) }
-            if let c = d.calories_kcal { m.append(("calories", "\(c)")) }
-            if let t = d.trimp { m.append(("load", "\(Int(t.rounded()))")) }
-            if let hrv = d.workout_hrv_ms { m.append(("HRV", "\(Int(hrv.rounded()))")) }
-        } else {
-            m.append(("max hr", "\(summary.maxBpm)"))
-            m.append(("time", durationText))
+    private func heroPill(_ icon: String, _ text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 11, weight: .semibold))
+            Text(text).font(Theme.Font.num(14, .semibold))
         }
-        return m
+        .foregroundStyle(.white)
+        .padding(.horizontal, 11).padding(.vertical, 7)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 
-    // MARK: cards
+    // MARK: - Verdict (a proud one-liner)
+
+    private var verdictRow: some View {
+        HStack(spacing: Theme.Space.s) {
+            Image(systemName: verdict.icon).font(.system(size: 16, weight: .bold)).foregroundStyle(accent)
+            Text(verdict.text).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            Spacer(minLength: 0)
+        }
+        .padding(Theme.Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).fill(accent.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).strokeBorder(accent.opacity(0.18)))
+    }
+
+    private var verdict: (icon: String, text: String) {
+        if isLift {
+            let red = redMinutes ?? 0
+            if red >= 8 { return ("flame.fill", "Brutal session — you lived in the red zone.") }
+            if red >= 2 { return ("bolt.fill", "Strong lift. Real time at high intensity.") }
+            return ("checkmark.seal.fill", "Session logged. Consistency is how you build.")
+        }
+        let km = detail?.distance_km ?? summary.distanceKm
+        let pace = detail?.avg_pace_s_per_km ?? 0
+        if km >= 15 { return ("crown.fill", "Long one in the bank — huge aerobic work.") }
+        if pace > 0, pace <= 300 { return ("bolt.fill", "Quick tempo run — that was moving.") }
+        if km >= 8 { return ("flame.fill", "Solid distance. Great endurance day.") }
+        return ("checkmark.seal.fill", "Nice run — every km counts. Well done.")
+    }
+
+    // MARK: - Big stats (premium tiles)
+
+    private var bigStats: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: Theme.Space.s),
+                            GridItem(.flexible(), spacing: Theme.Space.s),
+                            GridItem(.flexible(), spacing: Theme.Space.s)], spacing: Theme.Space.s) {
+            ForEach(tiles, id: \.label) { t in
+                StatTile(icon: t.icon, value: t.value, unit: t.unit, label: t.label, accent: t.accent)
+            }
+        }
+    }
+
+    private var tiles: [Tile] {
+        var t: [Tile] = []
+        if isLift {
+            if let hr = detail?.avg_hr { t.append(.init("heart.fill", "\(hr)", "bpm", "avg hr", Theme.Palette.pink)) }
+            t.append(.init("waveform.path.ecg", "\(detail?.max_hr ?? summary.maxBpm)", "bpm", "peak hr", Theme.Palette.pink))
+            if let load = detail?.trimp { t.append(.init("bolt.fill", "\(Int(load.rounded()))", nil, "load", Theme.Palette.cyan)) }
+            if let c = detail?.calories_kcal { t.append(.init("flame.fill", "\(c)", "kcal", "calories", Theme.Palette.amber)) }
+            if let v = detail?.vo2max { t.append(.init("lungs.fill", String(format: "%.1f", v), nil, "VO₂max", Theme.Palette.mint)) }
+            if let hrv = detail?.workout_hrv_ms { t.append(.init("heart.text.square.fill", "\(Int(hrv.rounded()))", "ms", "HRV", Theme.Palette.cyan)) }
+        } else {
+            if let hr = detail?.avg_hr { t.append(.init("heart.fill", "\(hr)", "bpm", "avg hr", Theme.Palette.pink)) }
+            t.append(.init("waveform.path.ecg", "\(detail?.max_hr ?? summary.maxBpm)", "bpm", "peak hr", Theme.Palette.pink))
+            if let g = detail?.gap_s_per_km, g > 0 { t.append(.init("arrow.up.forward", paceString(g), imperial ? "/mi" : "/km", "GAP", Theme.Palette.mint)) }
+            if let c = detail?.calories_kcal { t.append(.init("flame.fill", "\(c)", "kcal", "calories", Theme.Palette.amber)) }
+            if let v = detail?.vo2max { t.append(.init("lungs.fill", String(format: "%.1f", v), nil, "VO₂max", Theme.Palette.mint)) }
+            if let re = detail?.relative_effort, re > 0 { t.append(.init("chart.bar.fill", "\(re)", nil, "effort", Theme.Palette.violet)) }
+        }
+        // Before the seal lands, show what we have from live stats so the grid is never empty.
+        if t.count < 2 {
+            t = [.init("waveform.path.ecg", "\(summary.maxBpm)", "bpm", "peak hr", Theme.Palette.pink)]
+            if isLift { t.append(.init("clock.fill", durationText, nil, "time", Theme.Palette.cyan)) }
+            else { t.append(.init("figure.run", distanceValue, distanceUnit, "distance", Theme.Palette.cyan)) }
+        }
+        return t
+    }
+
+    private struct Tile { let icon, value: String; let unit: String?; let label: String; let accent: Color
+        init(_ i: String, _ v: String, _ u: String?, _ l: String, _ a: Color) { icon = i; value = v; unit = u; label = l; accent = a } }
+
+    // MARK: - HR zones (a premium stacked bar + legend)
 
     private func zonesCard(_ z: HrZones) -> some View {
         let zones: [(String, Double, Color)] = [
@@ -160,35 +264,51 @@ struct WorkoutSummaryView: View {
             ("Z3", z.z3 ?? 0, Theme.Palette.amber), ("Z4", z.z4 ?? 0, Theme.Palette.pink),
             ("Z5", z.z5 ?? 0, Theme.Palette.violet),
         ]
-        let maxMin = max(1, zones.map(\.1).max() ?? 1)
-        return card("Heart-rate zones") {
-            VStack(spacing: Theme.Space.s) {
-                ForEach(zones, id: \.0) { zone in
-                    HStack(spacing: Theme.Space.s) {
-                        Text(zone.0).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 26, alignment: .leading)
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Theme.Palette.bg2)
-                                Capsule().fill(zone.2)
-                                    .frame(width: max(4, geo.size.width * CGFloat(zone.1) / CGFloat(maxMin)))
+        let total = max(0.1, zones.reduce(0) { $0 + $1.1 })
+        return card("Heart-rate zones", "Time at each intensity") {
+            VStack(spacing: Theme.Space.m) {
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(zones, id: \.0) { z in
+                            if z.1 > 0 {
+                                Capsule().fill(z.2)
+                                    .frame(width: max(3, geo.size.width * CGFloat(z.1 / total)))
                             }
                         }
-                        .frame(height: 12)
-                        Text("\(Int(zone.1.rounded()))m").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 36, alignment: .trailing)
+                    }
+                }.frame(height: 16)
+                VStack(spacing: Theme.Space.xs) {
+                    ForEach(zones.reversed(), id: \.0) { z in
+                        if z.1 > 0 {
+                            HStack(spacing: Theme.Space.s) {
+                                Circle().fill(z.2).frame(width: 8, height: 8)
+                                Text(zoneName(z.0)).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                Spacer()
+                                Text("\(Int((z.1 / total * 100).rounded()))%").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 40, alignment: .trailing)
+                                Text(minLabel(z.1)).font(Theme.Font.num(14)).foregroundStyle(Theme.Palette.text).frame(width: 52, alignment: .trailing)
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
+    private func zoneName(_ z: String) -> String {
+        switch z { case "Z1": return "Z1 · Recovery"; case "Z2": return "Z2 · Easy"; case "Z3": return "Z3 · Aerobic"
+        case "Z4": return "Z4 · Threshold"; default: return "Z5 · Max" }
+    }
+
+    // MARK: - Sets
+
     private func setsCard(_ s: StrengthDetail, _ exercises: [StrengthExercise]) -> some View {
-        card("Sets · \(s.total_sets ?? 0) sets, \(s.total_reps ?? 0) reps") {
+        card("Sets", "\(s.total_sets ?? 0) sets · \(s.total_reps ?? 0) reps") {
             VStack(spacing: Theme.Space.s) {
                 ForEach(exercises) { ex in
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(ex.name).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
-                            if let mg = ex.muscle_group { Text(mg).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+                            Text(ex.name).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            if let mg = ex.muscle_group { Text(mg.capitalized).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
                         }
                         Spacer()
                         Text((ex.sets ?? []).map { "\($0.reps ?? 0)" }.joined(separator: " · "))
@@ -200,80 +320,171 @@ struct WorkoutSummaryView: View {
         }
     }
 
+    // MARK: - Splits + Elevation
+
+    private var splitsForUnit: [RunSplit]? { imperial ? detail?.splits?.mi : detail?.splits?.km }
+
+    private func splitsCard(_ splits: [RunSplit]) -> some View {
+        let paces = splits.compactMap { $0.pace_s_per_unit }.filter { $0 > 0 }
+        let pMin = paces.min() ?? 1, pMax = paces.max() ?? 1
+        return card("Splits", "per \(imperial ? "mile" : "km")") {
+            VStack(spacing: Theme.Space.xs) {
+                ForEach(splits) { sp in
+                    let p = sp.pace_s_per_unit ?? 0
+                    let frac = pMax > pMin ? 0.3 + 0.7 * ((pMax - p) / (pMax - pMin)) : 1
+                    HStack(spacing: Theme.Space.s) {
+                        Text("\(sp.index)").font(Theme.Font.micro.monospacedDigit()).foregroundStyle(Theme.Palette.textDim).frame(width: 16, alignment: .leading)
+                        GeometryReader { g in
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(LinearGradient(colors: [Theme.Palette.cyan.opacity(0.85), Theme.Palette.mint.opacity(0.5)], startPoint: .leading, endPoint: .trailing))
+                                .frame(width: max(6, g.size.width * frac), height: 16)
+                        }.frame(height: 16)
+                        Text(RunFmt.pace(p)).font(Theme.Font.num(14)).foregroundStyle(Theme.Palette.text).frame(width: 50, alignment: .trailing)
+                    }
+                }
+            }
+        }
+    }
+
     private func elevationCard(_ prof: [ElevationPoint]) -> some View {
         let alts = prof.map(\.alt_m)
         let lo = alts.min() ?? 0, hi = alts.max() ?? 1
         let span = max(1, hi - lo)
-        return card("Elevation") {
+        return card("Elevation", detail?.elevation_gain_m.map { "\(elevText($0)) gain" } ?? "") {
             GeometryReader { geo in
-                Path { p in
-                    for (i, pt) in prof.enumerated() {
-                        let x = geo.size.width * CGFloat(i) / CGFloat(max(1, prof.count - 1))
-                        let y = geo.size.height * (1 - CGFloat((pt.alt_m - lo) / span))
-                        if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
-                    }
+                let pts = prof.enumerated().map { i, pt in
+                    CGPoint(x: geo.size.width * CGFloat(i) / CGFloat(max(1, prof.count - 1)),
+                            y: geo.size.height * (1 - CGFloat((pt.alt_m - lo) / span)))
                 }
-                .stroke(Theme.Palette.mint, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
+                ZStack {
+                    Path { p in
+                        guard let f = pts.first else { return }
+                        p.move(to: CGPoint(x: f.x, y: geo.size.height)); p.addLine(to: f)
+                        pts.forEach { p.addLine(to: $0) }
+                        if let l = pts.last { p.addLine(to: CGPoint(x: l.x, y: geo.size.height)) }
+                    }.fill(LinearGradient(colors: [Theme.Palette.amber.opacity(0.30), .clear], startPoint: .top, endPoint: .bottom))
+                    Path { p in
+                        guard let f = pts.first else { return }
+                        p.move(to: f); pts.forEach { p.addLine(to: $0) }
+                    }.stroke(Theme.Palette.amber, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
+                }
             }
             .frame(height: 70)
         }
     }
 
-    private func card<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Text(title).font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
-            content()
+    // MARK: - Share + footer
+
+    private var shareRow: some View {
+        Group {
+            if let urlStr = detail?.map_url_large, let url = URL(string: urlStr) {
+                ShareLink(item: url, subject: Text(shareCaption), message: Text(shareCaption)) {
+                    HStack(spacing: Theme.Space.s) {
+                        Image(systemName: "square.and.arrow.up.fill")
+                        Text("Share this \(isLift ? "lift" : "run")").font(Theme.Font.body.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.m)
+                    .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).fill(accent.opacity(0.9)))
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Space.m)
-        .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.Palette.card))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).stroke(Theme.Palette.cardStroke))
     }
 
-    private func loadingNote(_ text: String) -> some View {
-        HStack(spacing: Theme.Space.s) {
-            ProgressView().tint(Theme.Palette.textFaint)
-            Text(text).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
+    private var shareCaption: String {
+        if isLift { return "Strength session — logged on Titan 💪" }
+        let d = distanceValue + " " + distanceUnit
+        let p = paceText == "—" ? "" : " at \(paceText)\(imperial ? "/mi" : "/km")"
+        return "Ran \(d)\(p) — tracked on Titan 🏃"
     }
 
     private var statusFooter: some View {
         Group {
-            if summary.failed {
-                Text("Saved to your band. The full breakdown will appear in Daily shortly.")
-            } else if summary.loading {
-                Text("Saving your \(isLift ? "lift" : "run")…")
-            } else {
-                Text("Sealed from your band — nice work.")
-            }
+            if summary.loading { Label("Sealing the full breakdown…", systemImage: "sparkles") }
+            else if summary.failed { Label("Saved — the full breakdown appears in Daily shortly.", systemImage: "checkmark.circle") }
+            else { Label("Sealed from your band", systemImage: "checkmark.seal.fill") }
         }
         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-        .frame(maxWidth: .infinity).multilineTextAlignment(.center).padding(.top, 4)
+        .frame(maxWidth: .infinity).padding(.top, 2)
     }
 
-    // MARK: formatting
+    // MARK: - Card shell + helpers
 
+    private func card<Content: View>(_ title: String, _ subtitle: String = "", @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title.uppercased()).font(Theme.Font.label).tracking(0.8).foregroundStyle(Theme.Palette.textDim)
+                Spacer()
+                if !subtitle.isEmpty { Text(subtitle).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Space.m)
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+    }
+
+    private func loadingNote(_ text: String) -> some View {
+        HStack(spacing: Theme.Space.s) { ProgressView().tint(Theme.Palette.textFaint); Text(text).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+            .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.m)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.Palette.card))
+    }
+
+    private var redMinutes: Int? {
+        guard let z = detail?.hr_zones else { return nil }
+        let r = (z.z4 ?? 0) + (z.z5 ?? 0)
+        return r > 0 ? Int(r.rounded()) : nil
+    }
     private func zonesTotal(_ z: HrZones) -> Double { (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0) + (z.z4 ?? 0) + (z.z5 ?? 0) }
+    private func minLabel(_ m: Double) -> String { m >= 60 ? String(format: "%d:%02d", Int(m) / 60, Int(m) % 60) : "\(Int(m.rounded()))m" }
+    private func elevText(_ m: Int) -> String { imperial ? "\(Int(Double(m) * 3.28084)) ft" : "\(m) m" }
 
     private var durationText: String {
-        let s = detail?.duration_min.map { $0 * 60 } ?? summary.elapsedSec
+        let s = detail?.moving_time_s ?? detail?.duration_min.map { $0 * 60 } ?? summary.elapsedSec
         let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
     }
-
-    private var distanceText: String {
+    private var distanceValue: String {
         let km = detail?.distance_km ?? summary.distanceKm
-        return imperial ? String(format: "%.2f mi", km * 0.621371) : String(format: "%.2f km", km)
+        return imperial ? String(format: "%.2f", km * 0.621371) : String(format: "%.2f", km)
     }
-
+    private var distanceUnit: String { imperial ? "mi" : "km" }
     private var paceText: String {
         guard let p = detail?.avg_pace_s_per_km, p > 0 else { return "—" }
         return paceString(p)
     }
-
     private func paceString(_ secPerKm: Int) -> String {
         let s = imperial ? Int(Double(secPerKm) / 0.621371) : secPerKm
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// A premium stat tile: an accent icon, the value big, a small unit, and a quiet label.
+struct StatTile: View {
+    let icon: String; let value: String; let unit: String?; let label: String; let accent: Color
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(accent)
+            Spacer(minLength: 2)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value).font(Theme.Font.num(23)).foregroundStyle(Theme.Palette.text).lineLimit(1).minimumScaleFactor(0.6)
+                if let unit { Text(unit).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+            }
+            Text(label.uppercased()).font(Theme.Font.micro).tracking(0.4).foregroundStyle(Theme.Palette.textDim)
+        }
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+        .padding(Theme.Space.s)
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).fill(Theme.Palette.card))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).strokeBorder(accent.opacity(0.14)))
+    }
+}
+
+/// Staggered entrance: fade + slide in, offset by a small per-element delay for a choreographed reveal.
+private extension View {
+    func stagger(_ appeared: Bool, _ delay: Double) -> some View {
+        self.opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 14)
+            .animation(Theme.Motion.spring.delay(delay), value: appeared)
     }
 }
