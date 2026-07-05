@@ -3,9 +3,11 @@
 #   cp .env.production.example .env   # then fill in the REQUIRED secrets
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
-# Everything the app needs runs here: the Laravel web app, a queue worker, the scheduler,
-# the Python biosignal service, MySQL, Redis, MinIO (raw waveform blobs), and Caddy for
-# automatic HTTPS. The wearable/bridge POSTs signed batches to https://<your-domain>.
+# Everything the app needs runs here: the Laravel web app (blue/green slots), a queue
+# worker, the scheduler, the Python biosignal service, MySQL, Redis, and MinIO (raw
+# waveform blobs). Ingress (proxy/TLS) is handled outside this stack — on this server,
+# Cloudflare Tunnel → host Caddy :3010 → blue/green. The wearable/bridge POSTs signed
+# batches to https://<your-domain>.
 name: titan
 
 x-app: &app
@@ -18,12 +20,26 @@ x-app: &app
   networks: [titan]
 
 services:
-  # ── Laravel web app ──────────────────────────────────────────────────────────
-  app:
+  # ── Laravel web app — blue/green slots for zero-downtime deploys ─────────────
+  # A host proxy (Caddy) on :3010 balances between 127.0.0.1:3110 (blue) and
+  # 127.0.0.1:3120 (green). The deploy script starts the new color, waits for
+  # healthy, then stops the old one. Exactly one color runs outside of deploys.
+  app-blue:
     <<: *app
-    ports: ["3010:8080"]
+    profiles: [blue]
+    ports: ["127.0.0.1:3110:8080"]
     environment:
-      AUTORUN_LARAVEL_MIGRATION: "true"   # ONLY this container runs migrations on boot
+      AUTORUN_LARAVEL_MIGRATION: "true"   # whichever color boots runs migrations
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  app-green:
+    <<: *app
+    profiles: [green]
+    ports: ["127.0.0.1:3120:8080"]
+    environment:
+      AUTORUN_LARAVEL_MIGRATION: "true"
     depends_on:
       mysql: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -32,16 +48,27 @@ services:
   queue:
     <<: *app
     command: ["php", "artisan", "queue:work", "redis", "--queue=biosignal,default", "--sleep=1", "--tries=3", "--max-time=3600"]
+    healthcheck:  # the image default curls nginx, which workers don't run
+      test: ["CMD-SHELL", "pgrep -f 'queue:work' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on:
-      app: {condition: service_started}
+      mysql: {condition: service_healthy}
       redis: {condition: service_healthy}
 
   # ── Scheduler: nightly seals, briefings, nudges (routes/console.php) ─────────
   scheduler:
     <<: *app
     command: ["php", "artisan", "schedule:work"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'schedule:work' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on:
-      app: {condition: service_started}
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
 
   # ── Python biosignal service (internal only; HRV / sleep / activity / VO2max) ─
   biosignal:
