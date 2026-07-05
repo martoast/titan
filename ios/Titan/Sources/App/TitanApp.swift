@@ -45,7 +45,7 @@ struct RootView: View {
                     TabView {
                         CoachView().tabItem { Label("Coach", systemImage: "bubble.left.and.text.bubble.right.fill") }
                         DashboardView().tabItem { Label("Today", systemImage: "circle.hexagongrid.fill") }
-                        DailyView().tabItem { Label("Daily", systemImage: "square.stack.3d.up.fill") }
+                        TrendsView().tabItem { Label("Trends", systemImage: "chart.xyaxis.line") }
                         CommunityView().tabItem { Label("Community", systemImage: "person.2.fill") }
                         ProfileView().tabItem { Label("You", systemImage: "person.fill") }
                     }

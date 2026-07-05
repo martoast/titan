@@ -1,53 +1,44 @@
 import SwiftUI
 
-/// The "Daily" hub — one tab, one segmented switcher over the day's pillars: Sleep · Fuel · Train,
-/// plus Cycle for women. Replaces the separate Fuel/Train tabs and houses Sleep + Cycle. Today stays
-/// the recovery overview; this is where you go deep on each pillar.
-struct DailyView: View {
+// The pillar DETAIL screens. These deep-dives used to live behind the separate "Daily" tab and its
+// segmented switcher; now each is PUSHED from its card on Today, so every pillar has exactly one home
+// and there's no second "today" tab. The section views are reused verbatim — this just gives each the
+// standard pushed-screen chrome (scroll + glow + title + back button).
+
+struct SleepScreen: View {
+    var body: some View { SleepSection().titanDetail("Sleep", glow: Theme.Palette.indigo) }
+}
+
+struct FuelScreen: View {
     @EnvironmentObject var model: AppModel
-    @State private var seg: Seg = .sleep
     @State private var showTargets = false
-
-    enum Seg: String, CaseIterable { case sleep = "Sleep", fuel = "Fuel", train = "Train", heart = "Heart", cycle = "Cycle" }
-
-    private var segs: [Seg] {
-        model.showsCycle ? [.sleep, .fuel, .train, .heart, .cycle] : [.sleep, .fuel, .train, .heart]
-    }
-    private var glow: Color {
-        switch seg { case .sleep: return Theme.Palette.indigo; case .fuel: return Theme.Palette.amber
-        case .train: return Theme.Palette.cyan; case .heart, .cycle: return Theme.Palette.pink }
-    }
-
     var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            Picker("", selection: $seg) {
-                ForEach(segs, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.top, Theme.Space.xs)
-
-            switch seg {
-            case .sleep: SleepSection()
-            case .fuel: VStack(spacing: Theme.Space.m) { FuelSection(); StackSection() }
-            case .train: TrainSection()
-            case .heart: HrSection()
-            case .cycle: CycleSection()
-            }
-            Color.clear.frame(height: 8)
-        }
-        .animation(Theme.Motion.snappy, value: seg)
-        .titanScreen("Daily", glow: glow)
-        .toolbar {
-            if seg == .fuel {
+        VStack(spacing: Theme.Space.m) { FuelSection(); StackSection() }
+            .titanDetail("Fuel", glow: Theme.Palette.amber)
+            .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { Haptic.tap(); showTargets = true } label: { Image(systemName: "slider.horizontal.3") }
                         .tint(Theme.Palette.textDim)
                 }
             }
-        }
-        .sheet(item: $model.scanResult) { ScanResultSheet(result: $0) }
-        .sheet(isPresented: $showTargets) { TargetsSheet() }
-        .task { await model.loadCycle() }   // learn whether to offer the Cycle segment
+            .sheet(item: $model.scanResult) { ScanResultSheet(result: $0) }
+            .sheet(isPresented: $showTargets) { TargetsSheet() }
+    }
+}
+
+struct TrainScreen: View {
+    var body: some View { TrainSection().titanDetail("Training", glow: Theme.Palette.cyan) }
+}
+
+struct HeartScreen: View {
+    var body: some View { HrSection().titanDetail("Heart", glow: Theme.Palette.pink) }
+}
+
+struct CycleScreen: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        CycleSection().titanDetail("Cycle", glow: Theme.Palette.pink)
+            .task { await model.loadCycle() }
     }
 }
 

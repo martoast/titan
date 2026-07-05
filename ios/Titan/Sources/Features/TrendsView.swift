@@ -62,9 +62,7 @@ struct TrendsView: View {
             }
             Color.clear.frame(height: 8)
         }
-        .padding(.horizontal, Theme.Space.m)
-        .background(Theme.Palette.bg.ignoresSafeArea())
-        .navigationTitle("Trends")
+        .titanScreen("Trends", glow: Theme.Palette.violet)
         .task { if model.overview == nil { await model.loadOverview() } }
     }
 

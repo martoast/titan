@@ -69,20 +69,28 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity)
             .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
 
-            // Trends — the Whoop-style Overview history (recovery / sleep / strain over week + month).
-            NavigationLink { TrendsView() } label: {
+            // Fuel — today's macros at a glance, right where your eye already goes. Taps into the full
+            // Fuel world (snap a meal, your usuals, hydration, fasting).
+            NavigationLink { FuelScreen() } label: {
                 GlassCard {
-                    HStack(spacing: Theme.Space.m) {
-                        ZStack {
-                            Circle().fill(Theme.Palette.cyan.opacity(0.16)).frame(width: 40, height: 40)
-                            Image(systemName: "chart.xyaxis.line").foregroundStyle(Theme.Palette.cyan).font(.system(size: 17, weight: .semibold))
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: "Fuel today", trailing: chevron)
+                        if let m = model.nutrition?.macros {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("\(max(0, m.calories.target - m.calories.value))").font(Theme.Font.num(30)).foregroundStyle(Theme.Palette.text)
+                                Text("kcal left").font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+                                Spacer()
+                                Text("\(m.calories.value) / \(m.calories.target)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).monospacedDigit()
+                            }
+                            HStack(spacing: Theme.Space.m) {
+                                macroBar("Protein", m.protein, Theme.Palette.mint)
+                                macroBar("Carbs", m.carbs, Theme.Palette.amber)
+                                macroBar("Fat", m.fat, Theme.Palette.pink)
+                            }
+                        } else {
+                            Text("Snap a meal — today's macros land here.").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Trends").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                            Text("Recovery, sleep & strain over time").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
                     }
                 }
             }.buttonStyle(PressCard())
@@ -184,20 +192,60 @@ struct DashboardView: View {
                 }
             }.buttonStyle(PressCard())
 
-            // Activity
+            // Activity → the full Training detail (runs, lifts, day strain).
             if let a = d?.activity {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        SectionHeader(title: "Activity")
-                        HStack(spacing: Theme.Space.m) {
-                            Metric(value: int(a.steps.map(Double.init)), unit: nil, label: "Steps", color: Theme.Palette.mint, icon: "figure.walk")
-                            divider
-                            Metric(value: int(a.active_kcal.map(Double.init)), unit: "kcal", label: "Active", color: Theme.Palette.amber, icon: "flame.fill")
-                            divider
-                            Metric(value: int(a.floors.map(Double.init)), unit: nil, label: "Floors", color: Theme.Palette.cyan, icon: "stairs")
+                NavigationLink { TrainScreen() } label: {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: Theme.Space.m) {
+                            SectionHeader(title: "Activity", trailing: chevron)
+                            HStack(spacing: Theme.Space.m) {
+                                Metric(value: int(a.steps.map(Double.init)), unit: nil, label: "Steps", color: Theme.Palette.mint, icon: "figure.walk")
+                                divider
+                                Metric(value: int(a.active_kcal.map(Double.init)), unit: "kcal", label: "Active", color: Theme.Palette.amber, icon: "flame.fill")
+                                divider
+                                Metric(value: int(a.floors.map(Double.init)), unit: nil, label: "Floors", color: Theme.Palette.cyan, icon: "stairs")
+                            }
                         }
                     }
+                }.buttonStyle(PressCard())
+            }
+
+            // Heart — 24/7 HR detail.
+            NavigationLink { HeartScreen() } label: {
+                GlassCard {
+                    HStack(spacing: Theme.Space.m) {
+                        ZStack {
+                            Circle().fill(Theme.Palette.pink.opacity(0.16)).frame(width: 40, height: 40)
+                            Image(systemName: "waveform.path.ecg").foregroundStyle(Theme.Palette.pink).font(.system(size: 17, weight: .semibold))
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Heart").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            Text("Resting HR & your 24/7 heart-rate graph").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+                    }
                 }
+            }.buttonStyle(PressCard())
+
+            // Cycle — only when the profile is set up for it (same gate as before).
+            if model.showsCycle {
+                NavigationLink { CycleScreen() } label: {
+                    GlassCard {
+                        HStack(spacing: Theme.Space.m) {
+                            ZStack {
+                                Circle().fill(Theme.Palette.pink.opacity(0.16)).frame(width: 40, height: 40)
+                                Image(systemName: "drop.fill").foregroundStyle(Theme.Palette.pink).font(.system(size: 16, weight: .semibold))
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Cycle").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                                Text("Phase, predictions & symptom log").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+                        }
+                    }
+                }.buttonStyle(PressCard())
             }
 
             Color.clear.frame(height: 8)
@@ -205,13 +253,32 @@ struct DashboardView: View {
         .animation(Theme.Motion.spring, value: appeared)
         .animation(Theme.Motion.snappy, value: model.dashboardPhase)
         .titanScreen("Today", glow: Theme.Palette.recovery(model.dashboard?.readiness?.score))
-        .refreshable { Haptic.soft(); await model.refresh(); await model.loadInsights(); await model.loadJournal() }
+        .refreshable { Haptic.soft(); await model.refresh(); await model.loadNutrition(); await model.loadInsights(); await model.loadJournal() }
         .task {
             appeared = true          // let the screen animate in immediately, not after the network
             await model.refresh()
+            await model.loadNutrition()   // today's macros for the Fuel card
+            await model.loadCycle()       // learn whether to show the Cycle card
             await model.loadInsights()
             await model.loadJournal()
         }
+    }
+
+    /// One macro's progress on the Fuel glance card: value/target + a thin fill bar.
+    private func macroBar(_ label: String, _ line: MacroLine, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 3) {
+                Text("\(line.value)").font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+                Text("/\(line.target)g").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+            }
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule().fill(color).frame(width: max(3, g.size.width * line.fraction))
+                }
+            }.frame(height: 5)
+            Text(label.uppercased()).font(Theme.Font.micro).tracking(0.4).foregroundStyle(Theme.Palette.textDim)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// "X.X years younger / older / on pace" — green when younger, amber when older.

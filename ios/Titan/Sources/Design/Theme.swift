@@ -105,4 +105,18 @@ extension View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
+
+    /// Same look as `titanScreen`, but WITHOUT its own NavigationStack — for a detail screen PUSHED from
+    /// Today (it inherits the parent stack, so it gets a back button and no double nav bar).
+    func titanDetail(_ title: String, glow: Color = Theme.Palette.indigo) -> some View {
+        ZStack(alignment: .top) {
+            Theme.Palette.bg.ignoresSafeArea()
+            Theme.Grad.glow(glow).frame(height: 320).opacity(0.5).ignoresSafeArea(edges: .top)
+            ScrollView { self.padding(.horizontal, Theme.Space.m).padding(.top, Theme.Space.s) }
+                .scrollIndicators(.hidden)
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+    }
 }
