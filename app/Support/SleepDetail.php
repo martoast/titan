@@ -75,6 +75,12 @@ class SleepDetail
             'consistency_pct' => self::consistency($profile, $day),
             'quality' => $last->quality,
             'stages' => $stages,
+            // The classic Whoop hypnogram: the per-30s stage sequence + its clock span, so the app can
+            // draw the wavy stage timeline from bedtime to wake.
+            'bedtime' => $last->bedtime ? Carbon::parse($last->bedtime)->format('H:i') : null,
+            'wake_time' => $last->wake_time ? Carbon::parse($last->wake_time)->format('H:i') : null,
+            'hypnogram' => is_array($last->hypnogram) && count($last->hypnogram) ? $last->hypnogram : null,
+            'epoch_sec' => 30,
         ];
     }
 

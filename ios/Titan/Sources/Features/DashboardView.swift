@@ -38,7 +38,9 @@ struct DashboardView: View {
                         StatRing(value: d?.rings?.recovery.map(Double.init) ?? d?.readiness?.score.map(Double.init),
                                  max: 100, label: "Recovery", color: Theme.Palette.recovery(d?.readiness?.score), size: 116)
                     }.buttonStyle(PressCard())
-                    StatRing(value: d?.rings?.strain, max: 21, label: "Strain", color: Theme.Palette.cyan, size: 92)
+                    NavigationLink { StrainView() } label: {
+                        StatRing(value: d?.rings?.strain, max: 21, label: "Strain", color: Theme.Palette.cyan, size: 92)
+                    }.buttonStyle(PressCard())
                 }
                 .padding(.top, Theme.Space.s)
                 VStack(spacing: 6) {

@@ -572,6 +572,7 @@ final class AppModel: ObservableObject {
     enum LoadPhase { case idle, loading, loaded, failed }
 
     @Published var sleepDetail: SleepResponse?
+    @Published var strainDetail: StrainResponse?
     @Published var cycle: CycleResponse?
     @Published var hrDay: HrResponse?
     @Published var sleepPhase: LoadPhase = .idle
@@ -592,6 +593,8 @@ final class AppModel: ObservableObject {
         do { cycle = try await api.cycle(); cyclePhase = .loaded }
         catch { cyclePhase = cycle == nil ? .failed : .loaded }
     }
+    func loadStrain() async { strainDetail = try? await api.strain() }
+
     func loadHr() async {
         if hrDay == nil { hrPhase = .loading }
         do { hrDay = try await api.hr(); hrPhase = .loaded }

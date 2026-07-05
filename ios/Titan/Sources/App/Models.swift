@@ -159,6 +159,9 @@ struct SleepResponse: Codable {
         let consistency_pct: Int?
         let quality: Int?
         let stages: [Stage]
+        let bedtime: String?; let wake_time: String?
+        let hypnogram: [String]?         // per-30s stage codes: wake/light/deep/rem
+        let epoch_sec: Int?
         struct Stage: Codable, Identifiable {
             let key: String; let label: String; let min: Int; let pct: Int; let color: String
             var id: String { key }
@@ -168,6 +171,28 @@ struct SleepResponse: Codable {
         var id: String { date ?? "" }
         let date: String?; let duration_min: Int?; let quality: Int?
         let deep_min: Int?; let rem_min: Int?; let light_min: Int?; let awake_min: Int?
+    }
+}
+
+/// The Whoop-style Strain screen: today's day strain building through the day, the recovery-based
+/// target band, and the workouts that drove it (each with the strain it added).
+struct StrainResponse: Codable {
+    let strain: Double?
+    let max: Double?
+    let band: String?
+    let label: String?
+    let target: Target?
+    let status: String?
+    let advice: String?
+    let readiness: Int?
+    let curve: [Point]
+    let contributions: [Contribution]
+    struct Target: Codable { let low: Double?; let high: Double?; let mode: String?; let label: String? }
+    struct Point: Codable, Identifiable { let t: String; let strain: Double; var id: String { t } }
+    struct Contribution: Codable, Identifiable {
+        let id: Int
+        let title: String?; let activity_type: String?; let started_at: String?
+        let duration_min: Int?; let avg_hr: Int?; let trimp: Double?; let strain_added: Double?
     }
 }
 

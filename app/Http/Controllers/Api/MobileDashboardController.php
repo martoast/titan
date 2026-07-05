@@ -126,6 +126,15 @@ class MobileDashboardController extends Controller
         ]);
     }
 
+    /** GET /api/me/strain — the Whoop-style Strain screen: today's strain building through the day,
+     *  the recovery-based target band, and the workouts that drove it (each with the strain it added). */
+    public function strain(Request $request): JsonResponse
+    {
+        $profile = $request->user()->profile ?? $request->user()->ensureProfile();
+
+        return response()->json(\App\Support\StrainDetail::forProfile($profile));
+    }
+
     /** Run a closure, returning null on any failure (missing support class / no baseline). */
     private function safe(callable $fn): mixed
     {

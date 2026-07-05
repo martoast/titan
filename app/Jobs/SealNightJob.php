@@ -389,6 +389,8 @@ class SealNightJob implements ShouldQueue
                     'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null),
                     'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null),
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
+                    // The per-30s hypnogram (the stager already computes it) → the Whoop stage timeline.
+                    'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
                     'updated_via' => 'biosignal:sealed-ppg',
                 ], fn ($v) => $v !== null),
             );
@@ -462,6 +464,7 @@ class SealNightJob implements ShouldQueue
                     'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null),
                     'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null),
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
+                    'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
                     'updated_via' => 'biosignal:sealed',
                 ], fn ($v) => $v !== null),
             );

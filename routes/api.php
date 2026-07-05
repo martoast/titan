@@ -34,6 +34,7 @@ Route::middleware('auth.token')->group(function () {
 // Read-only dashboard aggregate for the native app (readiness + recovery + sleep + activity).
 Route::middleware('auth.any')->get('/me/dashboard', [\App\Http\Controllers\Api\MobileDashboardController::class, 'dashboard']);
 Route::middleware('auth.any')->get('/me/trends', [\App\Http\Controllers\Api\MobileDashboardController::class, 'trends']);
+Route::middleware('auth.any')->get('/me/strain', [\App\Http\Controllers\Api\MobileDashboardController::class, 'strain']);
 
 // Native-app nutrition ("Fuel" tab): photo → AI macros (grounded + logged) + the macro-ring card,
 // manual entry, and corrections. Same Meal rows the coach's macros_today / recent_meals tools read.

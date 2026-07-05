@@ -149,6 +149,10 @@ final class APIClient {
         try await send(request("api/me/hr"), as: HrResponse.self)
     }
 
+    func strain() async throws -> StrainResponse {
+        try await send(request("api/me/strain"), as: StrainResponse.self)
+    }
+
     func cycle() async throws -> CycleResponse {
         try await send(request("api/me/cycle"), as: CycleResponse.self)
     }

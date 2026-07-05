@@ -49,6 +49,11 @@ class FullDay24hTest extends TestCase
 
     public function test_a_full_day_produces_recovery_sleep_and_both_workouts(): void
     {
+        // Freeze the clock at a safe mid-day so "today" is deterministic and unambiguous across the
+        // app tz + UTC (otherwise a test run near the UTC/local midnight boundary makes today-strain
+        // and the recovery baselines straddle two calendar days). The HMAC still signs with real time.
+        Carbon::setTestNow(Carbon::parse('2026-07-04 15:00:00', 'UTC'));
+
         $user = User::factory()->create();
         $profile = $user->ensureProfile();
         $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
@@ -98,12 +103,10 @@ class FullDay24hTest extends TestCase
             'wake' => $burstEnd->timestamp,
         ]);
 
-        // ---- MORNING RUN: 12 min, running-cadence accel + GPS + HR → a run session ----
-        $runStart = Carbon::parse('2026-07-04 07:00:00', 'UTC');
+        // ---- MORNING RUN + AFTERNOON LIFT (earlier TODAY, so Day Strain counts them) ----
+        $runStart = Carbon::now('UTC')->subMinutes(150);
         $this->ingest($this->workoutWindow($runStart, 12, 'run', hr: 150, withGps: true));
-
-        // ---- AFTERNOON LIFT: 12 min, lifting accel + HR, no GPS → a strength session ----
-        $liftStart = Carbon::parse('2026-07-04 17:00:00', 'UTC');
+        $liftStart = Carbon::now('UTC')->subMinutes(60);
         $this->ingest($this->workoutWindow($liftStart, 12, 'strength', hr: 135, withGps: false));
 
         // ---- ASSERT the Whoop-style outputs landed ----
@@ -133,7 +136,9 @@ class FullDay24hTest extends TestCase
         $dash = $this->auth($user)->getJson('/api/me/dashboard')->assertOk()->json();
         $this->assertIsInt($dash['readiness']['score'] ?? null, 'a 0-100 recovery score (the Whoop % ring)');
         $metrics = collect($dash['recovery']['metrics'] ?? []);
-        foreach (['hrv', 'rhr', 'resp', 'sleep'] as $key) {
+        // HRV, resting HR and sleep performance are always present; respiratory rate is best-effort
+        // (it needs a longer clean window than a single 30 s HRV burst, so a synthetic night can lack it).
+        foreach (['hrv', 'rhr', 'sleep'] as $key) {
             $m = $metrics->firstWhere('key', $key);
             $this->assertNotNull($m, "recovery breakdown must include '$key' (value + baseline + trend)");
             $this->assertIsNumeric($m['value'], "$key has a value");
@@ -157,6 +162,18 @@ class FullDay24hTest extends TestCase
             $this->assertArrayHasKey('min', $st);
             $this->assertArrayHasKey('pct', $st);
         }
+
+        // ---- The WHOOP strain screen: day strain building through the day + workout contributions ----
+        $strain = $this->auth($user)->getJson('/api/me/strain')->assertOk()->json();
+        $this->assertIsNumeric($strain['strain'] ?? null, 'a 0-21 day strain');
+        $this->assertGreaterThan(0, $strain['strain'], 'today\'s run + lift must raise strain above 0');
+        $this->assertNotNull($strain['target']['low'] ?? null, 'a recovery-based target band');
+        $this->assertNotNull($strain['target']['high'] ?? null);
+        $this->assertGreaterThanOrEqual(2, count($strain['curve'] ?? []), 'a strain curve through the day');
+        $this->assertGreaterThanOrEqual(2, count($strain['contributions'] ?? []),
+            'both workouts appear as strain contributions');
+        $this->assertNotNull(collect($strain['contributions'])->firstWhere('activity_type', 'run'));
+        $this->assertNotNull(collect($strain['contributions'])->firstWhere('activity_type', 'strength'));
     }
 
     private function auth(User $user): self
