@@ -280,11 +280,11 @@ class CoachService
             return;
         }
 
-        // BEFORE these turns are compressed into the summary, consolidate any durable facts from them
-        // into long-term memory — so nothing important is lost to repeated summarisation. The summary
-        // then carries continuity; the searchable memory/wiki carries permanence (recallable later via
-        // search_knowledge). This is the "save what matters to long-term storage as we compact" step.
-        $this->consolidateMemory($conversation, $fold);
+        // BEFORE these turns are compressed into the summary, consolidate anything durable from them
+        // into long-term storage — atomic facts into the memory book, richer multi-part knowledge into
+        // wiki pages — so nothing important is lost to repeated summarisation. The summary then carries
+        // continuity; the searchable memory + wiki carry permanence (recallable later via search_knowledge).
+        $this->consolidateKnowledge($conversation, $fold);
 
         $transcript = $fold->map(fn (ChatMessage $m) => strtoupper($m->role).': '.Str::limit((string) $m->content, 1200))->implode("\n\n");
         $prior = filled($conversation->summary) ? "Existing summary so far:\n{$conversation->summary}\n\n" : '';
@@ -307,14 +307,17 @@ class CoachService
     }
 
     /**
-     * Harvest durable facts from the turns being archived into the long-term memory book, so they
-     * survive summary compression and stay recallable via search_knowledge. Deduped by
-     * {@see CoachMemoryBook::remember}, so re-running is idempotent. Best-effort + off the request path
-     * (the compaction job) — a failure never blocks compaction; cheap model, conservative extraction.
+     * Harvest durable knowledge from the turns being archived into long-term storage, so it survives
+     * summary compression and stays recallable via search_knowledge. One conservative extraction pass
+     * routes to BOTH stores: atomic personal facts → the memory book (deduped by
+     * {@see CoachMemoryBook::remember}); richer, multi-part narrative → wiki pages via the Brain
+     * {@see \App\Services\Brain\KnowledgeIngestor}, which merges into existing pages (never duplicates)
+     * and re-embeds. Best-effort + off the request path (the compaction job) — a failure never blocks
+     * compaction; cheap model; idempotent.
      *
      * @param  \Illuminate\Support\Collection<int,ChatMessage>  $fold
      */
-    private function consolidateMemory(Conversation $conversation, $fold): void
+    private function consolidateKnowledge(Conversation $conversation, $fold): void
     {
         if (! class_exists(\App\Models\CoachMemory::class) || ! class_exists(\App\Support\CoachMemoryBook::class)) {
             return;
@@ -329,9 +332,14 @@ class CoachService
 
         try {
             $out = $this->ai->json([
-                ['role' => 'system', 'content' => 'You are consolidating a health-coaching conversation into long-term memory just BEFORE these older turns get archived. Extract ONLY durable, personal facts worth remembering for months: injuries/limitations, equipment/access, schedule/availability, food likes/dislikes/allergies, loved/hated exercises, what has worked for them, firm commitments, key decisions, and standing goals/targets. IGNORE one-off numbers, day-to-day logs, small talk, and anything transient. Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content":"short specific fact in third person","importance":1-3}]}. Be conservative — only high-signal facts, or an empty list.'],
+                ['role' => 'system', 'content' => 'You are consolidating a health-coaching conversation into long-term storage just BEFORE these older turns get archived. Split what is worth keeping into two buckets and IGNORE one-off numbers, day-to-day logs, small talk, and anything transient.
+
+1) "facts": ATOMIC durable personal facts worth remembering for months — injuries/limitations, equipment/access, schedule/availability, food likes/dislikes/allergies, loved/hated exercises, what has worked, firm commitments, key decisions, standing goals/targets. Each is one short sentence.
+2) "wiki": RICHER, multi-part knowledge that deserves a persistent reference PAGE — an evolving training or nutrition plan, a health/medical history, lab or doctor\'s notes, a named entity (their gym/home-gym setup, a coach/PT, a race they\'re training for), or a concept they\'re working through. Write it as organised prose with clear topic headings (markdown ok). Empty string if nothing qualifies.
+
+Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content":"short specific fact in third person","importance":1-3}],"wiki":"..."}. Be conservative in BOTH — high-signal only.'],
                 ['role' => 'user', 'content' => "Conversation turns being archived:\n\n".$transcript],
-            ], ['model' => config('services.openai.fast_model'), 'temperature' => 0.2, 'max_tokens' => 500]);
+            ], ['model' => config('services.openai.fast_model'), 'temperature' => 0.2, 'max_tokens' => 900]);
 
             foreach (($out['facts'] ?? []) as $f) {
                 if (! is_array($f)) {
@@ -345,8 +353,20 @@ class CoachService
                 $importance = max(1, min(3, (int) ($f['importance'] ?? 2)));
                 \App\Support\CoachMemoryBook::remember($profile, $cat, $content, $importance, 'compaction');
             }
+
+            // Richer narrative → the wiki. The ingestor organises the dump into create/merged pages
+            // (matching existing ones by slug) and re-embeds them, so a page like "Training history"
+            // accumulates rather than spawning duplicates.
+            $wiki = trim((string) ($out['wiki'] ?? ''));
+            if ($wiki !== '' && $profile->user !== null && class_exists(\App\Services\Brain\KnowledgeIngestor::class)) {
+                try {
+                    app(\App\Services\Brain\KnowledgeIngestor::class)->ingest($profile, $profile->user, $wiki);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('[coach] wiki consolidation failed', ['conversation' => $conversation->id, 'error' => $e->getMessage()]);
+                }
+            }
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('[coach] memory consolidation failed', ['conversation' => $conversation->id, 'error' => $e->getMessage()]);
+            \Illuminate\Support\Facades\Log::warning('[coach] knowledge consolidation failed', ['conversation' => $conversation->id, 'error' => $e->getMessage()]);
         }
     }
 

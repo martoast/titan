@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Profile;
 use App\Models\User;
 use App\Services\Ai\AiService;
+use App\Services\Brain\KnowledgeIngestor;
 use App\Services\Coach\CoachService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
@@ -135,6 +137,39 @@ class ChatPaginationCompactionTest extends TestCase
         $this->assertContains('Left shoulder impingement — avoid overhead press', $mems);
         $this->assertNotContains('should be dropped', $mems);        // invalid category rejected
         $this->assertNotNull($convo->refresh()->summary);            // summary still produced
+    }
+
+    public function test_compaction_routes_richer_knowledge_into_wiki_pages(): void
+    {
+        // Narrative, multi-part knowledge is routed to the wiki via the Brain ingestor (which
+        // merges into existing pages), not just the atomic memory book.
+        $ai = Mockery::mock(AiService::class);
+        $ai->shouldReceive('configured')->andReturn(true);
+        $ai->shouldReceive('chatWithTools')->andReturn('Noted.');
+        $ai->shouldReceive('json')->andReturn([
+            'facts' => [],
+            'wiki' => "## Training plan\nUpper/lower split, 4×/week, progressive overload on the main lifts.",
+        ]);
+        $ai->shouldReceive('chat')->andReturn('SUMMARY: planning training.');
+        $this->app->instance(AiService::class, $ai);
+
+        // The ingestor is called with the wiki dump → verified by the ->once() expectation at close().
+        $ingestor = Mockery::mock(KnowledgeIngestor::class);
+        $ingestor->shouldReceive('ingest')->once()
+            ->with(Mockery::type(Profile::class), Mockery::type(User::class), Mockery::pattern('/Training plan/'))
+            ->andReturn(['created' => [], 'updated' => [], 'message' => 'ok']);
+        $this->app->instance(KnowledgeIngestor::class, $ingestor);
+
+        $u = User::factory()->create();
+        $p = $u->ensureProfile();
+        $convo = $p->conversations()->create(['title' => 'Plan chat']);
+        foreach (range(1, 30) as $i) {
+            $convo->messages()->create(['role' => $i % 2 ? 'user' : 'assistant', 'content' => "old msg {$i}"]);
+        }
+
+        app(CoachService::class)->reply($convo->refresh(), $p, 'one more thing');
+
+        $this->assertNotNull($convo->refresh()->summary);   // summary still produced alongside the wiki route
     }
 
     protected function tearDown(): void
