@@ -181,18 +181,27 @@ struct RunDetailView: View {
         if hasMap {
             ZStack(alignment: .bottomLeading) {
                 RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card)
-                if let urlStr = detail?.map_url_large ?? fallback.map_thumb_url, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFill()
-                        case .failure: mapPlaceholder
-                        default: Shimmer()
+                // The map MUST be width-constrained + clipped: a scaledToFill AsyncImage otherwise reports
+                // the source Mapbox image's full intrinsic width, ballooning this ZStack far past the screen
+                // and dragging the whole scroll content wide with it (the "zoomed-in, left-cut-off" bug).
+                Group {
+                    if let urlStr = detail?.map_url_large ?? fallback.map_thumb_url, let url = URL(string: urlStr) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let img): img.resizable().scaledToFill()
+                            case .failure: mapPlaceholder
+                            default: Shimmer()
+                            }
                         }
                     }
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: 260)
+                .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
                 heroStats(onMap: true).padding(Theme.Space.m)
             }
+            .frame(maxWidth: .infinity)
             .frame(height: 260).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
         } else if loading {
