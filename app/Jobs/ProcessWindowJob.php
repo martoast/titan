@@ -149,15 +149,28 @@ class ProcessWindowJob implements ShouldQueue
         }
 
         if (! ($metrics['valid'] ?? true)) {
-            // Invalid for HRV (no IBI persisted → excluded from the RMSSD aggregate), but its
-            // epoch features still matter for SLEEP: a motion-rejected window is usually a
-            // wake/arousal period, so its high motion must reach the staging pass.
+            // A window can be perfectly CLEAN yet fail the standalone-valid gate purely because it's
+            // too SHORT: the band's overnight sleep captures ~30 s HRV bursts (~28 beats), well under
+            // the 60-beat validity floor, but the IBI is good. Persist that IBI (tagged aggregate-only,
+            // so a single burst never becomes a standalone recovery row) so SealNightJob can concatenate
+            // the WHOLE night — hundreds of beats across bursts — into one valid recovery read. Without
+            // this, every burst was dropped and a night of sleep produced NO recovery score at all.
+            // A genuinely dirty (motion/artifact) window contributes only its epoch features for sleep
+            // staging, as before.
+            $artifactPct = $metrics['artifact_pct'] ?? null;
+            $cleanIbi = $result['ibi_ms'] ?? null;
+            $cleanShort = is_array($cleanIbi) && count($cleanIbi) >= 3
+                && is_numeric($artifactPct) && (float) $artifactPct <= 5.0; // == hrv.py MAX_ARTIFACT_PCT
+
             $ingestion->update([
                 'status' => DeviceIngestion::STATUS_PROCESSED,
                 'algo_version' => $algoVersion,
                 'result_refs' => array_filter([
-                    'skipped' => 'invalid_signal',
-                    'artifact_pct' => $metrics['artifact_pct'] ?? null,
+                    'skipped' => $cleanShort ? 'short_window_aggregate_only' : 'invalid_signal',
+                    'ibi_ms' => $cleanShort ? $result['ibi_ms'] : null,
+                    'rmssd' => $cleanShort ? ($metrics['rmssd'] ?? null) : null,
+                    'resp_rate' => $cleanShort ? ($metrics['resp_rate'] ?? null) : null,
+                    'artifact_pct' => $artifactPct,
                     'epoch_hr' => $result['epoch_hr'] ?? null,
                     'epoch_motion' => $result['epoch_motion'] ?? null,
                     'epoch_rmssd' => $result['epoch_rmssd'] ?? null,

@@ -322,8 +322,12 @@ class SealActivityJob implements ShouldQueue
         $activityType = $sess['activity_type'] ?? null;
         if ($liftHint) {
             $activityType = 'strength';
-        } elseif ($runHint && ! in_array($activityType, $cardioTypes, true)) {
-            $activityType = $kindHint === 'walk' ? 'walk' : 'run';
+        } elseif ($runHint) {
+            // The user EXPLICITLY chose this cardio type on the watch (tapped Run, or coach-primed a
+            // walk/hike/cycle). That choice is authoritative over the accel classifier — which readily
+            // mislabels a treadmill/road run as 'stairs' or 'walk'. Honor the exact kind (was: only
+            // overriding a NON-cardio guess, so a wrong 'stairs'/'walk' classification silently stuck).
+            $activityType = in_array($kindHint, ['run', 'walk', 'hike', 'cycle'], true) ? $kindHint : 'run';
         }
 
         $fitness = $biosignal->processFitness(array_filter([
