@@ -38,6 +38,7 @@ struct FuelSection: View {
             .buttonStyle(PressCard())
             .disabled(model.scanning)
 
+            yourMealsCard
             macrosCard
             HydrationCard()
             FastingCard()
@@ -45,6 +46,36 @@ struct FuelSection: View {
         }
         .task { await model.loadNutrition() }
         .sheet(item: $editing) { EditMealSheet(meal: $0) }
+    }
+
+    /// "Your meals" — the dishes you eat, remembered. One tap re-logs a usual (no camera, no AI):
+    /// the photo + macros are already saved. A horizontal shelf so your staples are always one reach away.
+    @ViewBuilder private var yourMealsCard: some View {
+        if !model.mealLibrary.isEmpty {
+            GlassCard {
+                VStack(alignment: .leading, spacing: Theme.Space.s) {
+                    SectionHeader(title: "Your meals", trailing: "tap to log")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Space.s) {
+                            ForEach(model.mealLibrary) { t in
+                                YourMealCard(template: t, busy: model.relogging == t.id) {
+                                    Task { await model.relogMeal(t) }
+                                }
+                                .contextMenu {
+                                    Button { Task { await model.relogMeal(t, portion: 1.5) } } label: { Label("Log 1.5×", systemImage: "plus.circle") }
+                                    Button { Task { await model.relogMeal(t, portion: 0.5) } } label: { Label("Log ½×", systemImage: "minus.circle") }
+                                    Button { Task { await model.toggleFavoriteMeal(t) } } label: {
+                                        Label(t.favorite ? "Unfavorite" : "Favorite", systemImage: t.favorite ? "star.slash" : "star")
+                                    }
+                                    Button(role: .destructive) { Task { await model.forgetMeal(t) } } label: { Label("Forget", systemImage: "trash") }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 2).padding(.bottom, 2)
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder private var macrosCard: some View {
@@ -107,6 +138,52 @@ struct FuelSection: View {
         }
         .padding(.vertical, 10)
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Your meals (one-tap re-log)
+
+/// A compact card in the "Your meals" shelf: the saved photo, name, and macros. Tapping logs it again
+/// (one tap → today's meals + rings), with a subtle busy state while it lands.
+private struct YourMealCard: View {
+    let template: MealTemplate
+    let busy: Bool
+    let onLog: () -> Void
+
+    var body: some View {
+        Button { Haptic.tap(); onLog() } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack(alignment: .topTrailing) {
+                    RemoteImage(url: template.photo_url)
+                        .frame(width: 132, height: 84).clipped()
+                    if template.favorite {
+                        Image(systemName: "star.fill").font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Theme.Palette.amber).padding(5)
+                            .background(.ultraThinMaterial, in: Circle()).padding(6)
+                    }
+                    // The affordance: a + badge (or spinner) that reads "add this".
+                    ZStack {
+                        Circle().fill(Theme.Palette.amber).frame(width: 26, height: 26)
+                        if busy { ProgressView().tint(.black).scaleEffect(0.6) }
+                        else { Image(systemName: "plus").font(.system(size: 13, weight: .black)).foregroundStyle(.black) }
+                    }
+                    .padding(6).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(template.name).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                        .lineLimit(1)
+                    Text("\(template.calories) kcal · \(Int(template.protein_g))P")
+                        .font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(Theme.Palette.textDim)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 7)
+            }
+            .frame(width: 132)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.Palette.card))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(PressCard())
+        .disabled(busy)
     }
 }
 

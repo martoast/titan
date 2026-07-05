@@ -115,6 +115,11 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::post('/meals', [\App\Http\Controllers\Api\MobileNutritionController::class, 'store']);
     Route::patch('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'update']);
     Route::delete('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'destroy']);
+    // Meal memory ("Your meals"): the profile's remembered dishes + one-tap re-log (no camera/AI).
+    Route::get('/meals-library', [\App\Http\Controllers\Api\MobileNutritionController::class, 'library']);
+    Route::post('/meals/relog', [\App\Http\Controllers\Api\MobileNutritionController::class, 'relog']);
+    Route::patch('/meals-library/{template}/favorite', [\App\Http\Controllers\Api\MobileNutritionController::class, 'favoriteTemplate']);
+    Route::delete('/meals-library/{template}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'forgetTemplate']);
 
     // "What you take" — supplements & meds. Today's checklist card + the full protocol +
     // (informational) interaction flags. Same rows the coach's my_stack / log_intake tools read.

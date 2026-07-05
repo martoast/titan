@@ -77,6 +77,12 @@ class Profile extends Model
         return $this->hasMany(Meal::class);
     }
 
+    /** The reusable meal memory — distinct dishes this profile eats, for one-tap re-logging. */
+    public function mealTemplates(): HasMany
+    {
+        return $this->hasMany(MealTemplate::class);
+    }
+
     // --- "What you take" — supplements & medications ---
     public function stackItems(): HasMany
     {

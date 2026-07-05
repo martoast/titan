@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Meal;
+use App\Models\MealTemplate;
 use App\Models\Profile;
 use App\Services\Coach\ScanService;
 use App\Support\Macros;
+use App\Support\MealMemory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,7 +21,7 @@ use Illuminate\Support\Carbon;
  */
 class MobileNutritionController extends Controller
 {
-    public function __construct(protected ScanService $scan) {}
+    public function __construct(protected ScanService $scan, protected MealMemory $memory) {}
 
     /** Today's fuel: the macro-ring card + the meals logged today. */
     public function index(Request $request): JsonResponse
@@ -90,6 +92,64 @@ class MobileNutritionController extends Controller
         return response()->json(['ok' => true, 'macros' => Macros::today($profile)]);
     }
 
+    /** "Your meals" — the profile's memory of dishes it eats, ranked (favorites + recency-weighted). */
+    public function library(Request $request): JsonResponse
+    {
+        $profile = $this->profile($request);
+
+        return response()->json([
+            'meals' => $this->memory->library($profile)->map(fn (MealTemplate $t) => $this->templateJson($t))->values(),
+        ]);
+    }
+
+    /**
+     * One-tap re-log: log a NEW meal today straight from a remembered one — its saved macros + photo,
+     * no camera and no AI. An optional `portion` multiplier scales it (1.5× a bigger bowl). The new
+     * Meal folds back into the memory (bumps frequency + recency) via Meal::created.
+     */
+    public function relog(Request $request): JsonResponse
+    {
+        $profile = $this->profile($request);
+        $data = $request->validate([
+            'template_id' => ['required', 'integer'],
+            'portion' => ['sometimes', 'numeric', 'min:0.1', 'max:10'],
+        ]);
+        $tpl = $profile->mealTemplates()->findOrFail($data['template_id']);
+        $p = (float) ($data['portion'] ?? 1.0);
+
+        $meal = $profile->meals()->create([
+            'name' => $tpl->name,
+            'eaten_at' => now(),
+            'calories' => (int) round((float) $tpl->calories * $p),
+            'protein_g' => round((float) $tpl->protein_g * $p, 1),
+            'carbs_g' => round((float) $tpl->carbs_g * $p, 1),
+            'fat_g' => round((float) $tpl->fat_g * $p, 1),
+            'photo_path' => $tpl->photo_path,   // reuse the remembered photo (same public file)
+            'source' => 'memory',
+        ]);
+
+        return response()->json(['meal' => $this->mealJson($meal), 'macros' => Macros::today($profile)]);
+    }
+
+    /** Toggle a remembered meal as a favorite (pins it to the top of "your meals"). */
+    public function favoriteTemplate(Request $request, int $template): JsonResponse
+    {
+        $profile = $this->profile($request);
+        $tpl = $profile->mealTemplates()->findOrFail($template);
+        $tpl->update(['favorite' => (bool) $request->boolean('favorite', ! $tpl->favorite)]);
+
+        return response()->json(['template' => $this->templateJson($tpl->fresh())]);
+    }
+
+    /** Forget a remembered meal (removes it from "your meals"; logged meals stay). */
+    public function forgetTemplate(Request $request, int $template): JsonResponse
+    {
+        $profile = $this->profile($request);
+        $profile->mealTemplates()->findOrFail($template)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
     // ----- helpers ----------------------------------------------------------
 
     private function profile(Request $request): Profile
@@ -139,6 +199,23 @@ class MobileNutritionController extends Controller
             'fat_g' => (float) $m->fat_g,
             'photo_url' => $m->photoUrl(),
             'source' => $m->source,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function templateJson(MealTemplate $t): array
+    {
+        return [
+            'id' => $t->id,
+            'name' => $t->name,
+            'calories' => (int) $t->calories,
+            'protein_g' => (float) $t->protein_g,
+            'carbs_g' => (float) $t->carbs_g,
+            'fat_g' => (float) $t->fat_g,
+            'photo_url' => $t->photoUrl(),
+            'times_logged' => (int) $t->times_logged,
+            'last_eaten_at' => $t->last_eaten_at?->toIso8601String(),
+            'favorite' => (bool) $t->favorite,
         ];
     }
 }

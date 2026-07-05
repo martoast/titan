@@ -62,6 +62,8 @@ final class AppModel: ObservableObject {
 
     // Fuel (nutrition + progress)
     @Published var nutrition: NutritionToday?
+    @Published var mealLibrary: [MealTemplate] = []  // "Your meals" — remembered dishes for one-tap re-log
+    @Published var relogging: Int?                   // template id currently being re-logged (row spinner)
     @Published var scanResult: MealScanResult?      // drives the post-scan result sheet
     @Published var scanning = false
     @Published var progressPhotos: [ProgressPhoto] = []
@@ -572,6 +574,33 @@ final class AppModel: ObservableObject {
     func loadNutrition() async {
         do { nutrition = try await api.nutritionToday() }
         catch { if case APIError.unauthorized = error { await logout() } }
+        await loadMealLibrary()
+    }
+
+    /// "Your meals" — the remembered dishes, ranked. Best-effort; a failure just leaves the last list.
+    func loadMealLibrary() async {
+        if let lib = try? await api.mealLibrary() { mealLibrary = lib.meals }
+    }
+
+    /// One-tap re-log a remembered meal (optionally scaled). No camera, no AI — it just lands in today's
+    /// meals and updates the rings. Mirrors the memory back so "your meals" re-ranks immediately.
+    func relogMeal(_ template: MealTemplate, portion: Double = 1.0) async {
+        relogging = template.id; defer { relogging = nil }
+        do {
+            _ = try await api.relogMeal(template.id, portion: portion)
+            Haptic.success()
+            await loadNutrition()
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func toggleFavoriteMeal(_ template: MealTemplate) async {
+        do { _ = try await api.favoriteMealTemplate(template.id, favorite: !template.favorite); await loadMealLibrary() }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    func forgetMeal(_ template: MealTemplate) async {
+        do { try await api.forgetMealTemplate(template.id); await loadMealLibrary() }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
     /// Per-section fetch state, so the UI can show a skeleton on first load and an inline retry on

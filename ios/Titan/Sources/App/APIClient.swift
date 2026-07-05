@@ -191,6 +191,28 @@ final class APIClient {
         try await send(request("api/me/meals/\(id)", method: "DELETE"), as: MacrosOnly.self)
     }
 
+    // MARK: meal memory ("Your meals")
+
+    func mealLibrary() async throws -> MealLibrary {
+        try await send(request("api/me/meals-library"), as: MealLibrary.self)
+    }
+
+    /// Re-log a remembered meal today (no camera/AI). `portion` scales it (1.0 = as saved).
+    func relogMeal(_ templateId: Int, portion: Double = 1.0) async throws -> MealMutation {
+        try await send(request("api/me/meals/relog", method: "POST", json: ["template_id": templateId, "portion": portion]),
+                       as: MealMutation.self)
+    }
+
+    @discardableResult
+    func favoriteMealTemplate(_ id: Int, favorite: Bool) async throws -> MealTemplateMutation {
+        try await send(request("api/me/meals-library/\(id)/favorite", method: "PATCH", json: ["favorite": favorite]),
+                       as: MealTemplateMutation.self)
+    }
+
+    func forgetMealTemplate(_ id: Int) async throws {
+        _ = try await session.data(for: request("api/me/meals-library/\(id)", method: "DELETE"))
+    }
+
     // MARK: Apple Health sync
 
     func healthStatus() async throws -> HealthStatus {

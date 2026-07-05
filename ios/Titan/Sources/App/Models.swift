@@ -349,6 +349,24 @@ struct MealMutation: Codable { let meal: Meal; let macros: MacroCard }
 /// `DELETE /api/me/meals/{id}` → { ok, macros }
 struct MacrosOnly: Codable { let ok: Bool?; let macros: MacroCard }
 
+/// A remembered dish in the user's meal library — re-loggable in one tap (no camera/AI).
+struct MealTemplate: Codable, Identifiable, Equatable {
+    let id: Int
+    let name: String
+    let calories: Int
+    let protein_g: Double
+    let carbs_g: Double
+    let fat_g: Double
+    let photo_url: String?
+    let times_logged: Int
+    let last_eaten_at: String?
+    let favorite: Bool
+}
+/// `GET /api/me/meals-library` → { meals: [...] }
+struct MealLibrary: Codable { let meals: [MealTemplate] }
+/// `PATCH /api/me/meals-library/{id}/favorite` → { template }
+struct MealTemplateMutation: Codable { let template: MealTemplate }
+
 // MARK: - Progress photos
 
 struct ProgressPhotosResponse: Codable { let photos: [ProgressPhoto] }

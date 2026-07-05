@@ -18,7 +18,7 @@ class Meal extends Model
 {
     use HasFactory;
 
-    public const SOURCES = ['photo', 'manual', 'text'];
+    public const SOURCES = ['photo', 'manual', 'text', 'memory'];
 
     protected $fillable = [
         'profile_id', 'eaten_at', 'name', 'photo_path',
@@ -42,8 +42,12 @@ class Meal extends Model
         // decide whether to nudge on protein. afterCommit so it never fires inside a rolled-back
         // test transaction; the job self-gates (once/day, evening-only, behind-pace, opt-in).
         static::created(function (Meal $meal): void {
-            // Skip under tests — meal fixtures shouldn't fire proactive nudges; the job's logic is
-            // covered directly in MealProteinNudgeTest.
+            // Fold every logged meal into the profile's reusable meal memory (one-tap re-log later).
+            // Runs inline (incl. under tests) — it's a cheap deduped upsert, and the feature is tested.
+            app(\App\Support\MealMemory::class)->remember($meal);
+
+            // Skip the proactive protein NUDGE under tests — meal fixtures shouldn't fire it; the job's
+            // logic is covered directly in MealProteinNudgeTest.
             if (app()->runningUnitTests() || ! class_exists(\App\Jobs\ReactToMealLogged::class)) {
                 return;
             }
