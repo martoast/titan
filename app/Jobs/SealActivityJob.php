@@ -47,6 +47,12 @@ class SealActivityJob implements ShouldQueue
     /** Shortest run we bother sealing (filters stray motion blips). */
     public const MIN_SESSION_MIN = 5;
 
+    /** Below this bounding-box span (metres) a GPS "run" never really left one spot — a drift candidate. */
+    public const MIN_RUN_SPAN_M = 150;
+
+    /** …and it's only drift if the claimed path is at least this many times that tiny span (scribble). */
+    public const DRIFT_PATH_RATIO = 3.0;
+
     /** Most raw-PPG windows to pull when recomputing in-motion HR (caps work on a long session). */
     public const MAX_PPG_WINDOWS = 240;
 
@@ -388,6 +394,24 @@ class SealActivityJob implements ShouldQueue
             }
         }
 
+        // Reject a PHANTOM run: GPS drift while you stood still (tapped Run, then didn't move) scribbles
+        // a long "path" that never leaves a small box — a real run always covers ground. If the whole
+        // track fits inside a ~tennis-court box yet claims several times that box in distance, it's
+        // jitter, not a run: seal the windows (so they don't re-process) but write NO session. Only for
+        // GPS cardio — a step-estimated indoor run has no track and is handled by the duration floor.
+        if (! $liftHint && $distanceSource === 'gps') {
+            // Both measured from the RAW track geometry (never a computed/mocked distance), so the signal
+            // is self-consistent: a scribble walks a long path inside a tiny box; a real run — even a loop —
+            // leaves the box, and a real short run is a straight-ish line whose path ≈ its span.
+            [$span, $pathM] = $this->trackGeometryMeters($track);
+            if ($span < self::MIN_RUN_SPAN_M && $pathM > self::DRIFT_PATH_RATIO * max(1.0, $span)) {
+                Log::info('[Seal] dropped phantom GPS-drift run', ['profile_id' => $profile->id, 'span_m' => round($span), 'path_m' => round($pathM)]);
+                $session->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
+
+                return;
+            }
+        }
+
         $log = ActivitySession::updateOrCreate(
             ['profile_id' => $profile->id, 'started_at' => $startIso ? CarbonImmutable::parse($startIso) : now()],
             array_filter([
@@ -514,6 +538,47 @@ class SealActivityJob implements ShouldQueue
         }
 
         return ($res['valid'] ?? false) ? $res : [];
+    }
+
+    /**
+     * A GPS track's geometry, in metres: [bounding-box diagonal (spatial EXTENT), total PATH length].
+     * A real run covers ground so its extent is large; GPS jitter while standing still stays inside a
+     * few dozen metres while its path (sum of jittery hops) can still be long. Both are measured from the
+     * raw points so the drift test is self-consistent. Equirectangular approximation — plenty accurate at
+     * the scale of one workout.
+     *
+     * @param  array<int,array<string,mixed>>  $track
+     * @return array{0:float,1:float}  [spanMeters, pathMeters]
+     */
+    private function trackGeometryMeters(array $track): array
+    {
+        $pts = [];
+        foreach ($track as $pt) {
+            if (isset($pt['lat'], $pt['lon']) && is_numeric($pt['lat']) && is_numeric($pt['lon'])) {
+                $pts[] = [(float) $pt['lat'], (float) $pt['lon']];
+            }
+        }
+        if (count($pts) < 2) {
+            return [0.0, 0.0];
+        }
+
+        $lats = array_column($pts, 0);
+        $lons = array_column($pts, 1);
+        $mPerLat = 111_320.0;
+        $mPerLon = 111_320.0 * cos(deg2rad(array_sum($lats) / count($lats)));
+
+        $latSpan = (max($lats) - min($lats)) * $mPerLat;
+        $lonSpan = (max($lons) - min($lons)) * $mPerLon;
+        $span = sqrt($latSpan * $latSpan + $lonSpan * $lonSpan);
+
+        $path = 0.0;
+        for ($i = 1, $n = count($pts); $i < $n; $i++) {
+            $dLat = ($pts[$i][0] - $pts[$i - 1][0]) * $mPerLat;
+            $dLon = ($pts[$i][1] - $pts[$i - 1][1]) * $mPerLon;
+            $path += sqrt($dLat * $dLat + $dLon * $dLon);
+        }
+
+        return [$span, $path];
     }
 
     /** The 10 MM-Fit exercises → catalog metadata (muscle group / category / equipment / label). */

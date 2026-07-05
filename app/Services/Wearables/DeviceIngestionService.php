@@ -145,6 +145,7 @@ class DeviceIngestionService
         $kind = (string) ($window['kind'] ?? 'ibi');
         $start = isset($window['start']) ? CarbonImmutable::parse($window['start']) : now()->toImmutable();
         $end = isset($window['end']) ? CarbonImmutable::parse($window['end']) : $start;
+        [$start, $end] = $this->reanchorIfClockBad($start, $end);
         $date = $end->setTimezone($tz)->toDateString();
 
         // raw/{profile}/{yyyy-mm-dd}/{batch_uid}.ndjson.gz -- one window per line.
@@ -167,6 +168,46 @@ class DeviceIngestionService
         ProcessWindowJob::dispatch($windowUid);
 
         return $ingestion;
+    }
+
+    /** The lower bound of a plausible Titan timestamp — anything older is an un-synced band clock. */
+    private const CLOCK_FLOOR = '2020-01-01T00:00:00Z';
+    /** Grace for a band clock running slightly ahead of the phone before we call it broken. */
+    private const CLOCK_AHEAD_TOLERANCE_SEC = 7200; // 2h
+    /** Cap for a re-anchored window's span so a corrupt duration can't invent a huge session. */
+    private const REANCHOR_MAX_SPAN_SEC = 21600; // 6h
+
+    /**
+     * Guard against a broken band clock. After a dead-battery reboot or a fresh reflash the band's RTC
+     * is un-synced until the phone's `C2:` time-sync lands, so any frame recorded before that carries a
+     * ~1970 epoch (or, if the clock ran ahead, a future time). Left as-is those timestamps MISFILE the
+     * session — buried in 1970 (so an older correctly-clocked run shows as "newest"), parked at the top
+     * of the list, or worse, SPLIT one real run into two rows (a 1970 cluster + a correctly-clocked
+     * cluster > SESSION_GAP_MINUTES "apart"). A real Titan window is always a recent, non-future time;
+     * anything outside that band is a bad clock, so we re-anchor it to the upload time (the batch arrives
+     * right after the frames), preserving the window's OWN duration so the run keeps its true length +
+     * route. Correctly-clocked live runs and genuinely-old offline runs (a real 2024+ time, not in the
+     * future) fall inside the band and are never touched.
+     *
+     * @return array{0:CarbonImmutable,1:CarbonImmutable}
+     */
+    private function reanchorIfClockBad(CarbonImmutable $start, CarbonImmutable $end): array
+    {
+        $floor = CarbonImmutable::parse(self::CLOCK_FLOOR);
+        $now = now()->toImmutable();
+        $ahead = $now->addSeconds(self::CLOCK_AHEAD_TOLERANCE_SEC);
+
+        $bad = $start->lessThan($floor) || $start->greaterThan($ahead)
+            || $end->lessThan($floor) || $end->greaterThan($ahead);
+        if (! $bad) {
+            return [$start, $end];
+        }
+
+        // Keep the window's real span (clamped), and hang it off the upload time.
+        $span = $start->lessThanOrEqualTo($end) ? abs($start->diffInSeconds($end)) : 0;
+        $span = min($span, self::REANCHOR_MAX_SPAN_SEC);
+
+        return [$now->subSeconds($span), $now];
     }
 
     /**
