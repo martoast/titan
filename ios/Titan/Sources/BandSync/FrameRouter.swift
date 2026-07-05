@@ -194,12 +194,20 @@ public final class FrameRouter {
         if let w = wa.flush(ended: true) { submit(.workout(w)) }
     }
 
+    /// While a live run is in progress, keep the workout assembler OPEN across a BLE disconnect: a
+    /// transient blip resumes the same window on reconnect, and a DURABLE drop is sealed as `ended` by
+    /// AppModel's disconnect-confirm (which the watch's drop-at-end otherwise left hanging forever —
+    /// no summary, no save). Set from AppModel.runActive. When true, flush(live:) leaves `wa` untouched.
+    public var deferWorkoutFlush = false
+
     /// On disconnect / app suspend: flush trailing partial windows so nothing is lost.
     public func flush(live: Bool) {
         for w in ppg.flush(live: live) { submit(.ppg(w)) }
         for w in ppgLog.flush(live: live) { submit(.ppg(w)) }
-        if let w = wa.flush() { submit(.workout(w)) }
-        if let w = waLog.flush() { submit(.workout(w)) }
+        if !deferWorkoutFlush {                 // (see deferWorkoutFlush) — don't drain a live run's window
+            if let w = wa.flush() { submit(.workout(w)) }
+        }
+        if let w = waLog.flush() { submit(.workout(w)) }   // backlog is independent of the live run
         if let w = hrTrend.flush() { submit(.hrTrend(w)) }
         // On a real disconnect, drop any half-received frame — the firmware re-flushes from scratch on
         // reconnect, so stale partial bytes would otherwise corrupt the first frame of the new stream.

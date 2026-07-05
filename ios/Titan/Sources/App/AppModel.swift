@@ -425,7 +425,10 @@ final class AppModel: ObservableObject {
         // The watch finished the workout → end + seal it on the app, deterministically (no sport-tag guessing).
         router.onWorkoutEnd = { [weak self] in Task { @MainActor in self?.endRun(notifyBand: false) } }
         let band = BandManager(router: router)
-        band.onConnectionChange = { [weak self] up in Task { @MainActor in self?.bandConnected = up } }
+        band.onConnectionChange = { [weak self] up in Task { @MainActor in
+            self?.bandConnected = up
+            self?.handleBandConnectionChange(up)
+        } }
         band.onBattery = { [weak self] pct in Task { @MainActor in self?.bandBattery = pct } }
         band.onPaired = { [weak self] ok in
             Task { @MainActor in
@@ -795,6 +798,7 @@ final class AppModel: ObservableObject {
     private var suppressAutoStartUntil: Date?      // after an end, ignore the band's lingering sport tag this long
     private static let endRestartGraceSec: TimeInterval = 12   // how long to suppress auto-restart after an end
     private var runTicker: Task<Void, Never>?
+    private var disconnectConfirmTask: Task<Void, Never>?   // durable-drop → end-the-run confirm (Fix B)
     private let runEndGapSec: TimeInterval = 90    // fallback only: frames stop entirely (disconnect) this long ⇒ end
 
     var runHasGps: Bool { !runTrack.isEmpty }
@@ -933,9 +937,30 @@ final class AppModel: ObservableObject {
         updateLocator()   // start/stop phone GPS to match (no GPS for a lift)
     }
 
+    /// The band's BLE link changed. A DURABLE drop while a run is live means the watch almost
+    /// certainly finished (you racked the weight / walked off) and its TA:end / sport→0 frames never
+    /// arrived — which used to leave the run hanging live forever: no summary, no seal. So we confirm
+    /// the drop is durable (a transient blip auto-reconnects and cancels this) and then end for real.
+    /// The workout window is kept open across the drop (router.deferWorkoutFlush) so this seals it
+    /// with `ended`. Reproduced + verified in the watch simulator (firmware/sim, "drop-at-end").
+    private func handleBandConnectionChange(_ up: Bool) {
+        if up {
+            disconnectConfirmTask?.cancel(); disconnectConfirmTask = nil   // reconnected → transient blip
+            return
+        }
+        guard runActive else { return }
+        disconnectConfirmTask?.cancel()
+        disconnectConfirmTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            if !self.bandConnected && self.runActive { self.endRun(notifyBand: false) }
+        }
+    }
+
     private func startRunIfNeeded() {
         guard !runActive else { return }
         runActive = true
+        router?.deferWorkoutFlush = true      // keep the workout window open across a BLE blip / drop
         runStartedAt = Date(); runLastSignal = Date()
         runDistanceKm = 0; runElapsedSec = 0; runPaceSecPerKm = 0
         runLastLat = nil; runLastLon = nil; runLastFixAt = nil; runTrack = []; runMaxBpm = 0; runLiveBpm = nil
@@ -975,6 +1000,8 @@ final class AppModel: ObservableObject {
         // no live sheet, and on end `guard runActive` no-op'd → no summary AND no instant seal. This
         // one line is what made every workout after the first watch-ended one silently do nothing.
         lastSportWas1 = false
+        router?.deferWorkoutFlush = false                 // run's over — normal disconnect flushing resumes
+        disconnectConfirmTask?.cancel(); disconnectConfirmTask = nil
         // Block the band's lingering/flickering sport tag from instantly re-popping the run (the end loop).
         suppressAutoStartUntil = Date().addingTimeInterval(Self.endRestartGraceSec)
         runTicker?.cancel(); runTicker = nil
