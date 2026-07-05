@@ -12,12 +12,13 @@ struct FuelSection: View {
     @State private var editing: Meal?
     @State private var showScanner = false
     @State private var scannerUnavailable = false
+    @State private var staged: StagedMealPhoto?
     @AppStorage("barcodeScanEnabled") private var barcodeEnabled = true
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
-            // Hero: snap a meal.
-            PhotoSourceButton(onImage: { data in Task { await model.scanMeal(data) } }) {
+            // Hero: snap a meal, then tell the AI what it is (a note makes the macros far more accurate).
+            PhotoSourceButton(onImage: { data in staged = StagedMealPhoto(data: data) }) {
                 GlassCard(padding: Theme.Space.l) {
                     HStack(spacing: Theme.Space.m) {
                         ZStack {
@@ -29,7 +30,7 @@ struct FuelSection: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(model.scanning ? "Reading your plate…" : "Snap a meal")
                                 .font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
-                            Text(model.scanning ? "Estimating macros with AI" : "Photo → instant macros, logged for your coach")
+                            Text(model.scanning ? "Estimating macros with AI" : "Snap it, tell me what it is → accurate macros")
                                 .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                         }
                         Spacer()
@@ -50,6 +51,9 @@ struct FuelSection: View {
         }
         .task { await model.loadNutrition() }
         .sheet(item: $editing) { EditMealSheet(meal: $0) }
+        .sheet(item: $staged) { s in
+            MealCaptionSheet(photo: s.data) { caption in Task { await model.scanMeal(s.data, caption: caption) } }
+        }
         .fullScreenCover(isPresented: $showScanner) {
             BarcodeScannerView { code in Task { await model.scanBarcode(code) } }
         }
@@ -248,6 +252,68 @@ private struct MacroRing: View {
         .frame(maxWidth: .infinity)
         .onAppear { withAnimation(Theme.Motion.ring) { progress = CGFloat(line.fraction) } }
         .onChange(of: line) { _, l in withAnimation(Theme.Motion.ring) { progress = CGFloat(l.fraction) } }
+    }
+}
+
+// MARK: - Snap → "what is this?" → analyze
+
+/// A photo staged from the camera/library, waiting for the user to say what it is before we analyze it.
+struct StagedMealPhoto: Identifiable { let id = UUID(); let data: Data }
+
+/// The quick note step: after snapping, the user tells the AI what the food is (and rough portion). This
+/// rides along as the caption — it sharpens the vision read, the your-usuals match, and the grounding, so
+/// the macros come out far more accurate. The note is optional (Analyze works without it).
+struct MealCaptionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let photo: Data
+    let onAnalyze: (String?) -> Void
+    @State private var caption = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: Theme.Space.m) {
+                        if let ui = UIImage(data: photo) {
+                            Image(uiImage: ui).resizable().scaledToFill()
+                                .frame(maxWidth: .infinity).frame(height: 220).clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("What is this?").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                            Text("A quick note makes the macros far more accurate — the dish, brand, and rough amount.")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+
+                        TextField("e.g. grilled chicken & rice, ~200g chicken", text: $caption, axis: .vertical)
+                            .lineLimit(1...4)
+                            .font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            .padding(Theme.Space.m)
+                            .background(RoundedRectangle(cornerRadius: Theme.Radius.chip).fill(Theme.Palette.card))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+                            .focused($focused)
+
+                        Button {
+                            let note = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                            onAnalyze(note.isEmpty ? nil : note)
+                            dismiss()
+                        } label: {
+                            Text(caption.trimmingCharacters(in: .whitespaces).isEmpty ? "Analyze photo" : "Analyze with note")
+                                .font(Theme.Font.body.weight(.bold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(Theme.Palette.amber, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                                .foregroundStyle(.black)
+                        }
+                    }.padding(Theme.Space.m)
+                }
+            }
+            .navigationTitle("New meal").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { focused = true } }
+        }
     }
 }
 
