@@ -95,67 +95,6 @@ struct DashboardView: View {
                 }
             }.buttonStyle(PressCard())
 
-            // Live steps from the iPhone (instant, no permission) + connect Apple Health for the rest
-            LiveStepsCard()
-            HealthConnectCard()
-
-            // For You — the ranked insight feed (anomalies, goal progress, wins, behavior correlations)
-            if !model.insights.isEmpty {
-                VStack(spacing: Theme.Space.s) {
-                    HStack { Text("FOR YOU").font(Theme.Font.label).tracking(1.2).foregroundStyle(Theme.Palette.textDim); Spacer() }
-                    ForEach(model.insights) { InsightCard(insight: $0) }
-                }
-            }
-
-            // Log your day → feeds the correlation engine
-            Button { Haptic.tap(); showJournal = true } label: {
-                GlassCard {
-                    HStack(spacing: Theme.Space.m) {
-                        ZStack {
-                            Circle().fill(Theme.Palette.violet.opacity(0.16)).frame(width: 40, height: 40)
-                            Image(systemName: "square.and.pencil").foregroundStyle(Theme.Palette.violet).font(.system(size: 17, weight: .semibold))
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Log your day").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                            Text(model.journalLogged.isEmpty
-                                 ? "Alcohol, caffeine, stress… learn what moves your recovery"
-                                 : "\(model.journalLogged.count) logged today")
-                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
-                    }
-                }
-            }
-            .buttonStyle(PressCard())
-            .sheet(isPresented: $showJournal) { JournalSheet() }
-
-            // Biological Age — the hero "how old is your body" stat
-            if let b = d?.bio_age, let age = b.biological_age {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: Theme.Space.s) {
-                        SectionHeader(title: "Biological Age", trailing: b.confidence.map { "\($0.capitalized) confidence" })
-                        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
-                            Text(String(format: "%.0f", age))
-                                .font(Theme.Font.num(68))
-                                .foregroundStyle(Theme.Grad.brand)
-                            VStack(alignment: .leading, spacing: 6) {
-                                if let delta = b.delta { deltaBadge(delta) }
-                                if let chrono = b.chronological_age {
-                                    Text("Your real age is \(Int(chrono.rounded()))")
-                                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                                }
-                            }
-                            Spacer()
-                        }
-                        if let fit = b.fitness_age {
-                            Label("Fitness age \(Int(fit.rounded())) · from VO₂max", systemImage: "figure.run")
-                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-                        }
-                    }
-                }
-            }
-
             // Recovery vitals
             NavigationLink { RecoveryView() } label: {
                 GlassCard {
@@ -247,6 +186,69 @@ struct DashboardView: View {
                     }
                 }.buttonStyle(PressCard())
             }
+
+            // ── Below the pillars: the marquee stat, your feed, and inputs ──────────────────────
+
+            // Biological Age — the "how old is your body" stat
+            if let b = d?.bio_age, let age = b.biological_age {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        SectionHeader(title: "Biological Age", trailing: b.confidence.map { "\($0.capitalized) confidence" })
+                        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
+                            Text(String(format: "%.0f", age))
+                                .font(Theme.Font.num(68))
+                                .foregroundStyle(Theme.Grad.brand)
+                            VStack(alignment: .leading, spacing: 6) {
+                                if let delta = b.delta { deltaBadge(delta) }
+                                if let chrono = b.chronological_age {
+                                    Text("Your real age is \(Int(chrono.rounded()))")
+                                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                }
+                            }
+                            Spacer()
+                        }
+                        if let fit = b.fitness_age {
+                            Label("Fitness age \(Int(fit.rounded())) · from VO₂max", systemImage: "figure.run")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        }
+                    }
+                }
+            }
+
+            // For You — the ranked insight feed (anomalies, goal progress, wins, behavior correlations)
+            if !model.insights.isEmpty {
+                VStack(spacing: Theme.Space.s) {
+                    HStack { Text("FOR YOU").font(Theme.Font.label).tracking(1.2).foregroundStyle(Theme.Palette.textDim); Spacer() }
+                    ForEach(model.insights) { InsightCard(insight: $0) }
+                }
+            }
+
+            // Log your day → feeds the correlation engine
+            Button { Haptic.tap(); showJournal = true } label: {
+                GlassCard {
+                    HStack(spacing: Theme.Space.m) {
+                        ZStack {
+                            Circle().fill(Theme.Palette.violet.opacity(0.16)).frame(width: 40, height: 40)
+                            Image(systemName: "square.and.pencil").foregroundStyle(Theme.Palette.violet).font(.system(size: 17, weight: .semibold))
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Log your day").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            Text(model.journalLogged.isEmpty
+                                 ? "Alcohol, caffeine, stress… learn what moves your recovery"
+                                 : "\(model.journalLogged.count) logged today")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
+            }
+            .buttonStyle(PressCard())
+            .sheet(isPresented: $showJournal) { JournalSheet() }
+
+            // Steps from the iPhone (instant, no permission) + connect Apple Health for the rest
+            LiveStepsCard()
+            HealthConnectCard()
 
             Color.clear.frame(height: 8)
         }
