@@ -112,6 +112,7 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
 
     Route::get('/nutrition', [\App\Http\Controllers\Api\MobileNutritionController::class, 'index']);
     Route::post('/nutrition/scan', [\App\Http\Controllers\Api\MobileNutritionController::class, 'scan']);
+    Route::post('/nutrition/barcode', [\App\Http\Controllers\Api\MobileNutritionController::class, 'barcode']);
     Route::post('/meals/confirm', [\App\Http\Controllers\Api\MobileNutritionController::class, 'confirm']);
     Route::post('/meals', [\App\Http\Controllers\Api\MobileNutritionController::class, 'store']);
     Route::patch('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'update']);

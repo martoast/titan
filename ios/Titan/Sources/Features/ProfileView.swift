@@ -7,6 +7,7 @@ struct ProfileView: View {
     @State private var showEditProfile = false
     @State private var showBody = false
     @State private var showCommunity = false
+    @AppStorage("barcodeScanEnabled") private var barcodeEnabled = true
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -84,6 +85,19 @@ struct ProfileView: View {
             .buttonStyle(PressCard())
             .sheet(isPresented: $showCommunity) { CommunitySettingsView() }
             .task { await model.loadCommunitySettings() }
+
+            GlassCard {
+                Toggle(isOn: $barcodeEnabled) {
+                    HStack(spacing: Theme.Space.s) {
+                        Image(systemName: "barcode.viewfinder").foregroundStyle(Theme.Palette.cyan)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Barcode scanning").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            Text("Scan packaged food for exact macros").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                    }
+                }
+                .tint(Theme.Palette.cyan)
+            }
 
             #if DEBUG
             Button { Haptic.tap(); model.simulateLiveRun() } label: {

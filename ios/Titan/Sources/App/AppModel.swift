@@ -668,6 +668,16 @@ final class AppModel: ObservableObject {
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
+    /// A scanned barcode → look the product up (Open Food Facts, cached) → show the confirm draft (or a
+    /// not-found message) through the SAME result sheet as a photo scan.
+    func scanBarcode(_ code: String) async {
+        scanning = true; defer { scanning = false }
+        do {
+            scanResult = try await api.scanBarcode(code)
+            await loadNutrition()
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
     /// Confirm a scanned meal draft (with the amount the user set) → log it, close the sheet, refresh.
     func confirmScannedMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, photoPath: String?) async {
         do {

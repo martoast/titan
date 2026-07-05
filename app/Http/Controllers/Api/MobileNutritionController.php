@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BrandedFood;
+use App\Models\FoodFact;
 use App\Models\Meal;
 use App\Models\MealTemplate;
 use App\Models\Profile;
 use App\Services\Coach\ScanService;
+use App\Services\Nutrition\OpenFoodFacts;
 use App\Support\Macros;
 use App\Support\MealMemory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * Native-app nutrition surface (the "Fuel" tab). Same engine the coach/web use — a meal photo runs
@@ -21,7 +25,7 @@ use Illuminate\Support\Carbon;
  */
 class MobileNutritionController extends Controller
 {
-    public function __construct(protected ScanService $scan, protected MealMemory $memory) {}
+    public function __construct(protected ScanService $scan, protected MealMemory $memory, protected OpenFoodFacts $off) {}
 
     /** Today's fuel: the macro-ring card + the meals logged today. */
     public function index(Request $request): JsonResponse
@@ -61,6 +65,98 @@ class MobileNutritionController extends Controller
                 : (($res['kind'] ?? null) === 'meal' ? null : ($res['reply'] ?? null)),
             'macros' => Macros::today($profile),
         ]);
+    }
+
+    /**
+     * Barcode scan: a GTIN/EAN/UPC → the exact product's macros → a draft to confirm the amount. Cached
+     * by barcode (BrandedFood) so the second scan is instant + free, and seeded into the coach's food
+     * knowledge (FoodFact) so later "I made a shake with that whey" needs no lookup — the coach already
+     * knows it. Falls back to a not-found result the client can offer to log manually / by photo.
+     */
+    public function barcode(Request $request): JsonResponse
+    {
+        $profile = $this->profile($request);
+        $data = $request->validate([
+            'code' => ['required', 'string', 'regex:/^\d{8,14}$/'],
+        ]);
+        $code = $data['code'];
+
+        // 1. Cache hit → instant, free.
+        if ($cached = BrandedFood::lookupBarcode($code)) {
+            return response()->json($this->barcodeFound([
+                'name' => $cached->product, 'brand' => $cached->brand, 'image_url' => null,
+                'serving' => $cached->serving,
+                'per_serving' => ['calories' => (int) $cached->calories, 'protein_g' => (float) $cached->protein_g, 'carbs_g' => (float) $cached->carbs_g, 'fat_g' => (float) $cached->fat_g],
+                'per_100g' => ['calories' => (int) $cached->calories, 'protein_g' => (float) $cached->protein_g, 'carbs_g' => (float) $cached->carbs_g, 'fat_g' => (float) $cached->fat_g],
+            ], $profile));
+        }
+
+        // 2. Miss → Open Food Facts, then cache + seed the coach's food knowledge.
+        $prod = $this->off->lookup($code);
+        if ($prod === null) {
+            return response()->json([
+                'kind' => 'other', 'draft' => null, 'image_url' => null,
+                'message' => "I couldn't find that barcode in the food database. Snap the nutrition label or the plate instead, or add it manually — and I'll remember it.",
+                'macros' => Macros::today($profile),
+            ]);
+        }
+
+        $serv = $prod['per_serving'] ?? $prod['per_100g'];   // prefer the label serving; else per-100g
+        BrandedFood::rememberBarcode($code, $prod['brand'], $prod['name'], $serv + ['serving' => $prod['serving']], 'openfoodfacts');
+        $this->seedFoodKnowledge($prod);   // so the coach knows this product without a lookup
+
+        return response()->json($this->barcodeFound($prod, $profile));
+    }
+
+    /** Build the meal-scan response (draft to confirm) from an Open-Food-Facts-shaped product. */
+    private function barcodeFound(array $prod, Profile $profile): array
+    {
+        $m = $prod['per_serving'] ?? $prod['per_100g'];
+        $servingBasis = isset($prod['per_serving']) ? ($prod['serving'] ?? 'per serving') : 'per 100 g';
+
+        return [
+            'kind' => 'meal',
+            'draft' => [
+                'photo_path' => null,
+                'image_url' => $prod['image_url'] ?? null,
+                'name' => (string) ($prod['name'] ?? 'Scanned product'),
+                'brand' => $prod['brand'] ?? null,
+                'items' => [],
+                'calories' => (int) $m['calories'],
+                'protein_g' => (float) $m['protein_g'],
+                'carbs_g' => (float) $m['carbs_g'],
+                'fat_g' => (float) $m['fat_g'],
+                'confidence' => 'high',
+                'source' => 'barcode',
+                'serving_hint' => $servingBasis,
+                'needs_confirmation' => false,
+            ],
+            'image_url' => $prod['image_url'] ?? null,
+            'message' => null,
+            'macros' => Macros::today($profile),
+        ];
+    }
+
+    /** Seed the shared FoodFact cache (per-100g) so the coach's food lookup + meal grounding know it. */
+    private function seedFoodKnowledge(array $prod): void
+    {
+        $name = trim((string) ($prod['name'] ?? ''));
+        $per100 = $prod['per_100g'] ?? null;
+        if ($name === '' || $per100 === null || empty($per100['calories'])) {
+            return;
+        }
+        $key = trim(((string) ($prod['brand'] ?? '')).' '.$name);
+        FoodFact::updateOrCreate(
+            ['profile_id' => null, 'name' => Str::limit(\App\Support\FoodLibrary::normalize($key), 120, '')],
+            [
+                'basis' => '100g',
+                'calories' => (int) $per100['calories'],
+                'protein_g' => round((float) $per100['protein_g'], 1),
+                'carbs_g' => round((float) $per100['carbs_g'], 1),
+                'fat_g' => round((float) $per100['fat_g'], 1),
+                'source' => 'openfoodfacts',
+            ],
+        );
     }
 
     /**

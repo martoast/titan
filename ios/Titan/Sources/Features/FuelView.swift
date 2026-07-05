@@ -10,6 +10,9 @@ import PhotosUI
 struct FuelSection: View {
     @EnvironmentObject var model: AppModel
     @State private var editing: Meal?
+    @State private var showScanner = false
+    @State private var scannerUnavailable = false
+    @AppStorage("barcodeScanEnabled") private var barcodeEnabled = true
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
@@ -38,6 +41,7 @@ struct FuelSection: View {
             .buttonStyle(PressCard())
             .disabled(model.scanning)
 
+            if barcodeEnabled { barcodeButton }
             yourMealsCard
             macrosCard
             HydrationCard()
@@ -46,6 +50,35 @@ struct FuelSection: View {
         }
         .task { await model.loadNutrition() }
         .sheet(item: $editing) { EditMealSheet(meal: $0) }
+        .fullScreenCover(isPresented: $showScanner) {
+            BarcodeScannerView { code in Task { await model.scanBarcode(code) } }
+        }
+        .alert("Barcode scanning unavailable", isPresented: $scannerUnavailable) {
+            Button("OK", role: .cancel) {}
+        } message: { Text("This device can't scan barcodes. Snap the nutrition label instead.") }
+    }
+
+    /// Scan a packaged product's barcode → exact macros from Open Food Facts, then confirm the amount.
+    private var barcodeButton: some View {
+        Button {
+            Haptic.tap()
+            if BarcodeScannerView.isAvailable { showScanner = true } else { scannerUnavailable = true }
+        } label: {
+            HStack(spacing: Theme.Space.s) {
+                Image(systemName: "barcode.viewfinder").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.Palette.cyan)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Scan a barcode").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    Text("Packaged food → exact macros, saved for your coach").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+            }
+            .padding(Theme.Space.m)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+        }
+        .buttonStyle(PressCard())
+        .disabled(model.scanning)
     }
 
     /// "Your meals" — the dishes you eat, remembered. One tap re-logs a usual (no camera, no AI):

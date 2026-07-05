@@ -16,7 +16,7 @@ class BrandedFood extends Model
     protected $table = 'branded_foods';   // Eloquent treats "food" as uncountable → be explicit
 
     protected $fillable = [
-        'key', 'brand', 'product', 'serving',
+        'barcode', 'key', 'brand', 'product', 'serving',
         'calories', 'protein_g', 'carbs_g', 'fat_g', 'source', 'hits',
     ];
 
@@ -35,6 +35,40 @@ class BrandedFood extends Model
     public static function keyFor(?string $brand, ?string $product): string
     {
         return MealMemory::normalize(trim((string) $brand.' '.(string) $product));
+    }
+
+    /** Cache hit by barcode (the exact key), bumping the hit counter — or null on a miss. */
+    public static function lookupBarcode(string $barcode): ?self
+    {
+        $barcode = preg_replace('/\D/', '', $barcode) ?? '';
+        if ($barcode === '') {
+            return null;
+        }
+        $row = self::where('barcode', $barcode)->first();
+        $row?->increment('hits');
+
+        return $row;
+    }
+
+    /** Cache a barcode-scanned product's per-serving macros, keyed on the barcode. */
+    public static function rememberBarcode(string $barcode, ?string $brand, ?string $product, array $macros, ?string $source = 'openfoodfacts'): ?self
+    {
+        $barcode = preg_replace('/\D/', '', $barcode) ?? '';
+        if ($barcode === '' || empty($macros['calories'])) {
+            return null;
+        }
+
+        return self::updateOrCreate(['barcode' => $barcode], [
+            'key' => self::keyFor($brand, $product) ?: $barcode,
+            'brand' => $brand ? \Illuminate\Support\Str::limit((string) $brand, 120, '') : null,
+            'product' => \Illuminate\Support\Str::limit((string) ($product ?: $brand ?: 'Scanned product'), 160, ''),
+            'serving' => isset($macros['serving']) ? \Illuminate\Support\Str::limit((string) $macros['serving'], 120, '') : null,
+            'calories' => (int) round((float) $macros['calories']),
+            'protein_g' => round((float) ($macros['protein_g'] ?? 0), 1),
+            'carbs_g' => round((float) ($macros['carbs_g'] ?? 0), 1),
+            'fat_g' => round((float) ($macros['fat_g'] ?? 0), 1),
+            'source' => $source ? \Illuminate\Support\Str::limit($source, 120, '') : null,
+        ]);
     }
 
     /** Cache hit for a product (bumps the hit counter), or null on a miss. */

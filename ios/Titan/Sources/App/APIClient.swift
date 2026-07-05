@@ -189,6 +189,12 @@ final class APIClient {
         return try await send(request("api/me/meals/confirm", method: "POST", json: json), as: MealMutation.self)
     }
 
+    /// Barcode → product macros (Open Food Facts, cached) → a draft to confirm. Same result shape as a
+    /// photo scan (kind "meal" with a draft, or "other" with a not-found message).
+    func scanBarcode(_ code: String) async throws -> MealScanResult {
+        try await send(request("api/me/nutrition/barcode", method: "POST", json: ["code": code]), as: MealScanResult.self)
+    }
+
     func updateMeal(_ id: Int, fields: [String: Any]) async throws -> MealMutation {
         try await send(request("api/me/meals/\(id)", method: "PATCH", json: fields), as: MealMutation.self)
     }
