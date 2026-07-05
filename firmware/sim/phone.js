@@ -16,13 +16,21 @@ class Reader {
   u16(o) { return this.b.readUInt16LE(o); }
   i16(o) { return this.b.readInt16LE(o); }
   u32(o) { return this.b.readUInt32LE(o); }
+  i32(o) { return this.b.readInt32LE(o); }
   u64(o) { return this.b.readUInt32LE(o) + this.b.readUInt32LE(o + 4) * 4294967296; }
 }
 const decode = {
   T5(p) { const r = new Reader(p); if (r.count < 12) return null; return { t: r.u64(4), bpm: r.u8(1), conf: r.u8(2), sport: r.u8(3) }; },
   T1(p) { const r = new Reader(p); if (r.count < 16) return { samples: [] }; const n = r.u16(2), e = r.u64(4); const s = []; for (let i = 0; i < n; i++) { const o = 16 + i * 12; if (o + 12 > r.count) break; s.push({ t: e + r.u32(o), ax: r.i16(o + 6), ay: r.i16(o + 8), az: r.i16(o + 10) }); } return { samples: s }; },
   T4(p) { const r = new Reader(p); if (r.count < 20) return null; const NONE = -2147483648; let lat = null, lon = null; if (r.count >= 24) { const la = r.i32(16), lo = r.i32(20); if (la !== NONE) lat = la / 1e7; if (lo !== NONE) lon = lo / 1e7; } return { t: r.u64(4), sats: r.u8(1), speedKmh: r.i16(2) / 100, lat, lon }; },
+  T9(p) { const r = new Reader(p); if (r.count < 12) return null; return { confirmed: r.u8(1) === 1, bedtime: r.u32(4), wake: r.u32(8) }; },
 };
+
+function haversineM(la1, lo1, la2, lo2) {
+  const toR = Math.PI / 180, dLa = (la2 - la1) * toR, dLo = (lo2 - lo1) * toR;
+  const a = Math.sin(dLa / 2) ** 2 + Math.cos(la1 * toR) * Math.cos(la2 * toR) * Math.sin(dLo / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
 
 const END_GAP_MS = 120_000, FLUSH_MS = 180_000, MIN_MS = 60_000, MAX_WINDOW_MS = 24 * 3600 * 1000;
 
@@ -44,7 +52,8 @@ class WorkoutAssembler {
     if (endT - this.winStart > MAX_WINDOW_MS) return null;
     const secs = Math.max(1, Math.round((endT - this.winStart) / 1000));
     return { kind: 'workout', startT: this.winStart, endT, durSec: secs, ended: isEnded || null,
-      activity_kind: this.activityKind, n_accel: this.accel.length, n_hr: this.hr.length };
+      activity_kind: this.activityKind, n_accel: this.accel.length, n_hr: this.hr.length,
+      n_gps: this.gps.filter((g) => g.lat != null && g.lon != null).length };
   }
 }
 
@@ -66,9 +75,12 @@ class Phone {
     this.runStartedAt = null;
     this.runLiveBpm = null;
     this.runMaxBpm = 0;
+    this.runDistanceKm = 0;
+    this.runLastLat = null; this.runLastLon = null;
     // observable outcomes
     this.events = [];              // ordered log
     this.summaries = [];           // each shown post-workout summary
+    this.sleepSummaries = [];      // confirmed sleep markers (T9)
     this.sealed = [];              // windows submitted (from sealWorkout + disconnect flush + periodic)
     this.liveSheetShown = false;
     this.connected = false;
@@ -108,6 +120,9 @@ class Phone {
       // Offline ring fully drained → seal whatever workout we recovered from the backlog now.
       this._submit(this.waLog.flush(), 'backlog-synced');
       this.backlogSynced = (this.backlogSynced || 0) + 1;   // AppModel.checkForSyncedWorkout() fires here
+    } else if (tag === 'T9:') {
+      const s = decode.T9(payload);
+      if (s && s.confirmed) { this.sleepSummaries.push(s); this._log(`sleep bed=${s.bedtime} wake=${s.wake}`); }
     }
   }
 
@@ -121,8 +136,12 @@ class Phone {
   get _suppressed() { return this.suppressUntil != null && this._now() < this.suppressUntil; }
 
   _ingestLiveGps(fix) {
-    if (!this.runActive) return;
-    // (route/distance omitted — not needed for lift/run start-end assertions)
+    if (!this.runActive || fix.lat == null || fix.lon == null) return;
+    if (this.runLastLat != null) {
+      const d = haversineM(this.runLastLat, this.runLastLon, fix.lat, fix.lon);
+      if (isFinite(d) && d < 200) this.runDistanceKm += d / 1000;   // drop teleports (mirrors AppModel)
+    }
+    this.runLastLat = fix.lat; this.runLastLon = fix.lon;
   }
 
   // AppModel.ingestLiveHr — the sport-edge start/end state machine.
@@ -153,6 +172,7 @@ class Phone {
     this.runActive = true;
     this.runStartedAt = this._now();
     this.runMaxBpm = 0; this.runLiveBpm = null;
+    this.runDistanceKm = 0; this.runLastLat = null; this.runLastLon = null;
     this.runSawSport1 = false; this.runSportLostAt = null;
     this.liveSheetShown = true;
     this._log(`startRun kind=${this.workoutKind}`);

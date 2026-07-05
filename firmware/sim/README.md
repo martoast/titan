@@ -7,6 +7,19 @@ start→hold→end sequence can be tested without real hardware.
 node firmware/sim/scenarios.js
 ```
 
+## Scenarios covered
+
+1. Single connected lift — opens live, summarizes on end, seals an `ended` window.
+2. GPS run — opens live, summarizes, seals a run window.
+3. Drop-at-end — the band dropping at the end (fixed: confirm→end + summary; pre-fix: reproduces the "no summary, hangs live" symptom).
+4. Transient BLE blip mid-lift — reconnects fast, exactly one summary (no premature end).
+5. Consecutive lifts — both summarize + seal.
+6. Phone-free lift — recovered from the ring on sync, seals `ended` strength + fires the catch-up signal, no phantom live run.
+7. Run route — live distance from GPS + fixes on the sealed run window.
+8. Sport→0 fallback — the `TA:end` frame is lost, the sport tag dropping to 0 still ends the run.
+9. Phone-free run — recovered on sync as a run **with** a route.
+10–11. Sleep — a session tracked live, and tracked offline then recovered on the morning sync (confirmed `T9` marker).
+
 ## What it actually runs
 
 - **The real firmware.** `watch.js` loads `firmware/banglejs/titan.app.js` verbatim into a sandboxed
