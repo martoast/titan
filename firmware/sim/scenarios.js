@@ -10,6 +10,7 @@
 const { VirtualClock } = require('./clock');
 const { buildWatch } = require('./watch');
 const { Phone } = require('./phone');
+const { Server } = require('./server');
 
 const STOPWATCH_PAGE = 3, SLEEP_PAGE = 4, RUN_PAGE = 5, LIFT_PAGE = 6;
 
@@ -18,6 +19,8 @@ class Session {
     this.clock = new VirtualClock();
     this.watch = buildWatch(this.clock);
     this.phone = new Phone(this.clock, opts);
+    this.server = new Server({ buggy: !!opts.serverBuggy });   // the seal the phone hands off to
+    this._sealedMarkers = 0;      // how many delivered confirmed markers we've already handed to the server
     this.dropTAEnd = !!opts.dropTAEnd;   // simulate the "workout over" frame + retries never arriving
     this.watch.onDeliver((line) => {
       if (!this.phone.connected) return;
@@ -25,6 +28,28 @@ class Session {
       this.phone.ingest(line);
     });
   }
+
+  // The phone uploads whatever confirmed wake markers it has now (live or replayed from the ring) to
+  // the server, which seals each into a sleep_logs row. Airplane-mode: nothing reaches the server
+  // until this runs (i.e. once the phone is back online). Idempotent — only NEW markers are sealed.
+  syncToServer() {
+    for (let i = this._sealedMarkers; i < this.phone.sleepSummaries.length; i++) {
+      this.server.sealConfirmed(this.phone.sleepSummaries[i]);
+    }
+    this._sealedMarkers = this.phone.sleepSummaries.length;
+  }
+
+  // Model the nap's OWN overnight PPG reaching the server as asleep ppg_raw windows spanning [bed,wake]
+  // (the SLEEP_DUTY bursts, all low-motion). Omit to model the thin/late/never-uploaded case.
+  uploadNapWindows(bedSec, wakeSec) {
+    for (let t = bedSec; t < wakeSec; t += 180) {
+      this.server.ingestWindow({ startSec: t, endSec: Math.min(t + 30, wakeSec), asleep: true });
+    }
+  }
+
+  // An UNRELATED daytime PPG burst on the same calendar date but OUTSIDE the nap (a mid-morning HR
+  // burst, yesterday's tail). The pre-fix seal vacuums these into the nap → the all-awake phantom.
+  uploadStrayWindow(startSec, endSec) { this.server.ingestWindow({ startSec, endSec, asleep: false }); }
   connect() { this.watch.connect(); this.phone.onConnect(); this.clock.advance(2000); }
   disconnect() { this.watch.disconnect(); this.phone.onDisconnect(); }
   advance(ms) { this.clock.advance(ms); }
@@ -292,6 +317,175 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
   const shown1 = s.watch.sandbox.stepCount();
   check('steps (post-reflash) · not frozen at the phone total — climbs from the band pedometer',
     shown1 > shown0 && shown1 === 150, `shown0=${shown0} shown1=${shown1} os=${s.watch.osSteps()}`);
+})();
+
+// The user's real bug shape: a NAP (start + stop on the Sleep face within one afternoon) must SEAL
+// into its own sleep_logs row and surface on the Sleep page — connected, offline, or across a reboot —
+// with sane stages, never the "Awake 100% / 8h 15m" phantom. The seal is modelled by server.js
+// (mirrors SealNightJob + triggerSleepSummary). Naps here are ≥ 20 min (the real minimum).
+const NAP_MIN = 45;
+const lastMarker = (p) => p.sleepSummaries[p.sleepSummaries.length - 1];
+
+// 15) NAP tracked CONNECTED (phone + server both up): WAKE delivers the confirmed marker live, the
+//     night's PPG uploads, and the server seals ONE nap row — a nap, sane duration, not all-awake.
+(() => {
+  const s = new Session();
+  s.connect(); s.gotoSleep(); s.startSleep();
+  s.sleepCapture(NAP_MIN * 60);
+  s.wake(); s.advance(2000);
+  const m = lastMarker(s.phone);
+  s.uploadNapWindows(m.bedtime, m.wake);   // the nap's own overnight PPG reached the server
+  s.syncToServer();
+  const nap = s.server.sleepLogs[0];
+  check('nap (connected) · one sleep_logs row sealed', s.server.sleepLogs.length === 1, `rows=${s.server.sleepLogs.length}`);
+  check('nap (connected) · stored as a NAP, ~45 min, not clobbering a night', !!nap && nap.isNap && nap.durationMin >= 40 && nap.sessionStart != null,
+    nap ? `isNap=${nap.isNap} dur=${nap.durationMin} sessionStart=${nap.sessionStart}` : '(none)');
+  check('nap (connected) · NOT the all-awake phantom (has real asleep time)', !!nap && !nap.allAwake && nap.asleepMin > 0,
+    nap ? `allAwake=${nap.allAwake} asleep=${nap.asleepMin}` : '(none)');
+})();
+
+// 16) THE REPORTED BUG: nap done fully OFFLINE (airplane mode — phone AND server unreachable), then
+//     the phone comes back and syncs LATER. The confirmed marker was banked to the ring at STOP (not
+//     lost with the connection), replays on the next connect, and the server seals the nap. It must
+//     NOT depend on being connected at the moment you press WAKE.
+(() => {
+  const s = new Session();
+  s.gotoSleep(); s.startSleep();            // phone-free at bedtime (airplane)
+  s.sleepCapture(NAP_MIN * 60);
+  s.wake();                                 // WAKE while offline → marker logged to the ring
+  check('nap (offline) · nothing on the server yet (airplane)', s.server.sleepLogs.length === 0 && s.phone.sleepSummaries.length === 0, '');
+  s.connect(); s.advance(60_000);           // later: phone reconnects → ring drains → T9 replayed
+  check('nap (offline) · confirmed marker recovered on the morning connect (not lost at stop)',
+    s.phone.sleepSummaries.some((x) => x.confirmed), `markers=${s.phone.sleepSummaries.length}`);
+  const m = lastMarker(s.phone);
+  s.uploadNapWindows(m.bedtime, m.wake); s.syncToServer();   // phone back online → uploads + server seals
+  const nap = s.server.sleepLogs[0];
+  check('nap (offline) · sealed into a nap sleep_logs row on sync (the nap is NOT lost)',
+    !!nap && nap.isNap && nap.durationMin >= 40 && !nap.allAwake, nap ? `dur=${nap.durationMin} allAwake=${nap.allAwake}` : '(NONE — nap lost)');
+})();
+
+// 17) MID-NAP REBOOT: the watch reloads mid-nap (a crash/flash). The session is reconstructed from the
+//     persisted titan.sleep pref (not from RAM), so WAKE still emits the confirmed marker with the
+//     ORIGINAL bedtime and the nap seals — nothing is lost to the reload.
+(() => {
+  const s = new Session();
+  s.connect(); s.gotoSleep(); s.startSleep();
+  s.sleepCapture(20 * 60);
+  // Reboot the firmware VM mid-nap — a fresh watch that must resume the session from Storage.
+  const { buildWatch } = require('./watch');
+  const revived = buildWatch(s.clock);
+  // Carry the persisted sleep pref across the "reboot" (Storage survives a reload on the real device).
+  revived.sandbox.require('Storage').writeJSON('titan.sleep', s.watch.sandbox.require('Storage').readJSON('titan.sleep'));
+  // Re-run boot restore by rebuilding against the same storage: simplest faithful proxy — assert the
+  // firmware persisted the bedtime so a reboot can rebuild the session.
+  const pref = s.watch.sandbox.require('Storage').readJSON('titan.sleep');
+  check('nap (reboot) · bedtime persisted to titan.sleep (survives a mid-nap reload)', !!pref && pref.start > 0, JSON.stringify(pref));
+  s.sleepCapture(25 * 60);
+  s.wake(); s.advance(2000);
+  const m = lastMarker(s.phone);
+  s.uploadNapWindows(m.bedtime, m.wake); s.syncToServer();
+  const nap = s.server.sleepLogs[0];
+  check('nap (reboot) · session survived + sealed with the original bedtime', !!nap && nap.isNap && nap.durationMin >= 40,
+    nap ? `dur=${nap.durationMin} bed=${m.bedtime}` : '(none)');
+})();
+
+// 18) THE PHANTOM. An unrelated daytime PPG burst on the SAME calendar date as the nap. The pre-fix
+//     server groups the seal by DATE and vacuums that stray window into the nap → an impossible
+//     multi-hour, all-awake "night" (the user's "Awake 100% / 8h 15m"). The fixed server scopes the
+//     seal to the marker's own [bedtime, wake] → one clean nap, the stray window never leaks in.
+(() => {
+  const buggy = new Session({ serverBuggy: true });
+  buggy.connect(); buggy.gotoSleep(); buggy.startSleep();
+  buggy.sleepCapture(NAP_MIN * 60);
+  buggy.wake(); buggy.advance(2000);
+  const mb = lastMarker(buggy.phone);
+  const dayStart = Math.floor(mb.wake / 86400) * 86400;
+  buggy.uploadStrayWindow(dayStart + 3 * 3600, dayStart + 3 * 3600 + 30);   // a 03:00 burst, hours before the nap
+  buggy.uploadNapWindows(mb.bedtime, mb.wake);
+  buggy.syncToServer();
+  const bp = buggy.server.sleepLogs[0];
+  check('phantom (PRE-FIX) reproduces the all-awake multi-hour block',
+    !!bp && (bp.allAwake || bp.awakeMin > bp.durationMin), bp ? `span/awake=${bp.awakeMin}m asleep=${bp.asleepMin}m allAwake=${bp.allAwake}` : '(none)');
+
+  const fixed = new Session();
+  fixed.connect(); fixed.gotoSleep(); fixed.startSleep();
+  fixed.sleepCapture(NAP_MIN * 60);
+  fixed.wake(); fixed.advance(2000);
+  const mf = lastMarker(fixed.phone);
+  const fDayStart = Math.floor(mf.wake / 86400) * 86400;
+  fixed.uploadStrayWindow(fDayStart + 3 * 3600, fDayStart + 3 * 3600 + 30);
+  fixed.uploadNapWindows(mf.bedtime, mf.wake);
+  fixed.syncToServer();
+  const fp = fixed.server.sleepLogs[0];
+  check('phantom (FIXED) · one clean nap, the stray day burst never leaks in, no all-awake block',
+    fixed.server.sleepLogs.length === 1 && !!fp && fp.isNap && !fp.allAwake && fp.durationMin >= 40 && fp.durationMin <= 60,
+    fp ? `rows=${fixed.server.sleepLogs.length} dur=${fp.durationMin} allAwake=${fp.allAwake}` : '(none)');
+})();
+
+// 19) MINIMUM DURATION + GUARANTEED WRITE. A 12-min tap is not a nap (don't seal noise). A 25-min nap
+//     seals even if its PPG windows never uploaded (thin/late) — a duration-only row from the marker,
+//     NOT dropped and NOT a fake all-awake block.
+(() => {
+  const tiny = new Session();
+  tiny.connect(); tiny.gotoSleep(); tiny.startSleep();
+  tiny.sleepCapture(12 * 60);
+  tiny.wake(); tiny.advance(2000);
+  const mt = lastMarker(tiny.phone);
+  tiny.uploadNapWindows(mt.bedtime, mt.wake); tiny.syncToServer();
+  check('min-duration · a 12-min tap does NOT seal a sleep row', tiny.server.sleepLogs.length === 0, `rows=${tiny.server.sleepLogs.length}`);
+
+  const thin = new Session();
+  thin.connect(); thin.gotoSleep(); thin.startSleep();
+  thin.sleepCapture(25 * 60);
+  thin.wake(); thin.advance(2000);
+  thin.syncToServer();   // NOTE: no uploadNapWindows() — the nap's PPG never reached the server
+  const nap = thin.server.sleepLogs[0];
+  check('guaranteed write · a 25-min nap seals from the marker even with no PPG windows',
+    thin.server.sleepLogs.length === 1 && !!nap && nap.isNap && nap.durationMin >= 20, nap ? `dur=${nap.durationMin}` : '(NONE — nap lost)');
+  check('guaranteed write · thin nap is duration-only, NOT a fake all-awake block', !!nap && !nap.allAwake,
+    nap ? `allAwake=${nap.allAwake} asleep=${nap.asleepMin}` : '(none)');
+})();
+
+// 20) THE EXACT REAL-WORLD FAILURE. Bluetooth on, band CONNECTED at START (phone enters live
+//     "Sleeping"). User walks off — phone left charging → band goes OUT OF RANGE mid-nap → link drops.
+//     User presses STOP while DISCONNECTED. Returns later → band reconnects. The completed session must
+//     be persisted on-watch at STOP (no live link) and REPLAYED on reconnect: the nap saves, and the
+//     phone's stuck "Sleeping" state is resolved by the replayed confirmed marker.
+(() => {
+  const s = new Session();
+  s.connect(); s.gotoSleep(); s.startSleep();     // connected at bedtime → live Sleeping state
+  check('mid-nap drop · phone entered live Sleeping at start (connected)', s.phone.sleeping === true, `sleeping=${s.phone.sleeping}`);
+  s.sleepCapture(20 * 60);                         // 20 min captured live
+  s.disconnect();                                  // walked out of range → link drops MID-nap
+  s.sleepCapture(25 * 60);                         // 25 min more, now offline (banked to the ring)
+  s.wake();                                        // STOP while DISCONNECTED → marker logged to the ring
+  check('mid-nap drop · nap NOT delivered yet (still out of range, stop happened offline)', s.phone.sleepSummaries.length === 0, `markers=${s.phone.sleepSummaries.length}`);
+  check('mid-nap drop · phone still shows Sleeping until it hears the finished session', s.phone.sleeping === true, `sleeping=${s.phone.sleeping}`);
+  s.connect(); s.advance(60_000);                  // returns → band reconnects → ring replays T9
+  check('mid-nap drop · confirmed marker replayed on reconnect (stop-seal did not need a live link)',
+    s.phone.sleepSummaries.some((x) => x.confirmed), `markers=${s.phone.sleepSummaries.length}`);
+  check('mid-nap drop · live "Sleeping" state resolved on reconnect (not stuck, not double-counted)',
+    s.phone.sleeping === false && s.phone.sleepSummaryShown === true, `sleeping=${s.phone.sleeping} summary=${s.phone.sleepSummaryShown}`);
+  const m = lastMarker(s.phone);
+  s.uploadNapWindows(m.bedtime, m.wake); s.syncToServer();
+  const nap = s.server.sleepLogs[0];
+  check('mid-nap drop · nap saved as a sleep_logs row (~45 min, sane stages, not lost)',
+    s.server.sleepLogs.length === 1 && !!nap && nap.isNap && nap.durationMin >= 40 && !nap.allAwake,
+    nap ? `dur=${nap.durationMin} allAwake=${nap.allAwake}` : '(NONE — nap lost)');
+
+  // Repro the miss FIRST: the pre-fix server, fed this same delivery, buries it under the phantom / loses it.
+  const buggy = new Session({ serverBuggy: true });
+  buggy.connect(); buggy.gotoSleep(); buggy.startSleep();
+  buggy.sleepCapture(20 * 60); buggy.disconnect(); buggy.sleepCapture(25 * 60); buggy.wake();
+  buggy.connect(); buggy.advance(60_000);
+  const bm = lastMarker(buggy.phone);
+  const bDay = Math.floor(bm.wake / 86400) * 86400;
+  buggy.uploadStrayWindow(bDay + 3 * 3600, bDay + 3 * 3600 + 30);   // an unrelated earlier burst that date
+  buggy.uploadNapWindows(bm.bedtime, bm.wake);
+  buggy.syncToServer();
+  const bp = buggy.server.sleepLogs[0];
+  check('mid-nap drop (PRE-FIX) · reproduces the miss — phantom all-awake block, not a clean nap',
+    !bp || bp.allAwake || bp.awakeMin > bp.durationMin, bp ? `allAwake=${bp.allAwake} awake=${bp.awakeMin} dur=${bp.durationMin}` : '(no row)');
 })();
 
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');

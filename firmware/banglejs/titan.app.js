@@ -2004,11 +2004,16 @@ try {
 try {
   var sp = require("Storage").readJSON("titan.sleep", true);
   if (sp && sp.start) {
-    state.swMode = "sleep";
-    state.swStartMs = sp.start;
-    if (!state.streaming) startStreaming();
-    reconcileHrm();        // back into the overnight HRV burst duty-cycle
-    sleepScreenOff();      // dark screen again; one button click still wakes it
+    var sleepAgeMs = getTime() * 1000 - sp.start;
+    if (sleepAgeMs > 0 && sleepAgeMs < 57600000) {   // resume only a plausible in-progress sleep (<16h)
+      state.swMode = "sleep";
+      state.swStartMs = sp.start;
+      if (!state.streaming) startStreaming();
+      reconcileHrm();      // back into the overnight HRV burst duty-cycle
+      sleepScreenOff();    // dark screen again; one button click still wakes it
+    } else {
+      clearSleepPref();    // stale/stuck session (>16h) → drop it, don't resume a phantom that never ends
+    }
   }
 } catch (e) {}
 

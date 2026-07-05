@@ -246,7 +246,12 @@ class DeviceIngestionService
         } else {
             return false;
         }
-        \App\Jobs\SealNightJob::dispatch($connection->profile_id, $night, true)->afterCommit();
+        // Pass the user's REAL session bounds through so the seal scopes to [bedtime, wake] — not the
+        // whole calendar date — and can guarantee a bounded nap row even when the PPG windows are thin
+        // or never arrived. Ignoring these is what buried a nap under a whole-day "Awake 100%" phantom.
+        $bed = (! empty($summary['bedtime']) && is_numeric($summary['bedtime'])) ? (int) $summary['bedtime'] : null;
+        $wake = (! empty($summary['wake']) && is_numeric($summary['wake'])) ? (int) $summary['wake'] : null;
+        \App\Jobs\SealNightJob::dispatch($connection->profile_id, $night, true, $bed, $wake)->afterCommit();
 
         return true;
     }

@@ -79,6 +79,7 @@ class SleepCoach
         $day = $day ?? Carbon::today();
 
         $nights = $profile->sleepLogs()
+            ->where('is_nap', false)   // naps are bounded sessions, not "last night" — exclude from debt/need
             ->where('slept_at', '>=', $day->copy()->subDays(self::DEBT_NIGHTS))
             ->orderByDesc('slept_at')->orderByDesc('id')->get();
         if ($nights->isEmpty()) {

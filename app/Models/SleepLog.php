@@ -16,14 +16,14 @@ class SleepLog extends Model
     use HasFactory;
 
     protected $fillable = [
-        'profile_id', 'slept_at', 'duration_min', 'quality',
+        'profile_id', 'slept_at', 'is_nap', 'session_start', 'duration_min', 'quality',
         'deep_min', 'rem_min', 'light_min', 'awake_min',
         'bedtime', 'wake_time', 'notes', 'updated_via', 'hypnogram',
     ];
 
     protected function casts(): array
     {
-        return ['slept_at' => 'date', 'hypnogram' => 'array'];
+        return ['slept_at' => 'date', 'session_start' => 'datetime', 'is_nap' => 'boolean', 'hypnogram' => 'array'];
     }
 
     public function profile(): BelongsTo
