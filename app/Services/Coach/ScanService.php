@@ -89,13 +89,14 @@ class ScanService
         Return ONLY a JSON object of this exact shape:
         {
           "kind": "meal" | "bloodwork" | "physique" | "other",
-          "meal": { "name": string, "items": [string], "calories": int, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high", "packaged": boolean, "brand": string, "product": string, "serving_hint": string },
+          "meal": { "name": string, "items": [string], "calories": int, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high", "packaged": boolean, "is_label": boolean, "brand": string, "product": string, "serving_hint": string },
           "bloodwork": [ { "marker": string, "value": number, "unit": string } ],
           "note": string
         }
         Rules:
         - If it's food/a meal/a drink: fill "meal" with your best estimate of the macros for the WHOLE portion shown, plus a short name and the visible items. Leave "bloodwork" as [].
-        - If it's a PACKAGED / branded product (a wrapper, bottle, box, protein tub, bar, ready meal — anything with a brand name or a nutrition label visible): set "packaged": true and read the "brand" and exact "product" name off the label as precisely as you can (e.g. brand "Chobani", product "Non-Fat Greek Yogurt, Vanilla"). Put the serving/size you can see in "serving_hint" (e.g. "1 bottle 500 ml", "2 scoops", "net wt 150 g"). We will look up the OFFICIAL label macros for this exact product, so getting the brand + product right matters more than guessing the numbers.
+        - If the image IS a NUTRITION FACTS panel (the printed nutrition table on packaging, or a screenshot of one): set "is_label": true AND read the macros DIRECTLY off it — copy calories/protein_g/carbs_g/fat_g PER SERVING exactly as printed (do not estimate). Put the printed serving size in "serving_hint" (e.g. "1 cup (240 ml)"). Set brand/product too if the label shows them. These printed numbers are ground truth — transcribe, don't guess.
+        - If it's a PACKAGED / branded product (a wrapper, bottle, box, protein tub, bar, ready meal — a brand is visible but the full facts panel is NOT clearly readable): set "packaged": true and read the "brand" and exact "product" name off the label as precisely as you can (e.g. brand "Chobani", product "Non-Fat Greek Yogurt, Vanilla"). Put the serving/size you can see in "serving_hint". We will look up the OFFICIAL label macros for this exact product, so getting the brand + product right matters more than guessing the numbers.
         - For a non-packaged home/restaurant plate, set "packaged": false and leave brand/product empty; put your read of the portion in "serving_hint" (e.g. "~1.5 cups rice, palm-size chicken").
         - If it's a lab/bloodwork report, printout, or screenshot of results: fill "bloodwork" with EVERY marker you can read. Use canonical snake_case marker keys (e.g. ldl, hdl, total_cholesterol, triglycerides, glucose, hba1c, vitamin_d, crp, alt, ast, tsh, ferritin, creatinine). Keep the printed unit. Leave "meal" empty.
         - If it's a photo of a PERSON'S BODY/PHYSIQUE -- a progress photo, gym selfie, or a full or upper-body shot of themselves -- set kind "physique". (Leave "meal" and "bloodwork" empty.)
@@ -131,6 +132,21 @@ class ScanService
      */
     private function resolveMeal(Profile $profile, array $m): array
     {
+        // 0. A NUTRITION-FACTS photo IS the data — vision transcribed the printed panel, so trust it
+        //    outright (no web, no scaling: the fastest + most accurate path). Cache it as a branded label
+        //    so a later non-label scan of the same product is instant too.
+        if (! empty($m['is_label']) && (float) ($m['calories'] ?? 0) > 0) {
+            \App\Models\BrandedFood::remember($m['brand'] ?? null, $m['product'] ?? ($m['name'] ?? null), [
+                'calories' => (int) $m['calories'], 'protein_g' => (float) ($m['protein_g'] ?? 0),
+                'carbs_g' => (float) ($m['carbs_g'] ?? 0), 'fat_g' => (float) ($m['fat_g'] ?? 0),
+                'serving' => (string) ($m['serving_hint'] ?? ''),
+            ], 'label');
+            $m['_source'] = 'label';
+            $m['_confidence'] = 'high';
+
+            return $m;
+        }
+
         // 1. Your usuals — your own history is the most accurate source there is.
         $name = trim((string) ($m['name'] ?? ($m['product'] ?? '')));
         if ($tpl = $this->matchLibrary($profile, $name)) {
@@ -145,14 +161,15 @@ class ScanService
             return $m;
         }
 
-        // 2. Branded / packaged → the exact official label.
-        if (! empty($m['packaged']) && $branded = $this->researchBranded($m)) {
+        // 2. Branded / packaged → the exact official label (cache-first: researched on the web once,
+        //    then reused free forever).
+        if (! empty($m['packaged']) && $branded = $this->brandedMacros($m)) {
             foreach (['calories', 'protein_g', 'carbs_g', 'fat_g'] as $k) {
                 $m[$k] = $branded[$k];
             }
             $m['_source'] = 'brand';
             $m['_confidence'] = 'high';
-            $m['serving_hint'] = $branded['serving'] ?: ($m['serving_hint'] ?? null);
+            $m['serving_hint'] = ($branded['serving'] ?? '') ?: ($m['serving_hint'] ?? null);
 
             return $m;
         }
@@ -171,6 +188,35 @@ class ScanService
         $key = MealMemory::normalize($name);
 
         return $key === '' ? null : $profile->mealTemplates()->where('key', $key)->first();
+    }
+
+    /**
+     * A packaged product's per-serving macros, CACHE-FIRST: reuse the shared {@see \App\Models\BrandedFood}
+     * label if we've seen this product before (instant + free); otherwise research it on the web once and
+     * cache the result so the next scan is instant.
+     *
+     * @param  array<string,mixed>  $m
+     * @return array{calories:int,protein_g:float,carbs_g:float,fat_g:float,serving:string}|null
+     */
+    private function brandedMacros(array $m): ?array
+    {
+        $brand = trim((string) ($m['brand'] ?? ''));
+        $product = trim((string) ($m['product'] ?? ($m['name'] ?? '')));
+
+        if ($cached = \App\Models\BrandedFood::lookup($brand, $product)) {
+            return [
+                'calories' => (int) $cached->calories, 'protein_g' => (float) $cached->protein_g,
+                'carbs_g' => (float) $cached->carbs_g, 'fat_g' => (float) $cached->fat_g,
+                'serving' => (string) ($cached->serving ?? ''),
+            ];
+        }
+
+        $res = $this->researchBranded($m);
+        if ($res !== null) {
+            \App\Models\BrandedFood::remember($brand, $product, $res, 'web');
+        }
+
+        return $res;
     }
 
     /**

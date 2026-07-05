@@ -323,6 +323,7 @@ struct ScanResultSheet: View {
     private func sourceBadge(_ d: MealDraft) -> some View {
         let (icon, text, color): (String, String, Color) = {
             switch d.source {
+            case "label": return ("doc.text.magnifyingglass", "Read straight from the label" + (d.brand.map { " · \($0)" } ?? ""), Theme.Palette.mint)
             case "your_meals": return ("star.fill", "Your usual — your saved macros", Theme.Palette.mint)
             case "brand": return ("checkmark.seal.fill", "Official label" + (d.brand.map { " · \($0)" } ?? ""), Theme.Palette.cyan)
             case "web": return ("globe", "Grounded in real nutrition data", Theme.Palette.cyan)
