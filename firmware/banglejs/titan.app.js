@@ -1322,12 +1322,28 @@ var stepDay = "";                 // local date stepTotal belongs to
 var stepTotal = 0;                // persisted day total
 var stepLastUp = 0;               // last cumulative-since-boot count seen from the step event
 var stepDirty = false;
+var osDayBase = -1;               // OS "day" step count captured at the START of our day (-1 = unset)
 
 function stepLocalDate() {
   var d = new Date();
   return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).substr(-2) + "-" + ("0" + d.getDate()).substr(-2);
 }
+function osRaw() {                 // the Bangle pedometer's raw "today" count (its own day boundary)
+  var os = 0;
+  try { os = Bangle.getHealthStatus("day").steps | 0; } catch (e) {}
+  return os;
+}
+// Steps the OS pedometer has counted since OUR day began. Baselining is what makes the midnight reset
+// AUTHORITATIVE: our rollover captures the OS count at day-start, so even if the OS "day" counter is
+// slow to reset (or doesn't), it can never carry yesterday's total into today. Re-baselines if the OS
+// counter DROPS (its own reset / a reboot) so we never report a negative.
+function osToday() {
+  var os = osRaw();
+  if (osDayBase < 0 || os < osDayBase) osDayBase = os;
+  return os - osDayBase;
+}
 function stepLoad() {
+  osDayBase = -1;   // re-baseline on first read this boot
   try {
     var s = require("Storage").readJSON(STEP_FILE, true);
     if (s && s.d === stepLocalDate()) { stepDay = s.d; stepTotal = s.s | 0; return; }
@@ -1339,7 +1355,7 @@ function stepSave() {
 }
 function stepRollover() {          // local midnight → close the day, start the next at 0
   var d = stepLocalDate();
-  if (d !== stepDay) { stepDay = d; stepTotal = 0; stepSave(); }
+  if (d !== stepDay) { stepDay = d; stepTotal = 0; osDayBase = osRaw(); stepSave(); }
 }
 
 // `up` = the pedometer's running count since boot. Bank the deltas into our persistent daily total.
@@ -1354,11 +1370,11 @@ Bangle.on("step", function (up) {
 });
 
 function stepCount() {
-  var os = 0;
-  try { os = Bangle.getHealthStatus("day").steps | 0; } catch (e) {}
-  // Ours survives reboot; the OS counter may reset. Report the larger so we never go backwards and
-  // still work if either source is flaky.
-  return stepTotal > os ? stepTotal : os;
+  // Ours (banked from `step` events, resets at rollover, survives reboot via flash) is authoritative;
+  // the OS count SINCE OUR DAY BEGAN catches steps taken while our app was unloaded. Both are today-only,
+  // so the larger is honest AND resets cleanly at local midnight.
+  var ot = osToday();
+  return stepTotal > ot ? stepTotal : ot;
 }
 
 // Page 0 — HEART RATE: big BPM inside a color-mapped ring.
