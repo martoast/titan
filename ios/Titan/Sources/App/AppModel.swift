@@ -475,6 +475,9 @@ final class AppModel: ObservableObject {
         router.onWorkoutEnd = { [weak self] in Task { @MainActor in self?.endRun(notifyBand: false) } }
         // The band drained its offline ring → a phone-free workout may have just sealed → catch-up summary.
         router.onBacklogSynced = { [weak self] in Task { @MainActor in self?.checkForSyncedWorkout() } }
+        // The watch's Sleep face: START → enter the live "Sleeping" state; WAKE → show the sleep summary.
+        router.onSleepStart = { [weak self] in Task { @MainActor in self?.sleeping = true } }
+        router.onSleepEnd = { [weak self] bed, wake in Task { @MainActor in self?.endSleep(bedSec: bed, wakeSec: wake) } }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in
             self?.bandConnected = up
@@ -849,6 +852,8 @@ final class AppModel: ObservableObject {
     @Published var runTrack: [CGPoint] = []        // streamed coords for the live trace (x=lon, y=lat)
     @Published var showLiveRunSheet = false        // drives the full-screen live tracker (app-wide)
     @Published var workoutSummary: WorkoutSummaryState?   // set on end → shows the post-workout summary sheet
+    @Published var sleeping = false                       // watch Sleep face is running → live "Sleeping" state
+    @Published var sleepSummary: SleepSummaryState?       // set on WAKE → shows the post-sleep summary sheet
     private var runStartedAt: Date?
     private var runLastLat: Double?
     private var runLastLon: Double?
@@ -1114,6 +1119,37 @@ final class AppModel: ObservableObject {
                 return
             }
             if var s = self?.workoutSummary { s.loading = false; s.failed = true; self?.workoutSummary = s }
+        }
+    }
+
+    /// The watch reported WAKE (Sleep face). Leave the live "Sleeping" state and show the sleep summary
+    /// immediately from the bed/wake markers, then enrich it once the server seals the night (stages,
+    /// hypnogram, efficiency, performance). Mirrors `endRun` → `fetchSealedSummary` for workouts.
+    func endSleep(bedSec: Int, wakeSec: Int) {
+        sleeping = false
+        let bed = bedSec > 0 ? Date(timeIntervalSince1970: Double(bedSec)) : nil
+        let wake = wakeSec > 0 ? Date(timeIntervalSince1970: Double(wakeSec)) : nil
+        let inBed = max(0, wakeSec - bedSec)
+        guard inBed >= 600 else { return }   // ignore a <10-min mis-tap; not a real night
+        sleepSummary = SleepSummaryState(bedtime: bed, wake: wake, inBedSec: inBed)
+        fetchSealedSleep()
+    }
+
+    /// Poll the server for the just-sealed night and enrich the sleep summary (stages, hypnogram,
+    /// efficiency, performance, respiratory rate). Night staging runs on the queue, so this can take a
+    /// little longer than a workout seal; we retry patiently and fall back to the in-bed-only summary.
+    private func fetchSealedSleep() {
+        Task { @MainActor [weak self] in
+            for attempt in 0..<10 {
+                try? await Task.sleep(nanoseconds: attempt == 0 ? 3_000_000_000 : 4_000_000_000)
+                guard let self, self.sleepSummary != nil else { return }   // dismissed
+                guard let resp = try? await self.api.sleepDetail(), let d = resp.detail,
+                      (d.duration_min ?? 0) > 0 else { continue }
+                self.sleepDetail = resp   // refresh Daily/Recovery so they reflect the new night too
+                if var s = self.sleepSummary { s.detail = d; s.assess = resp.assess; s.loading = false; self.sleepSummary = s }
+                return
+            }
+            if var s = self?.sleepSummary { s.loading = false; s.failed = true; self?.sleepSummary = s }
         }
     }
 

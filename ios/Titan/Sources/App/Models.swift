@@ -699,6 +699,21 @@ struct WorkoutSummaryState: Identifiable {
     var isLift: Bool { kind == "strength" || kind == "lift" || detail?.isLift == true }
 }
 
+/// The post-sleep "wow moment" state, mirroring `WorkoutSummaryState`. Built the instant the watch
+/// reports WAKE (bed/wake epochs from the `TN` marker), so the summary appears immediately with the
+/// in-bed time; the server-sealed night (stages, hypnogram, efficiency, performance) enriches it a
+/// little later via `api.sleepDetail()`. Bound to `model.sleepSummary`.
+struct SleepSummaryState: Identifiable {
+    let id = UUID()
+    let bedtime: Date?
+    let wake: Date?
+    let inBedSec: Int             // watch markers: wake − bed (fallback headline before the seal)
+    var detail: SleepResponse.Detail?     // enriched from the server once the night seals
+    var assess: SleepResponse.Assess?
+    var loading = true
+    var failed = false
+}
+
 enum APIError: LocalizedError {
     case http(Int, String), decoding, unauthorized, transport(String)
     var errorDescription: String? {

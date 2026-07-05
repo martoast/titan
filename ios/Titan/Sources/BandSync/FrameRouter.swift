@@ -39,6 +39,12 @@ public final class FrameRouter {
     /// The band finished draining its offline ring (`TS:`). A workout recovered from that backlog has
     /// just been sealed → the app checks for a catch-up summary to surface.
     public var onBacklogSynced: (() -> Void)?
+    /// The user tapped START on the watch's Sleep face (`TN:{"s":1}`) → the app enters its "Sleeping"
+    /// state so the coach/UI knows the night has begun (the algorithm focuses on rest).
+    public var onSleepStart: (() -> Void)?
+    /// The user tapped WAKE (`TN:{"s":0,"bed":…,"wake":…}` epoch seconds) → close the night and show the
+    /// sleep summary immediately. The durable `T9` frame (same tap) is what actually seals it server-side.
+    public var onSleepEnd: ((Int, Int) -> Void)?
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
@@ -194,6 +200,20 @@ public final class FrameRouter {
             // "I'm awake" marker → a sleep-session summary (server seals the night + fires the summary).
             if let s = FrameDecoder.decodeT9(payload), s.confirmed {
                 submit(.sleep(SleepSessionSummary(bedtime: Int(s.bedtime), wake: Int(s.wake), confirmed: true)))
+            }
+        case "TN:":
+            // Live sleep-session notification from the dedicated Sleep face: {"s":1,"t":startMs} on
+            // START, {"s":0,"bed":epochSec,"wake":epochSec} on WAKE. Drives the app's live "Sleeping"
+            // state and the instant post-sleep summary. (T9 above is the durable seal; TN is the UX.)
+            if let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any] {
+                let started = (obj["s"] as? NSNumber)?.intValue ?? 0
+                if started == 1 {
+                    onSleepStart?()
+                } else {
+                    let bed = (obj["bed"] as? NSNumber)?.intValue ?? 0
+                    let wake = (obj["wake"] as? NSNumber)?.intValue ?? 0
+                    onSleepEnd?(bed, wake)
+                }
             }
         default:
             break

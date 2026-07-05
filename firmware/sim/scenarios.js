@@ -11,7 +11,7 @@ const { VirtualClock } = require('./clock');
 const { buildWatch } = require('./watch');
 const { Phone } = require('./phone');
 
-const STOPWATCH_PAGE = 3, RUN_PAGE = 5, LIFT_PAGE = 6;
+const STOPWATCH_PAGE = 3, SLEEP_PAGE = 4, RUN_PAGE = 5, LIFT_PAGE = 6;
 
 class Session {
   constructor(opts = {}) {
@@ -30,9 +30,9 @@ class Session {
   advance(ms) { this.clock.advance(ms); }
   gotoLift() { this.watch.swipeRight(LIFT_PAGE); }
   gotoRun() { this.watch.swipeRight(RUN_PAGE); }
-  gotoStopwatch() { this.watch.swipeRight(STOPWATCH_PAGE); }
-  startSleep() { this.watch.press(2); }        // double-click on the Stopwatch face → sleep session
-  wake() { this.watch.press(1); }              // single-click → stop → emits the T9 confirmed marker
+  gotoSleep() { this.watch.swipeRight(SLEEP_PAGE); }
+  startSleep() { this.watch.press(1); }        // single-click on the dedicated Sleep face → start
+  wake() { this.watch.press(1); }              // single-click → WAKE → emits the T9 confirmed marker
   tapButton() { this.watch.press(1); }
   work(seconds, bpm = 130) {
     for (let s = 0; s < seconds; s++) {
@@ -176,7 +176,7 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
 //     reaches the phone (which the server seals into the night + fires the morning summary).
 (() => {
   const s = new Session();
-  s.connect(); s.gotoStopwatch(); s.startSleep(); s.advance(120_000); s.wake(); s.advance(2000);
+  s.connect(); s.gotoSleep(); s.startSleep(); s.advance(120_000); s.wake(); s.advance(2000);
   const sleep = s.phone.sleepSummaries[0];
   check('sleep (live) · confirmed T9 marker received', !!sleep && sleep.confirmed, `count=${s.phone.sleepSummaries.length}`);
   check('sleep (live) · wake is after bedtime', !!sleep && sleep.wake > sleep.bedtime, sleep ? `bed=${sleep.bedtime} wake=${sleep.wake}` : '(none)');
@@ -186,7 +186,7 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
 //     marker is logged to the ring overnight and delivered on the morning sync.
 (() => {
   const s = new Session();
-  s.gotoStopwatch(); s.startSleep(); s.advance(180_000); s.wake();   // whole night offline
+  s.gotoSleep(); s.startSleep(); s.advance(180_000); s.wake();   // whole night offline
   s.connect(); s.advance(10_000);                                    // morning: sync → ring flush → T9
   const sleep = s.phone.sleepSummaries[0];
   check('sleep (offline) · confirmed T9 recovered on morning sync', !!sleep && sleep.confirmed, `count=${s.phone.sleepSummaries.length}`);

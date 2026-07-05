@@ -54,6 +54,8 @@ struct RootView: View {
                     .fullScreenCover(isPresented: $model.showLiveRunSheet) { LiveRunView().environmentObject(model) }
                     // The moment a workout ends, show its summary (run map/splits or lift HR/zones/sets).
                     .sheet(item: $model.workoutSummary) { s in WorkoutSummaryView(summary: s).environmentObject(model) }
+                    // The moment the night ends (WAKE on the watch), show the premium sleep summary.
+                    .sheet(item: $model.sleepSummary) { s in SleepSummaryView(summary: s).environmentObject(model) }
                 } else {
                     OnboardingView().transition(.move(edge: .trailing))
                 }

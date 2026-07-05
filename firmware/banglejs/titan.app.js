@@ -220,7 +220,6 @@ var state = {
   restHr: null,        // personal resting-HR baseline (EMA from low-motion windows) — gates auto-detect
   swMode: "idle",      // Stopwatch face: "idle" | "watch" (plain timer) | "sleep" (logs as a sleep session)
   swStartMs: 0,        // unix-ms the running timer started
-  count: 0,            // Counter face: a plain tally (button 1× = +1, button 2× = reset) — RAM only
   ppgCount: 0,         // samples captured this session (UI counter)
   framesSent: 0,       // BLE frames emitted/flushed
   logged: 0,           // approx bytes held in the overnight log ring (UI counter)
@@ -292,7 +291,7 @@ var HEART_PAGE = 0;       // HR + link status; button 1×: pair (offline) / sync
 var CLOCK_PAGE = 1;
 var STEPS_PAGE = 2;
 var STOPWATCH_PAGE = 3;   // button 1×: plain timer · 2×: log as sleep
-var COUNTER_PAGE = 4;     // button 1×: +1 · 2×: reset to zero
+var SLEEP_PAGE = 4;       // button 1×: start / wake a sleep session (its own face, like Run + Lift)
 var RUN_PAGE = 5;         // button 1×: start/finish a GPS-tracked RUN → the app's route map
 var LIFT_PAGE = 6;        // button 1×: start/finish a no-GPS LIFTING workout → the app's strength summary
 var PAGES = 7;            // 0 Heart · 1 Clock · 2 Steps · 3 Stopwatch · 4 Counter · 5 Run · 6 Lift
@@ -1403,7 +1402,7 @@ function drawStopwatch() {
   if (state.swMode === "idle") {
     g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
     g.drawString("00:00", cx, 100);
-    drawAction("START", false, "SLEEP", C.cyan);
+    drawAction("START", false, null, C.cyan);
   } else {
     var s = Math.floor((getTime() * 1000 - state.swStartMs) / 1000);
     var hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
@@ -1414,16 +1413,33 @@ function drawStopwatch() {
   }
 }
 
-// Page 6 — COUNTER: a dead-simple tally. Button 1× adds 1 (a real clicker); button 2× resets to
-// zero. Lives in RAM (resets on reboot) — it's a quick rep/set/round/lap counter, not a logged
-// metric, so it never writes flash or emits a frame.
-function drawCounter() {
+// Page — SLEEP: a dedicated sleep session you start from the watch (the counterpart to Run + Lift).
+// Click START to begin: it marks bedtime, FOCUSES the overnight algorithm (the HRM burst duty-cycle +
+// actigraphy so HRV/staging are captured), darkens the screen, and tells the phone you're asleep. Click
+// WAKE to end → emits the confirmed T9 window, and the app seals + summarises the night (like a workout).
+function drawSleep() {
   var W = g.getWidth(), cx = W / 2;
   topBar();
-  tabTitle("COUNTER", C.amber);
-  g.setColor(C.white); g.setFont("Vector", 64); g.setFontAlign(0, 0);
-  g.drawString((state.count || 0) + "", cx, 98);
-  drawAction("+1", false, "RESET", C.amber);
+  tabTitle("SLEEP", C.violet);
+  if (state.swMode !== "sleep") {
+    g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
+    g.drawString("0:00", cx, 104);
+    drawAction("START", false, null, C.violet);
+    return;
+  }
+  var sec = (getTime() * 1000 - state.swStartMs) / 1000;
+  g.setColor(C.violet); g.setFont("Vector", 44); g.setFontAlign(0, 0);
+  g.drawString(fmtMMSS(sec), cx, 92);
+  g.setColor(C.dim); g.setFont("6x8", 2); g.drawString("SLEEPING", cx, 128);
+  drawAction("WAKE", true, null, C.violet, 158);
+}
+
+// Button on the Sleep face: start a sleep session, or wake (end + log it). A plain stopwatch running on
+// the Stopwatch face is left alone — stop it there first (sleep and the stopwatch share swMode).
+function sleepTap() {
+  if (state.swMode === "sleep") stopTimer();          // WAKE → emits the confirmed T9 window
+  else if (state.swMode === "idle") startSleepSession();
+  else { try { Bangle.buzz(20); } catch (e) {} }      // a plain stopwatch is running — not here
 }
 
 // "m:ss" (or "h:mm:ss") for an elapsed/pace second count — the Run face's time + pace.
@@ -1546,7 +1562,7 @@ function drawUI() {
   if (page === CLOCK_PAGE) drawClock();
   else if (page === STEPS_PAGE) drawSteps();
   else if (page === STOPWATCH_PAGE) drawStopwatch();
-  else if (page === COUNTER_PAGE) drawCounter();
+  else if (page === SLEEP_PAGE) drawSleep();
   else if (page === RUN_PAGE) drawRun();
   else if (page === LIFT_PAGE) drawLift();
   else drawHeart();
@@ -1712,18 +1728,16 @@ function handleTaps(n) {
     return;
   }
   if (n >= 2) {
-    // Double-click → the face's secondary action (the second on-screen dot). Faces without one buzz a
-    // tiny "nothing here" so a stray double is felt but does nothing.
-    if (page === STOPWATCH_PAGE) { try { Bangle.buzz(80); } catch (e) {} swSleepToggle(); }
-    else if (page === COUNTER_PAGE) { resetCounter(); }              // resetCounter() buzzes
-    else { try { Bangle.buzz(20); } catch (e) {} }
+    // No face has a secondary (double-click) action anymore — sleep got its own face. A stray double
+    // buzzes a tiny "nothing here" so it's felt but does nothing.
+    try { Bangle.buzz(20); } catch (e) {}
     return;
   }
   // Single click → the PRIMARY action of the face you're on. Because it's the button (not a touch),
   // it can never mis-fire while you swipe across a face.
-  if (page === STOPWATCH_PAGE) swTap();                              // start / stop the timer
-  else if (page === COUNTER_PAGE) bumpCounter();                     // +1
-  else if (page === RUN_PAGE) runTap();                              // start / finish the run
+  if (page === STOPWATCH_PAGE) swTap();                              // start / stop the plain timer
+  else if (page === SLEEP_PAGE) sleepTap();                          // start / wake a sleep session
+  else if (page === RUN_PAGE) runTap();                             // start / finish the run
   else if (page === LIFT_PAGE) liftTap();                            // start / finish the lift
   else { try { Bangle.buzz(20); } catch (e) {} }                     // info face → nothing to do
 }
@@ -1762,7 +1776,7 @@ function startStopwatch() {                 // plain timer (tap from idle)
 function saveSleepPref() { try { require("Storage").writeJSON("titan.sleep", { start: state.swStartMs }); } catch (e) {} }
 function clearSleepPref() { try { require("Storage").erase("titan.sleep"); } catch (e) {} }
 
-function startSleepSession() {              // button 2× on the Stopwatch face → time it AS sleep
+function startSleepSession() {              // the Sleep face START button → time it AS sleep
   state.swMode = "sleep";
   state.swStartMs = Math.round(getTime() * 1000);
   saveSleepPref();                          // survive a reboot mid-sleep
@@ -1770,6 +1784,8 @@ function startSleepSession() {              // button 2× on the Stopwatch face 
   if (!state.streaming) startStreaming();   // guarantee the night is captured for HRV + staging
   reconcileHrm();                           // sleep → burst the HRM (SLEEP_DUTY): ~30s of 25 Hz raw PPG every 3 min, so HRV is captured all night without flattening the battery
   sleepScreenOff();                         // dark screen all night (no twist/touch wakes); one button click still wakes it
+  // Tell the phone you've started sleeping so the app shows a "Sleeping" state (like a live workout).
+  if (state.connected) { try { Bluetooth.println("TN:" + JSON.stringify({ s: 1, t: state.swStartMs })); } catch (e) {} }
   try { Bangle.buzz(80); setTimeout(function () { try { Bangle.buzz(80); } catch (e) {} }, 150); } catch (e) {}
   if (uiVisible) drawUI();
 }
@@ -1780,6 +1796,8 @@ function stopTimer() {                       // stop either mode; a SLEEP sessio
     var wakeSec = Math.round(getTime());
     emitSleepFrame(bedSec, wakeSec, 1);      // confirmed window → the morning sync fires the sleep summary
     clearSleepPref();                        // session done → don't resume it on the next boot
+    // Tell the phone you're awake → it seals + shows the sleep summary (like ending a workout).
+    if (state.connected) { try { Bluetooth.println("TN:" + JSON.stringify({ s: 0, bed: bedSec, wake: wakeSec })); } catch (e) {} }
   }
   state.swMode = "idle";
   sleepScreenRestore();   // sleep ended → give back wrist-twist/touch wake
@@ -1792,28 +1810,6 @@ function stopTimer() {                       // stop either mode; a SLEEP sessio
 function swTap() {
   if (state.swMode === "idle") startStopwatch();
   else stopTimer();
-}
-
-// Double-click of the button while on the Stopwatch face: start a SLEEP session, or stop+log one.
-// If a PLAIN timer is running, do nothing — stop it first (single-click) so a stray double never
-// silently turns a stopwatch into a logged sleep session.
-function swSleepToggle() {
-  if (state.swMode === "sleep") stopTimer();
-  else if (state.swMode === "idle") startSleepSession();
-}
-
-// ----- Counter (the Counter face) -------------------------------------------
-// A plain tally: a single button click adds 1, a double-click resets to zero. RAM only.
-function bumpCounter() {
-  state.count = (state.count || 0) + 1;
-  try { Bangle.buzz(20); } catch (e) {}
-  if (uiVisible) drawUI();
-}
-
-function resetCounter() {
-  state.count = 0;
-  try { Bangle.buzz(60); } catch (e) {}
-  if (uiVisible) drawUI();
 }
 
 // T9 frame: [ver u8, confirmed u8, rsvd u16, bedtime u32 (epoch s), wake u32 (epoch s)] (12 B). Sent
@@ -1914,7 +1910,7 @@ var uiTimer = setInterval(function () {
 // Tick the stopwatch once a second, but ONLY while you're actually looking at a running timer
 // (right page + running + screen on) — so it never wastes battery when idle or while you sleep.
 var swTimer = setInterval(function () {
-  if (page === STOPWATCH_PAGE && state.swMode !== "idle" && uiVisible && Bangle.isLCDOn()) drawUI();
+  if ((page === STOPWATCH_PAGE || page === SLEEP_PAGE) && state.swMode !== "idle" && uiVisible && Bangle.isLCDOn()) drawUI();
 }, 1000);
 
 // Continuous ambient barometer for all-day floors (its own power owner, so dropping GPS doesn't
