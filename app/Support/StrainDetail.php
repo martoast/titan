@@ -19,24 +19,27 @@ class StrainDetail
     private const K = 90.0;   // load→strain scale (matches Strain::K)
 
     /** @return array<string,mixed> */
-    public static function forProfile(Profile $profile, ?Carbon $day = null): array
+    public static function forProfile(Profile $profile, ?Carbon $day = null, ?string $tz = null): array
     {
-        $day = $day ?? Carbon::today();
-        $base = Strain::assess($profile, $day);   // strain, load, target, status, advice, readiness, band
+        // Same LOCAL-day window as the ring (Strain::assess) so the curve, contributions and the
+        // headline number all agree — and so an evening in a non-UTC zone doesn't reset to zero.
+        [$dayStart, $startUtc, $endUtc] = Strain::dayBounds($day, $tz);
+        $base = Strain::assess($profile, $day, $tz);   // strain, load, target, status, advice, readiness, band
 
         $sessions = ActivitySession::where('profile_id', $profile->id)
-            ->whereDate('started_at', $day)
+            ->where('started_at', '>=', $startUtc)
+            ->where('started_at', '<', $endUtc)
             ->orderBy('started_at')
             ->get();
 
         // Ambient (a day of living) as a load floor, accrued evenly across waking hours.
-        $act = $profile->dailyActivity()->whereDate('date', $day)->first();
+        $act = $profile->dailyActivity()->whereDate('date', $dayStart->toDateString())->first();
         $ambientLoad = max((float) ($act->mvpa_min ?? 0) * 0.8, (int) ($act->steps ?? 0) * 0.004);
 
         // Build the cumulative strain CURVE: start of day → each workout end → now. Each point is the
         // strain implied by cumulative (workout + ambient-so-far) load, so it steps up at each session.
-        $startOfDay = $day->copy()->startOfDay();
-        $now = Carbon::now();
+        $startOfDay = $dayStart->copy();
+        $now = Carbon::now($dayStart->getTimezone());
         $dayFrac = fn (Carbon $t) => max(0.0, min(1.0, $startOfDay->diffInSeconds($t) / 86400.0));
 
         $curve = [['t' => $startOfDay->toIso8601ZuluString(), 'strain' => 0.0]];

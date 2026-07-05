@@ -160,7 +160,7 @@ final class APIClient {
     }
 
     func strain() async throws -> StrainResponse {
-        try await send(request("api/me/strain"), as: StrainResponse.self)
+        try await send(request("api/me/strain?tz=\(Self.localTZ)"), as: StrainResponse.self)
     }
 
     func overview(days: Int = 30) async throws -> OverviewResponse {

@@ -29,16 +29,21 @@ class Strain
      *   target:array{low:float,high:float,mode:string,label:string},
      *   status:string,advice:string,readiness:?int}
      */
-    public static function assess(Profile $profile, ?Carbon $day = null): array
+    public static function assess(Profile $profile, ?Carbon $day = null, ?string $tz = null): array
     {
-        $day = $day ?? Carbon::today();
+        // Strain accrues over the user's LOCAL calendar day. Without a tz the "day" is UTC — for a
+        // user hours off UTC that window flips mid-afternoon and the number collapses every evening
+        // (looks frozen/wrong). Callers that don't care (coach tools, nudges) omit tz → UTC as before.
+        [$dayStart, $startUtc, $endUtc] = self::dayBounds($day, $tz);
 
-        // Workout load: sum of the day's session TRIMP.
+        // Workout load: sum of TRIMP for sessions that STARTED on this local day.
         $workout = (float) $profile->activitySessions()
-            ->whereDate('started_at', $day)->sum('trimp');
+            ->where('started_at', '>=', $startUtc)
+            ->where('started_at', '<', $endUtc)
+            ->sum('trimp');
 
         // Ambient load: a day of living. MVPA minutes are the strongest signal; fall back to steps.
-        $act = $profile->dailyActivity()->whereDate('date', $day)->first();
+        $act = $profile->dailyActivity()->whereDate('date', $dayStart->toDateString())->first();
         $mvpa = (float) ($act->mvpa_min ?? 0);
         $steps = (int) ($act->steps ?? 0);
         $ambient = max($mvpa * 0.8, $steps * 0.004);
@@ -48,7 +53,7 @@ class Strain
         [$band, $label] = self::band($strain);
 
         // Coach: target band from this morning's readiness.
-        $readiness = Readiness::compute($profile, $day)['score'] ?? null;
+        $readiness = Readiness::compute($profile, $dayStart->toDateString())['score'] ?? null;
         $target = self::targetFor($readiness);
         [$status, $advice] = self::coach($strain, $target, $readiness);
 
@@ -97,6 +102,36 @@ class Strain
 
         return ['minutes' => max(20, $minsZ3), 'zone' => 'Z3', 'label' => 'steady tempo',
             'strain_to_go' => round($target['low'] - $strain, 1)];
+    }
+
+    /**
+     * Resolve a (local-day-start, UTC start, UTC end) triple for a strain window. `$day` may be any
+     * instant on the target day (or null = today); `$tz` is the user's IANA zone (or null/invalid =
+     * app default). started_at is stored UTC, so the [startUtc, endUtc) half-open range is what the
+     * queries bind against.
+     *
+     * @return array{0:Carbon,1:Carbon,2:Carbon}
+     */
+    public static function dayBounds(?Carbon $day, ?string $tz): array
+    {
+        $zone = self::zone($tz);
+        $dayStart = ($day ? $day->copy() : Carbon::now($zone))->setTimezone($zone)->startOfDay();
+
+        return [$dayStart, $dayStart->copy()->utc(), $dayStart->copy()->addDay()->utc()];
+    }
+
+    private static function zone(?string $tz): string
+    {
+        if ($tz === null || $tz === '') {
+            return (string) config('app.timezone', 'UTC');
+        }
+        try {
+            new \DateTimeZone($tz);
+
+            return $tz;
+        } catch (\Throwable) {
+            return (string) config('app.timezone', 'UTC');
+        }
     }
 
     /** Recovery-driven target strain band. */

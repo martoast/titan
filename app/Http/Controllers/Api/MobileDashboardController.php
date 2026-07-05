@@ -20,6 +20,7 @@ class MobileDashboardController extends Controller
     public function dashboard(Request $request): JsonResponse
     {
         $profile = $request->user()->profile ?? $request->user()->ensureProfile();
+        $tz = (string) $request->query('tz', config('app.timezone', 'UTC'));
 
         $readiness = $this->safe(fn () => Readiness::compute($profile));
 
@@ -44,7 +45,7 @@ class MobileDashboardController extends Controller
 
         // The other two Whoop rings: Sleep Performance (%) and Day Strain (0-21).
         $sleepPerf = $this->safe(fn () => \App\Support\SleepCoach::assess($profile)['performance_pct'] ?? null);
-        $strain = $this->safe(fn () => \App\Support\Strain::assess($profile)['strain'] ?? null);
+        $strain = $this->safe(fn () => \App\Support\Strain::assess($profile, null, $tz)['strain'] ?? null);
 
         return response()->json([
             'readiness' => $readiness,
@@ -189,8 +190,9 @@ class MobileDashboardController extends Controller
     public function strain(Request $request): JsonResponse
     {
         $profile = $request->user()->profile ?? $request->user()->ensureProfile();
+        $tz = (string) $request->query('tz', config('app.timezone', 'UTC'));
 
-        return response()->json(\App\Support\StrainDetail::forProfile($profile));
+        return response()->json(\App\Support\StrainDetail::forProfile($profile, null, $tz));
     }
 
     /** Run a closure, returning null on any failure (missing support class / no baseline). */
