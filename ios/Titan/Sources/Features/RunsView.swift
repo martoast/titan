@@ -27,31 +27,61 @@ enum RunFmt {
 
 // MARK: - Runs list (embedded in the Train section)
 
+/// The window over the workout list — the streak hero always shows the true numbers; this only
+/// narrows the rows below it.
+enum WorkoutRange: String, CaseIterable, Identifiable {
+    case week = "Week", month = "Month", all = "All"
+    var id: String { rawValue }
+}
+
 struct RunsSection: View {
     @EnvironmentObject var model: AppModel
     @State private var runs: [RunSummary] = []
+    @State private var streak: WorkoutStreakInfo?
+    @State private var activeDays: [String] = []
+    @State private var range: WorkoutRange = .week
     @State private var loading = true
     @State private var selected: RunSummary?
 
+    private var filtered: [RunSummary] { runs.filter(inRange) }
+
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: Theme.Space.s) {
-                SectionHeader(title: "Recent workouts")
-                if loading {
-                    VStack(spacing: 8) { Shimmer().frame(height: 60).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip)); Shimmer().frame(height: 60).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip)) }
-                } else if runs.isEmpty {
-                    VStack(spacing: 6) {
-                        Image(systemName: "figure.run").font(.system(size: 30)).foregroundStyle(Theme.Palette.textFaint)
-                        Text("No workouts yet").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                        Text("Tap the Run or Lift face on your band — runs land here with your route + splits, lifts with your HR zones + sets.")
-                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
+        VStack(spacing: Theme.Space.m) {
+            // The headline: the consecutive-day streak + calendar strip.
+            if loading && streak == nil {
+                Shimmer().frame(height: 210).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
+            } else if let s = streak {
+                StreakHero(streak: s, activeDays: activeDays)
+            }
+
+            GlassCard {
+                VStack(alignment: .leading, spacing: Theme.Space.m) {
+                    HStack {
+                        SectionHeader(title: "Workouts")
+                        if !runs.isEmpty { Text("\(filtered.count)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).monospacedDigit() }
                     }
-                    .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(runs) { run in
-                            Button { Haptic.tap(); selected = run } label: { RunRow(run: run) }
-                                .buttonStyle(PressCard())
+                    if !runs.isEmpty { filterBar }
+
+                    if loading && runs.isEmpty {
+                        VStack(spacing: 8) { Shimmer().frame(height: 60).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip)); Shimmer().frame(height: 60).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip)) }
+                    } else if runs.isEmpty {
+                        VStack(spacing: 6) {
+                            Image(systemName: "figure.run").font(.system(size: 30)).foregroundStyle(Theme.Palette.textFaint)
+                            Text("No workouts yet").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            Text("Tap the Run or Lift face on your band — runs land here with your route + splits, lifts with your HR zones + sets.")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
+                    } else if filtered.isEmpty {
+                        Text(range == .week ? "Nothing logged this week yet — get after it." : "Nothing logged this month yet.")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            .frame(maxWidth: .infinity).multilineTextAlignment(.center).padding(.vertical, Theme.Space.s)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(filtered) { run in
+                                Button { Haptic.tap(); selected = run } label: { RunRow(run: run) }
+                                    .buttonStyle(PressCard())
+                            }
                         }
                     }
                 }
@@ -68,8 +98,39 @@ struct RunsSection: View {
         }
     }
 
+    private var filterBar: some View {
+        HStack(spacing: 6) {
+            ForEach(WorkoutRange.allCases) { r in
+                let on = range == r
+                Button { Haptic.tap(); withAnimation(Theme.Motion.snappy) { range = r } } label: {
+                    Text(r.rawValue).font(Theme.Font.micro)
+                        .foregroundStyle(on ? Theme.Palette.bg : Theme.Palette.textDim)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background { if on { Capsule().fill(Theme.Palette.text) } }
+                }.buttonStyle(.plain)
+            }
+            Spacer()
+        }
+    }
+
+    // Match the server's Monday-start week so the filter agrees with the hero's "this week" count.
+    private func inRange(_ run: RunSummary) -> Bool {
+        guard range != .all else { return true }
+        guard let iso = run.started_at, let d = ISO8601DateFormatter().date(from: iso) else { return true }
+        var cal = Calendar.current; cal.firstWeekday = 2
+        switch range {
+        case .week: return cal.isDate(d, equalTo: Date(), toGranularity: .weekOfYear)
+        case .month: return cal.isDate(d, equalTo: Date(), toGranularity: .month)
+        case .all: return true
+        }
+    }
+
     private func load() async {
-        if let r = try? await model.api.runs() { runs = r }
+        if let r = try? await model.api.workouts() {
+            runs = r.runs
+            streak = r.streak
+            activeDays = r.active_days ?? []
+        }
         loading = false
     }
 }

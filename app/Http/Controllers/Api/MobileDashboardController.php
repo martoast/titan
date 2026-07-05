@@ -93,7 +93,55 @@ class MobileDashboardController extends Controller
                 'floors' => $activity->floors,
                 'distance_km' => $activity->distance_km,
             ] : null,
+            // Training on Today: the workout logged today (if any) + the consecutive-day streak, so
+            // the headline screen shows both "here's what you did" and "here's your consistency".
+            'workout' => $this->workoutBlock($profile, (string) $request->query('tz', config('app.timezone', 'UTC'))),
         ]);
+    }
+
+    /**
+     * Today's sealed workout (compact summary, same shape as the runs list rows) + the current/longest
+     * consecutive-day streak. Kept resilient — a computation failure never takes down the dashboard.
+     *
+     * @return array<string,mixed>
+     */
+    private function workoutBlock(\App\Models\Profile $profile, string $tz): array
+    {
+        $streak = $this->safe(fn () => \App\Support\WorkoutStreak::forProfile($profile, $tz)) ?? [
+            'current' => 0, 'longest' => 0, 'worked_out_today' => false,
+        ];
+
+        $today = $this->safe(function () use ($profile, $tz) {
+            $zone = new \DateTimeZone($tz);
+            $start = \Carbon\CarbonImmutable::now($zone)->startOfDay()->utc();
+            $end = \Carbon\CarbonImmutable::now($zone)->endOfDay()->utc();
+
+            $s = $profile->activitySessions()
+                ->whereBetween('started_at', [$start, $end])
+                ->orderByDesc('started_at')
+                ->first();
+
+            return $s ? [
+                'id' => $s->id,
+                'title' => $s->title(),
+                'activity_type' => $s->activity_type,
+                'started_at' => $s->started_at?->toIso8601String(),
+                'duration_min' => $s->duration_min,
+                'distance_km' => $s->distance_km !== null ? (float) $s->distance_km : null,
+                'avg_pace_s_per_km' => $s->avg_pace_s_per_km,
+                'has_route' => $s->hasRoute(),
+                'map_thumb_url' => $s->staticMapUrl(400, 220),
+            ] : null;
+        });
+
+        return [
+            'today' => $today,
+            'streak' => [
+                'current' => $streak['current'] ?? 0,
+                'longest' => $streak['longest'] ?? 0,
+                'worked_out_today' => $streak['worked_out_today'] ?? false,
+            ],
+        ];
     }
 
     /**

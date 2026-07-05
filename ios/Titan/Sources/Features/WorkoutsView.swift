@@ -7,6 +7,9 @@ struct TrainSection: View {
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
+            // Lead with the streak + your workouts — the emotional core of the screen.
+            RunsSection()
+
             GlassCard(padding: Theme.Space.l) {
                 VStack(spacing: Theme.Space.m) {
                     HStack {
@@ -31,8 +34,6 @@ struct TrainSection: View {
                     row("bubble.left.and.text.bubble.right.fill", Theme.Palette.indigo, "Or tell the coach", "\u{201C}starting a run\u{201D} · \u{201C}log my lift\u{201D}")
                 }
             }
-
-            RunsSection()
         }
     }
 

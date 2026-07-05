@@ -24,8 +24,21 @@ class MobileRunsController extends Controller
             ->limit(50)
             ->get();
 
+        // Consistency header for the Workouts screen: the consecutive-day streak (the number that
+        // matters), plus this-week / this-month counts and the days lit on the calendar strip.
+        $tz = (string) $request->query('tz', config('app.timezone', 'UTC'));
+        $streak = \App\Support\WorkoutStreak::forProfile($profile, $tz);
+
         return response()->json([
             'runs' => $runs->map(fn (ActivitySession $s) => $this->summary($s))->values(),
+            'streak' => [
+                'current' => $streak['current'],
+                'longest' => $streak['longest'],
+                'this_week' => $streak['this_week'],
+                'this_month' => $streak['this_month'],
+                'worked_out_today' => $streak['worked_out_today'],
+            ],
+            'active_days' => $streak['active_days'],
         ]);
     }
 

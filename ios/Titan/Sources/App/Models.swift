@@ -58,6 +58,13 @@ struct Dashboard: Codable {
     let recovery: Recovery?
     let sleep: Sleep?
     let activity: Activity?
+    let workout: Workout?
+
+    /// Training on Today: what you did today (if anything) + the consecutive-day streak.
+    struct Workout: Codable {
+        let today: RunSummary?
+        let streak: WorkoutStreakInfo?
+    }
 
     /// The three Whoop rings: recovery %, sleep performance %, day strain (0-21).
     struct Rings: Codable {
@@ -640,7 +647,21 @@ struct RunSummary: Codable, Equatable, Identifiable {
     var isLift: Bool { activity_type == "strength" }
 }
 
-struct RunsResponse: Codable, Equatable { let runs: [RunSummary] }
+struct RunsResponse: Codable, Equatable {
+    let runs: [RunSummary]
+    var streak: WorkoutStreakInfo? = nil
+    var active_days: [String]? = nil   // 'yyyy-MM-dd' local days lit on the calendar strip
+}
+
+/// The consistency numbers behind the Workouts screen header + the Today streak badge.
+/// Week/month counts are only present on the `/runs` payload (nil on the dashboard block).
+struct WorkoutStreakInfo: Codable, Equatable {
+    let current: Int
+    let longest: Int
+    var this_week: Int? = nil
+    var this_month: Int? = nil
+    var worked_out_today: Bool? = nil
+}
 
 struct RunSplit: Codable, Equatable, Identifiable {
     let index: Int

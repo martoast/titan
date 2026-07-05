@@ -95,6 +95,13 @@ struct DashboardView: View {
                 }
             }.buttonStyle(PressCard())
 
+            // Training today — what you did today + your day streak, one tap from the full Workouts screen.
+            if let w = d?.workout {
+                NavigationLink { TrainScreen() } label: {
+                    TodayTrainingCard(workout: w)
+                }.buttonStyle(PressCard())
+            }
+
             // Recovery vitals
             NavigationLink { RecoveryView() } label: {
                 GlassCard {

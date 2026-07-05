@@ -115,11 +115,21 @@ final class APIClient {
     }
 
     func dashboard() async throws -> Dashboard {
-        try await send(request("api/me/dashboard"), as: Dashboard.self)
+        try await send(request("api/me/dashboard?tz=\(Self.localTZ)"), as: Dashboard.self)
     }
 
     func runs() async throws -> [RunSummary] {
-        try await send(request("api/me/runs"), as: RunsResponse.self).runs
+        try await workouts().runs
+    }
+
+    /// Full Workouts payload: the list + the consecutive-day streak + calendar strip days.
+    func workouts() async throws -> RunsResponse {
+        try await send(request("api/me/runs?tz=\(Self.localTZ)"), as: RunsResponse.self)
+    }
+
+    /// The device's IANA zone, URL-encoded, so streaks bucket on the user's local calendar day.
+    private static var localTZ: String {
+        TimeZone.current.identifier.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "UTC"
     }
 
     func runDetail(_ id: Int) async throws -> RunDetail {
