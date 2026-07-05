@@ -182,6 +182,13 @@ final class APIClient {
                               as: MealScanResult.self)
     }
 
+    /// Confirm a scanned draft (after the user set the amount) → log it, re-attaching the scan's photo.
+    func confirmMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, photoPath: String?) async throws -> MealMutation {
+        var json: [String: Any] = ["name": name, "calories": calories, "protein_g": protein, "carbs_g": carbs, "fat_g": fat]
+        if let photoPath { json["photo_path"] = photoPath }
+        return try await send(request("api/me/meals/confirm", method: "POST", json: json), as: MealMutation.self)
+    }
+
     func updateMeal(_ id: Int, fields: [String: Any]) async throws -> MealMutation {
         try await send(request("api/me/meals/\(id)", method: "PATCH", json: fields), as: MealMutation.self)
     }

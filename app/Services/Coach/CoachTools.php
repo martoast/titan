@@ -31,7 +31,7 @@ class CoachTools
         // Niche.
         'cycle_status' => 'cycle', 'log_period' => 'cycle', 'log_cycle' => 'cycle',
         'get_pantry' => 'pantry', 'update_pantry' => 'pantry',
-        'update_food' => 'food',
+        'update_food' => 'food', 'my_meals' => 'food',
         'log_behavior' => 'journal', 'my_impacts' => 'journal', 'insights' => 'journal',
         'set_goal_weight' => 'weight', 'weight_progress' => 'weight',
         'log_water' => 'hydration', 'hydration_today' => 'hydration',
@@ -50,7 +50,7 @@ class CoachTools
         'mesocycle' => ['program', 'plan my training', 'mesocycle', 'meso', 'routine', 'deload', 'periodi', 'split', 'push pull legs', 'ppl', 'hypertrophy', 'grow my', 'bring up', 'lagging', 'specializ', 'playbook', 'go advanced', 'intensity technique', 'peak week', 'volume landmark'],
         'cycle' => ['period', 'cycle', 'menstr', 'pms', 'ovulat', 'fertile', 'cramp', 'luteal', 'follicular', 'flow', 'bbt'],
         'pantry' => ['pantry', 'fridge', 'groceries', 'grocery', 'i have ', 'what can i make', 'cook', 'kitchen', 'ingredient'],
-        'food' => ['wrong macros', 'macros are wrong', 'macros are off', 'fix the macros', 'correct the macros', 'update the macros', 'update the food', 'the macros for', 'per 100g', 'per serving', 'actually has', "that's not right", 'thats not right'],
+        'food' => ['wrong macros', 'macros are wrong', 'macros are off', 'fix the macros', 'correct the macros', 'update the macros', 'update the food', 'the macros for', 'per 100g', 'per serving', 'actually has', "that's not right", 'thats not right', 'usual', 'my usuals', 'what do i usually eat', 'what i usually eat', 'my meals', 'the usual'],
         'journal' => ['drink', 'drank', 'alcohol', 'beer', 'wine', 'hungover', 'caffeine', 'coffee late', 'stayed up', 'stress', 'anxious', 'meditat', 'sauna', 'cold plunge', 'ice bath', 'journal', 'late meal', 'late dinner', 'ate out', 'takeout', 'screens', 'magnesium', 'napped', 'what affects my', 'what hurts my', 'what helps my', 'my impacts', 'my discoveries', 'how was my day', 'log my day', 'insight', 'what should i know', 'anything i should know', 'my feed'],
         'weight' => ['weigh', 'weight', 'lose', 'losing', 'lost', 'lbs', 'pounds', ' kg', 'goal weight', 'target weight', 'trend', 'scale', 'cut', 'bulk', 'slim', 'get lean', 'leaner', 'drop', 'on track', 'how am i doing'],
         'hydration' => ['water', 'hydrate', 'hydration', 'thirsty', 'glass of', 'bottle of', 'how much water', ' oz ', 'fluids', 'drank water'],
@@ -198,6 +198,7 @@ class CoachTools
             $tools[] = $this->fn('recent_meals', 'Get recently logged meals and per-day macro totals (calories, protein, carbs, fat).', [
                 'days' => ['type' => 'integer', 'description' => 'How many days back to include (default 7).'],
             ], []);
+            $tools[] = $this->fn('my_meals', "The user's remembered meals — their \"usuals\", the dishes they eat most, each with saved macros + how often/recently eaten. Use for \"what do I usually eat\", to suggest a usual, or to size a meal like one they eat often.", [], []);
         }
 
         // --- "What you take": supplements & medications ---
@@ -495,6 +496,7 @@ class CoachTools
             'lookup_food' => 'Looking up the nutrition facts',
             'recent_biomarkers' => 'Checking your bloodwork',
             'recent_meals' => 'Reviewing your nutrition',
+            'my_meals' => 'Recalling your usual meals',
             'my_stack' => 'Checking what you take',
             'add_stack_item' => 'Adding to your stack',
             'log_intake' => 'Logging your dose',
@@ -596,6 +598,7 @@ class CoachTools
             'lookup_food' => $this->lookupFood($args),
             'recent_biomarkers' => $this->recentBiomarkers(),
             'recent_meals' => $this->recentMeals((int) ($args['days'] ?? 7)),
+            'my_meals' => $this->myMeals(),
             'my_stack' => $this->myStack(),
             'add_stack_item' => $this->addStackItem($args),
             'log_intake' => $this->logIntake($args),
@@ -930,6 +933,31 @@ class CoachTools
         return [
             'top_foods' => $foods,
             '_show' => 'These are their most-eaten foods (frequency + typical macros + when last eaten). Use them for meal planning, suggestions, and "what do I usually eat" — reference them, don\'t re-ask.',
+        ];
+    }
+
+    /** The user's remembered meals ("your usuals") — the library the Fuel tab re-logs from. */
+    private function myMeals(): mixed
+    {
+        if (! class_exists(\App\Support\MealMemory::class)) {
+            return 'No meal data yet.';
+        }
+        $meals = app(\App\Support\MealMemory::class)->library($this->profile, 20);
+        if ($meals->isEmpty()) {
+            return 'No remembered meals yet — the user builds this by logging meals.';
+        }
+
+        return [
+            'your_meals' => $meals->map(fn ($t) => [
+                'name' => $t->name,
+                'calories' => (int) $t->calories,
+                'protein_g' => round((float) $t->protein_g, 1),
+                'carbs_g' => round((float) $t->carbs_g, 1),
+                'fat_g' => round((float) $t->fat_g, 1),
+                'times_logged' => (int) $t->times_logged,
+                'last_eaten' => optional($t->last_eaten_at)->diffForHumans(),
+                'favorite' => (bool) $t->favorite,
+            ])->values()->all(),
         ];
     }
 

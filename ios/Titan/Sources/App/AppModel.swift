@@ -668,6 +668,16 @@ final class AppModel: ObservableObject {
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
+    /// Confirm a scanned meal draft (with the amount the user set) → log it, close the sheet, refresh.
+    func confirmScannedMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, photoPath: String?) async {
+        do {
+            _ = try await api.confirmMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, photoPath: photoPath)
+            Haptic.success()
+            scanResult = nil
+            await loadNutrition()
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
     func updateMeal(_ id: Int, name: String, calories: Int, protein: Double, carbs: Double, fat: Double) async {
         do {
             _ = try await api.updateMeal(id, fields: [

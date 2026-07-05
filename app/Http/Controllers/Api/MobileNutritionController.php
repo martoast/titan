@@ -34,7 +34,11 @@ class MobileNutritionController extends Controller
         ]);
     }
 
-    /** Snap a meal: photo → AI macros (grounded) → logged. Returns the meal + the updated card. */
+    /**
+     * Snap a meal: photo → AI identifies it → macros nailed via your usuals / the official branded label /
+     * web grounding → returned as a DRAFT for the user to confirm the amount before it's logged (so we get
+     * the macros right). Bloodwork/physique are still filed immediately (nothing to confirm).
+     */
     public function scan(Request $request): JsonResponse
     {
         $request->validate([
@@ -43,21 +47,58 @@ class MobileNutritionController extends Controller
         ]);
         $profile = $this->profile($request);
 
-        $res = $this->scan->scan($profile, $request->file('photo'), $request->input('caption'));
-
-        $meal = isset($res['meal_id']) ? $profile->meals()->find($res['meal_id']) : null;
+        $res = $this->scan->analyzeMeal($profile, $request->file('photo'), $request->input('caption'));
 
         return response()->json([
             'kind' => $res['kind'] ?? 'other',
-            'meal' => $meal ? $this->mealJson($meal) : null,
+            // A meal comes back as a draft (not yet logged) — the client confirms the amount, then POSTs
+            // /meals/confirm. Non-meals were handled server-side already.
+            'draft' => ($res['kind'] ?? null) === 'meal' ? Arr::except($res, ['kind', 'logged']) : null,
             'progress_photo_id' => $res['progress_photo_id'] ?? null,
             'image_url' => $res['image_url'] ?? null,
-            // For a body shot ScanService files it under Progress — tell the user plainly.
             'message' => ($res['kind'] ?? null) === 'physique'
                 ? 'That looks like a body photo — I saved it to your Progress.'
                 : (($res['kind'] ?? null) === 'meal' ? null : ($res['reply'] ?? null)),
             'macros' => Macros::today($profile),
         ]);
+    }
+
+    /**
+     * Confirm a scanned draft → log it. The client sends the FINAL macros (after the user set the
+     * servings/amount) + the draft's stored photo. We re-attach that photo (validated to the scans
+     * folder — no arbitrary paths) so the logged meal keeps its picture, and it folds into meal memory.
+     */
+    public function confirm(Request $request): JsonResponse
+    {
+        $profile = $this->profile($request);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:80'],
+            'calories' => ['required', 'integer', 'min:0', 'max:20000'],
+            'protein_g' => ['required', 'numeric', 'min:0', 'max:2000'],
+            'carbs_g' => ['required', 'numeric', 'min:0', 'max:2000'],
+            'fat_g' => ['required', 'numeric', 'min:0', 'max:2000'],
+            'photo_path' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        // Only ever re-attach a photo the scanner itself just stored — never an arbitrary path.
+        $photo = null;
+        if (! empty($data['photo_path']) && str_starts_with($data['photo_path'], 'coach/scans/')
+            && \Illuminate\Support\Facades\Storage::disk('public')->exists($data['photo_path'])) {
+            $photo = $data['photo_path'];
+        }
+
+        $meal = $profile->meals()->create([
+            'name' => $data['name'],
+            'eaten_at' => now(),
+            'calories' => $data['calories'],
+            'protein_g' => $data['protein_g'],
+            'carbs_g' => $data['carbs_g'],
+            'fat_g' => $data['fat_g'],
+            'photo_path' => $photo,
+            'source' => 'photo',
+        ]);
+
+        return response()->json(['meal' => $this->mealJson($meal), 'macros' => Macros::today($profile)]);
     }
 
     /** Manual entry (or "add what the camera missed"). */

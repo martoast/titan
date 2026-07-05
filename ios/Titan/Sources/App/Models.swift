@@ -332,16 +332,35 @@ struct Meal: Codable, Identifiable, Equatable {
     let source: String?
 }
 
-/// `POST /api/me/nutrition/scan` — photo → AI macros (grounded + logged) + updated card.
+/// `POST /api/me/nutrition/scan` — photo → AI identifies it → macros nailed (your usuals / official
+/// branded label / web) → a DRAFT to confirm the amount before logging. Non-meals are filed already.
 struct MealScanResult: Codable, Identifiable {
     var id = UUID()
     let kind: String              // meal | physique | bloodwork | other
-    let meal: Meal?
+    let draft: MealDraft?         // present for a meal — not yet logged; the user confirms the amount
     let progress_photo_id: Int?
     let image_url: String?
     let message: String?
     let macros: MacroCard
-    enum CodingKeys: String, CodingKey { case kind, meal, progress_photo_id, image_url, message, macros }
+    enum CodingKeys: String, CodingKey { case kind, draft, progress_photo_id, image_url, message, macros }
+}
+
+/// A scanned meal awaiting confirmation. Macros are for ONE serving of what was identified; the confirm
+/// sheet scales them by the servings the user sets, then logs via `/meals/confirm`.
+struct MealDraft: Codable {
+    let photo_path: String?
+    let image_url: String?
+    let name: String
+    let brand: String?
+    let items: [String]?
+    let calories: Int
+    let protein_g: Double
+    let carbs_g: Double
+    let fat_g: Double
+    let confidence: String        // low | medium | high
+    let source: String            // your_meals | brand | web | photo — where the macros came from
+    let serving_hint: String?
+    let needs_confirmation: Bool
 }
 
 /// `POST/PATCH /api/me/meals` → { meal, macros }

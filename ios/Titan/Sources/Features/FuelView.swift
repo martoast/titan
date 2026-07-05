@@ -224,7 +224,13 @@ struct ScanResultSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let result: MealScanResult
-    @State private var editing: Meal?
+    @State private var servings: Double = 1
+    @State private var name: String = ""
+    @State private var logging = false
+
+    private var draft: MealDraft? { result.draft }
+    private func scaledCal(_ d: MealDraft) -> Int { Int((Double(d.calories) * servings).rounded()) }
+    private func scaled(_ v: Double) -> Double { (v * servings * 10).rounded() / 10 }
 
     var body: some View {
         NavigationStack {
@@ -232,38 +238,13 @@ struct ScanResultSheet: View {
                 Theme.Palette.bg.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: Theme.Space.m) {
-                        if let url = result.image_url {
+                        if let url = draft?.image_url ?? result.image_url {
                             RemoteImage(url: url).frame(height: 200).frame(maxWidth: .infinity)
                                 .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
                         }
-                        if let meal = result.meal {
-                            GlassCard {
-                                VStack(spacing: Theme.Space.m) {
-                                    HStack {
-                                        Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.Palette.mint)
-                                        Text("Logged").font(Theme.Font.label).foregroundStyle(Theme.Palette.mint)
-                                        Spacer()
-                                    }
-                                    Text(meal.name ?? "Meal").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    HStack(spacing: Theme.Space.m) {
-                                        macroStat("\(meal.calories)", "kcal", Theme.Palette.cyan)
-                                        macroStat("\(Int(meal.protein_g))", "protein", Theme.Palette.mint)
-                                        macroStat("\(Int(meal.carbs_g))", "carbs", Theme.Palette.amber)
-                                        macroStat("\(Int(meal.fat_g))", "fat", Theme.Palette.pink)
-                                    }
-                                    Text("Estimated by AI from your photo. Tap Adjust if it's off.")
-                                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                            Button { editing = meal } label: {
-                                Text("Adjust macros").font(Theme.Font.body.weight(.semibold))
-                                    .frame(maxWidth: .infinity).padding(.vertical, 13)
-                                    .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
-                                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
-                                    .foregroundStyle(Theme.Palette.text)
-                            }
+                        if let d = draft {
+                            confirmCard(d)
+                            logButton(d)
                         } else {
                             GlassCard {
                                 VStack(spacing: Theme.Space.s) {
@@ -277,12 +258,93 @@ struct ScanResultSheet: View {
                     }.padding(Theme.Space.m)
                 }
             }
-            .navigationTitle(result.kind == "meal" ? "Meal logged" : "Scanned")
+            .navigationTitle(draft != nil ? "Confirm meal" : "Scanned")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(draft != nil ? "Cancel" : "Done") { dismiss() } } }
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear { if name.isEmpty { name = draft?.name ?? "" } }
         }
-        .sheet(item: $editing) { EditMealSheet(meal: $0) }
+    }
+
+    // The confirm card: where the macros came from, an editable name, the amount (servings), and the
+    // live macros for that amount — so the user dials it in before it's logged.
+    private func confirmCard(_ d: MealDraft) -> some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                sourceBadge(d)
+                TextField("Meal name", text: $name)
+                    .font(Theme.Font.title).foregroundStyle(Theme.Palette.text).textFieldStyle(.plain)
+                if let b = d.brand, d.source != "brand" { Text(b).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Amount").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+                        Spacer()
+                        stepButton("minus") { servings = max(0.5, (servings - 0.5)) }
+                        Text("×\(servings.formatted())").font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.text)
+                            .monospacedDigit().frame(minWidth: 52)
+                        stepButton("plus") { servings = min(20, servings + 0.5) }
+                    }
+                    if let s = d.serving_hint { Text("Serving: \(s)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+                }
+
+                HStack(spacing: Theme.Space.m) {
+                    macroStat("\(scaledCal(d))", "kcal", Theme.Palette.cyan)
+                    macroStat("\(Int(scaled(d.protein_g)))", "protein", Theme.Palette.mint)
+                    macroStat("\(Int(scaled(d.carbs_g)))", "carbs", Theme.Palette.amber)
+                    macroStat("\(Int(scaled(d.fat_g)))", "fat", Theme.Palette.pink)
+                }
+            }
+        }
+    }
+
+    private func logButton(_ d: MealDraft) -> some View {
+        Button {
+            logging = true
+            Task {
+                await model.confirmScannedMeal(
+                    name: name.trimmingCharacters(in: .whitespaces).isEmpty ? d.name : name,
+                    calories: scaledCal(d), protein: scaled(d.protein_g),
+                    carbs: scaled(d.carbs_g), fat: scaled(d.fat_g), photoPath: d.photo_path)
+                logging = false
+            }
+        } label: {
+            HStack(spacing: Theme.Space.s) {
+                if logging { ProgressView().tint(.black) }
+                Text(logging ? "Logging…" : "Log meal").font(Theme.Font.body.weight(.bold))
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 14)
+            .background(Theme.Palette.amber, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+            .foregroundStyle(.black)
+        }
+        .disabled(logging)
+    }
+
+    private func sourceBadge(_ d: MealDraft) -> some View {
+        let (icon, text, color): (String, String, Color) = {
+            switch d.source {
+            case "your_meals": return ("star.fill", "Your usual — your saved macros", Theme.Palette.mint)
+            case "brand": return ("checkmark.seal.fill", "Official label" + (d.brand.map { " · \($0)" } ?? ""), Theme.Palette.cyan)
+            case "web": return ("globe", "Grounded in real nutrition data", Theme.Palette.cyan)
+            default: return ("sparkles", "Estimated from your photo — confirm the amount", Theme.Palette.amber)
+            }
+        }()
+        return HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 11, weight: .bold))
+            Text(text).font(Theme.Font.micro.weight(.semibold)).lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(color.opacity(0.12), in: Capsule())
+    }
+
+    private func stepButton(_ icon: String, _ action: @escaping () -> Void) -> some View {
+        Button { Haptic.tap(); action() } label: {
+            Image(systemName: icon).font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.Palette.text)
+                .frame(width: 34, height: 34)
+                .background(Theme.Palette.card, in: Circle())
+                .overlay(Circle().strokeBorder(Theme.Palette.cardStroke))
+        }.buttonStyle(.plain)
     }
 
     private func macroStat(_ v: String, _ l: String, _ c: Color) -> some View {

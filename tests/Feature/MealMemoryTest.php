@@ -86,6 +86,26 @@ class MealMemoryTest extends TestCase
         $this->assertSame(2, $tpl->fresh()->times_logged);
     }
 
+    public function test_confirm_logs_a_drafted_meal_and_remembers_it(): void
+    {
+        [$profile, $token] = $this->auth();
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/me/meals/confirm', [
+                'name' => 'MyProtein Whey Shake', 'calories' => 120,
+                'protein_g' => 24, 'carbs_g' => 3, 'fat_g' => 2,
+                'photo_path' => '../../etc/passwd',   // rejected — not a scans path
+            ])
+            ->assertOk()
+            ->assertJsonPath('meal.name', 'MyProtein Whey Shake')
+            ->assertJsonPath('meal.calories', 120)
+            ->assertJsonPath('meal.photo_url', null)      // the bogus path was refused
+            ->assertJsonPath('macros.protein.value', 24);
+
+        // Confirming a scan is a normal log → it's remembered for one-tap re-logging next time.
+        $this->assertSame(1, $profile->mealTemplates()->where('name', 'MyProtein Whey Shake')->count());
+    }
+
     public function test_favorite_and_forget(): void
     {
         [$profile, $token] = $this->auth();
