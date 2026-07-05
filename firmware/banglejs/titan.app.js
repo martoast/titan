@@ -1001,17 +1001,11 @@ function onDisconnect() {
 // locomotion gate has armed) so the classifier sees its validated rate; 12.5 Hz the rest of the
 // time (overnight actigraphy + power).
 function applyAccelRate() {
-  // 25 Hz ONLY during an actual workout (the classifier's training rate). NOT merely when connected:
-  // the Bangle.js built-in pedometer (getHealthStatus().steps) only counts at the default 80 ms /
-  // 12.5 Hz poll — a non-default interval silently kills it. Holding 25 Hz just because the phone was
-  // attached zeroed steps for the whole connected session (and after every run). Runs pin 12.5 Hz via
-  // primed.accelHz below, so the step counter keeps running even mid-run.
-  var fast = state.streaming && state.workout;
-  var ms = fast ? CFG.ACCEL_MS_LIVE : CFG.ACCEL_MS_OVERNIGHT;
-  // A coach-primed activity carries its own accel cadence (e.g. 12.5 Hz for a run); honor it
-  // while that activity's workout runs so a reconnect doesn't snap us back to 25 Hz.
-  if (primed && state.workout && primed.accelHz) ms = Math.round(1000 / primed.accelHz);
-  try { Bangle.setPollInterval(ms); } catch (e) {}
+  // ALWAYS the default 12.5 Hz / 80 ms poll. This is the rate the Bangle.js built-in pedometer
+  // (getHealthStatus().steps) needs — ANY faster (the old 25 Hz "classifier" rate) SILENTLY STOPS step
+  // counting, which is exactly why steps froze while recording/after motion. Keeping steps working beats
+  // the ~3-pt classifier gain at 25 Hz (the server classifies fine at 12.5 Hz — it's the overnight rate).
+  try { Bangle.setPollInterval(CFG.ACCEL_MS_OVERNIGHT); } catch (e) {}
 }
 
 // Which Bangle sport mode fits the current state: normal (0) at rest, biking (2) for a primed
@@ -1311,75 +1305,53 @@ function drawAction(primary, active, secondary, accent, y) {
   }
 }
 
-// ----- Persistent daily step total (survives reboot — the Whoop model) ------------------------------
-// The Bangle pedometer's day count (getHealthStatus) resets when the watch reboots, and the SERVER
-// merges steps as a per-day MAX — so a mid-day reboot would stall/lose the rest of the day's steps.
-// So we keep our OWN daily total from the validated `step` event, persisted to flash, so the reported
-// total only ever grows within a day. We don't reinvent step DETECTION (that's the firmware pedometer);
-// we just count its `step` events and bank the total across reboots.
-var STEP_FILE = "titan.stp2";     // { d:"YYYY-MM-DD", s:total } — v2 name discards any pre-fix corrupted total
-var stepDay = "";                 // local date stepTotal belongs to
-var stepTotal = 0;                // persisted day total
-var stepLastUp = -1;              // last pedometer cumulative seen (-1 = unset → first event only baselines)
-var stepDirty = false;
-var osDayBase = -1;               // OS "day" step count captured at the START of our day (-1 = unset)
+// ----- Daily steps — the Bangle community's proven approach -----------------------------------------
+// `Bangle.getHealthStatus("day").steps` IS the firmware pedometer: it increments in real time and resets
+// at local midnight. Don't reinvent detection or bank the `step` event (the older, flaky way). It only
+// counts at the DEFAULT 12.5 Hz poll (see applyAccelRate). Its one gap: it resets to 0 on a REBOOT, which
+// would drop the day's steps — so, exactly like the Widpedom app, we persist the running day total and add
+// the post-reboot count back on top. `stepCarry` holds steps from earlier boots today; `stepSeen` tracks
+// getHealthStatus so we can detect its reset.
+var STEP_FILE = "titan.stp3";     // { d:"YYYY-MM-DD", s:total } — v3 discards any pre-fix persisted total
+var stepDay = "";                 // local date the counters belong to
+var stepCarry = 0;                // steps banked from earlier boots today (persisted → survives reboot)
+var stepSeen = 0;                 // last getHealthStatus("day").steps we read this boot
+var phonePushToday = 0;           // phone-pushed count (C6) — display pad only; the server does the real merge
 
 function stepLocalDate() {
   var d = new Date();
   return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).substr(-2) + "-" + ("0" + d.getDate()).substr(-2);
 }
-function osRaw() {                 // the Bangle pedometer's raw "today" count (its own day boundary)
-  var os = 0;
-  try { os = Bangle.getHealthStatus("day").steps | 0; } catch (e) {}
-  return os;
-}
-// Steps the OS pedometer has counted since OUR day began. Baselining is what makes the midnight reset
-// AUTHORITATIVE: our rollover captures the OS count at day-start, so even if the OS "day" counter is
-// slow to reset (or doesn't), it can never carry yesterday's total into today. Re-baselines if the OS
-// counter DROPS (its own reset / a reboot) so we never report a negative.
-function osToday() {
-  var os = osRaw();
-  if (osDayBase < 0 || os < osDayBase) osDayBase = os;
-  return os - osDayBase;
+function osSteps() {              // the firmware pedometer's live day count
+  try { return Bangle.getHealthStatus("day").steps | 0; } catch (e) { return 0; }
 }
 function stepLoad() {
-  osDayBase = -1;   // re-baseline on first read this boot
+  stepDay = stepLocalDate(); stepCarry = 0; stepSeen = 0; phonePushToday = 0;
   try {
     var s = require("Storage").readJSON(STEP_FILE, true);
-    if (s && s.d === stepLocalDate()) { stepDay = s.d; stepTotal = s.s | 0; return; }
+    if (s && s.d === stepDay) stepCarry = s.s | 0;   // resume today's total across a reboot
   } catch (e) {}
-  stepDay = stepLocalDate(); stepTotal = 0;   // no file, or it's from a previous day → start fresh
 }
 function stepSave() {
-  try { require("Storage").writeJSON(STEP_FILE, { d: stepDay, s: stepTotal }); stepDirty = false; } catch (e) {}
+  try { require("Storage").writeJSON(STEP_FILE, { d: stepDay, s: stepCarry + stepSeen }); } catch (e) {}
 }
-function stepRollover() {          // local midnight → close the day, start the next at 0
+// Reconcile with the firmware counter: roll the day over at midnight, and if getHealthStatus dropped
+// (a reboot/reset), bank what we'd seen so the total never goes backwards. Cheap — call before any read.
+function stepTick() {
   var d = stepLocalDate();
-  if (d !== stepDay) { stepDay = d; stepTotal = 0; osDayBase = osRaw(); stepSave(); }
+  if (d !== stepDay) { stepDay = d; stepCarry = 0; stepSeen = 0; phonePushToday = 0; stepSave(); return; }
+  var os = osSteps();
+  if (os < stepSeen) stepCarry += stepSeen;   // getHealthStatus reset → keep the pre-reset steps
+  stepSeen = os;
 }
-
-// `up` = the pedometer's CUMULATIVE count. It does NOT reset when our app reflashes/reboots (it's the
-// device health counter), but our `stepLastUp` baseline does — so the first event after boot must only
-// LEARN the baseline, never bank `up` as a delta (that banked the device's whole multi-day total into
-// today: the "reflashed and it still shows 14,000" bug). After that, bank real deltas.
-Bangle.on("step", function (up) {
-  stepRollover();
-  lastStepAt = getTime();          // cadence heartbeat — feeds the run's auto-pause (independent of banking)
-  if (stepLastUp < 0) { stepLastUp = up; return; }   // first event this boot → baseline only, don't bank
-  var delta = up - stepLastUp;
-  if (delta < 0) delta = up;       // the pedometer counter itself reset (rare) → `up` is the delta
-  stepLastUp = up;
-  stepTotal += delta;
-  stepDirty = true;
-});
-
 function stepCount() {
-  // Ours (banked from `step` events, resets at rollover, survives reboot via flash) is authoritative;
-  // the OS count SINCE OUR DAY BEGAN catches steps taken while our app was unloaded. Both are today-only,
-  // so the larger is honest AND resets cleanly at local midnight.
-  var ot = osToday();
-  return stepTotal > ot ? stepTotal : ot;
+  stepTick();
+  var n = stepCarry + stepSeen;                // firmware day count, reboot-safe
+  return phonePushToday > n ? phonePushToday : n;   // …or the phone's higher count, whichever is more
 }
+
+// The `step` event is kept ONLY as a cadence heartbeat for the run's auto-pause — NOT for counting.
+Bangle.on("step", function () { lastStepAt = getTime(); });
 
 // Page 0 — HEART RATE: big BPM inside a color-mapped ring.
 function drawHeart() {
@@ -1936,14 +1908,12 @@ Bluetooth.on("data", function (d) {
           if (page === RUN_PAGE && uiVisible) drawUI();
         }
       } catch (e) { /* malformed — ignore */ }
-    } else if (line.substr(0, 3) === "C6:") {     // the phone's step total for TODAY → MAX-merge it into our
-      try {                                        // persistent day count so the watch and app show the SAME
-        var st = JSON.parse(line.substr(3));       // number. The phone (in a pocket) sees steps the wrist may
-        stepRollover();                            // miss; MAX (never SUM) matches the server merge. Same-day
-        if (st && typeof st.s === "number" && st.s > stepTotal &&   // only, and only ever grows — never back.
-            (!st.d || st.d === stepDay)) {
-          stepTotal = st.s | 0;
-          stepDirty = true;
+    } else if (line.substr(0, 3) === "C6:") {     // the phone's step total for TODAY → a display pad, so the
+      try {                                        // watch face can show the phone's (often higher) count too.
+        var st = JSON.parse(line.substr(3));       // Non-destructive: it never touches the firmware day count,
+        if (st && typeof st.s === "number" && st.s >= 0 &&   // so a stale phone value can't corrupt our total.
+            (!st.d || st.d === stepLocalDate())) {           // Same-day only; the SERVER does the real merge.
+          phonePushToday = st.s | 0;
           if (page === STEPS_PAGE && uiVisible) drawUI();
         }
       } catch (e) { /* malformed — ignore */ }
@@ -1994,7 +1964,7 @@ var altTimer = setInterval(sampleAltitude, CFG.ALT_SAMPLE_MS);
 // No-op when offline; the total keeps banking on the watch and lands the moment it reconnects.
 var stepTimer = setInterval(emitStepFrame, CFG.STEP_SUMMARY_MS);
 // Persist the day total to flash periodically (only when it changed) so a reboot never loses it.
-var stepSaveTimer = setInterval(function () { stepRollover(); if (stepDirty) stepSave(); }, 30000);
+var stepSaveTimer = setInterval(function () { stepTick(); stepSave(); }, 30000);
 
 // Clean up if the app is unloaded by the launcher.
 E.on("kill", function () {
@@ -2004,7 +1974,7 @@ E.on("kill", function () {
   if (stepSaveTimer) clearInterval(stepSaveTimer);
   if (swTimer) clearInterval(swTimer);
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; flushSf = null; }   // stop a chunked drain
-  if (stepDirty) stepSave();   // don't lose the last steps on unload
+  stepTick(); stepSave();   // don't lose the day's steps on unload/reboot
   stopRestDuty();
   if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
