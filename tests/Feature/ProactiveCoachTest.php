@@ -90,6 +90,42 @@ class ProactiveCoachTest extends TestCase
         $this->assertSame(1, \App\Models\Notification::where('profile_id', $p->id)->count());
     }
 
+    public function test_strain_coach_suggests_a_concrete_session_to_hit_target(): void
+    {
+        // Under a "primed to push" target (14-18) at 6 strain → a real session closes the gap.
+        $rec = \App\Support\Strain::sessionForTarget(6.0, ['low' => 14.0, 'high' => 18.0, 'mode' => 'push', 'label' => 'Primed to push']);
+        $this->assertNotNull($rec);
+        $this->assertGreaterThanOrEqual(15, $rec['minutes']);
+        $this->assertContains($rec['zone'], ['Z2', 'Z3']);
+        $this->assertEqualsWithDelta(8.0, $rec['strain_to_go'], 0.1);
+
+        // Already in the band → nothing to add.
+        $this->assertNull(\App\Support\Strain::sessionForTarget(15.0, ['low' => 14.0, 'high' => 18.0, 'mode' => 'push', 'label' => '']));
+    }
+
+    public function test_strain_nudge_emails_an_actionable_session_when_primed_and_under(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $u = User::factory()->create();
+        $p = $u->ensureProfile();
+        $p->update(['settings' => ['timezone' => 'UTC', 'coaching_intensity' => 'intense']]);
+        // A strong recovery baseline so readiness is high (→ "primed to push" target) and NO workouts
+        // today (→ strain well under target). Rising HRV keeps today at/above baseline.
+        for ($d = 20; $d >= 0; $d--) {
+            $p->recoveryLogs()->create([
+                'logged_at' => Carbon::today()->subDays($d)->toDateString(),
+                'hrv_ms' => 70 + (20 - $d), 'resting_hr' => 48, 'updated_via' => 'biosignal:sealed:seed',
+            ]);
+        }
+
+        $this->artisan('coach:nudge strain')->assertSuccessful();
+
+        $note = \App\Models\Notification::where('profile_id', $p->id)->where('type', 'nudge')->first();
+        $this->assertNotNull($note, 'the strain coach should nudge a primed, under-target athlete');
+        $this->assertMatchesRegularExpression('/\d+-min Z[23]/', (string) $note->body, 'an actionable session (minutes + zone)');
+        \Illuminate\Support\Facades\Mail::assertSent(\App\Mail\CoachMessage::class);
+    }
+
     public function test_coach_tool_sets_intensity_and_toggles_a_type(): void
     {
         $p = User::factory()->create()->ensureProfile();

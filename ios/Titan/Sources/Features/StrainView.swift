@@ -25,6 +25,17 @@ struct StrainView: View {
                     VStack(alignment: .leading, spacing: Theme.Space.s) {
                         SectionHeader(title: "Today's target", trailing: t.label)
                         TargetBar(strain: s?.strain ?? 0, low: t.low ?? 0, high: t.high ?? 0, max: s?.max ?? 21, color: strainColor)
+                        // The concrete session to hit target — Whoop's "a 30-min Z2 run gets you there".
+                        if let sug = s?.suggestion {
+                            HStack(spacing: Theme.Space.s) {
+                                Image(systemName: "figure.run").foregroundStyle(strainColor)
+                                Text("A ~\(sug.minutes)-min \(sug.zone) (\(sug.label)) session gets you there — \(strainStr(sug.strain_to_go)) to go.")
+                                    .font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            }
+                            .padding(Theme.Space.s)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(strainColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                        }
                         if let advice = s?.advice {
                             Text(advice).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
                         }

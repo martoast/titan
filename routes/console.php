@@ -33,6 +33,9 @@ Schedule::command('insights:behavior')->dailyAt('05:30')->timezone(config('app.t
 Schedule::command('coach:nudge training')->dailyAt('08:30')->timezone(config('app.timezone'));
 Schedule::command('coach:nudge cycle')->dailyAt('07:30')->timezone(config('app.timezone'));
 Schedule::command('coach:nudge move')->dailyAt('14:30')->timezone(config('app.timezone'));
+// Strain coach: mid-afternoon, tell the user where their day-strain sits vs the recovery-based target
+// and the concrete session to hit it (Whoop-style) — emailed, gated on the 'strain' reminder type.
+Schedule::command('coach:nudge strain')->dailyAt('15:30')->timezone(config('app.timezone'));
 Schedule::command('coach:nudge sleep')->everyThirtyMinutes()->between('20:00', '23:30')->timezone(config('app.timezone'));
 
 // Living goal-physique: weekly render of the progress step toward the dream physique.

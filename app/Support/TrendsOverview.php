@@ -18,7 +18,7 @@ use Illuminate\Support\Carbon;
 class TrendsOverview
 {
     private const STRAIN_MAX = 21.0;
-    private const STRAIN_K = 45.0;
+    private const STRAIN_K = 90.0;   // == Strain::K
 
     /** @return array<string,mixed> */
     public static function forProfile(Profile $profile, int $days): array

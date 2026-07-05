@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
 class StrainDetail
 {
     private const MAX = 21.0;
-    private const K = 45.0;   // load→strain scale (matches Strain::K)
+    private const K = 90.0;   // load→strain scale (matches Strain::K)
 
     /** @return array<string,mixed> */
     public static function forProfile(Profile $profile, ?Carbon $day = null): array
@@ -74,6 +74,9 @@ class StrainDetail
             'status' => $base['status'] ?? null,
             'advice' => $base['advice'] ?? null,
             'readiness' => $base['readiness'] ?? null,
+            // The concrete session to reach target — {minutes, zone, label, strain_to_go} or null.
+            'suggestion' => (is_array($base['target'] ?? null))
+                ? Strain::sessionForTarget((float) ($base['strain'] ?? 0), $base['target']) : null,
             'curve' => $curve,                        // [{t, strain}] cumulative through the day
             'contributions' => $contributions,        // per-workout strain
         ];

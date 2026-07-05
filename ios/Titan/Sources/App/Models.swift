@@ -202,9 +202,11 @@ struct StrainResponse: Codable {
     let status: String?
     let advice: String?
     let readiness: Int?
+    let suggestion: Suggestion?
     let curve: [Point]
     let contributions: [Contribution]
     struct Target: Codable { let low: Double?; let high: Double?; let mode: String?; let label: String? }
+    struct Suggestion: Codable { let minutes: Int; let zone: String; let label: String; let strain_to_go: Double }
     struct Point: Codable, Identifiable { let t: String; let strain: Double; var id: String { t } }
     struct Contribution: Codable, Identifiable {
         let id: Int

@@ -20,8 +20,57 @@ class CoachNudge
             'sleep' => self::sleep($profile, $now),
             'training' => self::training($profile, $now),
             'cycle' => self::cycle($profile, $now),
+            'strain' => self::strain($profile, $now),
             default => null,
         };
+    }
+
+    /**
+     * The Strain coach: mid-afternoon, tell the user where today's strain sits vs the recovery-based
+     * target and — Whoop-style — the concrete session to hit it ("You're 3.4 below target — a 35-min Z2
+     * run gets you there"). Only pings when there's a clear action: primed + under target (go earn it),
+     * or over target on a low-recovery day (back off). On-target / already-light days stay quiet.
+     */
+    public static function strain(Profile $profile, ?Carbon $now = null): ?array
+    {
+        $now = self::now($profile, $now);
+        if (! class_exists(\App\Support\Strain::class)) {
+            return null;
+        }
+        $s = \App\Support\Strain::assess($profile, $now);
+        $strain = (float) ($s['strain'] ?? 0);
+        $target = $s['target'] ?? null;
+        $status = $s['status'] ?? null;
+        if (! is_array($target)) {
+            return null;
+        }
+        $key = 'strain:'.$now->toDateString();
+
+        if ($status === 'under' && in_array($target['mode'] ?? '', ['push', 'maintain'], true)) {
+            $rec = \App\Support\Strain::sessionForTarget($strain, $target);
+            if (! $rec) {
+                return null;
+            }
+            $primed = ($target['mode'] ?? '') === 'push';
+            $title = $primed ? '🔥 Primed — go earn it' : '⚡ A bit more hits your target';
+            $body = sprintf(
+                "You're at %.1f strain, %.1f below today's target. A ~%d-min %s (%s) session gets you there.%s",
+                $strain, $rec['strain_to_go'], $rec['minutes'], $rec['zone'], $rec['label'],
+                $primed ? " Your recovery says your body's ready for it." : ''
+            );
+
+            return ['title' => $title, 'body' => $body, 'url' => '/strain', 'type' => 'strain', 'key' => $key];
+        }
+
+        if ($status === 'over' && ($target['mode'] ?? '') === 'restrain') {
+            return [
+                'title' => '🧘 Ease off tonight',
+                'body' => sprintf("You're at %.1f strain — over your target on a low-recovery day. Call it here, eat well, and prioritise sleep so tomorrow bounces back.", $strain),
+                'url' => '/strain', 'type' => 'strain', 'key' => $key,
+            ];
+        }
+
+        return null;   // on target, or an easy day with nothing to push — stay quiet.
     }
 
     /** Mid-day move + stretch nudge -- only if they've been sedentary so far. */

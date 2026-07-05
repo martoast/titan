@@ -64,6 +64,41 @@ class Strain
         ];
     }
 
+    /**
+     * A concrete session that would carry you from your current strain to the bottom of today's target
+     * — Whoop's "a 30-min Z2 run gets you there". Inverts the strain curve to the load gap, then reads
+     * off minutes at a training-zone TRIMP rate (small gap → easy Z2; bigger → a tempo Z3). Returns null
+     * when you're already in/above the band (nothing to add).
+     *
+     * @param  array{low:float,high:float,mode:string,label:string}  $target
+     * @return array{minutes:int, zone:string, label:string, strain_to_go:float}|null
+     */
+    public static function sessionForTarget(float $strain, array $target): ?array
+    {
+        if ($strain >= $target['low']) {
+            return null;
+        }
+        // load = -K·ln(1 − strain/MAX); the gap is the extra TRIMP-load needed to reach target.low.
+        $loadAt = fn (float $s) => -self::K * log(max(1e-6, 1.0 - min($s, self::MAX - 0.1) / self::MAX));
+        $gapLoad = max(0.0, $loadAt($target['low']) - $loadAt($strain));
+        if ($gapLoad <= 0) {
+            return null;
+        }
+        // Banister TRIMP/min ≈ intensity·0.64·e^(1.92·intensity). Z2 (0.60 HRR) ≈ 1.2/min; a Z3 tempo
+        // (0.75) ≈ 2.0/min. Use the easy zone unless it'd need > 60 min, then suggest the tempo zone.
+        $rateZ2 = 0.60 * 0.64 * exp(1.92 * 0.60);
+        $rateZ3 = 0.75 * 0.64 * exp(1.92 * 0.75);
+        $minsZ2 = (int) (round(($gapLoad / $rateZ2) / 5) * 5);
+        if ($minsZ2 <= 60) {
+            return ['minutes' => max(15, $minsZ2), 'zone' => 'Z2', 'label' => 'easy aerobic',
+                'strain_to_go' => round($target['low'] - $strain, 1)];
+        }
+        $minsZ3 = (int) (round(($gapLoad / $rateZ3) / 5) * 5);
+
+        return ['minutes' => max(20, $minsZ3), 'zone' => 'Z3', 'label' => 'steady tempo',
+            'strain_to_go' => round($target['low'] - $strain, 1)];
+    }
+
     /** Recovery-driven target strain band. */
     public static function targetFor(?float $readiness): array
     {
