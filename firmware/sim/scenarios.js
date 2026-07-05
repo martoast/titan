@@ -43,6 +43,17 @@ class Session {
     }
   }
   settleAfterEnd(seconds = 6, bpm = 110) { for (let s = 0; s < seconds; s++) { this.watch.hrm(bpm); this.clock.advance(1000); } }
+  // The overnight PPG the sleep duty-cycle captures: raw HRM each second while lying still. Connected →
+  // streams live (T1); offline → banked to the flash ring (T2) for the morning sync. This is the DATA the
+  // server stages the night from — feeding it is what makes the sleep test real (not just the marker).
+  sleepCapture(seconds, bpm = 52) {
+    for (let s = 0; s < seconds; s++) {
+      this.watch.accel(0.001, 0.0, 1.0);                 // near-still = asleep
+      for (let k = 0; k < 4; k++) this.watch.hrmRaw(12000 + (k % 3));
+      this.watch.hrm(bpm, 92);
+      this.clock.advance(1000);
+    }
+  }
   gps(seconds, bpm = 150) {
     const lat0 = 37.77, lon0 = -122.42;
     for (let s = 0; s < seconds; s++) {
@@ -172,24 +183,59 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
   check('offline run · did NOT pop a phantom live run', s.phone.runActive === false, `runActive=${s.phone.runActive}`);
 })();
 
-// 10) A SLEEP session tracked live: start on the Stopwatch face, sleep, wake → the confirmed T9 marker
-//     reaches the phone (which the server seals into the night + fires the morning summary).
+// 10) SLEEP tracked LIVE (phone connected — you fell asleep with the app open). START shows the live
+//     "Sleeping" state, the overnight PPG streams in real time, and WAKE clears it + saves the night.
 (() => {
   const s = new Session();
-  s.connect(); s.gotoSleep(); s.startSleep(); s.advance(120_000); s.wake(); s.advance(2000);
+  s.connect(); s.gotoSleep(); s.startSleep();
+  check('sleep (live) · app enters the Sleeping state on START', s.phone.sleeping === true && s.phone.sleepStartMs > 0,
+    `sleeping=${s.phone.sleeping} start=${s.phone.sleepStartMs}`);
+  s.sleepCapture(300);   // 5 min of live overnight capture
+  check('sleep (live) · overnight PPG streams to the phone in real time', s.phone.ppgLiveSamples > 0, `live=${s.phone.ppgLiveSamples}`);
+  s.wake(); s.advance(2000);
   const sleep = s.phone.sleepSummaries[0];
-  check('sleep (live) · confirmed T9 marker received', !!sleep && sleep.confirmed, `count=${s.phone.sleepSummaries.length}`);
-  check('sleep (live) · wake is after bedtime', !!sleep && sleep.wake > sleep.bedtime, sleep ? `bed=${sleep.bedtime} wake=${sleep.wake}` : '(none)');
+  check('sleep (live) · WAKE clears Sleeping + shows the summary', s.phone.sleeping === false && s.phone.sleepSummaryShown === true,
+    `sleeping=${s.phone.sleeping} summary=${s.phone.sleepSummaryShown}`);
+  check('sleep (live) · confirmed night saved (T9), wake after bedtime', !!sleep && sleep.confirmed && sleep.wake > sleep.bedtime,
+    sleep ? `bed=${sleep.bedtime} wake=${sleep.wake}` : '(none)');
 })();
 
-// 11) SLEEP tracked OFFLINE (the realistic case — phone on the nightstand, link released): the wake
-//     marker is logged to the ring overnight and delivered on the morning sync.
+// 11) SLEEP tracked OFFLINE (the realistic case — phone on the nightstand, link released overnight).
+//     START while still connected shows Sleeping; the whole night is banked to the watch's flash ring;
+//     nothing reaches the phone until morning; on reconnect the ring hands over ALL the overnight data
+//     + the confirmed wake marker, and the night is saved.
 (() => {
   const s = new Session();
-  s.gotoSleep(); s.startSleep(); s.advance(180_000); s.wake();   // whole night offline
-  s.connect(); s.advance(10_000);                                    // morning: sync → ring flush → T9
-  const sleep = s.phone.sleepSummaries[0];
-  check('sleep (offline) · confirmed T9 recovered on morning sync', !!sleep && sleep.confirmed, `count=${s.phone.sleepSummaries.length}`);
+  s.connect(); s.gotoSleep(); s.startSleep();
+  check('sleep (offline) · Sleeping state set while connected at bedtime', s.phone.sleeping === true, `sleeping=${s.phone.sleeping}`);
+  s.disconnect();               // phone released for the night
+  s.sleepCapture(600);          // 10 min captured to the ring, fully offline
+  s.wake();                     // wake while still offline → marker logged to the ring too
+  check('sleep (offline) · nothing delivered while disconnected', s.phone.ppgBacklogSamples === 0 && s.phone.sleepSummaries.length === 0,
+    `backlog=${s.phone.ppgBacklogSamples} saved=${s.phone.sleepSummaries.length}`);
+  const syncAt = s.phone.lastDataAt;
+  s.connect(); s.advance(60_000);   // morning: open app → reconnect → the ring drains
+  check('sleep (offline) · overnight PPG handed to the phone on sync', s.phone.ppgBacklogSamples > 0, `backlog=${s.phone.ppgBacklogSamples}`);
+  check('sleep (offline) · confirmed night recovered + saved on sync', s.phone.sleepSummaries.some((x) => x.confirmed),
+    `count=${s.phone.sleepSummaries.length}`);
+  check('sleep (offline) · Sleeping state cleared + summary surfaced on sync (not stuck)',
+    s.phone.sleeping === false && s.phone.sleepSummaryShown === true, `sleeping=${s.phone.sleeping} summary=${s.phone.sleepSummaryShown}`);
+  check('sleep (offline) · phone recorded a fresh data-handoff time on sync', s.phone.lastDataAt !== syncAt && s.phone.lastDataAt != null,
+    `lastDataAt=${s.phone.lastDataAt}`);
+})();
+
+// 12) SLEEP started PHONE-FREE (never connected at bedtime — band on wrist, phone across the house).
+//     No live marker is possible; the entire night + wake marker live in the ring and recover intact on
+//     the first morning connection. Proves the "no phone at all overnight" path.
+(() => {
+  const s = new Session();
+  s.gotoSleep(); s.startSleep();
+  check('sleep (phone-free) · no live Sleeping state (never connected)', s.phone.sleeping === false, `sleeping=${s.phone.sleeping}`);
+  s.sleepCapture(600); s.wake();       // whole night + wake, all offline
+  s.connect(); s.advance(60_000);      // first morning connection drains the ring
+  check('sleep (phone-free) · overnight PPG recovered on first connect', s.phone.ppgBacklogSamples > 0, `backlog=${s.phone.ppgBacklogSamples}`);
+  check('sleep (phone-free) · confirmed night saved on first connect', s.phone.sleepSummaries.some((x) => x.confirmed),
+    `count=${s.phone.sleepSummaries.length}`);
 })();
 
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');

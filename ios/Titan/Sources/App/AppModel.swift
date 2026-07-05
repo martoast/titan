@@ -525,8 +525,11 @@ final class AppModel: ObservableObject {
         // The band drained its offline ring → a phone-free workout may have just sealed → catch-up summary.
         router.onBacklogSynced = { [weak self] in Task { @MainActor in self?.checkForSyncedWorkout(); self?.checkForSyncedSleep() } }
         // The watch's Sleep face: START → enter the live "Sleeping" state; WAKE → show the sleep summary.
-        router.onSleepStart = { [weak self] in Task { @MainActor in self?.sleeping = true } }
+        router.onSleepStart = { [weak self] in Task { @MainActor in self?.beginSleeping() } }
         router.onSleepEnd = { [weak self] bed, wake in Task { @MainActor in self?.endSleep(bedSec: bed, wakeSec: wake) } }
+        // The confirmed wake T9 (live OR flushed from the ring) — clears a stuck Sleeping state + surfaces
+        // the night even when the live TN s:0 never arrived (the offline-wake case).
+        router.onSleepConfirmed = { [weak self] in Task { @MainActor in self?.clearLiveSleep(); self?.checkForSyncedSleep() } }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in
             self?.bandConnected = up
@@ -949,7 +952,26 @@ final class AppModel: ObservableObject {
     @Published var showLiveRunSheet = false        // drives the full-screen live tracker (app-wide)
     @Published var workoutSummary: WorkoutSummaryState?   // set on end → shows the post-workout summary sheet
     @Published var sleeping = false                       // watch Sleep face is running → live "Sleeping" state
+    @Published var sleepStartedAt: Date?                  // when the night began → drives the live timer
     @Published var sleepSummary: SleepSummaryState?       // set on WAKE → shows the post-sleep summary sheet
+
+    /// Enter the live "Sleeping" state (watch tapped START). Records the start so the app can show a live
+    /// timer, like a workout in progress. Persisted so reopening the app mid-night still shows it running.
+    func beginSleeping() {
+        sleeping = true
+        if sleepStartedAt == nil {
+            let saved = UserDefaults.standard.object(forKey: "titan.sleepStartedAt") as? Date
+            sleepStartedAt = saved ?? Date()
+            UserDefaults.standard.set(sleepStartedAt, forKey: "titan.sleepStartedAt")
+        }
+    }
+
+    /// Leave the live "Sleeping" state (woke up, however we learned it). Idempotent.
+    private func clearLiveSleep() {
+        sleeping = false
+        sleepStartedAt = nil
+        UserDefaults.standard.removeObject(forKey: "titan.sleepStartedAt")
+    }
     private var runStartedAt: Date?
     private var runLastLat: Double?
     private var runLastLon: Double?
@@ -1236,7 +1258,7 @@ final class AppModel: ObservableObject {
     /// immediately from the bed/wake markers, then enrich it once the server seals the night (stages,
     /// hypnogram, efficiency, performance). Mirrors `endRun` → `fetchSealedSummary` for workouts.
     func endSleep(bedSec: Int, wakeSec: Int) {
-        sleeping = false
+        clearLiveSleep()
         let bed = bedSec > 0 ? Date(timeIntervalSince1970: Double(bedSec)) : nil
         let wake = wakeSec > 0 ? Date(timeIntervalSince1970: Double(wakeSec)) : nil
         let inBed = max(0, wakeSec - bedSec)

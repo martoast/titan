@@ -27,6 +27,13 @@ struct DashboardView: View {
                 LiveRunBanner { model.showLiveRunSheet = true }
             }
 
+            // A sleep session is running on the watch — see it live (timer + sync status), like a workout.
+            if model.sleeping {
+                SleepingBanner(startedAt: model.sleepStartedAt,
+                               connected: model.bandConnected,
+                               lastData: model.bandStepsAt)
+            }
+
             // Hero: the three Whoop rings — Sleep · Recovery · Strain — then the recovery headline.
             VStack(spacing: Theme.Space.m) {
                 HStack(alignment: .top, spacing: Theme.Space.s) {
@@ -238,5 +245,60 @@ struct PressCard: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(Theme.Motion.snappy, value: configuration.isPressed)
+    }
+}
+
+/// A sleep session running on the watch, shown live in the app (like a workout in progress) — a night
+/// timer that ticks, plus whether it's streaming live or waiting to sync from the band in the morning.
+struct SleepingBanner: View {
+    let startedAt: Date?
+    let connected: Bool
+    let lastData: Date?
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: Theme.Space.m) {
+            ZStack {
+                Circle().fill(Theme.Palette.indigo.opacity(0.18)).frame(width: 44, height: 44)
+                Image(systemName: "moon.stars.fill").font(.title3).foregroundStyle(Theme.Palette.indigo)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Circle().fill(Theme.Palette.violet).frame(width: 7, height: 7).opacity(pulse ? 0.3 : 1)
+                    Text("SLEEPING").font(Theme.Font.label.weight(.bold)).tracking(1).foregroundStyle(Theme.Palette.violet)
+                }
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(elapsed).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+                }
+                Text(statusLine).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+            Spacer()
+            HStack(spacing: 4) {
+                Circle().fill(connected ? Theme.Palette.mint : Theme.Palette.textFaint).frame(width: 7, height: 7)
+                Text(connected ? "Live" : "Offline").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+        }
+        .padding(Theme.Space.m)
+        .background(LinearGradient(colors: [Theme.Palette.indigo.opacity(0.16), Theme.Palette.card],
+                                   startPoint: .leading, endPoint: .trailing),
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).stroke(Theme.Palette.indigo.opacity(0.4), lineWidth: 1))
+        .onAppear { withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { pulse = true } }
+    }
+
+    private var elapsed: String {
+        guard let s = startedAt else { return "Tracking your night" }
+        let sec = max(0, Int(Date().timeIntervalSince(s)))
+        let h = sec / 3600, m = (sec % 3600) / 60
+        return h > 0 ? "\(h)h \(m)m asleep" : "\(m)m asleep"
+    }
+    private var statusLine: String {
+        if connected { return "Tracking your night · streaming live" }
+        if let l = lastData { return "Saved on your band · last synced \(rel(l))" }
+        return "Saved on your band · syncs when you reconnect"
+    }
+    private func rel(_ d: Date) -> String {
+        let f = RelativeDateTimeFormatter(); f.unitsStyle = .abbreviated
+        return f.localizedString(for: d, relativeTo: Date())
     }
 }

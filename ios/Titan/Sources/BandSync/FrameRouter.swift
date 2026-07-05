@@ -45,6 +45,10 @@ public final class FrameRouter {
     /// The user tapped WAKE (`TN:{"s":0,"bed":…,"wake":…}` epoch seconds) → close the night and show the
     /// sleep summary immediately. The durable `T9` frame (same tap) is what actually seals it server-side.
     public var onSleepEnd: ((Int, Int) -> Void)?
+    /// The confirmed wake `T9` marker arrived — live, or flushed from the offline ring on the morning
+    /// sync. The catch-all that resolves the night even when the live `TN s:0` never came (offline wake):
+    /// clears any stuck "Sleeping" state and surfaces the summary.
+    public var onSleepConfirmed: (() -> Void)?
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
@@ -200,6 +204,10 @@ public final class FrameRouter {
             // "I'm awake" marker → a sleep-session summary (server seals the night + fires the summary).
             if let s = FrameDecoder.decodeT9(payload), s.confirmed {
                 submit(.sleep(SleepSessionSummary(bedtime: Int(s.bedtime), wake: Int(s.wake), confirmed: true)))
+                // The confirmed wake ALWAYS resolves the night — live, or flushed from the ring on the
+                // morning sync (when the live TN s:0 never arrived). Clears a stuck "Sleeping" state and
+                // surfaces the summary regardless.
+                onSleepConfirmed?()
             }
         case "TN:":
             // Live sleep-session notification from the dedicated Sleep face: {"s":1,"t":startMs} on

@@ -24,6 +24,7 @@ const decode = {
   T1(p) { const r = new Reader(p); if (r.count < 16) return { samples: [] }; const n = r.u16(2), e = r.u64(4); const s = []; for (let i = 0; i < n; i++) { const o = 16 + i * 12; if (o + 12 > r.count) break; s.push({ t: e + r.u32(o), ax: r.i16(o + 6), ay: r.i16(o + 8), az: r.i16(o + 10) }); } return { samples: s }; },
   T4(p) { const r = new Reader(p); if (r.count < 20) return null; const NONE = -2147483648; let lat = null, lon = null; if (r.count >= 24) { const la = r.i32(16), lo = r.i32(20); if (la !== NONE) lat = la / 1e7; if (lo !== NONE) lon = lo / 1e7; } return { t: r.u64(4), sats: r.u8(1), speedKmh: r.i16(2) / 100, lat, lon }; },
   T9(p) { const r = new Reader(p); if (r.count < 12) return null; return { confirmed: r.u8(1) === 1, bedtime: r.u32(4), wake: r.u32(8) }; },
+  T2(p) { const r = new Reader(p); if (r.count < 20) return 0; return r.u16(2); },   // offline PPG frame → sample count
 };
 
 function haversineM(la1, lo1, la2, lo2) {
@@ -80,7 +81,15 @@ class Phone {
     // observable outcomes
     this.events = [];              // ordered log
     this.summaries = [];           // each shown post-workout summary
-    this.sleepSummaries = [];      // confirmed sleep markers (T9)
+    this.sleepSummaries = [];      // confirmed sleep markers (T9) — the "saved to server" night
+    // Sleep — mirrors AppModel: the live "Sleeping" state (TN s:1), its end/summary (TN s:0), and the
+    // data the server needs to stage the night (overnight PPG, live T1 or backlog T2).
+    this.sleeping = false;
+    this.sleepStartMs = 0;
+    this.sleepSummaryShown = false;
+    this.ppgLiveSamples = 0;       // live T1 PPG streamed while connected (real-time overnight capture)
+    this.ppgBacklogSamples = 0;    // T2 PPG recovered from the ring on the morning sync (offline capture)
+    this.lastDataAt = null;        // when the phone last received ANY frame — the "last synced" readout
     this.sealed = [];              // windows submitted (from sealWorkout + disconnect flush + periodic)
     this.liveSheetShown = false;
     this.connected = false;
@@ -96,13 +105,17 @@ class Phone {
   ingest(line) {
     const tag = line.slice(0, 3);
     const payload = line.slice(3);
+    this.lastDataAt = this._now();   // any delivered frame = the watch just passed data over
     if (tag === 'T5:') {
       const hr = decode.T5(payload); if (!hr) return;
       this._ingestLiveHr(hr);
       if (this._frameIsLive(hr.t)) this._submit(this.wa.addWorkoutHr(hr), 'periodic');
       else this._submit(this.waLog.addWorkoutHr(hr), 'periodic-log');
+    } else if (tag === 'T2:') {
+      this.ppgBacklogSamples += decode.T2(payload);   // overnight PPG recovered from the ring on sync
     } else if (tag === 'T1:') {
       const f = decode.T1(payload);
+      if (this._frameIsLive(f.samples.length ? f.samples[f.samples.length - 1].t : 0)) this.ppgLiveSamples += f.samples.length;
       this.wa.addAccel(f.samples);
       const last = f.samples.length ? f.samples[f.samples.length - 1].t : null;
       if (last) { this.maxDeviceT = Math.max(this.maxDeviceT, last); this._submit(this.wa.tick(this.maxDeviceT), 'gap'); this._submit(this.waLog.tick(this.maxDeviceT), 'gap-log'); }
@@ -122,7 +135,22 @@ class Phone {
       this.backlogSynced = (this.backlogSynced || 0) + 1;   // AppModel.checkForSyncedWorkout() fires here
     } else if (tag === 'T9:') {
       const s = decode.T9(payload);
-      if (s && s.confirmed) { this.sleepSummaries.push(s); this._log(`sleep bed=${s.bedtime} wake=${s.wake}`); }
+      if (s && s.confirmed) {
+        this.sleepSummaries.push(s);
+        // The confirmed wake marker ALWAYS resolves the night — live OR flushed from the ring on the
+        // morning sync. So it clears any stuck "Sleeping" state and surfaces the summary even when the
+        // live TN s:0 never arrived (offline wake). Mirrors AppModel.onSleepConfirmed.
+        this.sleeping = false;
+        this.sleepSummaryShown = true;
+        this._log(`sleep saved bed=${s.bedtime} wake=${s.wake}`);
+      }
+    } else if (tag === 'TN:') {
+      // Live sleep notification (mirrors AppModel onSleepStart/onSleepEnd): START → show the live
+      // "Sleeping" state (timer runs); WAKE → clear it + show the summary.
+      let obj; try { obj = JSON.parse(payload); } catch (e) { return; }
+      if (!obj) return;
+      if (obj.s === 1) { this.sleeping = true; this.sleepStartMs = obj.t || this._now(); this._log('sleeping START (live)'); }
+      else { this.sleeping = false; this.sleepSummaryShown = true; this._log('sleeping WAKE → summary (live)'); }
     }
   }
 
