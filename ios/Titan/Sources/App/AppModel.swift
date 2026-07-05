@@ -106,7 +106,22 @@ final class AppModel: ObservableObject {
     init() {
         let token = Keychain.get(Keychain.userToken)
         api = APIClient(baseURL: Self.baseURL, token: token)
+        // Seed the catch-up watermark to "now" on first launch, so installing the app never retro-pops
+        // a historical workout — only ones that finish after this point get a catch-up summary.
+        if UserDefaults.standard.object(forKey: Self.lastSeenWorkoutKey) == nil {
+            UserDefaults.standard.set(Date(), forKey: Self.lastSeenWorkoutKey)
+        }
         if token != nil { Task { await self.bootstrap() } }
+    }
+
+    // The most recent workout we've already surfaced to the user (a live end-summary OR a catch-up),
+    // persisted, so a workout that finished OFFLINE (started in the background / phone left behind) and
+    // synced from the band's ring later pops its summary exactly once — and an old or already-seen one
+    // never re-pops.
+    private static let lastSeenWorkoutKey = "titan.lastSeenWorkoutAt"
+    private var lastSeenWorkoutAt: Date {
+        get { UserDefaults.standard.object(forKey: Self.lastSeenWorkoutKey) as? Date ?? .distantPast }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastSeenWorkoutKey) }
     }
 
     /// Restore a logged-in session (token already in Keychain): load data + resume band sync.
@@ -245,6 +260,40 @@ final class AppModel: ObservableObject {
         bandIdle = false
         band?.setDesiredConnection(true)
         band?.flushIfConnected()
+        checkForSyncedWorkout()   // surface any workout that finished while we weren't watching
+    }
+
+    /// Surface a workout that FINISHED while the app wasn't watching — started offline or in the
+    /// background, then recovered from the band's ring on this sync (the phone never saw it live, so
+    /// `endRun` never showed a summary). Polls the runs list for a sealed session newer than the last
+    /// one we surfaced and recent enough to be worth a catch-up, then shows its server-enriched summary
+    /// ONCE. No-op during a live run or while a summary is already open. The backlog assembler tags its
+    /// windows `ended`, so the session seals within seconds of the sync rather than after the 10-min
+    /// quiet rule. Verified end-to-end in the watch simulator ("offline-started lift").
+    func checkForSyncedWorkout() {
+        guard isLoggedIn, !runActive, workoutSummary == nil else { return }
+        Task { @MainActor [weak self] in
+            for attempt in 0..<6 {
+                try? await Task.sleep(nanoseconds: attempt == 0 ? 1_500_000_000 : 3_000_000_000)
+                guard let self, !self.runActive, self.workoutSummary == nil else { return }
+                guard let runs = try? await self.api.runs(), let newest = runs.first,
+                      let iso = newest.started_at, let started = ISO8601DateFormatter().date(from: iso)
+                else { continue }
+                // Meaningfully newer than the last one we surfaced (>2 min separates the live-shown one
+                // from a genuinely new session), and recent enough to be worth popping.
+                guard started.timeIntervalSince(self.lastSeenWorkoutAt) > 120 else { return }
+                guard Date().timeIntervalSince(started) < 12 * 3600 else { self.lastSeenWorkoutAt = started; return }
+                self.lastSeenWorkoutAt = started
+                let detail = try? await self.api.runDetail(newest.id)
+                var s = WorkoutSummaryState(
+                    kind: newest.activity_type ?? "run", distanceKm: newest.distance_km ?? 0,
+                    elapsedSec: (newest.duration_min ?? 0) * 60, maxBpm: detail?.max_hr ?? 0,
+                    startedAt: started, hasGps: newest.has_route)
+                s.detail = detail; s.loading = false; s.failed = (detail == nil)
+                self.workoutSummary = s
+                return
+            }
+        }
     }
 
     /// App went to the background → after a short grace (survives quick app switches), release the link
@@ -424,6 +473,8 @@ final class AppModel: ObservableObject {
         router.onActivityKind = { [weak self] k in Task { @MainActor in self?.setWorkoutKind(k) } }
         // The watch finished the workout → end + seal it on the app, deterministically (no sport-tag guessing).
         router.onWorkoutEnd = { [weak self] in Task { @MainActor in self?.endRun(notifyBand: false) } }
+        // The band drained its offline ring → a phone-free workout may have just sealed → catch-up summary.
+        router.onBacklogSynced = { [weak self] in Task { @MainActor in self?.checkForSyncedWorkout() } }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in
             self?.bandConnected = up
@@ -1018,6 +1069,8 @@ final class AppModel: ObservableObject {
             workoutSummary = WorkoutSummaryState(
                 kind: workoutKind, distanceKm: runDistanceKm, elapsedSec: runElapsedSec,
                 maxBpm: runMaxBpm, startedAt: runStartedAt, hasGps: runHasGps)
+            // Mark this workout seen so the catch-up path never re-pops the one we just showed live.
+            if let s = runStartedAt { lastSeenWorkoutAt = max(lastSeenWorkoutAt, s) }
             fetchSealedSummary(startedAt: runStartedAt)
         }
         workoutKind = "run"   // reset to the default for the next workout (TA overrides on a real lift)
@@ -1041,6 +1094,11 @@ final class AppModel: ObservableObject {
                     return abs(d.timeIntervalSince(started)) < 600
                 } ?? (startedAt == nil ? runs.first : nil)
                 guard let match, let detail = try? await self.api.runDetail(match.id) else { continue }
+                // Pin the catch-up watermark to the SERVER's exact start so this session can't later
+                // re-pop as a catch-up (its server started_at may differ slightly from runStartedAt).
+                if let iso = match.started_at, let d = ISO8601DateFormatter().date(from: iso) {
+                    self.lastSeenWorkoutAt = max(self.lastSeenWorkoutAt, d)
+                }
                 if var s = self.workoutSummary { s.detail = detail; s.loading = false; self.workoutSummary = s }
                 return
             }

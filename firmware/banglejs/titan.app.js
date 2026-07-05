@@ -466,6 +466,10 @@ function flushTick() {
       // write pointer, to be evicted long before the ring was actually full (silent loss).
       if (!drainWrites) { logSeg = 0; logSegBytes = 0; state.logged = 0; }
       else { state.logged = logSegBytes; }                  // keep the live write pointer; counter ≈ current segment
+      // Tell the phone the offline backlog is FULLY drained. The phone seals whatever workout it
+      // recovered from the ring at this instant (rather than waiting for the next disconnect), so a
+      // phone-free lift/run shows its catch-up summary on the same sync it arrived on.
+      try { Bluetooth.println("TS:done"); } catch (e) {}
       if (uiVisible) drawUI();
       return;
     }
@@ -723,11 +727,16 @@ function workoutKind() {
 // seconds. The phone stamps each workout window with it; the server seals run-vs-lift by the user's CHOICE.
 var lastKindEmit = 0;     // getTime() of the last TA frame (throttles the periodic re-emit)
 function emitActivityKind() {
-  if (!state.connected || !state.workout) return;
+  if (!state.workout) return;
   var k = workoutKind();
   if (!k) return;
   lastKindEmit = getTime();
-  try { Bluetooth.println("TA:" + JSON.stringify({ k: k })); } catch (e) {}
+  var line = "TA:" + JSON.stringify({ k: k });
+  // Connected → stream it live. OFFLINE (a phone-free lift/run) → append it to the ring so it flushes
+  // on the next sync AHEAD of that workout's frames, and the recovered window seals as the right kind
+  // (strength vs run) instead of the server having to guess a hint-less workout from accel alone.
+  if (state.connected) { try { Bluetooth.println(line); } catch (e) {} }
+  else { appendLog(line); }
 }
 
 // Called from the 1 Hz loop: re-announce the kind every ~8 s while a workout streams (self-heals a

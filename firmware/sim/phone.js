@@ -27,7 +27,7 @@ const decode = {
 const END_GAP_MS = 120_000, FLUSH_MS = 180_000, MIN_MS = 60_000, MAX_WINDOW_MS = 24 * 3600 * 1000;
 
 class WorkoutAssembler {
-  constructor() { this.reset(); }
+  constructor() { this.alwaysEnded = false; this.reset(); }
   reset() { this.active = false; this.accel = []; this.hr = []; this.gps = []; this.lastT = 0; this.winStart = 0; this.activityKind = null; }
   _open(t) { if (!this.active) { this.active = true; this.winStart = t; } }
   _gapFinalize(t) { if (this.active && this.lastT !== 0 && t > this.lastT && t - this.lastT > END_GAP_MS) { const w = this._build(this.lastT); this.reset(); return w; } return null; }
@@ -38,11 +38,12 @@ class WorkoutAssembler {
   tick(now) { return this._gapFinalize(now); }
   flush(ended = false) { if (!this.active) return null; const w = this._build(this.lastT !== 0 ? this.lastT : this.winStart, ended); this.reset(); return w; }
   _build(endT, ended = false) {
+    const isEnded = ended || this.alwaysEnded;   // backlog assembler tags every window ended
     if (endT < this.winStart) return null;
-    if (!ended && (endT - this.winStart < MIN_MS || this.accel.length < 25)) return null; // ended ALWAYS emits (the fix)
+    if (!isEnded && (endT - this.winStart < MIN_MS || this.accel.length < 25)) return null; // ended ALWAYS emits (the fix)
     if (endT - this.winStart > MAX_WINDOW_MS) return null;
     const secs = Math.max(1, Math.round((endT - this.winStart) / 1000));
-    return { kind: 'workout', startT: this.winStart, endT, durSec: secs, ended: ended || null,
+    return { kind: 'workout', startT: this.winStart, endT, durSec: secs, ended: isEnded || null,
       activity_kind: this.activityKind, n_accel: this.accel.length, n_hr: this.hr.length };
   }
 }
@@ -53,6 +54,7 @@ class Phone {
     this.simulateBug = !!opts.simulateBug;   // reproduce pre-fix Swift (endRun leaves lastSportWas1 stuck)
     this.wa = new WorkoutAssembler();
     this.waLog = new WorkoutAssembler();
+    this.waLog.alwaysEnded = true;   // recovered offline workout is already finished → seal it `ended`
     this.maxDeviceT = 0;
     // live-run state (AppModel)
     this.runActive = false;
@@ -101,7 +103,11 @@ class Phone {
       const k = obj && obj.k;
       if (!k) return;
       if (k === 'end') this._onWorkoutEnd();
-      else { this.wa.activityKind = k; this._setWorkoutKind(k); }
+      else { this.wa.activityKind = k; this.waLog.activityKind = k; this._setWorkoutKind(k); }
+    } else if (tag === 'TS:') {
+      // Offline ring fully drained → seal whatever workout we recovered from the backlog now.
+      this._submit(this.waLog.flush(), 'backlog-synced');
+      this.backlogSynced = (this.backlogSynced || 0) + 1;   // AppModel.checkForSyncedWorkout() fires here
     }
   }
 

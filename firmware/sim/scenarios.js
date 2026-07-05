@@ -114,15 +114,20 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
   check('consecutive lifts · both seal an ended window', endedStrength(s.phone) === 2, `ended=${endedStrength(s.phone)}`);
 })();
 
-// 6) DOCUMENTED GAP (not yet fixed): a lift started while the phone link was released/offline logs to
-//    the ring; on the next sync it replays as backlog (old timestamps) → no live sheet, no instant
-//    summary, only a delayed ended=false seal. Asserted here so the gap is visible + tracked.
+// 6) A lift done PHONE-FREE (started while the link was released/offline) is logged to the band's ring
+//    and recovered on the next sync. It must seal as an `ended` backlog workout (so the server seals
+//    it at once and the app shows a catch-up summary), without ever popping a phantom LIVE run.
 (() => {
   const s = new Session({ endOnDisconnect: true });
-  s.gotoLift(); s.tapButton(); s.work(60, 130);  // never connected
-  s.tapButton(); s.connect(); s.advance(3000);   // now sync → ring flush replays old frames
-  check('offline-started lift · KNOWN GAP: no instant summary (backlog only)', strengthSummaries(s.phone) === 0,
-    `summaries=${s.phone.summaries.length} (expected 0 until we add a retro-summary for synced workouts)`);
+  s.gotoLift(); s.tapButton(); s.work(90, 130); s.tapButton();  // whole lift offline (never connected)
+  s.advance(120_000);            // open the app much later → the backlog is genuinely old (all > 60s)
+  s.connect();                   // sync: ring drains → TS:done → waLog flushes the recovered workout
+  s.advance(30_000);             // let the chunked drain (2 frames / 300 ms) finish + emit TS:done
+  check('offline lift · recovered + sealed as an ENDED strength window', endedStrength(s.phone) >= 1,
+    s.phone.sealed.map((w) => `${w.activity_kind}/ended=${!!w.ended}/why=${w.why}`).join(', ') || '(none)');
+  check('offline lift · did NOT pop a phantom live run', s.phone.runActive === false, `runActive=${s.phone.runActive}`);
+  check('offline lift · backlog-sync signal fired (→ app checks for a catch-up summary)', (s.phone.backlogSynced || 0) >= 1,
+    `backlogSynced=${s.phone.backlogSynced || 0}`);
 })();
 
 console.log('\n=== Titan watch simulator — lift/run sequences ===\n');

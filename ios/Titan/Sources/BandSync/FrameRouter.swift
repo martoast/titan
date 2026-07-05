@@ -12,10 +12,12 @@ public final class FrameRouter {
     private let ppgLog = PpgWindowBuilder()        // flushed T2 PPG — SEPARATE so old buffered timestamps
                                                    // never interleave with live T1 (would be non-monotonic)
     private let wa = WorkoutAssembler()            // the LIVE workout (current-timestamp frames)
-    private let waLog = WorkoutAssembler()         // replayed offline-ring frames (old timestamps) —
-                                                   // SEPARATE for the same reason ppgLog is: a backlog
-                                                   // T4/T5/T6 flushed mid-run must never splice old
-                                                   // coords/HR into the live session's sealed window
+    private let waLog: WorkoutAssembler = {        // replayed offline-ring frames (old timestamps) —
+        let a = WorkoutAssembler()                 // SEPARATE for the same reason ppgLog is: a backlog
+        a.alwaysEnded = true                       // T4/T5/T6 flushed mid-run must never splice old
+        return a                                   // coords/HR into the live session's sealed window.
+    }()                                            // alwaysEnded → a recovered phone-free workout seals
+                                                   // immediately (and can show a catch-up summary).
     private let hrTrend = HrTrendBuilder()         // 24/7 HR graph — per-minute points from every T5
     private let queue: SyncQueue
     private var maxDeviceT: UInt64 = 0
@@ -34,6 +36,9 @@ public final class FrameRouter {
     /// The band says the workout is OVER (`TA:{"k":"end"}` — user finished on the watch). Deterministic
     /// end signal so the app closes + seals immediately instead of inferring it from the sport tag.
     public var onWorkoutEnd: (() -> Void)?
+    /// The band finished draining its offline ring (`TS:`). A workout recovered from that backlog has
+    /// just been sealed → the app checks for a catch-up summary to surface.
+    public var onBacklogSynced: (() -> Void)?
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
@@ -161,9 +166,17 @@ public final class FrameRouter {
                     onWorkoutEnd?()   // watch finished the workout → close + seal now (don't infer from sport)
                 } else {
                     wa.activityKind = k
+                    waLog.activityKind = k   // a backlog TA (offline workout) stamps the recovered window too
                     onActivityKind?(k)
                 }
             }
+        case "TS:":
+            // The band finished draining its offline ring. Seal whatever workout we recovered from the
+            // backlog RIGHT NOW (its windows are already `ended`, so the server seals in seconds) instead
+            // of waiting for the next disconnect — this is what lets a phone-free lift/run show its
+            // catch-up summary on the very sync it arrived on. onBacklogSynced pokes AppModel to look.
+            if let w = waLog.flush() { submit(.workout(w)) }
+            onBacklogSynced?()
         case "T7:":
             break  // ambient baro (floors) — server-side; not on the live upload path yet
         case "T8:":

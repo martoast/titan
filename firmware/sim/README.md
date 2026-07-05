@@ -33,8 +33,11 @@ is confirmed, then ends the run so the summary shows and the window seals as `en
 that an earlier hypothesis of mine (`lastSportWas1`) was **not** the reliable cause — the watch's
 rest-duty `sport=0` frame resets that flag anyway.
 
-## Known gap tracked here (not yet fixed)
+## Phone-free workouts (scenario 6)
 
-Scenario 6: a lift **started while the phone link was released/offline** logs to the band's ring and
-replays as backlog on the next sync — so there's no live sheet and no instant summary, only a delayed
-`ended=false` seal. The retro-summary for a synced-after-the-fact workout is future work.
+A lift/run done with the phone **left behind or backgrounded** is logged to the band's ring and
+recovered on the next sync. The firmware emits `TS:done` when the ring is fully drained; the phone
+seals the recovered workout as an `ended` window (so the server seals it in seconds) and fires a
+`checkForSyncedWorkout()` catch-up that shows the summary on the same sync — without popping a phantom
+live run. The workout's kind is logged to the ring offline too (`emitActivityKind` appends `TA:` when
+disconnected), so a phone-free lift still seals as *strength*, not a guessed accel classification.

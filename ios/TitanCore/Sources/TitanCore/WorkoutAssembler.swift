@@ -51,6 +51,13 @@ public final class WorkoutAssembler {
     /// a later auto-started workout (no `TA:`) carries no hint and the server classifies it.
     public var activityKind: String?
 
+    /// Every window this assembler builds is tagged `ended` (and skips the min-duration floor). Set on
+    /// the BACKLOG assembler (replayed offline-ring frames): a workout recovered from the ring is, by
+    /// definition, already finished — so it should seal on the server AT ONCE (Whoop-style) instead of
+    /// waiting out the 10-minute quiet rule, which is what made a phone-free lift take ages to appear
+    /// (and never show a catch-up summary). The live assembler leaves this false.
+    public var alwaysEnded = false
+
     public init(endGapMs: UInt64 = 120_000, flushMs: UInt64 = 180_000, minMs: UInt64 = 60_000) {
         END_GAP_MS = endGapMs; FLUSH_MS = flushMs; MIN_MS = minMs
     }
@@ -153,7 +160,7 @@ public final class WorkoutAssembler {
     private func build(_ endT: UInt64, ended: Bool = false) -> WorkoutWindow? {
         let rrMs = rr.filter { $0.t >= winStart && $0.t <= endT }.map { $0.ms }
         return Self.buildWorkoutWindow(accel: accel, hr: hr, gps: gps, rrMs: rrMs,
-                                       startT: winStart, endT: endT, minMs: MIN_MS, ended: ended,
+                                       startT: winStart, endT: endT, minMs: MIN_MS, ended: ended || alwaysEnded,
                                        activityKind: activityKind)
     }
 
