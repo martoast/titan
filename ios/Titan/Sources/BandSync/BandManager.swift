@@ -163,9 +163,24 @@ public final class BandManager: NSObject {
     /// Push the live run distance (metres) to the band's Run face (C5). The band has no GPS — the phone
     /// owns the route + distance — so without this the watch shows time but a frozen 0.00 km. No-op if
     /// not connected. Sent ~1 Hz while a run is live.
+    ///
+    /// Flow-controlled: a write-without-response is silently DROPPED by iOS when the link buffer is full,
+    /// and during a connected run the band floods us with inbound PPG frames — so a plain 1 Hz write
+    /// often got starved and the watch froze at 0.00 while the phone tracked fine. We instead keep only
+    /// the LATEST distance and flush it the moment CoreBluetooth says the peripheral can accept a write
+    /// (peripheralIsReady), so the newest value always lands.
+    private var pendingRunDistanceM: Double?
     public func sendRunDistance(_ meters: Double) {
-        guard let p = band, p.state == .connected, let rx = rxChar else { return }
-        p.writeValue(Data("C5:{\"d\":\(Int(meters.rounded()))}\n".utf8), for: rx, type: .withoutResponse)
+        pendingRunDistanceM = meters
+        flushRunDistance()
+    }
+
+    private func flushRunDistance() {
+        guard let m = pendingRunDistanceM,
+              let p = band, p.state == .connected, let rx = rxChar,
+              p.canSendWriteWithoutResponse else { return }
+        pendingRunDistanceM = nil
+        p.writeValue(Data("C5:{\"d\":\(Int(m.rounded()))}\n".utf8), for: rx, type: .withoutResponse)
     }
 
     /// Force a fresh connection attempt when we're paired but stuck — advertised-but-never-connected,
@@ -294,5 +309,11 @@ extension BandManager: CBPeripheralDelegate {
             return
         }
         router.ingest(d)
+    }
+
+    /// The link can accept another write-without-response → flush the latest pending run distance so the
+    /// watch's Run face stays in step even while inbound PPG frames are saturating the connection.
+    public func peripheralIsReady(toSendWriteWithoutResponse p: CBPeripheral) {
+        flushRunDistance()
     }
 }
