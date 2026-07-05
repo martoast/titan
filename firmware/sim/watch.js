@@ -19,6 +19,7 @@ function buildWatch(clock, opts = {}) {
   const fire = (key, ...a) => (listeners[key] || []).forEach((cb) => cb(...a));
 
   let connected = false;                 // is a phone subscribed to NUS?
+  let osStepCount = 0;                    // the built-in pedometer's running day count (getHealthStatus)
   let dataHandler = null;                // Bluetooth.on('data')
   const allFrames = [];                  // every println line (for inspection)
   let deliver = null;                    // hook: deliver a line to the phone when connected
@@ -69,7 +70,10 @@ function buildWatch(clock, opts = {}) {
     setGPSPower() {}, setBarometerPower() {}, setHRMPower() {},
     setOptions() {}, getOptions() { return {}; }, setPollInterval() {},
     buzz() {}, isLCDOn() { return true; }, isCharging() { return false; },
-    getHealthStatus() { return { steps: 0 }; }, setLocked() {},
+    // The firmware pedometer. Real Bangle.js counts steps from the accel poll and exposes them here; it
+    // keeps counting DURING a workout (that's the whole point of the 12.5 Hz poll). The sim drives it via
+    // control.walk()/setOsSteps() so a test can prove the Steps face ticks up while recording + HR streams.
+    getHealthStatus() { return { steps: osStepCount }; }, setLocked() {},
   };
   const NRF = {
     on: on('NRF'),
@@ -144,6 +148,13 @@ function buildWatch(clock, opts = {}) {
     hrmRaw(raw) { fire('Bangle:HRM-raw', { raw }); },
     accel(x, y, z) { fire('Bangle:accel', { x, y, z }); },
     gps(fix) { fire('Bangle:GPS', fix); },
+
+    // Walk `n` steps: advance the built-in pedometer (getHealthStatus) and fire the 'step' events the
+    // firmware sees, exactly as the OS does when you move — works the same whether or not a workout records.
+    walk(n = 1) { for (let i = 0; i < n; i++) { osStepCount++; fire('Bangle:step'); } },
+    setOsSteps(n) { osStepCount = n | 0; },
+    osSteps() { return osStepCount; },
+    simulateReboot(steps = 0) { osStepCount = steps | 0; },   // a reflash/reboot resets the OS pedometer
 
     state() { return sandbox.state; },             // firmware state object (workout/connected/hrmSport/…)
   };

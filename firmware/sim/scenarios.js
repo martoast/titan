@@ -238,6 +238,62 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
     `count=${s.phone.sleepSummaries.length}`);
 })();
 
+// 13) THE STEP-FREEZE BUG. The user walks with the BAND while a workout records + HR streams, but the
+//     watch's Steps face is frozen at a static number (e.g. "919") and never climbs. Root cause: the
+//     phone pushes its OWN (often higher / stale) day total (C6), and stepCount() returned MAX(phone,
+//     band) — so a static phone snapshot PINNED the display and hid the band's live pedometer. The band's
+//     own count is the live source of truth on the wrist; the server does the authoritative per-day merge.
+//     Also proves the T8 the band streams up carries the BAND's count, not an echo of the phone's number.
+(() => {
+  const decodeT8Steps = (frames) => {
+    const t8 = frames.filter((l) => l.slice(0, 3) === 'T8:').pop();
+    if (!t8) return null;
+    return Buffer.from(t8.slice(3), 'base64').readUInt32LE(4);
+  };
+  const s = new Session();
+  s.connect();                       // linked; recording is ON by default (first-boot pref → startStreaming)
+  s.gotoLift(); s.tapButton();       // start a LIFT workout → HR streams (sport mode) + accel logs, exactly the user's state
+  // Walk 60 steps with the band first, so it clearly HAS its own live count.
+  for (let i = 0; i < 60; i++) { s.watch.walk(1); s.watch.hrm(130); s.clock.advance(400); }
+  check('steps · band pedometer is counting during the workout', s.watch.osSteps() === 60, `os=${s.watch.osSteps()}`);
+
+  // The phone (sat on a desk across the room) pushes its higher, static day total. The user keeps walking
+  // with the BAND — the phone isn't moving, so it re-pushes the SAME 919 and never climbs.
+  s.watch.sendCommand('C6:{"s":919}');
+  const shownAfterPush = s.watch.sandbox.stepCount();
+  for (let i = 0; i < 200; i++) {
+    s.watch.walk(1);
+    if (i % 10 === 0) { s.watch.sendCommand('C6:{"s":919}'); s.watch.hrm(131); }   // phone re-pushes the same stale total
+    s.clock.advance(300);
+  }
+  const shownAfterWalk = s.watch.sandbox.stepCount();
+
+  check('steps · Steps face ticks UP as you walk (not pinned to the phone snapshot)',
+    shownAfterWalk > shownAfterPush,
+    `afterPush=${shownAfterPush} afterWalk=${shownAfterWalk} os=${s.watch.osSteps()}`);
+  check('steps · displayed count reflects the band\'s own pedometer (260 walked)',
+    s.watch.sandbox.stepCount() === 260, `shown=${s.watch.sandbox.stepCount()} os=${s.watch.osSteps()}`);
+  // T8 is emitted on a timer, so the last frame is the band's count at emit time (a mid-walk snapshot) —
+  // the point is it tracks the BAND's live pedometer (>60, climbing), NEVER an echo of the phone's 919.
+  const t8 = decodeT8Steps(s.watch.allFrames);
+  check('steps · T8 streamed to the phone carries the BAND count, not an echo of the phone\'s 919',
+    t8 !== null && t8 > 60 && t8 <= 260, `t8=${t8}`);
+})();
+
+// 14) STEP-FREEZE after a REFLASH specifically: a flash wipes the OS pedometer to 0 while the phone still
+//     holds the full day (919). The band must still tick up from 0 as you walk — never sit pinned at 919.
+(() => {
+  const s = new Session();
+  s.watch.simulateReboot(0);         // fresh flash: OS pedometer reset to 0
+  s.connect();
+  s.watch.sendCommand('C6:{"s":919}');   // phone tops it up to its full day total right on connect
+  const shown0 = s.watch.sandbox.stepCount();
+  for (let i = 0; i < 150; i++) { s.watch.walk(1); if (i % 10 === 0) s.watch.hrm(120); s.clock.advance(300); }
+  const shown1 = s.watch.sandbox.stepCount();
+  check('steps (post-reflash) · not frozen at the phone total — climbs from the band pedometer',
+    shown1 > shown0 && shown1 === 150, `shown0=${shown0} shown1=${shown1} os=${s.watch.osSteps()}`);
+})();
+
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
 for (const r of results) console.log(`${r.ok ? '  ✓' : '  ✗'} ${r.name}${r.ok ? '' : `\n      → ${r.detail}`}`);
 console.log(`\n${results.length - failures}/${results.length} checks passed\n`);

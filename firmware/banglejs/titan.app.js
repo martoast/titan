@@ -1316,7 +1316,6 @@ var STEP_FILE = "titan.stp3";     // { d:"YYYY-MM-DD", s:total } — v3 discards
 var stepDay = "";                 // local date the counters belong to
 var stepCarry = 0;                // steps banked from earlier boots today (persisted → survives reboot)
 var stepSeen = 0;                 // last getHealthStatus("day").steps we read this boot
-var phonePushToday = 0;           // phone-pushed count (C6) — display pad only; the server does the real merge
 
 function stepLocalDate() {
   var d = new Date();
@@ -1326,7 +1325,7 @@ function osSteps() {              // the firmware pedometer's live day count
   try { return Bangle.getHealthStatus("day").steps | 0; } catch (e) { return 0; }
 }
 function stepLoad() {
-  stepDay = stepLocalDate(); stepCarry = 0; stepSeen = 0; phonePushToday = 0;
+  stepDay = stepLocalDate(); stepCarry = 0; stepSeen = 0;
   try {
     var s = require("Storage").readJSON(STEP_FILE, true);
     if (s && s.d === stepDay) stepCarry = s.s | 0;   // resume today's total across a reboot
@@ -1339,15 +1338,18 @@ function stepSave() {
 // (a reboot/reset), bank what we'd seen so the total never goes backwards. Cheap — call before any read.
 function stepTick() {
   var d = stepLocalDate();
-  if (d !== stepDay) { stepDay = d; stepCarry = 0; stepSeen = 0; phonePushToday = 0; stepSave(); return; }
+  if (d !== stepDay) { stepDay = d; stepCarry = 0; stepSeen = 0; stepSave(); return; }
   var os = osSteps();
   if (os < stepSeen) stepCarry += stepSeen;   // getHealthStatus reset → keep the pre-reset steps
   stepSeen = os;
 }
 function stepCount() {
   stepTick();
-  var n = stepCarry + stepSeen;                // firmware day count, reboot-safe
-  return phonePushToday > n ? phonePushToday : n;   // …or the phone's higher count, whichever is more
+  return stepCarry + stepSeen;                 // the band's OWN reboot-safe day count — the live source of
+  // truth on the wrist. We do NOT max() in the phone's pushed total here: a static phone snapshot (phone
+  // on a desk, or a just-reflashed band whose pedometer reset below the phone's day total) would PIN the
+  // face and hide the band's live increments — steps "frozen at 919" while you walk. The server does the
+  // authoritative per-day MAX merge with the phone; the watch face shows what the band actually measured.
 }
 
 // The `step` event is kept ONLY as a cadence heartbeat for the run's auto-pause — NOT for counting.
@@ -1908,15 +1910,12 @@ Bluetooth.on("data", function (d) {
           if (page === RUN_PAGE && uiVisible) drawUI();
         }
       } catch (e) { /* malformed — ignore */ }
-    } else if (line.substr(0, 3) === "C6:") {     // the phone's step total for TODAY → a display pad, so the
-      try {                                        // watch face can show the phone's (often higher) count too.
-        var st = JSON.parse(line.substr(3));       // Non-destructive: it never touches the firmware day count,
-        if (st && typeof st.s === "number" && st.s >= 0 &&   // so a stale phone value can't corrupt our total.
-            (!st.d || st.d === stepLocalDate())) {           // Same-day only; the SERVER does the real merge.
-          phonePushToday = st.s | 0;
-          if (page === STEPS_PAGE && uiVisible) drawUI();
-        }
-      } catch (e) { /* malformed — ignore */ }
+    } else if (line.substr(0, 3) === "C6:") {     // the phone's step total for TODAY. Intentionally IGNORED:
+      // the Steps face shows the band's OWN live pedometer (getHealthStatus), never the phone's pushed
+      // total. Max-merging the phone's number here PINNED the display to a static snapshot (frozen "919"
+      // while you walk, and worse right after a reflash resets the band below the phone's day total). The
+      // band streams its own count up (T8); the SERVER does the authoritative per-day MAX merge with the
+      // phone. Kept as an explicit no-op so the iOS push isn't fed to the REPL and the pin isn't restored.
     }
   }
 });
