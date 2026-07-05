@@ -126,6 +126,16 @@ class MobileDashboardController extends Controller
         ]);
     }
 
+    /** GET /api/me/overview?days=7|30 — the Whoop-style Overview history: a daily series of Recovery,
+     *  Sleep Performance and Strain (+ HRV / RHR / sleep hours) with period averages, for the trend graphs. */
+    public function overview(Request $request): JsonResponse
+    {
+        $profile = $request->user()->profile ?? $request->user()->ensureProfile();
+        $days = (int) $request->query('days', 30);
+
+        return response()->json(\App\Support\TrendsOverview::forProfile($profile, $days));
+    }
+
     /** GET /api/me/strain — the Whoop-style Strain screen: today's strain building through the day,
      *  the recovery-based target band, and the workouts that drove it (each with the strain it added). */
     public function strain(Request $request): JsonResponse

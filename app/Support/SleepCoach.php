@@ -129,7 +129,7 @@ class SleepCoach
         return self::baselineFor($profile);
     }
 
-    private static function baselineFor(Profile $profile): float
+    public static function baselineFor(Profile $profile): float
     {
         // User-set target wins (app Targets sheet / coach set_targets).
         $override = $profile->settings['sleep_target_h'] ?? null;

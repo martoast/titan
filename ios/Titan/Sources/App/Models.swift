@@ -174,6 +174,23 @@ struct SleepResponse: Codable {
     }
 }
 
+/// The Whoop-style Overview history: a daily series of the three rings + HRV/RHR/sleep, with averages.
+struct OverviewResponse: Codable {
+    let days: Int
+    let points: [Point]
+    let averages: Averages
+    struct Point: Codable, Identifiable {
+        let date: String
+        let recovery: Int?; let sleep_performance: Int?; let strain: Double?
+        let hrv: Int?; let rhr: Int?; let sleep_h: Double?
+        var id: String { date }
+    }
+    struct Averages: Codable {
+        let recovery: Double?; let sleep_performance: Double?; let strain: Double?
+        let hrv: Double?; let rhr: Double?; let sleep_h: Double?
+    }
+}
+
 /// The Whoop-style Strain screen: today's day strain building through the day, the recovery-based
 /// target band, and the workouts that drove it (each with the strain it added).
 struct StrainResponse: Codable {

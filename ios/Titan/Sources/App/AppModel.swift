@@ -595,6 +595,14 @@ final class AppModel: ObservableObject {
     }
     func loadStrain() async { strainDetail = try? await api.strain() }
 
+    @Published var overview: OverviewResponse?
+    @Published var overviewDays = 30
+    func loadOverview() async { overview = try? await api.overview(days: overviewDays) }
+    func setOverviewDays(_ d: Int) async {
+        guard d != overviewDays else { return }
+        overviewDays = d; overview = nil; await loadOverview()
+    }
+
     func loadHr() async {
         if hrDay == nil { hrPhase = .loading }
         do { hrDay = try await api.hr(); hrPhase = .loaded }

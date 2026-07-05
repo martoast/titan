@@ -62,6 +62,24 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity)
             .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
 
+            // Trends — the Whoop-style Overview history (recovery / sleep / strain over week + month).
+            NavigationLink { TrendsView() } label: {
+                GlassCard {
+                    HStack(spacing: Theme.Space.m) {
+                        ZStack {
+                            Circle().fill(Theme.Palette.cyan.opacity(0.16)).frame(width: 40, height: 40)
+                            Image(systemName: "chart.xyaxis.line").foregroundStyle(Theme.Palette.cyan).font(.system(size: 17, weight: .semibold))
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Trends").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            Text("Recovery, sleep & strain over time").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
+            }.buttonStyle(PressCard())
+
             // Live steps from the iPhone (instant, no permission) + connect Apple Health for the rest
             LiveStepsCard()
             HealthConnectCard()

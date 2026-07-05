@@ -174,6 +174,18 @@ class FullDay24hTest extends TestCase
             'both workouts appear as strain contributions');
         $this->assertNotNull(collect($strain['contributions'])->firstWhere('activity_type', 'run'));
         $this->assertNotNull(collect($strain['contributions'])->firstWhere('activity_type', 'strength'));
+
+        // ---- The WHOOP Overview history: daily recovery / sleep / strain series + averages ----
+        $ov = $this->auth($user)->getJson('/api/me/overview?days=30')->assertOk()->json();
+        $this->assertGreaterThanOrEqual(29, count($ov['points']), 'a ~30-day series');
+        $this->assertNotNull($ov['averages']['recovery'] ?? null, 'a period recovery average');
+        $this->assertNotNull($ov['averages']['sleep_performance'] ?? null);
+        $pts = collect($ov['points']);
+        $this->assertNotNull($pts->firstWhere(fn ($p) => $p['recovery'] !== null), 'some day has a recovery score');
+        $this->assertNotNull($pts->firstWhere(fn ($p) => ($p['strain'] ?? null) !== null), 'some day has strain');
+        $this->assertNotNull($pts->last()['date'] ?? null);
+
+        Carbon::setTestNow();   // release the frozen clock
     }
 
     private function auth(User $user): self

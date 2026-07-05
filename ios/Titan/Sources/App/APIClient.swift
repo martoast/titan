@@ -153,6 +153,10 @@ final class APIClient {
         try await send(request("api/me/strain"), as: StrainResponse.self)
     }
 
+    func overview(days: Int = 30) async throws -> OverviewResponse {
+        try await send(request("api/me/overview?days=\(days)"), as: OverviewResponse.self)
+    }
+
     func cycle() async throws -> CycleResponse {
         try await send(request("api/me/cycle"), as: CycleResponse.self)
     }
