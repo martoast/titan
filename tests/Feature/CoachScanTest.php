@@ -64,6 +64,61 @@ class CoachScanTest extends TestCase
         $this->assertStringContainsString('12oz steak', $userTurn->content);
     }
 
+    public function test_a_label_with_save_intent_is_remembered_not_logged(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+
+        // A nutrition-facts label + "add this to the pastas I make" → SAVE as a reference, don't log.
+        $vision = Mockery::mock(AiService::class);
+        $vision->shouldReceive('vision')->once()->andReturn(json_encode([
+            'kind' => 'meal',
+            'intent' => 'save',
+            'meal' => ['name' => 'De Cecco Fusilli', 'calories' => 300, 'protein_g' => 12, 'carbs_g' => 61,
+                'fat_g' => 1.5, 'is_label' => true, 'brand' => 'De Cecco', 'product' => 'Fusilli no. 34', 'serving_hint' => '1/5 package (85 g)'],
+        ]));
+        $this->app->instance(AiService::class, $vision);
+
+        $response = $this->actingAs($user)->post('/coach/scan', [
+            'photo' => UploadedFile::fake()->image('fusilli.jpg'),
+            'message' => 'Add this to one of the kinds of pasta that I make',
+        ]);
+
+        $response->assertOk()->assertJson(['ok' => true, 'kind' => 'meal_saved', 'logged' => false]);
+
+        // It's saved to the reference library (your foods) …
+        $this->assertDatabaseHas('meal_templates', ['profile_id' => $profile->id, 'name' => 'De Cecco Fusilli', 'calories' => 300]);
+        // … and NOT logged to today.
+        $this->assertDatabaseCount('meals', 0);
+        $this->assertStringContainsString('Saved', $response->json('reply'));
+        $this->assertStringContainsString('De Cecco Fusilli', $response->json('reply'));
+        // A saved reference isn't marked as eaten.
+        $this->assertSame(0, (int) $profile->mealTemplates()->first()->times_logged);
+    }
+
+    public function test_an_explicit_eat_caption_still_logs_even_with_a_label(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $user->ensureProfile();
+
+        // Vision says "save" but the user clearly ate it — the caption wins back to logging.
+        $vision = Mockery::mock(AiService::class);
+        $vision->shouldReceive('vision')->once()->andReturn(json_encode([
+            'kind' => 'meal', 'intent' => 'save',
+            'meal' => ['name' => 'Fusilli bowl', 'calories' => 300, 'protein_g' => 12, 'carbs_g' => 61, 'fat_g' => 1.5],
+        ]));
+        $this->app->instance(AiService::class, $vision);
+
+        $this->actingAs($user)->post('/coach/scan', [
+            'photo' => UploadedFile::fake()->image('lunch.jpg'),
+            'message' => 'just had this for lunch',
+        ])->assertOk()->assertJson(['kind' => 'meal', 'logged' => true]);
+
+        $this->assertDatabaseHas('meals', ['name' => 'Fusilli bowl']);
+    }
+
     public function test_a_bloodwork_photo_logs_each_marker(): void
     {
         Storage::fake('public');

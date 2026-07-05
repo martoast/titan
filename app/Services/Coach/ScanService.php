@@ -30,7 +30,7 @@ class ScanService
     {
         [$data, $path, $imageUrl] = $this->classify($file, $caption);
 
-        return $this->dispatchScan($profile, $data, $path, $imageUrl);
+        return $this->dispatchScan($profile, $data, $path, $imageUrl, $caption);
     }
 
     /**
@@ -44,22 +44,29 @@ class ScanService
     {
         [$data, $imageUrl] = $this->classifyStored($path, $caption);
 
-        return $this->dispatchScan($profile, $data, $path, $imageUrl);
+        return $this->dispatchScan($profile, $data, $path, $imageUrl, $caption);
     }
 
     /**
-     * Route classified vision data to the right logger (meal / bloodwork / physique / other).
+     * Route classified vision data to the right handler (meal / bloodwork / physique / other). A FOOD
+     * photo splits on intent: "log" records eating it now (adds to today); "save" just remembers it as
+     * a reference in your foods — the difference between "here's my lunch" and "add this to the kinds
+     * of pasta I make". Intent comes from vision + a caption keyword override (below).
      *
      * @param  array<string,mixed>  $data
      * @return array{kind:string,logged:bool,image_url:string,reply:string,data:array<string,mixed>}
      */
-    private function dispatchScan(Profile $profile, array $data, string $path, string $imageUrl): array
+    private function dispatchScan(Profile $profile, array $data, string $path, string $imageUrl, ?string $caption = null): array
     {
         $kind = $data['kind'] ?? 'other';
 
         if ($kind === 'meal' && ! empty($data['meal']) && is_array($data['meal'])) {
-            // Resolve the macros (your usuals → branded label → web grounding), then log for the chat.
-            return $this->logMeal($profile, $this->resolveMeal($profile, $data['meal']), $path, $imageUrl);
+            $meal = $this->resolveMeal($profile, $data['meal']);
+            // Save-as-reference vs log-as-eaten. Vision decides from the caption; a clear caption phrase
+            // overrides it (models occasionally default to "log" on a bare-looking label photo).
+            return $this->mealIntent($caption, $data['intent'] ?? null) === 'save'
+                ? $this->saveMeal($profile, $meal, $path, $imageUrl)
+                : $this->logMeal($profile, $meal, $path, $imageUrl);
         }
         if ($kind === 'bloodwork' && ! empty($data['bloodwork']) && is_array($data['bloodwork'])) {
             return $this->logBloodwork($profile, $data['bloodwork'], $imageUrl);
@@ -127,11 +134,16 @@ class ScanService
         Return ONLY a JSON object of this exact shape:
         {
           "kind": "meal" | "bloodwork" | "physique" | "other",
+          "intent": "log" | "save",
           "meal": { "name": string, "items": [string], "calories": int, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high", "packaged": boolean, "is_label": boolean, "brand": string, "product": string, "serving_hint": string },
           "bloodwork": [ { "marker": string, "value": number, "unit": string } ],
           "note": string
         }
         Rules:
+        - "intent" (food photos only): decide what the user wants DONE with this food, from their words.
+          - "save" = REMEMBER this food/ingredient/product as a reference for later, do NOT record eating it now. Signals: "save this", "add this to my foods/pantry/usuals", "remember this", "one of the pastas/meals/things I make", "the kind of X I use", "for later/next time", "for reference". A photo of a NUTRITION-FACTS panel or a packaged product with this kind of phrasing is almost always "save" — they're cataloguing the product, not eating it.
+          - "log" = they are eating it now / want it recorded to today. Signals: "I ate", "just had", "log this", "for lunch", "this is my breakfast" — OR no instruction at all (a bare food photo defaults to "log").
+          Default to "log" when genuinely unclear. Never "save" for bloodwork/physique — use "log".
         - If it's food/a meal/a drink: fill "meal" with your best estimate of the macros for the WHOLE portion shown, plus a short name and the visible items. Leave "bloodwork" as [].
         - If the image IS a NUTRITION FACTS panel (the printed nutrition table on packaging, or a screenshot of one): set "is_label": true AND read the macros DIRECTLY off it — copy calories/protein_g/carbs_g/fat_g PER SERVING exactly as printed (do not estimate). Put the printed serving size in "serving_hint" (e.g. "1 cup (240 ml)"). Set brand/product too if the label shows them. These printed numbers are ground truth — transcribe, don't guess.
         - If it's a PACKAGED / branded product (a wrapper, bottle, box, protein tub, bar, ready meal — a brand is visible but the full facts panel is NOT clearly readable): set "packaged": true and read the "brand" and exact "product" name off the label as precisely as you can (e.g. brand "Chobani", product "Non-Fat Greek Yogurt, Vanilla"). Put the serving/size you can see in "serving_hint". We will look up the OFFICIAL label macros for this exact product, so getting the brand + product right matters more than guessing the numbers.
@@ -436,6 +448,70 @@ class ScanService
             ."\n\nLogged **{$meal->name}** -- {$meal->calories} kcal · {$meal->protein_g}g protein.{$hedge}";
 
         return ['kind' => 'meal', 'logged' => true, 'meal_id' => $meal->id, 'image_url' => $imageUrl, 'reply' => $reply, 'data' => $m];
+    }
+
+    /**
+     * Save a food as a REFERENCE — a {@see \App\Models\MealTemplate} in "your foods" — WITHOUT logging
+     * it to today. This is what "add this to the kinds of pasta I make" wants: next time they say "I
+     * made pasta", {@see matchLibrary()} resolves to these exact macros. No Meal row, no change to
+     * today's totals. (The branded label was already cached to {@see \App\Models\BrandedFood} in
+     * resolveMeal, so a future scan of the same product is instant too.)
+     *
+     * @param  array<string,mixed>  $m
+     */
+    private function saveMeal(Profile $profile, array $m, string $path, string $imageUrl): array
+    {
+        $name = trim((string) ($m['name'] ?? 'Food')) ?: 'Food';
+        $key = MealMemory::normalize($name) ?: MealMemory::normalize('food');
+
+        $tpl = \App\Models\MealTemplate::firstOrNew(['profile_id' => $profile->id, 'key' => $key]);
+        $tpl->name = $name;
+        $tpl->calories = (int) round((float) ($m['calories'] ?? 0));
+        $tpl->protein_g = round((float) ($m['protein_g'] ?? 0), 1);
+        $tpl->carbs_g = round((float) ($m['carbs_g'] ?? 0), 1);
+        $tpl->fat_g = round((float) ($m['fat_g'] ?? 0), 1);
+        if ($path) {
+            $tpl->photo_path = $path;
+        }
+        $tpl->source = $tpl->source ?: 'photo';
+        // Deliberately DON'T touch times_logged / last_eaten_at — it was saved, not eaten.
+        $tpl->save();
+
+        $serving = trim((string) ($m['serving'] ?? $m['serving_hint'] ?? ''));
+        $per = $serving !== '' ? " (per {$serving})" : '';
+        $reply = "Saved **{$tpl->name}** to your foods{$per} — {$tpl->calories} kcal · {$tpl->protein_g}g protein · "
+            ."{$tpl->carbs_g}g carbs · {$tpl->fat_g}g fat. I'll use these when you tell me you had it. "
+            .'Nothing was logged to today — just tap it in your usuals, or say the word, when you actually eat it.';
+
+        return ['kind' => 'meal_saved', 'logged' => false, 'template_id' => $tpl->id, 'image_url' => $imageUrl, 'reply' => $reply, 'data' => $m];
+    }
+
+    /**
+     * Resolve save-vs-log intent for a food photo. Vision's read is the base; an unambiguous caption
+     * phrase overrides it either way (a bare label photo sometimes defaults to "log" wrongly, and an
+     * explicit "I'm eating this" should always log). Defaults to "log".
+     */
+    private function mealIntent(?string $caption, ?string $visionIntent): string
+    {
+        $intent = strtolower(trim((string) $visionIntent)) === 'save' ? 'save' : 'log';
+        $c = strtolower(trim((string) $caption));
+        if ($c === '') {
+            return $intent;
+        }
+
+        // "save this", "add … to my foods", "one of the pastas I make", "the … I use", "for later/reference"…
+        $saveSignals = '/\b(sav(e|ing)|remember|for later|for next time|for reference|to my (foods|meals|pantry|usuals|library|list)|add (this|it|to)|one of (the|my)|kinds? of|the .* i (make|cook|use|buy|eat))\b/';
+        // …but an explicit "I ate / just had / log this / for lunch" always wins back to logging.
+        $logSignals = '/\b(ate|eaten|eating|just (had|ate)|had (this|it|for)|log (this|it)|for (breakfast|lunch|dinner|a snack)|my (breakfast|lunch|dinner))\b/';
+
+        if (preg_match($saveSignals, $c)) {
+            $intent = 'save';
+        }
+        if (preg_match($logSignals, $c)) {
+            $intent = 'log';
+        }
+
+        return $intent;
     }
 
     /** @param  array<int,array<string,mixed>>  $markers */
