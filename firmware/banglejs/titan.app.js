@@ -302,6 +302,14 @@ var runStartMs = 0;       // run start (device ms)
 var runDistM = 0;         // accumulated distance (m), summed from GPS fixes (haversine)
 var runLastLat = null, runLastLon = null;  // last coord, for the distance increment
 var runTimer = null;      // 1 Hz repaint while the run face is live (so the timer ticks)
+// Auto-pause (Strava-style, on-watch): a run pauses itself when the step counter stops advancing — no
+// cadence = you're standing still. Distance already flatlines on its own (it's phone-owned), so the
+// timer is what we freeze. All local to the watch; no phone round-trip needed.
+var runPaused = false;    // currently auto-paused (no recent steps)
+var runPausedMs = 0;      // total banked paused time (ms) this run
+var runPauseStartMs = 0;  // device-ms the current pause began
+var lastStepAt = 0;       // getTime() (s) of the most recent step event (cadence heartbeat)
+var RUN_PAUSE_GAP_S = 5;  // no step for this long → auto-pause (a stumble/photo is fine; a real stop pauses)
 var liftActive = false;   // a lifting workout is being tracked from the Lift face (no GPS)
 var liftStartMs = 0;      // lift start (device ms)
 var liftTimer = null;     // 1 Hz repaint while the lift face is live (so the timer ticks)
@@ -1342,6 +1350,7 @@ Bangle.on("step", function (up) {
   stepLastUp = up;
   stepTotal += delta;
   stepDirty = true;
+  lastStepAt = getTime();          // cadence heartbeat — feeds the run's auto-pause
 });
 
 function stepCount() {
@@ -1452,6 +1461,30 @@ function fmtMMSS(s) {
 // Page 7 — RUN: a GPS-tracked run you start from the watch. Click the button to start (arms GPS + a
 // workout pinned as a run); the live time / distance / pace show here, and the workout's T4 coords
 // build the route map in the app on the next sync. Click again to finish.
+// Auto-pause bookkeeping — call once a second while a run is live (regardless of which face is shown).
+// Enter pause when no step has landed for RUN_PAUSE_GAP_S; leave it the moment cadence returns, banking
+// the paused span so the run timer shows MOVING time (Strava-style).
+function updateRunPause() {
+  if (!runActive) return;
+  var idle = getTime() - lastStepAt;   // seconds since the last step
+  if (!runPaused && idle > RUN_PAUSE_GAP_S) {
+    runPaused = true;
+    runPauseStartMs = Math.round(getTime() * 1000);
+    try { Bangle.buzz(40); } catch (e) {}          // subtle "paused" cue
+  } else if (runPaused && idle <= RUN_PAUSE_GAP_S) {
+    runPausedMs += Math.round(getTime() * 1000) - runPauseStartMs;   // bank this pause
+    runPaused = false;
+    try { Bangle.buzz(40); } catch (e) {}          // subtle "resumed" cue
+  }
+}
+
+// Seconds of MOVING time this run — wall-clock minus all banked pauses (and the one in progress).
+function runMovingSec() {
+  var nowMs = Math.round(getTime() * 1000);
+  var paused = runPausedMs + (runPaused ? nowMs - runPauseStartMs : 0);
+  return Math.max(0, (nowMs - runStartMs - paused) / 1000);
+}
+
 function drawRun() {
   var W = g.getWidth(), cx = W / 2;
   topBar();
@@ -1462,15 +1495,21 @@ function drawRun() {
     drawAction("START", false, null, C.mint);
     return;
   }
-  var sec = (getTime() * 1000 - runStartMs) / 1000;
+  var sec = runMovingSec();
   var km = runDistM / 1000;
   g.setColor(C.white); g.setFont("Vector", 40); g.setFontAlign(0, 0);
   g.drawString(fmtMMSS(sec), cx, 72);
   g.setColor(C.mint); g.setFont("Vector", 30);
   g.drawString(km.toFixed(2) + " km", cx, 110);
-  var pace = km > 0.02 ? fmtMMSS(sec / km) + " /km" : "--:-- /km";
-  g.setColor(state.gpsFix ? C.dim : C.amber); g.setFont("6x8", 2);
-  g.drawString(pace, cx, 136);
+  // While auto-paused, say so where the pace normally reads; otherwise show the (moving-time) pace.
+  if (runPaused) {
+    g.setColor(C.amber); g.setFont("6x8", 2);
+    g.drawString("|| PAUSED", cx, 136);
+  } else {
+    var pace = km > 0.02 ? fmtMMSS(sec / km) + " /km" : "--:-- /km";
+    g.setColor(state.gpsFix ? C.dim : C.amber); g.setFont("6x8", 2);
+    g.drawString(pace, cx, 136);
+  }
   drawAction("FINISH", true, null, C.mint, 158);
 }
 
@@ -1482,11 +1521,13 @@ function runTap() {
     runActive = true;
     runStartMs = Math.round(getTime() * 1000);
     runDistM = 0; runLastLat = null; runLastLon = null;
+    runPaused = false; runPausedMs = 0; lastStepAt = getTime();   // fresh auto-pause state (don't pause at t=0)
     primed = { type: "run", gps: true, accelHz: 12.5 };   // pin the run profile (sport mode + cadence + GPS)
     if (!state.streaming) startStreaming();     // make sure the session is captured offline too
     startWorkout(true);                         // manual workout → arms GPS now (no motion gate)
     if (runTimer) clearInterval(runTimer);
-    runTimer = setInterval(function () { if (page === RUN_PAGE) drawUI(); }, 1000);   // tick the live readout
+    // Tick every second while the run is live: maintain auto-pause always, repaint only on the Run face.
+    runTimer = setInterval(function () { updateRunPause(); if (page === RUN_PAGE) drawUI(); }, 1000);
     try { Bangle.buzz(120); } catch (e) {}
     if (uiVisible) drawUI();
   }
