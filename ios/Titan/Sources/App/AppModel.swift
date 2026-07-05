@@ -130,6 +130,7 @@ final class AppModel: ObservableObject {
         if let d = try? await api.dashboard() { dashboard = d }
         startBandIfPaired()
         bandBound = band?.isBound ?? false
+        stepTracker.start()                           // count the phone's steps so we can mirror them to the band
         startStrap()                                  // resume a paired chest strap (independent of the band)
         await loadHealthStatus()
         if healthConnected { await syncAppleHealth() }   // keep Apple Health fresh on launch
@@ -260,6 +261,7 @@ final class AppModel: ObservableObject {
         bandIdle = false
         band?.setDesiredConnection(true)
         band?.flushIfConnected()
+        pushStepsToBand()         // opening the app tops the watch's Steps face back up to the phone's count
         checkForSyncedWorkout()   // surface any workout that finished while we weren't watching
     }
 
@@ -468,6 +470,8 @@ final class AppModel: ObservableObject {
                 // Live "steps today" from the band. Accept today ±1 day so a timezone/midnight clock skew
                 // between the watch and phone doesn't silently drop every frame (steps stuck at 0).
                 if Self.bandDateIsCurrent(s.date) { self?.bandStepsToday = s.steps; self?.bandStepsAt = Date() }
+                // …and reply with the phone's count (~15 s cadence) so the watch MAX-merges it back.
+                self?.pushStepsToBand()
             }
         }
         router.onActivityKind = { [weak self] k in Task { @MainActor in self?.setWorkoutKind(k) } }
@@ -900,6 +904,19 @@ final class AppModel: ObservableObject {
     @Published var bandStepsToday = 0
     @Published var bandStepsAt: Date?              // when we last heard a band step total (freshness)
 
+    /// The phone's own "steps today" (CoreMotion). Owned here (not per-view) so we can push it DOWN to
+    /// the band — the band shows the phone's count too, so the watch face and the app never disagree.
+    let stepTracker = StepTracker()
+
+    /// Send the phone's step total to the band so its Steps face MAX-merges it (both show the same number).
+    /// The band already streams its count up (T8); this closes the loop the other way. Called on connect
+    /// and on every T8 we receive (a natural ~15 s cadence while connected). No-op if we have no count yet.
+    func pushStepsToBand() {
+        let phone = stepTracker.steps
+        guard phone > 0 else { return }
+        band?.sendSteps(phone, day: Self.localDayString())
+    }
+
     /// Local YYYY-MM-DD, matching the band's T8 date so we only trust today's live count.
     static func localDayString() -> String {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = .current; f.timeZone = .current
@@ -1013,6 +1030,7 @@ final class AppModel: ObservableObject {
     private func handleBandConnectionChange(_ up: Bool) {
         if up {
             disconnectConfirmTask?.cancel(); disconnectConfirmTask = nil   // reconnected → transient blip
+            pushStepsToBand()   // top the watch back up to the phone's count the moment we connect
             return
         }
         guard runActive else { return }

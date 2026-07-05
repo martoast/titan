@@ -290,7 +290,7 @@ var pairTimer = null;     // pairing-screen redraw interval, or null
 var HEART_PAGE = 0;       // HR + link status; button 1×: pair (offline) / sync (linked) · 2×: capture toggle
 var CLOCK_PAGE = 1;
 var STEPS_PAGE = 2;
-var STOPWATCH_PAGE = 3;   // button 1×: plain timer · 2×: log as sleep
+var STOPWATCH_PAGE = 3;   // button 1×: plain timer (sleep is now its own face, below)
 var SLEEP_PAGE = 4;       // button 1×: start / wake a sleep session (its own face, like Run + Lift)
 var RUN_PAGE = 5;         // button 1×: start/finish a GPS-tracked RUN → the app's route map
 var LIFT_PAGE = 6;        // button 1×: start/finish a no-GPS LIFTING workout → the app's strength summary
@@ -1873,6 +1873,17 @@ Bluetooth.on("data", function (d) {
         if (typeof rd.d === "number" && runActive) {
           runDistM = rd.d;
           if (page === RUN_PAGE && uiVisible) drawUI();
+        }
+      } catch (e) { /* malformed — ignore */ }
+    } else if (line.substr(0, 3) === "C6:") {     // the phone's step total for TODAY → MAX-merge it into our
+      try {                                        // persistent day count so the watch and app show the SAME
+        var st = JSON.parse(line.substr(3));       // number. The phone (in a pocket) sees steps the wrist may
+        stepRollover();                            // miss; MAX (never SUM) matches the server merge. Same-day
+        if (st && typeof st.s === "number" && st.s > stepTotal &&   // only, and only ever grows — never back.
+            (!st.d || st.d === stepDay)) {
+          stepTotal = st.s | 0;
+          stepDirty = true;
+          if (page === STEPS_PAGE && uiVisible) drawUI();
         }
       } catch (e) { /* malformed — ignore */ }
     }

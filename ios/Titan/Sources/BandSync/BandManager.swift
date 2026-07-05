@@ -183,6 +183,24 @@ public final class BandManager: NSObject {
         p.writeValue(Data("C5:{\"d\":\(Int(m.rounded()))}\n".utf8), for: rx, type: .withoutResponse)
     }
 
+    /// Push the phone's step total for today to the band (C6) so the watch's Steps face and the app show
+    /// the SAME number. The band streams its own count up (T8); this closes the loop the other way — the
+    /// watch MAX-merges the phone's count (it never goes backwards, and it's a MAX so it's never double-
+    /// counted). Same flow-control as the run distance: keep only the latest and flush when the link's ready.
+    private var pendingSteps: (steps: Int, day: String)?
+    public func sendSteps(_ steps: Int, day: String) {
+        pendingSteps = (steps, day)
+        flushSteps()
+    }
+
+    private func flushSteps() {
+        guard let s = pendingSteps,
+              let p = band, p.state == .connected, let rx = rxChar,
+              p.canSendWriteWithoutResponse else { return }
+        pendingSteps = nil
+        p.writeValue(Data("C6:{\"s\":\(s.steps),\"d\":\"\(s.day)\"}\n".utf8), for: rx, type: .withoutResponse)
+    }
+
     /// Force a fresh connection attempt when we're paired but stuck — advertised-but-never-connected,
     /// a half-open link, or a Bluetooth stack that's wedged. Tears down any existing connection to the
     /// bound band, drops the cached write char, then re-arms connect AND restarts a scan so we catch
@@ -315,5 +333,6 @@ extension BandManager: CBPeripheralDelegate {
     /// watch's Run face stays in step even while inbound PPG frames are saturating the connection.
     public func peripheralIsReady(toSendWriteWithoutResponse p: CBPeripheral) {
         flushRunDistance()
+        flushSteps()
     }
 }
