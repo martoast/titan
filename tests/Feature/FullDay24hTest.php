@@ -140,6 +140,23 @@ class FullDay24hTest extends TestCase
             $this->assertNotNull($m['baseline'], "$key has a personal baseline to compare against");
             $this->assertContains($m['trend'], ['up', 'down', 'flat'], "$key has a trend arrow");
         }
+
+        // ---- The WHOOP three-ring hero: recovery %, sleep performance %, day strain ----
+        $rings = $dash['rings'] ?? [];
+        $this->assertIsInt($rings['recovery'] ?? null, 'the recovery ring');
+        $this->assertIsInt($rings['sleep_performance'] ?? null, 'the sleep-performance ring');
+        $this->assertNotNull($rings['strain'] ?? null, 'the day-strain ring');
+
+        // ---- The WHOOP sleep breakdown: performance, stages, and the headline metrics ----
+        $sleepResp = $this->auth($user)->getJson('/api/me/sleep')->assertOk()->json();
+        $detail = $sleepResp['detail'] ?? null;
+        $this->assertNotNull($detail, '/api/me/sleep must return the Whoop-style detail');
+        $this->assertNotNull($detail['performance_pct'] ?? null, 'sleep performance %');
+        $this->assertCount(4, $detail['stages'] ?? [], 'four sleep stages (deep/rem/light/awake)');
+        foreach ($detail['stages'] as $st) {
+            $this->assertArrayHasKey('min', $st);
+            $this->assertArrayHasKey('pct', $st);
+        }
     }
 
     private function auth(User $user): self

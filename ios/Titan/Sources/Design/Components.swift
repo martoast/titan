@@ -75,6 +75,38 @@ struct MetricRing: View {
     }
 }
 
+// MARK: - Compact stat ring (the Whoop trio: Recovery / Sleep / Strain)
+struct StatRing: View {
+    let value: Double?          // score, %, or strain
+    var max: Double = 100       // 100 for %, 21 for strain
+    let label: String
+    let color: Color
+    var size: CGFloat = 100
+    @State private var progress: CGFloat = 0
+    var body: some View {
+        VStack(spacing: 7) {
+            ZStack {
+                Circle().stroke(Color.white.opacity(0.06), lineWidth: 9)
+                Circle().trim(from: 0, to: progress)
+                    .stroke(Theme.Grad.ring(color), style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: color.opacity(0.5), radius: 7)
+                Text(formatted).font(Theme.Font.num(size * 0.30)).foregroundStyle(.white).monospacedDigit()
+            }
+            .frame(width: size, height: size)
+            .background(Theme.Grad.glow(color).scaleEffect(1.1).opacity(0.55))
+            Text(label.uppercased()).font(Theme.Font.micro).tracking(1.1).foregroundStyle(Theme.Palette.textDim)
+        }
+        .onAppear { animate() }
+        .onChange(of: value) { _, _ in animate() }
+    }
+    private var formatted: String {
+        guard let v = value else { return "—" }
+        return v == v.rounded() ? "\(Int(v))" : String(format: "%.1f", v)
+    }
+    private func animate() { withAnimation(Theme.Motion.ring) { progress = CGFloat(min(1, (value ?? 0) / Swift.max(1, max))) } }
+}
+
 // MARK: - Stat chip (HRV / RHR / etc.)
 struct Metric: View {
     let value: String

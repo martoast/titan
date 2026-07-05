@@ -30,6 +30,9 @@ class MobileSleepController extends Controller
 
         return response()->json([
             'assess' => SleepCoach::assess($profile),   // need_h, debt_h, last_h, performance_pct, band, label, advice
+            // The Whoop-style breakdown: performance %, hours vs need, stages (min + %), efficiency,
+            // restorative (deep+REM), debt, respiratory rate, consistency.
+            'detail' => \App\Support\SleepDetail::forProfile($profile),
             'nights' => $nights,
         ]);
     }

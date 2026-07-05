@@ -42,8 +42,18 @@ class MobileDashboardController extends Controller
         // Biological age — the "how old is your body" hero stat (PhenoAge + Fitness Age combiner).
         $bio = $this->safe(fn () => \App\Support\BiologicalAge::assess($profile));
 
+        // The other two Whoop rings: Sleep Performance (%) and Day Strain (0-21).
+        $sleepPerf = $this->safe(fn () => \App\Support\SleepCoach::assess($profile)['performance_pct'] ?? null);
+        $strain = $this->safe(fn () => \App\Support\Strain::assess($profile)['strain'] ?? null);
+
         return response()->json([
             'readiness' => $readiness,
+            // The three Whoop rings in one place: recovery (readiness.score), sleep %, day strain.
+            'rings' => [
+                'recovery' => $readiness['score'] ?? null,
+                'sleep_performance' => $sleepPerf,
+                'strain' => $strain !== null ? round((float) $strain, 1) : null,
+            ],
             'bio_age' => $bio ? [
                 'biological_age' => $bio['biological_age'] ?? null,
                 'chronological_age' => $bio['chronological_age'] ?? null,

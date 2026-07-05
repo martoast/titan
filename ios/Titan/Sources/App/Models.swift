@@ -53,10 +53,18 @@ struct LoginResponse: Codable {
 /// `GET /api/me/dashboard`
 struct Dashboard: Codable {
     let readiness: Readiness?
+    let rings: Rings?
     let bio_age: BioAge?
     let recovery: Recovery?
     let sleep: Sleep?
     let activity: Activity?
+
+    /// The three Whoop rings: recovery %, sleep performance %, day strain (0-21).
+    struct Rings: Codable {
+        let recovery: Int?
+        let sleep_performance: Int?
+        let strain: Double?
+    }
 
     struct BioAge: Codable {
         let biological_age: Double?
@@ -132,10 +140,29 @@ struct PairResponse: Codable {
 /// `GET /api/me/sleep`
 struct SleepResponse: Codable {
     let assess: Assess?
+    let detail: Detail?
     let nights: [Night]
     struct Assess: Codable {
         let need_h: Double?; let debt_h: Double?; let last_h: Double?
         let performance_pct: Int?; let band: String?; let label: String?; let advice: String?
+    }
+    /// The Whoop-style sleep breakdown.
+    struct Detail: Codable {
+        let date: String?
+        let performance_pct: Int?
+        let duration_min: Int?
+        let need_h: Double?; let debt_h: Double?
+        let in_bed_min: Int?; let asleep_min: Int?
+        let efficiency_pct: Int?
+        let restorative_min: Int?
+        let respiratory_rate: Double?
+        let consistency_pct: Int?
+        let quality: Int?
+        let stages: [Stage]
+        struct Stage: Codable, Identifiable {
+            let key: String; let label: String; let min: Int; let pct: Int; let color: String
+            var id: String { key }
+        }
     }
     struct Night: Codable, Identifiable {
         var id: String { date ?? "" }

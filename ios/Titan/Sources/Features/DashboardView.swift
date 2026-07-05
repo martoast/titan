@@ -27,10 +27,20 @@ struct DashboardView: View {
                 LiveRunBanner { model.showLiveRunSheet = true }
             }
 
-            // Hero: recovery ring + headline
+            // Hero: the three Whoop rings — Sleep · Recovery · Strain — then the recovery headline.
             VStack(spacing: Theme.Space.m) {
-                MetricRing(score: d?.readiness?.score, label: "Recovery", size: 200)
-                    .padding(.top, Theme.Space.s)
+                HStack(alignment: .top, spacing: Theme.Space.s) {
+                    NavigationLink { SleepView() } label: {
+                        StatRing(value: d?.rings?.sleep_performance.map(Double.init), max: 100,
+                                 label: "Sleep", color: Theme.Palette.indigo, size: 92)
+                    }.buttonStyle(PressCard())
+                    NavigationLink { RecoveryView() } label: {
+                        StatRing(value: d?.rings?.recovery.map(Double.init) ?? d?.readiness?.score.map(Double.init),
+                                 max: 100, label: "Recovery", color: Theme.Palette.recovery(d?.readiness?.score), size: 116)
+                    }.buttonStyle(PressCard())
+                    StatRing(value: d?.rings?.strain, max: 21, label: "Strain", color: Theme.Palette.cyan, size: 92)
+                }
+                .padding(.top, Theme.Space.s)
                 VStack(spacing: 6) {
                     Text(d?.readiness?.label ?? "Building your baseline")
                         .font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
