@@ -1132,19 +1132,24 @@ final class AppModel: ObservableObject {
         let inBed = max(0, wakeSec - bedSec)
         guard inBed >= 600 else { return }   // ignore a <10-min mis-tap; not a real night
         sleepSummary = SleepSummaryState(bedtime: bed, wake: wake, inBedSec: inBed)
-        fetchSealedSleep()
+        fetchSealedSleep(bedtimeEpoch: bedSec)
     }
 
     /// Poll the server for the just-sealed night and enrich the sleep summary (stages, hypnogram,
     /// efficiency, performance, respiratory rate). Night staging runs on the queue, so this can take a
     /// little longer than a workout seal; we retry patiently and fall back to the in-bed-only summary.
-    private func fetchSealedSleep() {
+    /// Guards against surfacing the PREVIOUS night: before this night stages, `sleepDetail()` still
+    /// returns yesterday's, so we only accept a detail whose start is near the bedtime we just ended.
+    private func fetchSealedSleep(bedtimeEpoch: Int) {
         Task { @MainActor [weak self] in
             for attempt in 0..<10 {
                 try? await Task.sleep(nanoseconds: attempt == 0 ? 3_000_000_000 : 4_000_000_000)
                 guard let self, self.sleepSummary != nil else { return }   // dismissed
                 guard let resp = try? await self.api.sleepDetail(), let d = resp.detail,
                       (d.duration_min ?? 0) > 0 else { continue }
+                // Is this the night we just ended? If the server stamps an epoch, require it within ~6h of
+                // our bedtime; otherwise accept (best-effort). Keeps a stale prior night from masquerading.
+                if bedtimeEpoch > 0, let e = d.epoch_sec, abs(e - bedtimeEpoch) > 6 * 3600 { continue }
                 self.sleepDetail = resp   // refresh Daily/Recovery so they reflect the new night too
                 if var s = self.sleepSummary { s.detail = d; s.assess = resp.assess; s.loading = false; self.sleepSummary = s }
                 return
