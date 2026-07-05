@@ -272,6 +272,7 @@ final class AppModel: ObservableObject {
         bandIdle = false
         band?.setDesiredConnection(true)
         band?.flushIfConnected()
+        band?.syncClockIfConnected()   // re-push the phone clock so a drifted/un-synced band can't mis-time a workout
         pushStepsToBand()         // opening the app tops the watch's Steps face back up to the phone's count
         checkForSyncedWorkout()   // surface any workout that finished while we weren't watching
         checkForSyncedSleep()     // …and a night that sealed from the ring while we were away

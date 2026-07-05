@@ -309,6 +309,14 @@ extension BandManager: CBPeripheralDelegate {
     }
 
     /// Send the phone's current UTC time + timezone offset so the band's clock is always correct
+    /// Re-push the phone's clock to the band on demand (e.g. app foreground). A band whose clock drifted
+    /// or was never synced (fresh reflash) otherwise stamps workouts with a wrong time — the "logged 11 h
+    /// ago even though I just did it" bug. No-op if not connected.
+    public func syncClockIfConnected() {
+        guard let p = band, p.state == .connected, rxChar != nil else { return }
+        syncTime()
+    }
+
     /// (the phone always knows the right zone — more reliable than GPS, which can't derive tz).
     private func syncTime() {
         guard let p = band, let rx = rxChar else { return }

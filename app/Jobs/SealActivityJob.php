@@ -454,20 +454,13 @@ class SealActivityJob implements ShouldQueue
             ], fn ($v) => $v !== null),
         );
 
-        // Strength path: if this ISN'T locomotion and we have 3-axis accel, it's a lifting session →
-        // run the gym analyzer and log exercises + sets + reps. The explicit 'strength' hint forces
-        // this on; an explicit 'run' hint (now a cardio $activityType) correctly skips it.
-        //
-        // Safety net for a hint-less lift (the band's `activity_kind` frame didn't arrive): the accel
-        // classifier has NO 'strength' class, so a low-motion lift can be misread as 'walk'/'stairs'.
-        // With no GPS locomotion evidence (no track, no speed) and no explicit run hint, let the gym
-        // analyzer try anyway — sealStrength only overrides to 'strength' when it actually detects sets,
-        // so a real GPS-less treadmill run (no sets) is untouched.
-        $isCardio = in_array($activityType, $cardioTypes, true);
-        $noLocomotion = empty($track) && empty($speed);
-        if ((! $isCardio || (! $runHint && $noLocomotion)) && $ax && $ay && $az) {
-            $this->sealStrength($profile, $biosignal, $log, $ax, $ay, $az, $fs, $unit, $startIso, $durationMin);
-        }
+        // NOTE: we deliberately do NOT auto-detect exercises/sets from the accelerometer anymore. The gym
+        // classifier only knew ~10 canned movements and would INVENT lifts (jumping jacks, sit-ups, bicep
+        // curls…) for any low-motion session — e.g. a VO₂max cardio day started on the Lift face got a
+        // fabricated set list. A strength session still seals with its real stats (HR zones, load,
+        // calories, VO₂max, duration); actual exercises + weights are only ever recorded when the user
+        // EXPLICITLY tells the coach during the workout (the log_set / log_workout tools write the same
+        // workouts/exercises/sets tables, keyed on this session's started_at).
 
         $session->each(fn (DeviceIngestion $i) => $i->update([
             'status' => DeviceIngestion::STATUS_SEALED,

@@ -295,7 +295,7 @@ class ActivitySealTest extends TestCase
     {
         // The user started a LIFT from the watch's heart-rate tab. Even if the accel classifier calls
         // it a 'run' (and a stray GPS fix leaked in), the explicit choice wins: sealed as strength,
-        // no route map, and the gym analyzer runs to log sets/reps.
+        // no route map — and NO auto-invented exercises (those only come from explicit coach logging).
         Storage::fake('raw');
         config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
         Http::fake([
@@ -328,7 +328,8 @@ class ActivitySealTest extends TestCase
         $this->assertSame('strength', $session->activity_type);     // choice wins over the 'run' guess
         $this->assertNull($session->route_polyline);                // no map on a lift
         $this->assertEqualsWithDelta(1.0, $session->activity_confidence, 0.001);
-        $this->assertNotNull(\App\Models\Workout::where('profile_id', $profile->id)->first());  // gym analysis ran
+        $this->assertNull(\App\Models\Workout::where('profile_id', $profile->id)->first());   // NO fabricated exercises
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/process/gym'));      // gym analyzer never runs
         Http::assertNotSent(fn ($r) => str_contains($r->url(), '/process/route'));   // route pass skipped
     }
 
@@ -363,46 +364,39 @@ class ActivitySealTest extends TestCase
         Http::assertNotSent(fn ($r) => str_contains($r->url(), '/process/gym'));   // gym analysis skipped
     }
 
-    public function test_non_locomotion_workout_seals_a_strength_session(): void
+    public function test_strength_session_seals_stats_without_fabricating_exercises(): void
     {
+        // A Lift-face session seals with its real STATS (HR/zones/calories/VO₂max), but NEVER invents
+        // exercises/sets from the accelerometer — that made-up "jumping jacks / bicep curls" list on a
+        // cardio day is exactly the bug we removed. Real exercises only come from explicit coach logging.
         Storage::fake('raw');
         config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
 
         Http::fake([
-            // Not locomotion → the gym path runs.
             '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
                 'start' => '2026-06-15T18:00:00Z', 'duration_min' => 25.0, 'mean_hr' => 120.0,
                 'trimp' => 30.0, 'calories_kcal' => 200, 'activity_type' => 'other', 'activity_confidence' => 0.8,
             ]], 'session_count' => 1]]),
             '*/process/fitness' => Http::response(['vo2max' => 48.0, 'plusminus' => 5.6,
                 'methods' => ['demographic'], 'fitness_level' => 'good', 'fitness_percentile_band' => 2, 'hrr' => null]),
-            '*/process/gym' => Http::response(['algo_version' => 'v1',
-                'sets' => [
-                    ['exercise' => 'squats', 'reps' => 10, 'confidence' => 1.0, 'is_lift' => true],
-                    ['exercise' => 'squats', 'reps' => 9, 'confidence' => 1.0, 'is_lift' => true],
-                    ['exercise' => 'dumbbell_shoulder_press', 'reps' => 10, 'confidence' => 1.0, 'is_lift' => true],
-                ],
-                'summary' => ['n_sets' => 3, 'total_reps' => 29, 'exercises' => []],
-            ]),
+            // If anything tried the gym analyzer it would 500 — proving we never call it.
+            '*/process/gym' => Http::response(['error' => 'gym analyzer must not run'], 500),
         ]);
 
         $user = User::factory()->create();
         $profile = $user->ensureProfile();
         $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
-        $this->storeWorkoutWindow($profile->id);
+        $this->storeWorkoutWindow($profile->id, activityKind: 'strength');   // explicit Lift-face choice
 
         dispatch_sync(new SealActivityJob($profile->id));
 
-        // A strength workout with the detected exercises + sets + reps.
-        $workout = \App\Models\Workout::where('profile_id', $profile->id)->first();
-        $this->assertNotNull($workout);
-        $this->assertSame(2, $workout->exercises()->count());        // squats + shoulder press
-        $squats = $workout->exercises()->whereHas('exercise', fn ($q) => $q->where('slug', 'squats'))->first();
-        $this->assertSame(2, $squats->sets()->count());              // two squat sets
-        $this->assertEqualsWithDelta(10, $squats->sets()->max('reps'), 0);
-
-        // The activity row is labelled a strength session.
-        $this->assertSame('strength', ActivitySession::where('profile_id', $profile->id)->value('activity_type'));
+        // Sealed as strength (from the explicit choice) with its stats…
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertSame('strength', $session->activity_type);
+        $this->assertSame(48.0, (float) $session->vo2max);
+        // …but ZERO fabricated exercises, and the gym analyzer is never called.
+        $this->assertNull(\App\Models\Workout::where('profile_id', $profile->id)->first());
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/process/gym'));
     }
 
     public function test_fitness_page_renders_with_and_without_sessions(): void
