@@ -714,6 +714,77 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('disconnect UX (e) · reconnect clears the indicator', s.watch.state().linkLost === false, `linkLost=${s.watch.state().linkLost}`);
 })();
 
+// 26) (f) CONNECTED-AT-REST HRM DUTY-CYCLE + link heartbeat (battery). Holding a 24/7 BLE link must NOT
+//     run the HRM/PPG LED continuously — that LED (not the radio) caused the prior ~50%/night drain. At
+//     REST we now duty-cycle the LED EVEN while connected (a burst of HR every period, LED off between);
+//     a WORKOUT stays continuous. Because HR now only reaches the phone per-period, a tiny 5 s TB: heart-
+//     beat keeps the phone's 8 s data-staleness watchdog LIVE through the OFF gaps (no false "disconnect").
+(() => {
+  const t5Count = (w) => w.allFrames.filter((l) => l.slice(0, 3) === 'T5:').length;
+  const s = new Session();
+  s.connect();                          // linked; recording ON by default → REST + connected
+
+  // Sample the HRM LED + the phone's data-freshness once a second across >1 full rest duty period.
+  const t5Before = t5Count(s.watch);
+  let onTicks = 0, offTicks = 0, maxStaleMs = 0;
+  for (let t = 0; t < 90; t++) {
+    s.watch.accel(t % 2 ? 0.10 : 0.18, 0.02, 1.0);   // light wrist motion (below the 0.20 GPS-arm gate)
+    if (s.watch.hrmPower()) { s.watch.hrm(72); onTicks++; } else offTicks++;  // feed a bpm only while the LED is on
+    s.clock.advance(1000);
+    const stale = s.clock.nowMs() - (s.phone.lastDataAt || s.clock.nowMs());
+    if (stale > maxStaleMs) maxStaleMs = stale;
+  }
+
+  check('connected-rest (f) · HRM LED is DUTY-CYCLED, not continuously on',
+    onTicks > 0 && offTicks > 0, `on=${onTicks} off=${offTicks}`);
+  check('connected-rest (f) · each burst still streams live HR to the phone (T5)',
+    t5Count(s.watch) > t5Before, `t5 ${t5Before}→${t5Count(s.watch)}`);
+  check('connected-rest (f) · TB: heartbeat keeps the link "live" (≤8 s between frames)',
+    maxStaleMs <= 8000, `maxStale=${maxStaleMs}ms`);
+  const tbCount = s.watch.allFrames.filter((l) => l.slice(0, 3) === 'TB:').length;
+  check('connected-rest (f) · heartbeat frames emitted at ~5 s cadence',
+    tbCount >= 10, `tb=${tbCount}`);
+
+  // WORKOUT ⇒ HRM goes CONTINUOUS: start a lift, verify the LED never drops across the set.
+  s.gotoLift(); s.tapButton();
+  let woOff = 0;
+  for (let t = 0; t < 40; t++) {
+    s.watch.accel(0.05, 0.03, 1.0); s.watch.hrm(130);
+    if (!s.watch.hrmPower()) woOff++;
+    s.clock.advance(1000);
+  }
+  check('workout (f) · HRM is CONTINUOUS (LED never duty-cycles off)', woOff === 0, `offTicks=${woOff}`);
+
+  // Back to REST after the workout ⇒ duty-cycling RESUMES (the LED turns off again within a period).
+  s.watch.sendCommand('C0:'); s.advance(5000);   // finish the lift on the watch
+  let restedOff = 0;
+  for (let t = 0; t < 70; t++) {
+    s.watch.accel(t % 2 ? 0.10 : 0.18, 0.02, 1.0);
+    if (s.watch.hrmPower()) s.watch.hrm(70); else restedOff++;
+    s.clock.advance(1000);
+  }
+  check('post-workout (f) · duty-cycling RESUMES at rest (LED turns off again)', restedOff > 0, `off=${restedOff}`);
+})();
+
+// 27) (f) OFFLINE rest is UNCHANGED by the connected-rest duty-cycle change. With no phone in range, the
+//     LED must still duty-cycle exactly as before and each burst banks a light T5 HR-trend point to the
+//     ring (appendLog) — not raw PPG — so a day of wear stays weeks of flash, not ~16 h.
+(() => {
+  const s = new Session();          // boots streaming, NEVER connects → offline the whole time
+  let onTicks = 0, offTicks = 0;
+  for (let t = 0; t < 90; t++) {
+    s.watch.accel(t % 2 ? 0.10 : 0.18, 0.02, 1.0);
+    if (s.watch.hrmPower()) { s.watch.hrm(66); onTicks++; } else offTicks++;
+    s.clock.advance(1000);
+  }
+  check('offline-rest (f) · still duty-cycles (unchanged)', onTicks > 0 && offTicks > 0, `on=${onTicks} off=${offTicks}`);
+  // Offline bursts append T5 HR-trend points to the flash ring; nothing streams (no link) and no TB: heartbeat.
+  const t5Logged = Object.values(s.watch.storageFiles).some((f) => (f.data || '').indexOf('T5:') >= 0);
+  const tbOffline = s.watch.allFrames.filter((l) => l.slice(0, 3) === 'TB:').length;
+  check('offline-rest (f) · burst banks a T5 trend point to the ring', t5Logged, `logged=${t5Logged}`);
+  check('offline-rest (f) · no heartbeat emitted while disconnected', tbOffline === 0, `tb=${tbOffline}`);
+})();
+
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
 for (const r of results) console.log(`${r.ok ? '  ✓' : '  ✗'} ${r.name}${r.ok ? '' : `\n      → ${r.detail}`}`);
 console.log(`\n${results.length - failures}/${results.length} checks passed\n`);

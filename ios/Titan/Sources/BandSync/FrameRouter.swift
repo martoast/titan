@@ -205,6 +205,10 @@ public final class FrameRouter {
             // catch-up summary on the very sync it arrived on. onBacklogSynced pokes AppModel to look.
             if let w = waLog.flush() { submit(.workout(w)) }
             onBacklogSynced?()
+        case "TB:":
+            break  // link heartbeat (keeps the phone's staleness watchdog LIVE between rest HR bursts).
+                   // Liveness is already stamped at the value level in BandManager.noteFrame(); the bare
+                   // 3-byte "TB:" is also caught by the length guard above — this case just documents it.
         case "T7:":
             break  // ambient baro (floors) — server-side; not on the live upload path yet
         case "T8:":

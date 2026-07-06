@@ -19,6 +19,7 @@ function buildWatch(clock, opts = {}) {
   const fire = (key, ...a) => (listeners[key] || []).forEach((cb) => cb(...a));
 
   let connected = false;                 // is a phone subscribed to NUS?
+  let hrmOn = false;                      // is the HRM/PPG LED powered right now? (setHRMPower) — the battery-critical bit
   let osStepCount = 0;                    // the built-in pedometer's running day count (getHealthStatus)
   // --- OS power-save ↔ built-in pedometer coupling (faithful to Espruino jswrap_bangle.c) -------------
   // The firmware's step counter ONLY runs while powerSaveTimer < POWER_SAVE_TIMEOUT (60s). The timer is
@@ -79,7 +80,7 @@ function buildWatch(clock, opts = {}) {
 
   const Bangle = {
     on: on('Bangle'),
-    setGPSPower() {}, setBarometerPower() {}, setHRMPower() {},
+    setGPSPower() {}, setBarometerPower() {}, setHRMPower(v) { hrmOn = !!v; },
     // setOptions merges options; the only one that matters to the pedometer is powerSave.
     setOptions(o) { if (o && o.powerSave !== undefined) powerSave = !!o.powerSave; },
     getOptions() { return { powerSave: powerSave }; },
@@ -140,6 +141,7 @@ function buildWatch(clock, opts = {}) {
     storageFiles: files,                          // the flash image (share it to a rebuilt VM = a reboot)
     onDeliver(fn) { deliver = fn; },              // phone registers to receive frames
     isConnected() { return connected; },
+    hrmPower() { return hrmOn; },                 // is the HRM/PPG LED on right now? (asserts rest duty-cycling vs continuous)
 
     connect() {
       if (connected) return;

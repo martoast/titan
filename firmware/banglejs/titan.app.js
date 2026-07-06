@@ -1048,7 +1048,7 @@ function onConnect() {
   // capture on/off) and persists across reboots via the titan.run pref — so turning it off STAYS off.
   // Auto-starting on every connect meant a stray gym session kept logging and then tried to dump it all
   // on connect, freezing the watch.
-  if (state.streaming) reconcileHrm();   // already recording → a phone is here, go continuous for real-time data
+  if (state.streaming) reconcileHrm();   // already recording → continuous during a workout; at rest, keep duty-cycling (LED battery) — the heartbeat below keeps the link "live" between HR bursts
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
   // Sync today's step total right away (captures a walk taken while the phone was left behind).
@@ -1123,13 +1123,17 @@ function applyHrmMode() {
   } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
 }
 
-// ----- 24/7 HRM power: continuous when it matters, duty-cycled when idle+offline ----------
-// Offline rest = streaming, no central, no workout, no sleep session. THE battery-critical 24/7 case.
+// ----- 24/7 HRM power: continuous when it matters, duty-cycled when idle ----------
+// Rest = streaming, no workout, no sleep session. THE battery-critical 24/7 case. The HRM/PPG LED — not
+// the radio — is the real drain (a prior ~50%/night bug), so we duty-cycle the LED at rest EVEN when a
+// phone is connected: holding an always-on BLE link must not mean always powering the LED. Whoop's trick
+// — sample HR in short bursts at rest, continuously only during a workout. Connected changes only the
+// DELIVERY (each burst's reading streams live vs banks to flash), not whether we duty-cycle.
 var restDutyTimer = null;    // timeout to the NEXT burst (null = mid-window or not duty-cycling)
 var restDutyOnTimer = null;  // the "measure window done → read + power off" timeout
 
 function restModeActive() {
-  return state.streaming && !state.connected && !state.workout && state.swMode !== "sleep";
+  return state.streaming && !state.workout && state.swMode !== "sleep";
 }
 
 // Motion-gated cadence: when you're STILL, relax the period (battery); when you're MOVING, keep it
@@ -1139,9 +1143,11 @@ function restDutyPeriod() {
   return (motionEMA < CFG.REST_STILL_MOTION) ? CFG.REST_DUTY_PERIOD_STILL_MS : CFG.REST_DUTY_PERIOD_MS;
 }
 
-// One duty cycle: power the HRM on, let it settle for REST_DUTY_ON_MS, log the bpm as a light T5 trend
-// point, power back off, then self-schedule the NEXT burst by the current motion state. The whole loop
-// stands down the moment we leave rest mode (workout/connect/sleep own the power from there).
+// One duty cycle: power the HRM on, let it settle for REST_DUTY_ON_MS, emit the bpm as a T5 HR point,
+// power back off, then self-schedule the NEXT burst by the current motion state. The whole loop stands
+// down the moment we leave rest mode (workout/sleep own the power from there). Runs whether or not a
+// phone is connected — emitHrFrame streams the reading LIVE when connected, else banks it to the ring —
+// so a held BLE link still gets ~one HR sample per period without the LED burning between bursts.
 function restDutyTick() {
   restDutyTimer = null;
   if (!restModeActive()) { stopRestDuty(); return; }
@@ -1150,7 +1156,7 @@ function restDutyTick() {
   if (restDutyOnTimer) clearTimeout(restDutyOnTimer);
   restDutyOnTimer = setTimeout(function () {
     restDutyOnTimer = null;
-    if (state.bpm > 0) emitHrFrame(state.bpm, state.conf);   // → ring (offline), a tiny HR-trend point
+    if (state.bpm > 0) emitHrFrame(state.bpm, state.conf);   // live T5 if connected, else → ring (a tiny HR-trend point)
     if (!restModeActive()) { stopRestDuty(); return; }       // left rest mid-window → don't power off, the new mode owns it
     try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
     // gap = full cycle minus the ON window, so REST_DUTY_PERIOD_*_MS keeps meaning "one reading per period"
@@ -1246,9 +1252,9 @@ function sleepScreenRestore() {
 }
 
 // Single source of truth for HRM power, called on every state transition. Sleep → burst duty-cycle
-// (battery); rest+offline → per-minute duty-cycle; everything else (connected live, workout) →
-// continuous HRM at the right sport mode + rate. If SLEEP_DUTY is off, sleep falls through to
-// continuous (the old behaviour) so the night is never left un-sampled.
+// (battery); rest → per-minute duty-cycle (connected OR offline — the LED is the drain, so we duty-cycle
+// even on a live link); workout → continuous HRM at the right sport mode + rate. If SLEEP_DUTY is off,
+// sleep falls through to continuous (the old behaviour) so the night is never left un-sampled.
 function reconcileHrm() {
   if (!state.streaming) { stopRestDuty(); stopSleepDuty(); return; }   // stopStreaming() owns the power-off
   if (sleepModeActive() && CFG.SLEEP_DUTY) {
@@ -1790,6 +1796,16 @@ setInterval(function () {
   if (up !== state.connected) { if (up) onConnect(); else onDisconnect(); }
   tickActivityKind();   // re-announce a live workout's kind so a dropped TA frame self-heals
 }, 1000);
+
+// Link heartbeat. At rest the HRM now DUTY-CYCLES even while connected (LED battery), so live HR frames
+// only arrive every ~30-180 s. The phone's data-staleness watchdog (LIVE = any frame within 8 s) would
+// otherwise flip to STALE in those gaps and wrongly show "not connected". A tiny no-payload frame every
+// 5 s keeps the link honest between HR bursts. Only sent while connected → zero cost offline. The phone
+// stamps it at the characteristic-value level (before frame parsing), so it counts as liveness and the
+// FrameRouter drops the 3-byte line cleanly (no payload, no mis-route).
+setInterval(function () {
+  if (state.connected) { try { Bluetooth.println("TB:"); } catch (e) {} }
+}, 5000);
 
 // Hardware button toggles capture.
 // ----- Pairing mode (Whoop-style: clicking the button on the Status face puts the band in a pairable

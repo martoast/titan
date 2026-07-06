@@ -42,7 +42,10 @@ public final class BandManager: NSObject {
     private static let liveWindow: TimeInterval = 8   // a frame within this ⇒ LIVE; longer while connected ⇒ STALE
 
     /// Note any inbound BLE value (a data frame OR a battery notification) — proof the link is truly alive.
-    /// Flips us to LIVE and re-arms the staleness clock.
+    /// Flips us to LIVE and re-arms the staleness clock. Stamped at the characteristic-value level (in
+    /// `didUpdateValueFor`, before frame parsing), so the band's tiny `TB:` heartbeat — sent every ~5 s
+    /// while connected — keeps us LIVE through the rest HRM duty-cycle gaps (HR frames only every ~30-180 s),
+    /// without the router needing to understand the heartbeat at all.
     private func noteFrame() {
         lastFrameAt = Date()
         setLive(true)
