@@ -981,38 +981,22 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
     `op=${s.watch.pickOP().id} hz=${s.watch.pickOP().sampleRate} raw=${s.watch.rawRegistered()}`);
 })();
 
-// 38) fifoBatch OPERATING-POINT KNOB (the batching lever): a fifoBatch:N OP writes VC31B 0x13 (FIFO IRQ
-//     divisor) with N in the bottom 6 bits (read-modify-write preserves the upper bits); fifoBatch:1/absent
-//     never touches 0x13 (driver default = IRQ every sample).
+// 38) fifoBatch RETIRED (regression guard): FIFO batching was trialled on-device and retired — it raised
+//     pwrCPU and pushed the FIFO toward overflow instead of cutting per-sample wakeups (report: tasks/hr-power/).
+//     A stray fifoBatch:N field on an OperatingPoint must now be IGNORED — the firmware never writes reg 0x13.
 (() => {
   const s = new Session();
   s.connect(); s.advance(2000);
 
-  // A plain OP with no fifoBatch must NOT write 0x13 at all (untouched = driver default).
+  // A plain OP never writes 0x13 (driver default = IRQ every sample).
   s.watch.setForcedOP({ id: 'nofifo', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full' });
-  check('fifoBatch · an OP without fifoBatch does NOT write reg 0x13 (driver default untouched)',
+  check('fifoBatch · a normal OP leaves reg 0x13 at the driver default (untouched)',
     s.watch.fifoReg13() === undefined, `0x13=${s.watch.fifoReg13()}`);
 
-  // fifoBatch:1 is a no-op too (== current behaviour).
-  s.watch.setForcedOP({ id: 'fifo1', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full', fifoBatch: 1 });
-  check('fifoBatch:1 · still does NOT write reg 0x13 (== IRQ every sample)',
+  // Even an OP carrying a legacy fifoBatch:N field must be ignored (knob removed).
+  s.watch.setForcedOP({ id: 'fifoLegacy', sampleRate: 50, ledCurrent: 0x5A, analysisDepth: 'full', fifoBatch: 4 });
+  check('fifoBatch · a legacy fifoBatch:N field is IGNORED — reg 0x13 still never written',
     s.watch.fifoReg13() === undefined, `0x13=${s.watch.fifoReg13()}`);
-
-  // fifoBatch:2 writes 0x13 with 2 in the low 6 bits.
-  s.watch.setForcedOP({ id: 'fifo2', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full', fifoBatch: 2 });
-  check('fifoBatch:2 · writes reg 0x13 with 2 in the bottom 6 bits',
-    s.watch.fifoReg13() !== undefined && s.watch.fifoDiv() === 2, `0x13=${s.watch.fifoReg13()} div=${s.watch.fifoDiv()}`);
-
-  // fifoBatch:4 (== HRMSAMPLE_MAX).
-  s.watch.setForcedOP({ id: 'fifo4', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full', fifoBatch: 4 });
-  check('fifoBatch:4 · writes 4 (HRMSAMPLE_MAX) into the divisor', s.watch.fifoDiv() === 4, `div=${s.watch.fifoDiv()}`);
-
-  // Read-modify-write must PRESERVE the upper bits: seed 0x13 with high bits set, then batch, and confirm
-  // only the bottom 6 change (0xC0 upper bits survive alongside the new divisor).
-  s.watch.writeReg(0x13, 0xC1);   // seed upper bits (0xC0) + a stale divisor
-  s.watch.setForcedOP({ id: 'fifoRMW', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full', fifoBatch: 3 });
-  check('fifoBatch · read-modify-write preserves the upper bits (0xC0 kept, low bits → 3)',
-    s.watch.fifoReg13() === 0xC3, `0x13=0x${(s.watch.fifoReg13() || 0).toString(16)}`);
 
   s.watch.setForcedOP(null);
 })();

@@ -253,9 +253,7 @@ function buildWatch(clock, opts = {}) {
     pickOP() { return sandbox.pickOperatingPoint(); },      // what the controller WOULD choose right now
     opId() { return sandbox.curOpId; },                     // the operating point currently applied
     ledCurrent() { return hrmRegs[0x17]; },                 // the forced VC31B green current (undefined = auto)
-    fifoReg13() { return hrmRegs[0x13]; },                  // raw 0x13 as written (undefined = never written = fifoBatch off)
-    fifoDiv() { const r = hrmRegs[0x13]; return r === undefined ? 1 : (r & 0x3F); },   // written FIFO IRQ divisor (bottom 6 bits)
-    writeReg(reg, val) { hrmRegs[reg] = val; },             // seed a VC31B reg (test upper-bit preservation on read-modify-write)
+    fifoReg13() { return hrmRegs[0x13]; },                  // raw 0x13 as written (undefined = never written = fifoBatch retired, driver default)
     setFifoFill(n) { fifoFill = n | 0; },                   // model the FIFO fill that hrmRd(0x03) → fifoDepth returns
     setForcedOP(op) { sandbox.setForcedOP(op); },           // pin/clear an OP (experiment override)
     profileOn(v) { sandbox.setProfile(v); },                // toggle the telemetry logger at runtime
