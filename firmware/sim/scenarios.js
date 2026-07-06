@@ -785,6 +785,86 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('offline-rest (f) · no heartbeat emitted while disconnected', tbOffline === 0, `tb=${tbOffline}`);
 })();
 
+// ===========================================================================================
+// BATTERY HARDENING — the rest-duty reentrancy fix + the ON-window / period / conn-interval levers.
+
+// 28) (h) REST-DUTY REENTRANCY. During an OFF gap (a next-burst timer pending) a wrist-glance fires
+//     lcdPower → the firmware kicks restDutyTick out-of-band. It MUST cancel the pending burst, not
+//     orphan it — else every glance spawns another parallel self-scheduling chain and the LED ends up
+//     powered far more than one burst/period (the ~50%/night regression). Assert exactly ONE chain.
+(() => {
+  const s = new Session();          // offline streaming, STILL rest (5-min period → long OFF gaps)
+  const dutyChains = () => s.clock.timers.filter((t) => t.fn === s.watch.sandbox.restDutyTick).length;
+  s.advance(9000);                  // boot burst closes at its 8s cap → drop into the long OFF gap
+  check('reentrancy (h) · one duty chain pending in the OFF gap (baseline)', dutyChains() === 1, `chains=${dutyChains()}`);
+  // Four wrist-glances, each in an OFF gap (spaced > the 8s ON window). PRE-FIX each orphans the pending
+  // next-burst timer → another parallel chain; POST-FIX each just restarts the single chain.
+  for (let i = 0; i < 4; i++) { s.watch.lcdWake(); s.advance(20000); }
+  s.advance(15000);                 // settle into a quiet OFF gap (no further stimulus)
+  check('reentrancy (h) · still exactly ONE duty chain after screen-wakes during off-gaps (no runaway parallel loops)',
+    dutyChains() === 1, `pendingDutyChains=${dutyChains()}`);
+})();
+
+// 29) (i) CONFIDENCE-GATED EARLY EXIT + 8s HARD CAP. A good lock (conf>=90) closes the burst EARLY
+//     (don't burn the full window once the bpm is solid); a burst that never locks still closes at the
+//     8s hard cap.
+(() => {
+  const s = new Session();          // offline streaming, rest — boot fired a burst (LED on now)
+  check('early-exit (i) · LED on at burst start', s.watch.hrmPower() === true, `hrm=${s.watch.hrmPower()}`);
+  s.watch.hrm(60, 96);              // a solid lock (conf 96)
+  s.advance(1500);                  // well under the 8s cap
+  check('early-exit (i) · a good lock (conf>=90) closes the burst EARLY (LED off < 8s cap)', s.watch.hrmPower() === false, `hrm=${s.watch.hrmPower()}`);
+  s.watch.lcdWake();                // glance → a fresh burst (LED on)
+  check('early-exit (i) · a glance starts a fresh burst', s.watch.hrmPower() === true, `hrm=${s.watch.hrmPower()}`);
+  s.watch.hrm(61, 50);             // a WEAK lock (conf 50) — must NOT early-exit
+  s.advance(4000);                  // 4s < 8s cap
+  check('early-exit (i) · a weak lock keeps the LED on until the 8s hard cap', s.watch.hrmPower() === true, `hrm=${s.watch.hrmPower()}`);
+  s.advance(5000);                  // now past 8s → the hard cap closes it
+  check('early-exit (i) · the 8s hard cap still closes a never-locking burst', s.watch.hrmPower() === false, `hrm=${s.watch.hrmPower()}`);
+})();
+
+// 30) (j) 5-MIN STILL PERIOD. At still rest (no motion) with early-exit, the LED is off the vast
+//     majority of the time — a resting HR point every 5 min, not a 15s burst every 3 min.
+(() => {
+  const s = new Session();          // offline, STILL rest (no motion fed → 5-min period)
+  let onT = 0, offT = 0;
+  for (let t = 0; t < 600; t++) {   // 10 min still, no glances
+    if (s.watch.hrmPower()) { s.watch.hrm(62, 96); onT++; } else offT++;
+    s.clock.advance(1000);
+  }
+  check('still-rest (j) · 5-min period + early-exit → LED off the vast majority of the time', offT > onT * 20, `on=${onT} off=${offT}`);
+})();
+
+// 31) (g) DYNAMIC CONNECTION INTERVAL — flush drain. A morning sync tightens the link to {15,30} for the
+//     ring dump (throughput) and restores {30,45} at rest when the drain finishes.
+(() => {
+  const s = new Session();          // offline streaming, rest
+  for (let t = 0; t < 8; t++) { s.watch.lcdWake(); s.watch.hrm(60, 96); s.clock.advance(30000); }   // bank 8 T5 trend points to the ring
+  s.connect();                      // sync → flushLog tightens, drains, restores
+  s.advance(20_000);
+  const ivs = s.watch.connIntervals();
+  const last = s.watch.lastConnInterval();
+  check('conn-interval (g) · morning flush drain tightens the link to {15,30}',
+    ivs.some((o) => o.minInterval === 15 && o.maxInterval === 30), JSON.stringify(ivs.slice(-5)));
+  check('conn-interval (g) · restored to {30,45} once the drain finishes (rest)',
+    !!last && last.minInterval === 30 && last.maxInterval === 45, JSON.stringify(last));
+})();
+
+// 32) (g) DYNAMIC CONNECTION INTERVAL — workout. A workout tightens the link to {15,30} for the live PPG
+//     stream and restores {30,45} on the way back to rest.
+(() => {
+  const s = new Session();
+  s.connect(); s.advance(12_000);   // post-connect flush drains empty ring → restored to rest
+  const restIv = s.watch.lastConnInterval();
+  check('conn-interval (g) · idle connected rests at {30,45}', !!restIv && restIv.minInterval === 30 && restIv.maxInterval === 45, JSON.stringify(restIv));
+  s.gotoLift(); s.tapButton();      // start a workout → tighten
+  const woIv = s.watch.lastConnInterval();
+  check('conn-interval (g) · a workout tightens to {15,30}', !!woIv && woIv.minInterval === 15 && woIv.maxInterval === 30, JSON.stringify(woIv));
+  s.watch.sendCommand('C0:'); s.advance(5000);   // finish → back to rest
+  const afterIv = s.watch.lastConnInterval();
+  check('conn-interval (g) · restored to {30,45} after the workout', !!afterIv && afterIv.minInterval === 30 && afterIv.maxInterval === 45, JSON.stringify(afterIv));
+})();
+
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
 for (const r of results) console.log(`${r.ok ? '  ✓' : '  ✗'} ${r.name}${r.ok ? '' : `\n      → ${r.detail}`}`);
 console.log(`\n${results.length - failures}/${results.length} checks passed\n`);

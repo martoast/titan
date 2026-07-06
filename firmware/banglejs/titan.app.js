@@ -128,12 +128,12 @@ var CFG = {
   // instant a workout or a sleep session starts, or a phone connects (the real-time path). This is
   // the Whoop trick: sample sparsely when still, densely when it matters.
   REST_DUTY: true,                   // master switch for offline-rest duty-cycling
-  REST_DUTY_ON_MS: 15000,            // measure window — long enough for the VC31 to settle + average
+  REST_DUTY_ON_MS: 8000,             // measure-window HARD CAP — a good lock (conf>=90) closes the burst early; the VC31 LED is ~85-90% of drain, so shorter ON is the biggest battery lever
   REST_DUTY_PERIOD_MS: 60000,        // MOVING cadence: one reading/min (25% duty) — keeps HR responsive while you're active
   // Motion-gated rest cadence (Whoop's trick): when you're STILL (desk / sitting), relax the period to
   // save battery; the instant you move, snap back to the tight REST_DUTY_PERIOD_MS. motionEMA is the
   // same always-on accel signal the GPS gate + auto-detect already maintain, so the gating is free.
-  REST_DUTY_PERIOD_STILL_MS: 180000, // STILL cadence: one reading every 3 min (~8% duty → ~3x the active rest battery)
+  REST_DUTY_PERIOD_STILL_MS: 300000, // STILL cadence: one reading every 5 min (a resting-HR point every 5 min is plenty; motion snaps back to the 60s moving period instantly)
   REST_STILL_MOTION: 0.07,           // motionEMA below this = "still" (under AUTO_MOTION_LO: typing stays still, walking trips it)
 
   // --- OVERNIGHT SLEEP duty-cycle (battery) ----------------------------------
@@ -332,7 +332,13 @@ try { E.setTimeZone(-7); } catch (e) {}
 // 15 ms and >= 15 ms; 30-45 ms is low-power and within Apple's rules. A larger MTU cuts per-frame
 // overhead for the PPG batches. setMTU must be called before the connection is established, so it
 // lives here at boot. Both throw on some Espruino builds → guard each independently.
-try { NRF.setConnectionInterval({ minInterval: 30, maxInterval: 45 }); } catch (e) {}
+// Dynamic connection interval. REST = {30,45} (low-power 24/7 link, Apple-legal). During a morning
+// flush drain or a live workout we TIGHTEN to {15,30} — Espruino's fast-burst path is ~4x the
+// throughput for the ring dump / live PPG stream — then restore {30,45} at rest. Only switched on those
+// transitions (never per-frame). Each guarded: setConnectionInterval throws on some builds.
+function setConnFast() { try { NRF.setConnectionInterval({ minInterval: 15, maxInterval: 30 }); } catch (e) {} }
+function setConnRest() { try { NRF.setConnectionInterval({ minInterval: 30, maxInterval: 45 }); } catch (e) {} }
+setConnRest();
 try { NRF.setMTU(185); } catch (e) {}
 
 // ----- Helpers --------------------------------------------------------------
@@ -471,6 +477,7 @@ var drainWrites = false;      // did appendLog land data while this drain ran? (
 
 function flushLog() {
   if (!state.connected || flushTimer || flushSf) return;   // already draining (or no link)
+  setConnFast();               // tighten the link for the drain (~4x throughput); restored at drain end
   writeLogFrame();             // flush any partial T2 frame into the ring first
   flushK = 0; flushSf = null;
   drainBase = logSeg; drainWrites = false;   // freeze the drain plan against concurrent writes
@@ -492,6 +499,7 @@ function flushTick() {
       // recovered from the ring at this instant (rather than waiting for the next disconnect), so a
       // phone-free lift/run shows its catch-up summary on the same sync it arrived on.
       try { Bluetooth.println("TS:done"); } catch (e) {}
+      if (!state.workout) setConnRest();   // drain done → relax the link (unless a workout still wants it fast)
       if (uiVisible) drawUI();
       return;
     }
@@ -589,6 +597,8 @@ function onHRM(e) {
   state.bpm = e.bpm | 0;
   state.conf = e.confidence | 0;
   if (state.streaming && (state.connected || state.workout)) emitHrFrame(state.bpm, state.conf);
+  // Rest duty-cycle: a good lock ends the ON window EARLY (don't burn the full 8 s once the bpm is solid).
+  if (restDutyOnTimer && state.conf >= 90) restBurstClose();
   if (uiVisible) drawUI();
 }
 
@@ -787,6 +797,7 @@ function startWorkout(manual) {
   powerGps(!(primed && primed.gps === false));
   reconcileHrm();          // continuous HRM + motion-tolerant SPORT mode + 50 Hz PPG (heavy-lifting fix)
   applyAccelRate();        // 25 Hz accel for the classifier, even offline
+  setConnFast();           // tighten the link for the live PPG stream; restored at endWorkout
   emitActivityKind();      // tell the phone run vs lift right away (a re-emit follows on any reconnect)
   if (manual) { try { Bangle.buzz(120); } catch (e) {} }
   if (uiVisible) drawUI();
@@ -846,6 +857,7 @@ function endWorkout() {
   setTimeout(emitWorkoutEnd, 3500);
   reconcileHrm();          // back to rest: continuous if connected, else duty-cycle the HRM
   applyAccelRate();
+  if (!(flushTimer || flushSf)) setConnRest();   // workout over → relax the link (unless a drain still wants it fast)
   if (uiVisible) drawUI();
 }
 
@@ -1149,19 +1161,31 @@ function restDutyPeriod() {
 // phone is connected — emitHrFrame streams the reading LIVE when connected, else banks it to the ring —
 // so a held BLE link still gets ~one HR sample per period without the LED burning between bursts.
 function restDutyTick() {
-  restDutyTimer = null;
+  // Reentrancy guard: the lcdPower (screen-wake) handler kicks this out-of-band. If it fires DURING an
+  // OFF gap (a next-burst timer pending), just nulling the handle would orphan that timer and spawn a
+  // SECOND self-scheduling chain — every glance adds another parallel loop, powering the LED far more
+  // than one burst/period (the ~50%/night regression). Cancel the pending burst so only ONE chain lives.
+  if (restDutyTimer) { clearTimeout(restDutyTimer); restDutyTimer = null; }
   if (!restModeActive()) { stopRestDuty(); return; }
   try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
   applyHrmMode();   // force normal mode + 40 Hz rest cadence — else a burst after a workout inherits stale sportMode 1 + 20 ms (inflated HR + more power)
   if (restDutyOnTimer) clearTimeout(restDutyOnTimer);
-  restDutyOnTimer = setTimeout(function () {
-    restDutyOnTimer = null;
-    if (state.bpm > 0) emitHrFrame(state.bpm, state.conf);   // live T5 if connected, else → ring (a tiny HR-trend point)
-    if (!restModeActive()) { stopRestDuty(); return; }       // left rest mid-window → don't power off, the new mode owns it
-    try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
-    // gap = full cycle minus the ON window, so REST_DUTY_PERIOD_*_MS keeps meaning "one reading per period"
-    restDutyTimer = setTimeout(restDutyTick, Math.max(1000, restDutyPeriod() - CFG.REST_DUTY_ON_MS));
-  }, CFG.REST_DUTY_ON_MS);
+  restDutyOnTimer = setTimeout(restBurstClose, CFG.REST_DUTY_ON_MS);   // hard cap; a good lock closes it early (onHRM)
+}
+
+// Close the current rest burst: emit the reading, power the LED off, schedule the next burst. Called by
+// the ON-window hard-cap timer OR EARLY from onHRM the instant confidence locks (conf>=90) — the VC31 LED
+// is the drain, so ending the burst on a good lock (not always waiting the full window) roughly halves
+// rest HRM duty. Idempotent: both callers guard on restDutyOnTimer so it fires exactly once per burst.
+function restBurstClose() {
+  if (!restDutyOnTimer) return;
+  clearTimeout(restDutyOnTimer);
+  restDutyOnTimer = null;
+  if (state.bpm > 0) emitHrFrame(state.bpm, state.conf);   // live T5 if connected, else → ring (a tiny HR-trend point)
+  if (!restModeActive()) { stopRestDuty(); return; }       // left rest mid-window → don't power off, the new mode owns it
+  try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
+  // gap = full cycle minus the ON window, so REST_DUTY_PERIOD_*_MS keeps meaning "one reading per period"
+  restDutyTimer = setTimeout(restDutyTick, Math.max(1000, restDutyPeriod() - CFG.REST_DUTY_ON_MS));
 }
 
 function startRestDuty() {

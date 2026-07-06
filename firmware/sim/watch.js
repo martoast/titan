@@ -20,6 +20,8 @@ function buildWatch(clock, opts = {}) {
 
   let connected = false;                 // is a phone subscribed to NUS?
   let hrmOn = false;                      // is the HRM/PPG LED powered right now? (setHRMPower) — the battery-critical bit
+  let lcdOn = true;                       // is the screen lit? (drives lcdPower events → the rest-duty screen-wake kick)
+  const connIntervals = [];              // every NRF.setConnectionInterval({minInterval,maxInterval}) call (battery: {30,45} rest ↔ {15,30} fast)
   let osStepCount = 0;                    // the built-in pedometer's running day count (getHealthStatus)
   // --- OS power-save ↔ built-in pedometer coupling (faithful to Espruino jswrap_bangle.c) -------------
   // The firmware's step counter ONLY runs while powerSaveTimer < POWER_SAVE_TIMEOUT (60s). The timer is
@@ -87,7 +89,7 @@ function buildWatch(clock, opts = {}) {
     // THE TRAP: Bangle.setPollInterval() force-clears powerSave (bangleFlags &= ~JSBF_POWER_SAVE) as a
     // side effect — which freezes powerSaveTimer and can permanently gate the step counter OFF.
     setPollInterval() { powerSave = false; },
-    buzz() {}, isLCDOn() { return true; }, isCharging() { return false; },
+    buzz() {}, isLCDOn() { return lcdOn; }, isCharging() { return false; },
     // The firmware pedometer. Real Bangle.js counts steps from the accel poll and exposes them here; it
     // keeps counting DURING a workout (that's the whole point of the 12.5 Hz poll) — but ONLY while the OS
     // powerSaveTimer stays under its 60s gate (see control.walk / control.sitStill).
@@ -98,6 +100,8 @@ function buildWatch(clock, opts = {}) {
     getSecurityStatus() { return { connected }; },
     disconnect() { control.disconnect(); },
     getAddress() { return 'aa:bb:cc:dd:e7:c3'; },
+    setConnectionInterval(o) { if (o) connIntervals.push({ minInterval: o.minInterval, maxInterval: o.maxInterval }); },
+    setMTU() {},
   };
   const Bluetooth = {
     println(line) { allFrames.push(String(line)); if (connected && deliver) deliver(String(line)); },
@@ -142,6 +146,11 @@ function buildWatch(clock, opts = {}) {
     onDeliver(fn) { deliver = fn; },              // phone registers to receive frames
     isConnected() { return connected; },
     hrmPower() { return hrmOn; },                 // is the HRM/PPG LED on right now? (asserts rest duty-cycling vs continuous)
+    // Screen wake/sleep → fires the firmware's lcdPower handler (a wrist-glance kicks the rest-duty burst).
+    lcdWake() { lcdOn = true; fire('Bangle:lcdPower', true); },
+    lcdSleep() { lcdOn = false; fire('Bangle:lcdPower', false); },
+    connIntervals() { return connIntervals.slice(); },              // every requested BLE interval, in order
+    lastConnInterval() { return connIntervals[connIntervals.length - 1] || null; },
 
     connect() {
       if (connected) return;
