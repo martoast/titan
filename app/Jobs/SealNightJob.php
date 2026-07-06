@@ -150,9 +150,12 @@ class SealNightJob implements ShouldQueue
                 'night' => $this->night,
                 'error' => $e->getMessage(),
             ]);
-            // Don't rethrow on the auto-scheduled pass: a single bad night must not block
-            // the others. The retry/backoff still applies for transient service errors.
-            throw $e;
+            // Don't rethrow on the auto-scheduled pass (night === null): a single bad night must not
+            // fail the job for every profile the scheduler fans out to. Only a TARGETED reseal
+            // (--night=...) rethrows, so its retry/backoff still applies for transient service errors.
+            if ($this->night !== null) {
+                throw $e;
+            }
         }
     }
 

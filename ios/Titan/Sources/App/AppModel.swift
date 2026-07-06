@@ -703,7 +703,12 @@ final class AppModel: ObservableObject {
         do { cycle = try await api.cycle(); cyclePhase = .loaded }
         catch { cyclePhase = cycle == nil ? .failed : .loaded }
     }
-    func loadStrain() async { strainDetail = try? await api.strain() }
+    @Published var strainPhase: LoadPhase = .idle
+    func loadStrain() async {
+        if strainDetail == nil { strainPhase = .loading }
+        do { strainDetail = try await api.strain(); strainPhase = .loaded }
+        catch { strainPhase = strainDetail == nil ? .failed : .loaded }
+    }
 
     @Published var overview: OverviewResponse?
     @Published var overviewDays = 30

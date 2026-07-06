@@ -30,6 +30,24 @@ class MobileHrController extends Controller
             ->orderBy('recorded_at')
             ->get(['recorded_at', 'bpm', 'confidence']);
 
+        // Defense-in-depth: the phone pre-buckets to ~1/min (~1440 rows/day), but any bridge that ever
+        // forwards denser (a web bridge, an old build) could balloon this to tens of thousands of points.
+        // Collapse to one point per minute (median bpm, max confidence) so the endpoint is bounded and the
+        // graph stays light regardless of source cadence.
+        if ($samples->count() > 1500) {
+            $samples = $samples
+                ->groupBy(fn ($s) => $s->recorded_at->copy()->startOfMinute()->timestamp)
+                ->map(function ($group) {
+                    $sorted = $group->pluck('bpm')->sort()->values();
+                    $first = $group->first();
+                    $first->bpm = (int) $sorted[intdiv($sorted->count(), 2)];
+                    $first->confidence = $group->max('confidence');
+
+                    return $first;
+                })
+                ->values();
+        }
+
         $bpms = $samples->pluck('bpm')->sort()->values();
         $n = $bpms->count();
 

@@ -12,6 +12,12 @@ struct StrainView: View {
     var body: some View {
         let s = model.strainDetail
         VStack(spacing: Theme.Space.m) {
+            // A failed cold fetch is legible + recoverable, not a lone "—" ring that dead-ends.
+            if model.strainPhase == .failed && s == nil {
+                SyncErrorRow(message: "Couldn't load strain") { await model.loadStrain() }
+            } else if model.strainPhase == .loading && s == nil {
+                SkeletonCard()
+            }
             // Hero: the strain ring (0-21).
             VStack(spacing: Theme.Space.s) {
                 StatRing(value: s?.strain, max: s?.max ?? 21, label: "Day Strain", color: strainColor, size: 160)
