@@ -2,6 +2,10 @@ import SwiftUI
 
 @main
 struct TitanApp: App {
+    // Registers AppDelegate so `didFinishLaunchingWithOptions` builds the band stack (restore-id central)
+    // synchronously at launch — BEFORE the WindowGroup body evaluates `AppModel()` — for reliable BLE
+    // State Restoration on a cold background relaunch (see AppDelegate / B1).
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 

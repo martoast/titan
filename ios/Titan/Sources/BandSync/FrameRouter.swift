@@ -6,6 +6,13 @@ import TitanCore
 /// `PpgWindowBuilder` (recovery PPG) AND the `WorkoutAssembler` (GPS/accel/HR workout windows) —
 /// finished windows of either kind go to the `SyncQueue`. T5 also drives the live bpm display.
 public final class FrameRouter {
+    /// Serial queue that owns ALL of the router's mutable decode state (the newline accumulator, the PPG
+    /// window builders, the live + backlog `WorkoutAssembler`s, the HR-trend builder, the stats counters).
+    /// Every mutating entry point hops onto it, so decode runs OFF the main thread (H5 — up to ~50 Hz in a
+    /// lift) AND stays race-free even though its inputs arrive from TWO threads: band frames on the
+    /// BandManager's BLE queue, and chest-strap HR / phone GPS from the main actor (AppModel). All feed the
+    /// SAME assembler, so without this serialization they would corrupt each other.
+    private let workQueue = DispatchQueue(label: "com.titan.frame-router")
     private static let maxLineBytes = 64 * 1024   // a frame should never exceed this before a newline
     private var rx = Data()                       // newline accumulator (== bridge's this._rx)
     private let ppg = PpgWindowBuilder()           // live T1 PPG
@@ -67,18 +74,29 @@ public final class FrameRouter {
     /// server route pass needs no change. Only call while a workout/run is open; addGps would otherwise
     /// open a phantom workout.
     public func ingestPhoneGps(_ fix: GpsFix) {
-        if let w = wa.addGps(fix) { submit(.workout(w)) }
+        workQueue.async { [weak self] in
+            guard let self else { return }
+            if let w = self.wa.addGps(fix) { self.submit(.workout(w)) }
+        }
     }
 
     /// Inject a chest-strap HR reading into the SAME workout assembler the band's HR feeds, so a
     /// workout recorded with a strap seals with reference-grade HR (tagged `chest_strap`) instead of
     /// motion-corrupted wrist PPG. Only supplements an open workout — never opens one.
     public func ingestStrapHr(bpm: UInt8, rr: [Double] = [], t: UInt64) {
-        if let w = wa.addStrapHr(bpm: bpm, rr: rr, t: t) { submit(.workout(w)) }
+        workQueue.async { [weak self] in
+            guard let self else { return }
+            if let w = self.wa.addStrapHr(bpm: bpm, rr: rr, t: t) { self.submit(.workout(w)) }
+        }
     }
 
-    /// Feed a chunk of bytes from a CoreBluetooth notification.
+    /// Feed a chunk of bytes from a CoreBluetooth notification. Hops onto `workQueue` so the 50 Hz decode
+    /// never runs on the main thread (and is serialized with the strap/GPS feeds above).
     public func ingest(_ data: Data) {
+        workQueue.async { [weak self] in self?._ingest(data) }
+    }
+
+    private func _ingest(_ data: Data) {
         rx.append(data)
         while let nl = rx.firstIndex(of: 0x0A) {           // 0x0A == '\n'
             let line = rx.subdata(in: rx.startIndex..<nl)
@@ -254,7 +272,10 @@ public final class FrameRouter {
     /// user tapped End). Without this a workout only sealed on disconnect or after a 120s idle gap, so
     /// finishing while the band stayed connected saved nothing. Idempotent: no-op if no workout is open.
     public func sealWorkout() {
-        if let w = wa.flush(ended: true) { submit(.workout(w)) }
+        workQueue.async { [weak self] in
+            guard let self else { return }
+            if let w = self.wa.flush(ended: true) { self.submit(.workout(w)) }
+        }
     }
 
     /// While a live run is in progress, keep the workout assembler OPEN across a BLE disconnect: a
@@ -265,6 +286,10 @@ public final class FrameRouter {
 
     /// On disconnect / app suspend: flush trailing partial windows so nothing is lost.
     public func flush(live: Bool) {
+        workQueue.async { [weak self] in self?._flush(live: live) }
+    }
+
+    private func _flush(live: Bool) {
         for w in ppg.flush(live: live) { submit(.ppg(w)) }
         for w in ppgLog.flush(live: live) { submit(.ppg(w)) }
         if !deferWorkoutFlush {                 // (see deferWorkoutFlush) — don't drain a live run's window

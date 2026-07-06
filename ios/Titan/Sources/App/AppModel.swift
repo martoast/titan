@@ -472,16 +472,45 @@ final class AppModel: ObservableObject {
     /// Paired = we have server creds AND a band bound to this phone's BLE identity.
     var isBandPaired: Bool { bandBound && Keychain.get(Keychain.deviceId) != nil }
 
-    private func startBandIfPaired() {
-        guard band == nil,
-              let id = Keychain.get(Keychain.deviceId),
-              let secret = Keychain.get(Keychain.deviceSecret) else { return }
-        let client = IngestClient(baseURL: Self.baseURL, deviceId: id, secret: secret)
+    /// The pre-wired band pipeline (CoreBluetooth central → decode → signed upload), built ONCE — at launch
+    /// by the AppDelegate so the restore-id central exists before iOS delivers `willRestoreState` (B1), or
+    /// on first pair by AppModel — then adopted by AppModel, which attaches the live/UI callbacks.
+    final class BandStack {
+        let band: BandManager
+        let router: FrameRouter
+        let queue: SyncQueue
+        init(band: BandManager, router: FrameRouter, queue: SyncQueue) {
+            self.band = band; self.router = router; self.queue = queue
+        }
+    }
+
+    /// Build the band pipeline from the Keychain creds — SYNCHRONOUS (no await), so the AppDelegate can call
+    /// it at launch before any network. nil when unpaired. The queue's `onUploaded` forwards through the
+    /// AppDelegate because AppModel may not exist yet when this runs at launch.
+    static func makeBandStack() -> BandStack? {
+        guard let id = Keychain.get(Keychain.deviceId),
+              let secret = Keychain.get(Keychain.deviceSecret) else { return nil }
+        let client = IngestClient(baseURL: baseURL, deviceId: id, secret: secret)
         // Durable on-disk queue so the overnight buffer survives an app kill / relaunch.
-        let queue = SyncQueue(store: SqliteWindowStore(), client: client, onUploaded: { [weak self] count in
-            Task { @MainActor in self?.windowsUploaded = count }
+        let queue = SyncQueue(store: SqliteWindowStore(), client: client, onUploaded: { count in
+            Task { @MainActor in AppDelegate.shared?.onWindowsUploaded?(count) }
         })
         let router = FrameRouter(queue: queue)
+        let band = BandManager(router: router)
+        return BandStack(band: band, router: router, queue: queue)
+    }
+
+    private func startBandIfPaired() {
+        guard band == nil else { return }
+        // Adopt the stack the AppDelegate already built at launch (its central holds the State-Restoration
+        // restore id, so `willRestoreState` fires on a cold BLE relaunch) — or build one now if we paired
+        // after launch. Either branch yields exactly ONE CBCentralManager with that restore id.
+        guard let stack = AppDelegate.shared?.adoptBandStack() ?? Self.makeBandStack() else { return }
+        let queue = stack.queue
+        let router = stack.router
+        // The SyncQueue's onUploaded is fixed at construction (before AppModel existed), so it forwards the
+        // cumulative-uploaded count through the AppDelegate — pick it up here for the live UI counter.
+        AppDelegate.shared?.onWindowsUploaded = { [weak self] count in self?.windowsUploaded = count }
         router.onBpm = { [weak self] bpm in Task { @MainActor in self?.liveBpm = Int(bpm) } }
         router.onSamples = { [weak self] total, ppg, hz in
             Task { @MainActor in
@@ -516,11 +545,15 @@ final class AppModel: ObservableObject {
         // (endRun is idempotent) and surface the finished workout, even when the live TA:end never arrived
         // (a workout started/stopped out of BLE range). The workout counterpart of onSleepConfirmed.
         router.onWorkoutSession = { [weak self] in Task { @MainActor in self?.endRun(notifyBand: false); self?.checkForSyncedWorkout() } }
-        let band = BandManager(router: router)
+        let band = stack.band
         band.onConnectionChange = { [weak self] up in Task { @MainActor in
             self?.bandConnected = up
             self?.handleBandConnectionChange(up)
         } }
+        // The CB link came up (pre-data) — cancel a pending end-run confirm the instant the link is
+        // restored, so a transient drop mid-run can't wrongly end + seal the workout just because reconnect
+        // + service discovery + the first frame didn't all land inside the 8 s confirm window (H6).
+        band.onLinkUp = { [weak self] in Task { @MainActor in self?.handleLinkRestored() } }
         band.onBattery = { [weak self] pct in Task { @MainActor in self?.bandBattery = pct } }
         band.onPaired = { [weak self] ok in
             Task { @MainActor in
@@ -1127,6 +1160,13 @@ final class AppModel: ObservableObject {
     /// the drop is durable (a transient blip auto-reconnects and cancels this) and then end for real.
     /// The workout window is kept open across the drop (router.deferWorkoutFlush) so this seals it
     /// with `ended`. Reproduced + verified in the watch simulator (firmware/sim, "drop-at-end").
+    /// The raw CB link was restored (from `onLinkUp`, BEFORE the first data frame). Cancel the pending
+    /// end-run confirm so a transient drop during a run doesn't end + seal it (H6). The data-driven LIVE
+    /// path below also cancels the confirm, but only once frames resume; this fires earlier, on reconnect.
+    private func handleLinkRestored() {
+        disconnectConfirmTask?.cancel(); disconnectConfirmTask = nil
+    }
+
     private func handleBandConnectionChange(_ up: Bool) {
         if up {
             disconnectConfirmTask?.cancel(); disconnectConfirmTask = nil   // reconnected → transient blip
