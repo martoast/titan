@@ -1,14 +1,13 @@
 @props(['title' => 'Titan', 'subtitle' => null])
 
 @php
-    // Navigation comes grouped from the single source of truth (App\Support\Nav), shared
-    // with the chat drawer in components/chat-shell so the two never drift apart.
+    // Navigation mirrors the native iOS app: five tabs (Coach · Today · Trends · Community · You),
+    // each owning its fold-in children. Single source of truth = App\Support\Nav, shared with the
+    // chat drawer (components/chat-shell) so the two never drift.
     $profile = auth()->user()?->ensureProfile();
-    $navGroups = \App\Support\Nav::groups($profile);
-    $nav = \App\Support\Nav::flat($profile);          // desktop sidebar (flat)
-    // Primary destinations for the mobile bottom bar (most-used daily).
-    $tabPaths = \App\Support\Nav::PRIMARY;
-    $tabs = collect($nav)->whereIn('path', $tabPaths)->sortBy(fn ($i) => array_search($i['path'], $tabPaths))->values();
+    $tabs = \App\Support\Nav::tabs($profile);
+    $currentPath = trim(request()->path(), '/');
+    $activeTab = \App\Support\Nav::activeTab($currentPath, $profile);
     $isActive = fn ($path) => request()->is($path) || request()->is($path.'/*');
 @endphp
 
@@ -17,7 +16,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#07080a">
+    <meta name="theme-color" content="#07070A">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="vapid-public-key" content="{{ config('services.webpush.public_key') }}">
     <title>{{ $title }} · Titan</title>
@@ -65,14 +64,28 @@
             <div class="h-16 flex items-center px-5 border-b border-white/5">
                 <span class="font-display text-2xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-300 bg-clip-text text-transparent">TITAN</span>
             </div>
-            <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-                @foreach ($nav as $item)
-                    <a href="/{{ $item['path'] }}"
-                       class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition
-                              {{ $isActive($item['path']) ? 'bg-indigo-500/15 text-indigo-200' : 'text-gray-400 hover:text-gray-100 hover:bg-white/5' }}">
-                        <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $item['icon'] }}" /></svg>
-                        {{ $item['label'] }}
+            <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+                @foreach ($tabs as $tab)
+                    @php $tabActive = $activeTab === $tab['path']; @endphp
+                    <a href="/{{ $tab['path'] }}"
+                       class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition
+                              {{ $tabActive ? 'bg-indigo-500/15 text-indigo-200' : 'text-gray-300 hover:text-gray-100 hover:bg-white/5' }}">
+                        <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $tab['icon'] }}" /></svg>
+                        {{ $tab['label'] }}
                     </a>
+                    {{-- Children of the active tab (iOS surfaces these as cards; desktop lists them). --}}
+                    @if ($tabActive && count($tab['children']))
+                        <div class="ml-4 pl-3 border-l border-white/5 space-y-0.5 mb-1">
+                            @foreach ($tab['children'] as $child)
+                                <a href="/{{ $child['path'] }}"
+                                   class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition
+                                          {{ $isActive($child['path']) ? 'text-indigo-200' : 'text-gray-500 hover:text-gray-200 hover:bg-white/5' }}">
+                                    <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $child['icon'] }}" /></svg>
+                                    {{ $child['label'] }}
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
                 @endforeach
             </nav>
             <div class="px-3 py-4 border-t border-white/5">
@@ -183,11 +196,12 @@
                 bg-[#0b0d10]/90 backdrop-blur-xl border-t border-white/10">
         <div class="grid grid-cols-5 h-[4.25rem]">
             @foreach ($tabs as $tab)
+                @php $tabActive = $activeTab === $tab['path']; @endphp
                 <a href="/{{ $tab['path'] }}"
                    class="flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition
-                          {{ $isActive($tab['path']) ? 'text-indigo-300' : 'text-gray-500' }}">
+                          {{ $tabActive ? 'text-indigo-300' : 'text-gray-500' }}">
                     <span class="relative">
-                        @if ($isActive($tab['path']))
+                        @if ($tabActive)
                             <span class="absolute -inset-2 rounded-full bg-indigo-500/15 blur-sm"></span>
                         @endif
                         <svg class="relative h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $tab['icon'] }}" /></svg>
@@ -195,51 +209,8 @@
                     {{ $tab['label'] }}
                 </a>
             @endforeach
-            {{-- More --}}
-            <button type="button" @click="moreOpen = true"
-                    class="flex flex-col items-center justify-center gap-1 text-[10px] font-medium text-gray-500">
-                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
-                More
-            </button>
         </div>
     </nav>
-
-    {{-- ===== Mobile "More" sheet ===== --}}
-    <div class="md:hidden" x-cloak>
-        <div x-show="moreOpen" x-transition.opacity @click="moreOpen = false"
-             class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"></div>
-        <div x-show="moreOpen"
-             x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0"
-             x-transition:leave="transition ease-in duration-200" x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full"
-             class="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border-t border-white/10 bg-[#0b0d10] pb-safe">
-            <div class="flex justify-center pt-3"><div class="h-1.5 w-10 rounded-full bg-white/20"></div></div>
-            <div class="flex items-center justify-between px-5 pt-3 pb-1">
-                <span class="font-display text-lg font-bold">All sections</span>
-                <button @click="moreOpen = false" class="text-gray-500 p-2 -mr-2"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
-            </div>
-            <div class="max-h-[60vh] overflow-y-auto px-3 pb-3 pt-1">
-                @foreach ($navGroups as $groupLabel => $items)
-                    <p class="px-1 pb-1.5 pt-3 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-gray-600">{{ $groupLabel }}</p>
-                    <div class="grid grid-cols-4 gap-1">
-                        @foreach ($items as $item)
-                            <a href="/{{ $item['path'] }}"
-                               class="flex flex-col items-center gap-2 rounded-2xl py-3 px-1 text-center transition active:bg-white/5
-                                      {{ $isActive($item['path']) ? 'text-indigo-300' : 'text-gray-300' }}">
-                                <span class="flex h-11 w-11 items-center justify-center rounded-2xl {{ $isActive($item['path']) ? 'bg-indigo-500/20' : 'bg-white/5' }}">
-                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $item['icon'] }}" /></svg>
-                                </span>
-                                <span class="text-[11px] leading-tight">{{ $item['label'] }}</span>
-                            </a>
-                        @endforeach
-                    </div>
-                @endforeach
-            </div>
-            <form method="POST" action="{{ route('logout') }}" class="px-5 pb-4 pt-1">
-                @csrf
-                <button type="submit" class="w-full rounded-2xl bg-white/5 py-3 text-sm font-medium text-gray-400 active:bg-white/10">Log out</button>
-            </form>
-        </div>
-    </div>
 
     {{-- ===== Notifications + Web Push client ===== --}}
     <script>

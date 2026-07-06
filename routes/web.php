@@ -42,6 +42,12 @@ Route::middleware(['auth'])->group(function () {
         // Progress & trends — the visual longitudinal view around the dream physique.
         Route::get('/progress', [\App\Http\Controllers\ProgressController::class, 'index'])->name('progress');
 
+        // Community tab — the social feed + leaderboard (web twin of iOS CommunityView).
+        Route::get('/community', [\App\Http\Controllers\CommunityWebController::class, 'index'])->name('community.index');
+
+        // You tab — the profile hub folding band / physique / library / setup (iOS ProfileView).
+        Route::get('/you', [\App\Http\Controllers\YouController::class, 'index'])->name('you.index');
+
         // Food wiki — your most-eaten foods (same data the coach pulls via my_foods).
         Route::get('/foods', [\App\Http\Controllers\FoodController::class, 'index'])->name('foods.index');
 

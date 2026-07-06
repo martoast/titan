@@ -2,11 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---- Titan design tokens ---------------------------------------------- */
+/* ---- Titan design tokens (mirrors the native iOS Theme.Palette) -------- */
 :root {
     --font-body: 'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif;
     --font-display: 'Archivo', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    --titan-bg: #07080a;
+    --titan-bg: #07070A;          /* iOS Palette.bg — near-black canvas */
+    --titan-bg2: #0E0E13;         /* raised */
+    --titan-card: rgba(255,255,255,0.045);   /* iOS Palette.card */
+    --titan-stroke: rgba(255,255,255,0.07);  /* iOS Palette.cardStroke */
+    --titan-indigo: #6D6BF6;
+    --titan-cyan: #22D3EE;
+    --titan-mint: #34E5C0;
+    --titan-pink: #FF4D8D;
+    --titan-amber: #FFB020;
+    --titan-violet: #A78BFA;
+}
+
+/* ---- The glass card — web twin of the iOS GlassCard --------------------
+   White 0.045 fill, a top-lit "sheen" highlight, a hairline stroke, 22px
+   continuous corners, soft drop shadow. Use <x-card> in Blade. */
+.glass-card {
+    position: relative;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0) 60%),
+        var(--titan-card);
+    border: 1px solid var(--titan-stroke);
+    border-radius: 22px;
+    box-shadow: 0 10px 18px rgba(0,0,0,0.45);
+}
+
+/* A single colored radial glow bleeding from the top of a screen (iOS titanScreen/Detail). */
+.titan-glow::before {
+    content: '';
+    position: fixed; inset: 0 0 auto 0; height: 320px; z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(60% 100% at 50% 0%, var(--glow, rgba(109,107,246,0.28)), transparent 70%);
 }
 
 html {
