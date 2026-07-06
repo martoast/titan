@@ -129,11 +129,11 @@ var CFG = {
   // the Whoop trick: sample sparsely when still, densely when it matters.
   REST_DUTY: true,                   // master switch for offline-rest duty-cycling
   REST_DUTY_ON_MS: 8000,             // measure-window HARD CAP — a good lock (conf>=90) closes the burst early; the VC31 LED is ~85-90% of drain, so shorter ON is the biggest battery lever
-  REST_DUTY_PERIOD_MS: 60000,        // MOVING cadence: one reading/min (25% duty) — keeps HR responsive while you're active
+  REST_DUTY_PERIOD_MS: 30000,        // MOVING cadence: a reading every 30 s — Whoop-style continuous-ENOUGH HR while active (the app graph stays live; workouts go fully continuous)
   // Motion-gated rest cadence (Whoop's trick): when you're STILL (desk / sitting), relax the period to
   // save battery; the instant you move, snap back to the tight REST_DUTY_PERIOD_MS. motionEMA is the
   // same always-on accel signal the GPS gate + auto-detect already maintain, so the gating is free.
-  REST_DUTY_PERIOD_STILL_MS: 300000, // STILL cadence: one reading every 5 min (a resting-HR point every 5 min is plenty; motion snaps back to the 60s moving period instantly)
+  REST_DUTY_PERIOD_STILL_MS: 60000,  // STILL cadence: a reading every 60 s (desk/sitting) — NEVER a multi-minute HR blackout; motion snaps back to the 30 s moving period instantly
   REST_STILL_MOTION: 0.07,           // motionEMA below this = "still" (under AUTO_MOTION_LO: typing stays still, walking trips it)
 
   // --- OVERNIGHT SLEEP duty-cycle (battery) ----------------------------------

@@ -823,16 +823,20 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('early-exit (i) · the 8s hard cap still closes a never-locking burst', s.watch.hrmPower() === false, `hrm=${s.watch.hrmPower()}`);
 })();
 
-// 30) (j) 5-MIN STILL PERIOD. At still rest (no motion) with early-exit, the LED is off the vast
-//     majority of the time — a resting HR point every 5 min, not a 15s burst every 3 min.
+// 30) (j) 60s STILL PERIOD. At still rest (no motion) with early-exit, the LED is off the vast majority
+//     of the time, but a reading lands ~every 60s — Whoop's resting granularity, NEVER a multi-minute
+//     HR blackout. Assert both: mostly-off (battery) AND ~one burst/min over 10 min (no long gaps).
 (() => {
-  const s = new Session();          // offline, STILL rest (no motion fed → 5-min period)
-  let onT = 0, offT = 0;
+  const s = new Session();          // offline, STILL rest (no motion fed → 60s still period)
+  let onT = 0, offT = 0, bursts = 0, wasOff = true;
   for (let t = 0; t < 600; t++) {   // 10 min still, no glances
-    if (s.watch.hrmPower()) { s.watch.hrm(62, 96); onT++; } else offT++;
+    const on = s.watch.hrmPower();
+    if (on) { s.watch.hrm(62, 96); onT++; if (wasOff) bursts++; } else offT++;
+    wasOff = !on;
     s.clock.advance(1000);
   }
-  check('still-rest (j) · 5-min period + early-exit → LED off the vast majority of the time', offT > onT * 20, `on=${onT} off=${offT}`);
+  check('still-rest (j) · LED off the vast majority of the time (battery)', offT > onT * 5, `on=${onT} off=${offT}`);
+  check('still-rest (j) · ~a reading every 60s → no multi-minute HR blackout', bursts >= 8, `bursts=${bursts}/10min`);
 })();
 
 // 31) (g) DYNAMIC CONNECTION INTERVAL — flush drain. A morning sync tightens the link to {15,30} for the
