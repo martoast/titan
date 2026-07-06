@@ -699,6 +699,21 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('kind (d) · run across a reboot still seals as a run', !!swo && swo.activityType === 'run', swo ? `type=${swo.activityType}` : '(none)');
 })();
 
+// 25) (e) ALWAYS-ON disconnect UX. With the phone now holding a persistent 24/7 link, a REAL drop must
+//     surface on the watch (one buzz + a persistent "PHONE OFF" indicator) so the user reconnects — but
+//     a momentary blip (auto-reconnects inside the debounce) must NOT nag, and reconnect clears it.
+(() => {
+  const s = new Session();
+  s.connect();                          // establish a real link (everConnected = true)
+  check('disconnect UX (e) · linked → no indicator', s.watch.state().linkLost === false, `linkLost=${s.watch.state().linkLost}`);
+  s.disconnect(); s.advance(3000); s.connect();   // blip: drop + reconnect INSIDE the 6s debounce
+  check('disconnect UX (e) · momentary blip does NOT flag (debounced)', s.watch.state().linkLost === false, `linkLost=${s.watch.state().linkLost}`);
+  s.disconnect(); s.advance(8000);      // sustained drop past the debounce → indicator trips
+  check('disconnect UX (e) · sustained drop flags PHONE OFF', s.watch.state().linkLost === true, `linkLost=${s.watch.state().linkLost}`);
+  s.connect();                          // reconnect clears it
+  check('disconnect UX (e) · reconnect clears the indicator', s.watch.state().linkLost === false, `linkLost=${s.watch.state().linkLost}`);
+})();
+
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
 for (const r of results) console.log(`${r.ok ? '  ✓' : '  ✗'} ${r.name}${r.ok ? '' : `\n      → ${r.detail}`}`);
 console.log(`\n${results.length - failures}/${results.length} checks passed\n`);

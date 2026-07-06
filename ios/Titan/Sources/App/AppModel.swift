@@ -253,24 +253,23 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: burst-sync connection policy
-    // The band runs heavy (continuous + streaming) only while we hold a live BLE link. So we hold it
-    // when it's worth it — app foreground (workouts, checking stats) — and RELEASE it when the app
-    // sits idle in the background, dropping the band into its low-power offline duty-cycle. The
-    // firmware auto-flushes its buffered trend on every reconnect, so opening the app catches up the
-    // whole day with no held connection. This is what makes real all-day wear viable on the band.
+    // MARK: always-on connection policy (Whoop-style)
+    // The band is the ONLY data pipeline, so we hold a persistent 24/7 BLE link — foreground AND
+    // background, phone locked or not. There is no "release": burst-sync is retired. `holdConnection`
+    // still runs on foreground because its clock-resync / step-push / catch-up polls are wanted when
+    // the user opens the app; it just no longer TOGGLES the link (the link is always armed).
 
     private var connectionReleaseTask: Task<Void, Never>?
 
-    /// App came forward (or a workout/sync) → hold a live link AND pull the band's data now. If the link
-    /// dropped while we were away, setDesiredConnection reconnects and the firmware auto-flushes on connect;
-    /// if we're still connected, flushIfConnected forces a C3 so opening the app always pushes the latest
-    /// steps + any buffered data to the server. Either way, just opening Titan syncs the band.
+    /// App came forward (or a workout/sync) → make sure the (always-on) link is up AND pull the band's
+    /// data now. If it briefly dropped while we were away, ensureConnected nudges a reconnect and the
+    /// firmware auto-flushes on connect; if we're still connected, flushIfConnected forces a C3 so opening
+    /// the app always pushes the latest steps + any buffered data to the server.
     func holdConnection() {
         connectionReleaseTask?.cancel(); connectionReleaseTask = nil
         startBandIfPaired()
         bandIdle = false
-        band?.setDesiredConnection(true)
+        band?.ensureConnected()
         band?.flushIfConnected()
         band?.syncClockIfConnected()   // re-push the phone clock so a drifted/un-synced band can't mis-time a workout
         pushStepsToBand()         // opening the app tops the watch's Steps face back up to the phone's count
@@ -344,28 +343,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// App went to the background → after a short grace (survives quick app switches), release the link
-    /// so the band starts saving battery. Cancelled if we come forward again first.
-    func releaseConnectionAfterGrace() {
-        guard band != nil else { return }
-        connectionReleaseTask?.cancel()
-        connectionReleaseTask = Task { [weak self] in
-            // Wait out the grace — but NEVER drop the link while a workout is live. The band's sport-tagged
-            // HR (T5) is the ONLY way the app sees the watch end the run (sport→0). Release it mid-workout
-            // and we stop getting frames entirely: the 4 s end-debounce never fires, the run hangs "active",
-            // and the next reconnect re-pops it (the "ended on the watch but the app didn't" + reopen loop).
-            // So poll past the grace and only release once the run has actually ended.
-            repeat {
-                try? await Task.sleep(nanoseconds: 120_000_000_000)   // 2-min grace
-                guard let self, !Task.isCancelled else { return }
-                if !self.runActive {
-                    self.band?.setDesiredConnection(false)
-                    self.bandIdle = true
-                    return
-                }
-            } while !Task.isCancelled
-        }
-    }
+    /// RETIRED (Whoop-style always-on): backgrounding no longer drops the band. The persistent 24/7 link
+    /// is the whole point — it keeps streaming while the app is backgrounded / the phone is locked. Kept
+    /// as a no-op so the scenePhase wiring (and any other caller) compiles without change of intent.
+    func releaseConnectionAfterGrace() { /* no-op — the link is held 24/7 */ }
 
 
     /// (hold yours to the phone) so two nearby bands never cross-connect.

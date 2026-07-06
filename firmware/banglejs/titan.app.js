@@ -238,7 +238,8 @@ var state = {
   gps: false,          // is the GPS receiver powered right now? (a subset of a workout)
   gpsFix: false,       // do we have a satellite fix yet?
   gpsSats: 0,          // satellites in view (UI + the app's GPS self-test acquisition readout)
-  speed: 0             // last GPS speed (m/s), UI only
+  speed: 0,            // last GPS speed (m/s), UI only
+  linkLost: false      // a REAL (debounced) phone disconnect → persistent on-face "phone off" indicator
 };
 
 // On-watch locomotion gate for GPS (battery). A slow EMA of per-sample |Δaccel| (g);
@@ -325,6 +326,14 @@ var clockTickTimer = null; // minute-boundary redraw for the clock face
 // California (PST/PDT). The app's time-sync (C2:) overrides this with the device's exact current
 // offset — including DST — the moment it connects, so this is only the cold-boot fallback.
 try { E.setTimeZone(-7); } catch (e) {}
+
+// BLE connection parameters — set at boot (BEFORE a central connects) for a battery-friendly,
+// iOS-accepted 24/7 link. Apple requires the peripheral's requested interval to be a multiple of
+// 15 ms and >= 15 ms; 30-45 ms is low-power and within Apple's rules. A larger MTU cuts per-frame
+// overhead for the PPG batches. setMTU must be called before the connection is established, so it
+// lives here at boot. Both throw on some Espruino builds → guard each independently.
+try { NRF.setConnectionInterval({ minInterval: 30, maxInterval: 45 }); } catch (e) {}
+try { NRF.setMTU(185); } catch (e) {}
 
 // ----- Helpers --------------------------------------------------------------
 
@@ -998,9 +1007,41 @@ function emitStepFrame() {
 
 // ----- BLE connection tracking ----------------------------------------------
 
+// ----- Disconnect UX (always-on wear: notice a REAL drop) -------------------
+// The phone now holds a persistent 24/7 link, so a disconnect means something's wrong — you walked
+// away from the phone, its Bluetooth is off, or it died. Surface it: ONE short buzz + a persistent
+// "PHONE OFF" indicator on whatever face you're on, cleared with a subtle confirm on reconnect.
+// DEBOUNCED so a momentary blip (which auto-reconnects) never nags — only a sustained drop trips it,
+// and only after we've had at least one real link this session (no nag on a never-paired band).
+var LINK_LOST_DEBOUNCE_MS = 6000;  // a drop must persist this long before we buzz + flag it
+var linkLostTimer = null;          // pending debounce (null = none)
+var everConnected = false;         // only nag AFTER at least one real link this session
+
+function onLinkDrop() {
+  if (!everConnected || state.linkLost || linkLostTimer) return;
+  linkLostTimer = setTimeout(function () {
+    linkLostTimer = null;
+    if (state.connected) return;             // reconnected during the window → no nag (it was a blip)
+    state.linkLost = true;
+    try { Bangle.buzz(200); } catch (e) {}   // ONE short buzz per real drop
+    if (uiVisible) drawUI();
+  }, LINK_LOST_DEBOUNCE_MS);
+}
+
+function onLinkUp() {
+  everConnected = true;
+  if (linkLostTimer) { clearTimeout(linkLostTimer); linkLostTimer = null; }   // cancel a pending nag
+  if (state.linkLost) {
+    state.linkLost = false;
+    try { Bangle.buzz(40); } catch (e) {}    // subtle reconnect confirm
+    if (uiVisible) drawUI();
+  }
+}
+
 function onConnect() {
   if (state.connected) return;   // idempotent: the NRF event and the poll can both fire
   state.connected = true;
+  onLinkUp();                    // clear any "phone off" indicator + a subtle reconnect confirm
   // Paired! If the pairing code was on screen, drop it and show the now-linked Heart face.
   if (pairTimer) exitPairing();
   // NOTE: connecting NO LONGER force-starts REC. Recording is the user's choice (Heart face: 2 clicks =
@@ -1024,6 +1065,7 @@ function onConnect() {
 function onDisconnect() {
   if (!state.connected) return;  // idempotent (see onConnect)
   state.connected = false;
+  onLinkDrop();                  // debounced: buzz + "phone off" indicator only on a SUSTAINED drop
   // Back to the overnight path: drop accel to 12.5 Hz (actigraphy + power).
   applyAccelRate();
   // Abandon any partial live frame; resume compact overnight logging fresh.
@@ -1649,7 +1691,17 @@ function drawUI() {
   else if (page === RUN_PAGE) drawRun();
   else if (page === LIFT_PAGE) drawLift();
   else drawHeart();
+  if (state.linkLost) drawLinkLost();   // persistent "phone off" overlay on whatever face you're on
   pageDots();
+}
+
+// Persistent phone-disconnected indicator: a red edge strip + label, drawn over the current face so a
+// real drop is impossible to miss. Cleared on reconnect (onLinkUp). Small on purpose (OOM/minify).
+function drawLinkLost() {
+  var W = g.getWidth();
+  g.setColor(C.rec); g.fillRect(0, 0, W, 4);          // red top edge
+  g.setFont("6x8", 1); g.setFontAlign(0, 0); g.setColor(C.rec);
+  g.drawString("PHONE OFF", W / 2, 158);
 }
 
 function refreshBattery() {

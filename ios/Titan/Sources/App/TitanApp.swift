@@ -20,13 +20,14 @@ struct TitanApp: App {
                         if model.isLoggedIn && model.healthConnected {
                             Task { await model.syncAppleHealth() }
                         }
-                        // Burst-sync: hold a live band link while we're up front (workouts / checking stats).
+                        // Foreground housekeeping: make sure the always-on link is up, resync the clock,
+                        // push steps, and catch up any workout/sleep that sealed while we were away.
                         model.holdConnection()
                     case .background:
-                        // Idle in the background → release the link so the band saves battery. It
-                        // re-syncs the whole day the next time you open the app (firmware auto-flushes
-                        // its buffer on every reconnect).
-                        model.releaseConnectionAfterGrace()
+                        // Whoop-style ALWAYS-ON: backgrounding must NOT drop the band — the persistent
+                        // 24/7 link keeps streaming while the app is backgrounded / the phone is locked.
+                        // (No release; the old burst-sync that dropped the link here is retired.)
+                        break
                     default:
                         break
                     }

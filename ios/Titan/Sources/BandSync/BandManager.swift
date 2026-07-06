@@ -25,15 +25,51 @@ public final class BandManager: NSObject {
 
     /// The specific band this phone is bound to (nil until first pairing).
     private var boundId: UUID?
-    /// Burst-sync policy: do we currently WANT a live link? Foreground / workout / an explicit sync →
-    /// true (hold + auto-reconnect). Idle in the background → false (disconnect and stop re-arming, so
-    /// the band drops to its low-power offline duty-cycle). Every auto-connect path is gated on this.
-    /// Defaults true so first launch + a background relaunch connect; AppModel drives it from there.
-    private var wantsConnection = true
     /// True only during a fresh pair: collect nearby bands so the user picks theirs by code.
     private var pairing = false
     private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int, code: String)] = [:]
     private var pairTimeout: Timer?
+
+    // MARK: data-staleness watchdog (the real "connected" signal)
+    // iOS can report a peripheral as `.connected` while it's actually suspended or the link is wedged —
+    // CB state lies. The honest signal is DATA: are frames still arriving? We stamp `lastFrameAt` on every
+    // inbound value and a light timer decides LIVE (a frame within `liveWindow`) vs STALE (`.connected` but
+    // silent). `onConnectionChange` reports LIVE — not the mere CB `didConnect`/`didDisconnect` — so the
+    // app's "band connected" state matches reality (and the run's durable-drop end fires when data stops).
+    private var lastFrameAt = Date.distantPast
+    private var liveWatchdog: Timer?
+    private var reportedLive = false
+    private static let liveWindow: TimeInterval = 8   // a frame within this ⇒ LIVE; longer while connected ⇒ STALE
+
+    /// Note any inbound BLE value (a data frame OR a battery notification) — proof the link is truly alive.
+    /// Flips us to LIVE and re-arms the staleness clock.
+    private func noteFrame() {
+        lastFrameAt = Date()
+        setLive(true)
+    }
+
+    /// Drive the user-facing connected state from DATA, not CB's optimistic `.connected`. Idempotent.
+    private func setLive(_ live: Bool) {
+        guard live != reportedLive else { return }
+        reportedLive = live
+        onConnectionChange?(live)
+    }
+
+    private func startLiveWatchdog() {
+        liveWatchdog?.invalidate()
+        liveWatchdog = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            // Connected + a recent frame = LIVE; connected but silent past the window = STALE; not
+            // connected at all = not live.
+            let fresh = self.band?.state == .connected
+                && Date().timeIntervalSince(self.lastFrameAt) <= Self.liveWindow
+            self.setLive(fresh)
+        }
+    }
+
+    private func stopLiveWatchdog() {
+        liveWatchdog?.invalidate(); liveWatchdog = nil
+    }
 
     /// A nearby band shown in the pairing picker. `code` matches what's on the band's screen.
     public struct PairCandidate: Identifiable, Equatable {
@@ -102,38 +138,35 @@ public final class BandManager: NSObject {
     public func unbind() {
         boundId = nil
         UserDefaults.standard.removeObject(forKey: Self.boundKey)
+        stopLiveWatchdog()
+        setLive(false)
         if let b = band, b.state != .disconnected { central.cancelPeripheralConnection(b) }
         band = nil
     }
 
     public var isConnected: Bool { band?.state == .connected }
 
-    /// Burst-sync control. `on=true` → hold/establish the live link (foreground, workout, a sync burst).
-    /// `on=false` → drop it and stop re-arming, so the band falls into its low-power offline duty-cycle.
-    /// The firmware auto-flushes its buffered trend on every reconnect, so each time we come back the
-    /// day's data syncs itself — no held connection needed. This is what makes all-day wear practical.
-    public func setDesiredConnection(_ on: Bool) {
-        guard on != wantsConnection else { return }
-        wantsConnection = on
+    /// Whoop-style ALWAYS-ON link: the band is the only data pipeline, so a bound band is held connected
+    /// 24/7 (foreground AND background) — there is no "release". This just NUDGES a connection attempt if
+    /// we're not currently connected (e.g. the app foregrounded after the link briefly dropped); the
+    /// always-on delegate paths (power-on, didDiscover, didDisconnect) do the rest. Idempotent + cheap.
+    public func ensureConnected() {
         guard central.state == .poweredOn, let id = boundId else { return }
-        if on {
-            if band?.state != .connected {
-                if let p = central.retrievePeripherals(withIdentifiers: [id]).first {
-                    band = p; p.delegate = self; reconnect(p)
-                }
-                central.scanForPeripherals(withServices: nil)   // catch it the moment it advertises
+        if band?.state != .connected {
+            if let p = central.retrievePeripherals(withIdentifiers: [id]).first {
+                band = p; p.delegate = self; reconnect(p)
             }
-        } else {
-            central.stopScan()
-            if let b = band, b.state != .disconnected { central.cancelPeripheralConnection(b) }
+            // Background scans return NOTHING unless the service UUID is explicit (iOS requirement), so
+            // filter on the band's Nordic UART service — this is what re-finds a band that dropped while
+            // we were backgrounded.
+            central.scanForPeripherals(withServices: [Self.NUS_SERVICE])
         }
     }
 
-    /// Manual "Sync now" (for free accounts with no background BLE): if the band is connected, ask it
-    /// to flush its overnight ring buffer right now (C3); otherwise kick a connect to the bound band —
-    /// the firmware auto-flushes on connect. Either way the whole night transfers on demand.
+    /// Manual "Sync now": if the band is connected, ask it to flush its overnight ring buffer right now
+    /// (C3); otherwise kick a connect to the bound band — the firmware auto-flushes on connect. Either
+    /// way the whole night transfers on demand.
     public func syncNow() {
-        wantsConnection = true   // an explicit sync overrides idle power-saving
         guard central.state == .poweredOn, let id = boundId else { return }
         if let p = band, p.state == .connected, let rx = rxChar {
             p.writeValue(Data("C3:\n".utf8), for: rx, type: .withoutResponse)
@@ -142,7 +175,9 @@ public final class BandManager: NSObject {
         if let p = central.retrievePeripherals(withIdentifiers: [id]).first {
             band = p; p.delegate = self; reconnect(p)
         }
-        central.scanForPeripherals(withServices: nil)   // didDiscover only accepts our bound id
+        // Explicit service UUID so the scan works when backgrounded (nil scans return nothing there);
+        // didDiscover only accepts our bound id anyway.
+        central.scanForPeripherals(withServices: [Self.NUS_SERVICE])
     }
 
     /// Opening the app while ALREADY connected → force a flush (C3) so the latest steps + any data
@@ -206,23 +241,28 @@ public final class BandManager: NSObject {
     /// bound band, drops the cached write char, then re-arms connect AND restarts a scan so we catch
     /// the band the instant it advertises again. This is the "Reconnect" button's muscle.
     public func reconnectKick() {
-        wantsConnection = true   // the user asked to reconnect — override idle power-saving
         guard central.state == .poweredOn, let id = boundId else { return }
         if let b = band, b.state != .disconnected { central.cancelPeripheralConnection(b) }
         rxChar = nil
         if let p = central.retrievePeripherals(withIdentifiers: [id]).first {
             band = p; p.delegate = self; reconnect(p)
         }
-        central.scanForPeripherals(withServices: nil)   // didDiscover only accepts our bound id
+        // Explicit service UUID so the scan works when backgrounded; didDiscover only accepts our bound id.
+        central.scanForPeripherals(withServices: [Self.NUS_SERVICE])
     }
 
-    /// No-timeout connect (survives out-of-range + termination); system wakes us on events.
+    /// No-timeout connect (survives out-of-range + termination); system wakes us on events. On iOS 17+ we
+    /// also opt into the OS's own auto-reconnect (`EnableAutoReconnect`): CoreBluetooth transparently
+    /// re-establishes the link after an unexpected drop, which needs the `isReconnecting` disconnect
+    /// callback below to be implemented (else the connect fails with "invalid parameters").
     private func reconnect(_ p: CBPeripheral) {
-        central.connect(p, options: [
+        var opts: [String: Any] = [
             CBConnectPeripheralOptionNotifyOnConnectionKey: true,
             CBConnectPeripheralOptionNotifyOnDisconnectionKey: true,
             CBConnectPeripheralOptionNotifyOnNotificationKey: true,
-        ])
+        ]
+        if #available(iOS 17, *) { opts[CBConnectPeripheralOptionEnableAutoReconnect] = true }
+        central.connect(p, options: opts)
     }
 
     /// True if `adv`/peripheral looks like a Titan band.
@@ -236,17 +276,17 @@ public final class BandManager: NSObject {
 extension BandManager: CBCentralManagerDelegate {
     public func centralManagerDidUpdateState(_ c: CBCentralManager) {
         guard c.state == .poweredOn else { return }
-        if pairing { c.scanForPeripherals(withServices: nil); return }
+        if pairing { c.scanForPeripherals(withServices: nil); return }   // pairing scan stays unfiltered (foreground)
         guard let id = boundId else { return }           // not paired yet — wait for startPairing()
-        guard wantsConnection else { return }            // idle power-saving — don't auto-connect
-        // Re-arm a pending connect to the known peripheral (works in the background, no scan).
+        // ALWAYS-ON: a bound band is held connected 24/7 — no power-gating. Re-arm a pending connect to
+        // the known peripheral (works in the background, no scan).
         if let p = c.retrievePeripherals(withIdentifiers: [id]).first {
             band = p; p.delegate = self
             if p.state != .connected { reconnect(p) }
         }
-        // Also scan (foreground) so we catch the band the moment it advertises; didDiscover only
-        // accepts our bound identifier.
-        c.scanForPeripherals(withServices: nil)
+        // Also scan so we catch the band the moment it advertises. MUST filter on the service UUID — a
+        // `nil` scan returns nothing while backgrounded (iOS rule); didDiscover only accepts our bound id.
+        c.scanForPeripherals(withServices: [Self.NUS_SERVICE])
     }
 
     /// FIRST callback when iOS relaunches a terminated app for a BLE event.
@@ -255,7 +295,7 @@ extension BandManager: CBCentralManagerDelegate {
             .first(where: { boundId == nil || $0.identifier == boundId }) {
             band = p
             p.delegate = self
-            if p.state != .connected && wantsConnection { reconnect(p) }
+            if p.state != .connected { reconnect(p) }   // always-on: re-arm unconditionally
         }
     }
 
@@ -271,7 +311,7 @@ extension BandManager: CBCentralManagerDelegate {
                 .sorted { $0.rssi > $1.rssi })
             return
         }
-        guard p.identifier == boundId, wantsConnection else { return }   // our band, and only if we want a link
+        guard p.identifier == boundId else { return }   // our band — always (re)connect it
         band = p; p.delegate = self
         c.stopScan()
         reconnect(p)
@@ -279,15 +319,43 @@ extension BandManager: CBCentralManagerDelegate {
 
     public func centralManager(_ c: CBCentralManager, didConnect p: CBPeripheral) {
         c.stopScan()   // we're connected — stop the discovery scan (a connected band never re-advertises,
-                       // so didDiscover can't stop it; without this an unfiltered scan ran all session)
-        onConnectionChange?(true)
+                       // so didDiscover can't stop it; without this a scan ran all session)
+        // NOTE: we do NOT report LIVE here — CB `.connected` isn't proof of data. The staleness watchdog
+        // flips us LIVE on the first real frame and STALE if a "connected" link goes silent.
+        lastFrameAt = .distantPast
+        startLiveWatchdog()
         p.discoverServices([Self.NUS_SERVICE, Self.BATTERY_SERVICE])
     }
 
+    /// Legacy disconnect callback (iOS < 17). On iOS 17+ the `isReconnecting` variant below is called
+    /// instead (never both), so this only runs where auto-reconnect isn't available.
     public func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
-        onConnectionChange?(false)
+        handleDisconnect(p, error: error, osIsReconnecting: false)
+    }
+
+    /// iOS 17+ disconnect callback — REQUIRED once `CBConnectPeripheralOptionEnableAutoReconnect` is used
+    /// (otherwise `connect` fails "invalid parameters"). When `isReconnecting` is true the OS is already
+    /// re-establishing the link, so we must NOT also issue our own `connect` (that races the OS); we just
+    /// drop to not-live and wait. When false, we re-arm ourselves exactly as the legacy path does.
+    @available(iOS 17, *)
+    public func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral,
+                               timestamp: CFAbsoluteTime, isReconnecting: Bool, error: Error?) {
+        handleDisconnect(p, error: error, osIsReconnecting: isReconnecting)
+    }
+
+    /// Shared disconnect handling. Data has stopped, so the link is not LIVE. We inspect `error` to be
+    /// honest about WHY: nil = we cancelled deliberately; `.connectionTimeout`(6) = out of range / band
+    /// died; `.peripheralDisconnected`(7) = the peer ended the link. We always re-arm a reconnect (the
+    /// always-on policy) unless the OS is already reconnecting for us.
+    private func handleDisconnect(_ p: CBPeripheral, error: Error?, osIsReconnecting: Bool) {
+        stopLiveWatchdog()
+        setLive(false)
         router.flush(live: false)
-        if p.identifier == boundId && wantsConnection { reconnect(p) }   // re-arm only while we want a link
+        guard p.identifier == boundId else { return }
+        // We deliberately cancelled (error == nil, e.g. unbind) → don't fight it. Otherwise re-arm, but
+        // only if the OS isn't already handling the reconnect for us (iOS 17 auto-reconnect).
+        let weCancelled = (error == nil)
+        if !osIsReconnecting && !weCancelled { reconnect(p) }
     }
 }
 
@@ -330,6 +398,7 @@ extension BandManager: CBPeripheralDelegate {
     /// updates (the standard 0x2A19 char) split off to onBattery; everything else is a frame.
     public func peripheral(_ p: CBPeripheral, didUpdateValueFor ch: CBCharacteristic, error: Error?) {
         guard let d = ch.value else { return }
+        noteFrame()   // ANY inbound value = the link is truly alive → LIVE + re-arm the staleness clock
         if ch.uuid == Self.BATTERY_LEVEL {
             if let pct = d.first { onBattery?(Int(pct)) }
             return
