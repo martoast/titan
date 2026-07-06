@@ -215,11 +215,16 @@ var CFG = {
   //   • ledCurrent → VC31B green-LED current. "auto" leaves adaptive brightness on (hrmGreenAdjust:true);
   //     a number forces a fixed current (hrmGreenAdjust:false + Bangle.hrmWr(0x17,val)).
   //   • analysisDepth → "hr" = no raw listener (1 Hz HR only); "full" = raw listener on (HRV / RR).
+  //   • fifoBatch (OPTIONAL, int 1–4) → VC31B FIFO IRQ divisor (reg 0x13, bottom 6 bits = fifoIntDiv).
+  //     Absent/1 = driver default (IRQ every sample, current behaviour — 0x13 untouched). N>1 makes the HRM
+  //     IRQ fire every N samples: the C driver drains all N per wake + the C FIR still sees every sample →
+  //     fewer per-sample JS wakeups, no waveform loss. EXPERIMENTAL (0x13 also gates the env/wear-detect IRQ
+  //     cadence) → a knob, only engaged when an OperatingPoint sets it.
   // The named points below are DATA, not hardcoded branches. pickOperatingPoint() chooses among them
   // from SIGNAL QUALITY (motion / confidence / battery); workout & sleep only BIAS the choice.
   OP: {
     REST:    { id: "REST",    sampleRate: 25,   ledCurrent: "auto", analysisDepth: "hr" },   // light motion / weak lock at rest
-    STILL:   { id: "STILL",   sampleRate: 12.5, ledCurrent: "auto", analysisDepth: "hr" },   // dead-still desk / quiet sleep → low power
+    STILL:   { id: "STILL",   sampleRate: 25,   ledCurrent: "auto", analysisDepth: "hr" },   // dead-still desk / quiet sleep → low power (25 Hz/40 ms: 12.5 Hz/80 ms sits below the FIR's 50 Hz design point + the 20-40 ms sweet spot)
     WORKOUT: { id: "WORKOUT", sampleRate: 50,   ledCurrent: 0xE0,   analysisDepth: "full" }  // in-motion: fast raw + bright LED
   },
   // The controller's decision thresholds — EVERY gate is a config number (no literals in the code).
@@ -238,11 +243,13 @@ var CFG = {
   // event + hrmPushEnv option are only enabled while this flag is on). When on, appends one compact CSV
   // row per PROFILE_MS to a capped 2-segment rolling Storage file (titan.prof0 / titan.prof1; the oldest
   // half is dropped when full). Row columns:
-  //   timestamp,opId,batteryVoltage,batteryPct,confidence,bpm,motionMag,ledCurrent,sampleRate,rawEnabled,pwrCPU,pwrHRM,pwrLCD,pwrBLE,pwrTotal,env
+  //   timestamp,opId,batteryVoltage,batteryPct,confidence,bpm,motionMag,ledCurrent,sampleRate,rawEnabled,pwrCPU,pwrHRM,pwrLCD,pwrBLE,pwrTotal,env,fifoDepth,dropped
   // pwr* are REAL per-device microamp estimates from E.getPowerUsage() (the on-device power meter — directly
   // attributes energy: CPU rises with the raw-callback load, HRM with the LED/AFE, BLE with the link); 0 if a
   // sub-device or the API is absent. env is the last HRM-env ambient-light reading (LED off) — signal-quality
-  // input (bright ambient vs poor contact); 0 if none.
+  // input (bright ambient vs poor contact); 0 if none. fifoDepth is the current VC31B FIFO fill (reg 0x03) and
+  // dropped a best-effort FIFO overflow/gap counter — the two failure modes to watch while fifoBatch batches
+  // (0 if not derivable). Both are read only inside the profiler tick → zero cost when PROFILE is off.
   // Pull it over the Espruino IDE with:  require("Storage").read("titan.prof0")  (and ...prof1)
   // or dump it over BLE with the C7 {"dump":1} command (→ "TP:"-prefixed lines).
   PROFILE: false,
@@ -263,6 +270,16 @@ var CFG = {
   //   Exp3 RATE SWEEP    : for hz in [100,50,25,12.5]:
   //                        setForcedOP({id:"e3_"+hz, sampleRate:hz, ledCurrent:0x5A, analysisDepth:"full"})
   //   Exp4 PROC DEPTH    : analysisDepth "hr" vs "full" at a fixed sampleRate+ledCurrent (as Exp1).
+  //   Exp5 POLL×FIFO     : the FIFO-batching matrix — cut per-sample JS wakeups without waveform loss.
+  //                        for poll in [20,40] (ms) and b in [1,2,4]:
+  //                          setForcedOP({id:"m_"+poll+"_"+b, sampleRate:(poll==20?50:25), ledCurrent:0x5A,
+  //                                       analysisDepth:"full", fifoBatch:b})
+  //                        log a few minutes each, then compare pwrCPU / pwrTotal / confidence / env /
+  //                        fifoDepth / dropped across the 6 cells. b>1 writes VC31B 0x13 (fifoIntDiv) so the
+  //                        HRM IRQ fires every b samples (C driver drains all b per wake, FIR still sees each
+  //                        one) → fewer CPU wakeups; watch fifoDepth/dropped for FIFO overflow/gaps, and env
+  //                        for the wear/ambient-IRQ interaction 0x13 also gates. NOTE: the LED axis of this
+  //                        sweep still needs a bench meter — E.getPowerUsage is a MODEL, blind to LED current.
   // 3) setForcedOP(null)                       // hand control back to the closed-loop controller.
   // All analyses (LED/rate → confidence, transitions, energy attribution AND absolute current draw) are read
   // straight off the dataset now — E.getPowerUsage() supplies real per-device microamps on-device.
@@ -1234,6 +1251,18 @@ function applyOperatingPoint(op, skipRaw) {
     try { Bangle.setHRMPower(0, "titan"); Bangle.setHRMPower(1, "titan"); } catch (e) {}
     curPollMs = pollMs;
   }
+  // EXPERIMENTAL — FIFO batching lever. VC31B reg 0x13 bottom 6 bits = fifoIntDiv (driver pins it to 1 = IRQ
+  // every sample). Writing N>1 makes the IRQ fire every N samples: the C driver drains all N per wake + the C
+  // FIR still sees each one → fewer per-sample JS wakeups, no waveform loss. Read-modify-write to preserve the
+  // upper bits; clamp 1–4 (HRMSAMPLE_MAX). Off (0x13 untouched) unless an OperatingPoint sets fifoBatch>1.
+  // MUST run AFTER any HRM power-cycle above — a rate change re-inits the VC31 and resets 0x13 to the default.
+  // RISK: 0x13 also gates the env/wear-detect IRQ cadence, so batching can shift ambient/wear-detect timing.
+  if (op.fifoBatch !== undefined && op.fifoBatch > 1) {
+    try {
+      var fb = op.fifoBatch | 0; if (fb < 1) fb = 1; if (fb > 4) fb = 4;   // HRMSAMPLE_MAX = 4
+      Bangle.hrmWr(0x13, (Bangle.hrmRd(0x13) & ~0x3F) | fb);
+    } catch (e) {}
+  }
   curOpId = op.id; curSampleRate = op.sampleRate; curLed = op.ledCurrent;
   if (!skipRaw) setRawCapture(op.analysisDepth === "full");
 }
@@ -1364,6 +1393,7 @@ function reconcileHrm() {
 // proxy, so pwrCPU directly measures the raw-callback cost (Exp 1/4) without any external hardware.
 var profTimer = null;   // the per-second logger interval (null = not logging)
 var profSeg = 0, profSegBytes = 0;   // 2-segment ring cursor
+var profDropped = 0;    // best-effort FIFO overflow/gap counter (a failure mode to watch while fifoBatch batches)
 
 // HRM-env: ambient light measured with the LED OFF — a real signal-quality input (bright ambient light
 // hurts confidence differently than poor skin contact). The event + its hrmPushEnv option are enabled ONLY
@@ -1390,6 +1420,13 @@ function readLedCurrent() {
   try { return Bangle.hrmRd(0x17); } catch (e) { return -1; }
 }
 
+// Current VC31B FIFO fill — the write-index register (~0x03), bottom 6 bits. Not all driver builds surface it
+// reliably; on error we log 0 (rather than guess). Read ONLY inside the profiler tick, so it costs nothing in
+// production. This is one of the two batching failure modes to watch (a full FIFO between drains = a gap).
+function readFifoDepth() {
+  try { return Bangle.hrmRd(0x03) & 0x3F; } catch (e) { return 0; }
+}
+
 // Append one row to the rolling ring: when the active segment fills half the budget, flip to the other
 // segment and ERASE it first (that segment holds the oldest rows → drop-oldest). Total ≤ PROFILE_MAX_BYTES.
 function profAppend(row) {
@@ -1406,6 +1443,10 @@ function profileTick() {
   // a device may not report every sub-device → each field falls back to 0.
   var dev = {}, pTotal = 0;
   try { var u = E.getPowerUsage(); if (u) { dev = u.device || {}; pTotal = u.total || 0; } } catch (e) {}
+  // Best-effort dropped-sample detection: a FIFO that reads full (≥ HRMSAMPLE_MAX) between ticks means the
+  // driver missed a drain while batching → a gap. Heuristic only; profDropped stays 0 when not derivable.
+  var fifoDepth = readFifoDepth();
+  if (fifoDepth >= 4) profDropped++;
   var row = [
     Math.round(getTime() * 1000),      // timestamp (unix ms)
     curOpId || "-",                    // opId — the active operating point
@@ -1422,7 +1463,9 @@ function profileTick() {
     dev.LCD || 0,                      // pwrLCD (µA)
     dev.BLE || 0,                      // pwrBLE (µA) — the link
     pTotal,                            // pwrTotal (µA) — whole-device estimate
-    state.hrmEnv || 0                  // env (last HRM-env ambient-light reading; 0 if none)
+    state.hrmEnv || 0,                 // env (last HRM-env ambient-light reading; 0 if none)
+    fifoDepth,                         // fifoDepth — current VC31B FIFO fill (reg 0x03, bottom 6 bits; 0 if unreadable)
+    profDropped                        // dropped — best-effort FIFO overflow/gap counter (0 if not derivable)
   ].join(",");
   profAppend(row);
 }

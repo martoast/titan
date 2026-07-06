@@ -44,7 +44,8 @@ function buildWatch(clock, opts = {}) {
   let powerSave = true;                   // default ON at boot (Espruino default)
   let powerSaveTimer = 0;                 // ms of stillness; ≥ POWER_SAVE_TIMEOUT ⇒ step counter gated OFF
   const POWER_SAVE_TIMEOUT = 60000;
-  const hrmRegs = {};                    // VC31B registers written via Bangle.hrmWr (0x17 = green-LED current)
+  const hrmRegs = {};                    // VC31B registers written via Bangle.hrmWr (0x17 = green-LED current, 0x13 = FIFO IRQ divisor)
+  let fifoFill = 0;                       // modelled VC31B FIFO fill, read back via hrmRd(0x03) (the profiler's fifoDepth column)
   let dataHandler = null;                // Bluetooth.on('data')
   const allFrames = [];                  // every println line (for inspection)
   let deliver = null;                    // hook: deliver a line to the phone when connected
@@ -106,8 +107,17 @@ function buildWatch(clock, opts = {}) {
     // THE TRAP: Bangle.setPollInterval() force-clears powerSave (bangleFlags &= ~JSBF_POWER_SAVE) as a
     // side effect — which freezes powerSaveTimer and can permanently gate the step counter OFF.
     setPollInterval() { powerSave = false; },
-    // VC31B raw register access (the operating-point controller forces the green-LED current via 0x17).
-    hrmWr(reg, val) { hrmRegs[reg] = val; }, hrmRd(reg) { return hrmRegs[reg] === undefined ? 0x50 : hrmRegs[reg]; },
+    // VC31B raw register access (the operating-point controller forces the green-LED current via 0x17 and the
+    // FIFO IRQ divisor / fifoIntDiv via 0x13). Reads honour written values; unwritten regs return faithful
+    // power-on defaults — 0x13 = 1 (IRQ every sample, the driver's pinned default), 0x03 = the modelled FIFO
+    // fill (readable so the profiler's fifoDepth column has a real source), else 0x50.
+    hrmWr(reg, val) { hrmRegs[reg] = val; },
+    hrmRd(reg) {
+      if (hrmRegs[reg] !== undefined) return hrmRegs[reg];
+      if (reg === 0x13) return 0x01;
+      if (reg === 0x03) return fifoFill;
+      return 0x50;
+    },
     buzz() {}, isLCDOn() { return lcdOn; }, isCharging() { return false; },
     // The firmware pedometer. Real Bangle.js counts steps from the accel poll and exposes them here; it
     // keeps counting DURING a workout (that's the whole point of the 12.5 Hz poll) — but ONLY while the OS
@@ -243,6 +253,10 @@ function buildWatch(clock, opts = {}) {
     pickOP() { return sandbox.pickOperatingPoint(); },      // what the controller WOULD choose right now
     opId() { return sandbox.curOpId; },                     // the operating point currently applied
     ledCurrent() { return hrmRegs[0x17]; },                 // the forced VC31B green current (undefined = auto)
+    fifoReg13() { return hrmRegs[0x13]; },                  // raw 0x13 as written (undefined = never written = fifoBatch off)
+    fifoDiv() { const r = hrmRegs[0x13]; return r === undefined ? 1 : (r & 0x3F); },   // written FIFO IRQ divisor (bottom 6 bits)
+    writeReg(reg, val) { hrmRegs[reg] = val; },             // seed a VC31B reg (test upper-bit preservation on read-modify-write)
+    setFifoFill(n) { fifoFill = n | 0; },                   // model the FIFO fill that hrmRd(0x03) → fifoDepth returns
     setForcedOP(op) { sandbox.setForcedOP(op); },           // pin/clear an OP (experiment override)
     profileOn(v) { sandbox.setProfile(v); },                // toggle the telemetry logger at runtime
     profRows() {                                            // all CSV rows across the 2-segment ring

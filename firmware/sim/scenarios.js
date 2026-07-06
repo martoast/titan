@@ -917,7 +917,7 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('forcedOP cleared · controller resumes → raw off at rest', s.watch.rawRegistered() === false && s.watch.pickOP().id !== 'EXP', `raw=${s.watch.rawRegistered()} op=${s.watch.pickOP().id}`);
 })();
 
-// 35) TELEMETRY LOGGER: nothing when OFF (default); accumulates ~1 row/s with all 16 fields (incl. real
+// 35) TELEMETRY LOGGER: nothing when OFF (default); accumulates ~1 row/s with all 18 fields (incl. real
 //     E.getPowerUsage power attribution + HRM-env ambient light) when ON; stops writing when toggled OFF.
 (() => {
   const s = new Session();
@@ -932,9 +932,9 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   const rows = s.watch.profRows();
   check('telemetry · rows accumulate ~1/s once PROFILE is on', rows.length >= 10, `rows=${rows.length}`);
   const f = rows[rows.length - 1].split(',');
-  check('telemetry · each row carries all 16 fields', f.length === 16, `n=${f.length} row=${rows[rows.length - 1]}`);
+  check('telemetry · each row carries all 18 fields', f.length === 18, `n=${f.length} row=${rows[rows.length - 1]}`);
   // 0 timestamp,1 opId,2 batteryVoltage,3 batteryPct,4 confidence,5 bpm,6 motionMag,7 ledCurrent,8 sampleRate,
-  // 9 rawEnabled,10 pwrCPU,11 pwrHRM,12 pwrLCD,13 pwrBLE,14 pwrTotal,15 env
+  // 9 rawEnabled,10 pwrCPU,11 pwrHRM,12 pwrLCD,13 pwrBLE,14 pwrTotal,15 env,16 fifoDepth,17 dropped
   check('telemetry · row fields are sane (opId set, voltage>0, batteryPct>0, confidence=96, rawEnabled=0 at rest)',
     /^(REST|STILL|WORKOUT)$/.test(f[1]) && parseFloat(f[2]) > 0 && parseInt(f[3]) > 0 && parseInt(f[4]) === 96 && f[9] === '0',
     `opId=${f[1]} V=${f[2]} pct=${f[3]} conf=${f[4]} raw=${f[9]}`);
@@ -968,6 +968,75 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   const fullCpu = Math.max(...fullRows.map((r) => parseInt(r.split(',')[10])));
   check('telemetry (Exp 1) · pwrCPU (E.getPowerUsage) is higher with the raw callback on (real on-device callback cost)',
     fullCpu > restCpu, `restCpu=${restCpu} fullCpu=${fullCpu}`);
+})();
+
+// 37) STILL point retuned to 25 Hz: the dead-still low-power floor now polls at 25 Hz/40 ms (was 12.5/80,
+//     below the FIR design point) — the id + low-power intent (raw off, adaptive LED) are unchanged.
+(() => {
+  const s = new Session();
+  s.connect(); s.advance(2000);
+  for (let t = 0; t < 20; t++) { s.watch.accel(0.001, 0.0, 1.0); s.watch.hrm(60, 96); s.clock.advance(1000); }  // dead still, good lock
+  check('STILL retune · dead-still floor is 25 Hz (was 12.5) and still the low-power STILL point (raw off)',
+    s.watch.pickOP().id === 'STILL' && s.watch.pickOP().sampleRate === 25 && s.watch.rawRegistered() === false,
+    `op=${s.watch.pickOP().id} hz=${s.watch.pickOP().sampleRate} raw=${s.watch.rawRegistered()}`);
+})();
+
+// 38) fifoBatch OPERATING-POINT KNOB (the batching lever): a fifoBatch:N OP writes VC31B 0x13 (FIFO IRQ
+//     divisor) with N in the bottom 6 bits (read-modify-write preserves the upper bits); fifoBatch:1/absent
+//     never touches 0x13 (driver default = IRQ every sample).
+(() => {
+  const s = new Session();
+  s.connect(); s.advance(2000);
+
+  // A plain OP with no fifoBatch must NOT write 0x13 at all (untouched = driver default).
+  s.watch.setForcedOP({ id: 'nofifo', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full' });
+  check('fifoBatch · an OP without fifoBatch does NOT write reg 0x13 (driver default untouched)',
+    s.watch.fifoReg13() === undefined, `0x13=${s.watch.fifoReg13()}`);
+
+  // fifoBatch:1 is a no-op too (== current behaviour).
+  s.watch.setForcedOP({ id: 'fifo1', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full', fifoBatch: 1 });
+  check('fifoBatch:1 · still does NOT write reg 0x13 (== IRQ every sample)',
+    s.watch.fifoReg13() === undefined, `0x13=${s.watch.fifoReg13()}`);
+
+  // fifoBatch:2 writes 0x13 with 2 in the low 6 bits.
+  s.watch.setForcedOP({ id: 'fifo2', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full', fifoBatch: 2 });
+  check('fifoBatch:2 · writes reg 0x13 with 2 in the bottom 6 bits',
+    s.watch.fifoReg13() !== undefined && s.watch.fifoDiv() === 2, `0x13=${s.watch.fifoReg13()} div=${s.watch.fifoDiv()}`);
+
+  // fifoBatch:4 (== HRMSAMPLE_MAX).
+  s.watch.setForcedOP({ id: 'fifo4', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full', fifoBatch: 4 });
+  check('fifoBatch:4 · writes 4 (HRMSAMPLE_MAX) into the divisor', s.watch.fifoDiv() === 4, `div=${s.watch.fifoDiv()}`);
+
+  // Read-modify-write must PRESERVE the upper bits: seed 0x13 with high bits set, then batch, and confirm
+  // only the bottom 6 change (0xC0 upper bits survive alongside the new divisor).
+  s.watch.writeReg(0x13, 0xC1);   // seed upper bits (0xC0) + a stale divisor
+  s.watch.setForcedOP({ id: 'fifoRMW', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full', fifoBatch: 3 });
+  check('fifoBatch · read-modify-write preserves the upper bits (0xC0 kept, low bits → 3)',
+    s.watch.fifoReg13() === 0xC3, `0x13=0x${(s.watch.fifoReg13() || 0).toString(16)}`);
+
+  s.watch.setForcedOP(null);
+})();
+
+// 39) fifoDepth + dropped telemetry columns: the profiler row now appends the two batching failure-mode
+//     signals — fifoDepth (read back from the modelled FIFO fill reg 0x03) and dropped (best-effort counter).
+(() => {
+  const s = new Session();
+  s.connect(); s.watch.profileOn(true);
+  s.watch.setFifoFill(2);   // a small, non-overflowing FIFO fill
+  for (let t = 0; t < 6; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(60, 96); s.watch.hrmEnv(1000 + t); s.clock.advance(1000); }
+  let rows = s.watch.profRows();
+  let f = rows[rows.length - 1].split(',');
+  check('telemetry · row has 18 columns incl. fifoDepth + dropped appended', f.length === 18, `n=${f.length}`);
+  check('telemetry · fifoDepth reflects the FIFO fill register (0x03), dropped=0 when not overflowing',
+    parseInt(f[16]) === 2 && parseInt(f[17]) === 0, `fifoDepth=${f[16]} dropped=${f[17]}`);
+  // A full FIFO (≥ HRMSAMPLE_MAX) between ticks is the best-effort gap signal → dropped increments.
+  s.watch.setFifoFill(4);
+  for (let t = 0; t < 3; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(60, 96); s.clock.advance(1000); }
+  rows = s.watch.profRows();
+  f = rows[rows.length - 1].split(',');
+  check('telemetry · a full FIFO between ticks increments the best-effort dropped counter',
+    parseInt(f[16]) === 4 && parseInt(f[17]) > 0, `fifoDepth=${f[16]} dropped=${f[17]}`);
+  s.watch.profileOn(false);
 })();
 
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
