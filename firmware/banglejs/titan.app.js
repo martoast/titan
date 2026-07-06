@@ -119,22 +119,14 @@ var CFG = {
   HRM_SPORT_RUN: 1,                  // general motion-tolerant sport profile (lifting, running, etc.)
   HRM_SPORT_BIKE: 2,                 // biking sport profile (steadier wrist, different artifact band)
 
-  // --- 24/7 OFFLINE REST MODE (battery + light buffer) -----------------------
-  // Worn all day with NO phone in range, running the HRM continuously at 25 Hz AND logging raw PPG
-  // would drain the battery and fill the flash ring in ~16 h. So while OFFLINE + at REST (no workout,
-  // no sleep session) we DUTY-CYCLE the HRM: power it on just long enough to read a stable bpm, then
-  // off — and log ONE lightweight T5 HR-trend point per cycle (no raw PPG). ~20 B/min → the ring
-  // holds WEEKS and the reconnect sync is a quick trickle. Continuous capture + raw PPG resume the
-  // instant a workout or a sleep session starts, or a phone connects (the real-time path). This is
-  // the Whoop trick: sample sparsely when still, densely when it matters.
-  REST_DUTY: true,                   // master switch for offline-rest duty-cycling
-  REST_DUTY_ON_MS: 8000,             // measure-window HARD CAP — a good lock (conf>=90) closes the burst early; the VC31 LED is ~85-90% of drain, so shorter ON is the biggest battery lever
-  REST_DUTY_PERIOD_MS: 30000,        // MOVING cadence: a reading every 30 s — Whoop-style continuous-ENOUGH HR while active (the app graph stays live; workouts go fully continuous)
-  // Motion-gated rest cadence (Whoop's trick): when you're STILL (desk / sitting), relax the period to
-  // save battery; the instant you move, snap back to the tight REST_DUTY_PERIOD_MS. motionEMA is the
-  // same always-on accel signal the GPS gate + auto-detect already maintain, so the gating is free.
-  REST_DUTY_PERIOD_STILL_MS: 60000,  // STILL cadence: a reading every 60 s (desk/sitting) — NEVER a multi-minute HR blackout; motion snaps back to the 30 s moving period instantly
-  REST_STILL_MOTION: 0.07,           // motionEMA below this = "still" (under AUTO_MOTION_LO: typing stays still, walking trips it)
+  // --- 24/7 REST HR (continuous, Whoop-like) --------------------------------
+  // The VC31 HR algorithm runs in a C interrupt, so the 1 Hz HR (the HRM event) costs only ~1 mA and lets
+  // the CPU idle — HR runs CONTINUOUSLY whenever streaming, at rest or not (no LED duty-cycling). The
+  // EXPENSIVE path is the raw waveform (HRM-raw, 25-50 Hz into JS, for HRV), so that listener is registered
+  // ONLY during workouts + the accel-gated sleep bursts (see setRawCapture). At 24/7 rest we publish HR on
+  // confidence (onHRM): live 1 Hz T5 when connected, else a light T5 trend point banked to the ring —
+  // THROTTLED so a day of wear stays weeks of flash (no raw PPG at rest).
+  HR_TREND_MS: 30000,                // offline rest: bank at most one T5 HR-trend point per 30 s (ring longevity)
 
   // --- OVERNIGHT SLEEP duty-cycle (battery) ----------------------------------
   // Running the HRM continuously at 25 Hz all night (for HRV) drains a ~200 mAh Bangle.js 2 in ~16 h
@@ -142,8 +134,8 @@ var CFG = {
   // either; it samples a clean burst periodically. So overnight we DUTY-CYCLE the HRM in sleep too:
   // power it on for a window long enough to settle the VC31 and capture a clean RR series (HRV), then
   // off. Crucially — unlike REST duty (which logs only a light T5 HR point) — raw PPG IS still logged
-  // during each ON window (pushSample → logSample, because restModeActive() stays false in sleep), so
-  // the server gets per-burst nocturnal HRV across the whole night. ~17% duty → ~6x the HRM battery.
+  // during each ON window (pushSample → logSample, because state.workout stays false in sleep), so
+  // the server gets per-burst nocturnal HRV across the whole night. ~17% raw duty → far less raw drain.
   SLEEP_DUTY: true,                  // master switch for overnight sleep duty-cycling
   SLEEP_DUTY_ON_MS: 30000,           // 30 s clean HRV burst (settle + a solid RR series)
   SLEEP_DUTY_PERIOD_MS: 180000,      // one burst every 3 min (~17% duty); widen ON if HRV looks thin
@@ -558,9 +550,12 @@ function flushFrame() {
 // Route each PPG sample: live T1 frames while connected (desk/real-time), compact
 // T2 logging to flash while offline (overnight → morning sync).
 function pushSample(ppg) {
+  // Only called while raw capture is active (a workout or a sleep HRV burst) — at 24/7 rest the HRM-raw
+  // listener is unregistered, so this never fires and no raw PPG is logged. Connected → live T1 frame;
+  // offline → compact log (logSample redirects to T6 accel during a workout).
   state.ppgCount++;
   if (state.connected) pushLiveSample(ppg);
-  else if (!restModeActive()) logSample(ppg);   // rest+offline logs a light T5 trend, not raw PPG
+  else logSample(ppg);
 }
 
 // Append one (ppg, accel, timestamp) sample into the current live T1 frame.
@@ -587,19 +582,31 @@ function onHRMRaw(e) {
 }
 
 function onHRM(e) {
-  // The on-chip averaged bpm. We use it two ways:
-  //  - whenever a bridge is CONNECTED, stream it (T5) so the live bpm shown in the app
-  //    mirrors exactly what's on the watch face — same value, ~1 Hz, rest or workout.
-  //  - during a WORKOUT even while OFFLINE, log it (emitHrFrame routes to flash) so a
-  //    phone-free run still recovers its HR on morning sync.
-  // This averaged bpm is for HR display only — HRV/recovery is always computed server-side
-  // from the raw PPG (T1) windows, which carry the ms-level IBI the average has discarded.
-  state.bpm = e.bpm | 0;
-  state.conf = e.confidence | 0;
-  if (state.streaming && (state.connected || state.workout)) emitHrFrame(state.bpm, state.conf);
-  // Rest duty-cycle: a good lock ends the ON window EARLY (don't burn the full 8 s once the bpm is solid).
-  if (restDutyOnTimer && state.conf >= 90) restBurstClose();
+  // The on-chip 1 Hz averaged bpm. PUBLISH ON CONFIDENCE (Whoop-like): only a solid lock (conf>=90)
+  // updates the displayed bpm AND publishes an HR frame — live T5 when connected, else a banked T5 trend
+  // point (publishHr). A low-confidence reading HOLDS the last good bpm (no jitter to a bad value) and
+  // publishes nothing; the 5 s TB heartbeat keeps the link "live" through those gaps. HR streams
+  // continuously (the HRM stays powered) — HRV/recovery is still computed server-side from the raw PPG.
+  var bpm = e.bpm | 0, conf = e.confidence | 0;
+  state.conf = conf;
+  if (conf >= 90 && bpm > 0) {
+    state.bpm = bpm;
+    if (state.streaming) publishHr();
+  }
   if (uiVisible) drawUI();
+}
+
+// Route one good HR reading: live 1 Hz T5 when connected (and per-reading offline during a workout — the
+// HR fallback for a phone-free session); at 24/7 rest offline, bank a light T5 trend point to the ring,
+// THROTTLED to CFG.HR_TREND_MS so weeks of wear fit the flash. emitHrFrame does the connected-vs-ring routing.
+var lastTrendMs = 0;
+function publishHr() {
+  if (!state.connected && !state.workout) {
+    var now = Math.round(getTime() * 1000);
+    if (now - lastTrendMs < CFG.HR_TREND_MS) return;   // throttle the offline rest trend bank
+    lastTrendMs = now;
+  }
+  emitHrFrame(state.bpm, state.conf);
 }
 
 // T5 frame: one HR reading → bpm + confidence + timestamp. 12 bytes. Live when connected, else
@@ -848,14 +855,14 @@ function endWorkout() {
   emitWorkoutSession(woStartSec, Math.round(getTime()), woKind, woManual);
   clearWorkoutPref();      // session done → don't resume/re-seal it on the next boot
   // Tell the phone the workout is OVER, explicitly. Don't make it infer the end from the sport tag
-  // dropping to 0 — at rest the HRM duty-cycles, so those sport==0 frames may never arrive, and the
+  // dropping to 0 — at rest low-confidence readings hold-and-skip, so those sport==0 frames may never arrive, and the
   // app would leave the workout hanging "live" (never closing, never sealing). This deterministic
   // signal makes the app close + seal the moment you finish on the watch; the delayed re-sends make
   // it survive a dropped line.
   emitWorkoutEnd();
   setTimeout(emitWorkoutEnd, 1200);
   setTimeout(emitWorkoutEnd, 3500);
-  reconcileHrm();          // back to rest: continuous if connected, else duty-cycle the HRM
+  reconcileHrm();          // back to rest: HR continuous, drop the raw waveform listener
   applyAccelRate();
   if (!(flushTimer || flushSf)) setConnRest();   // workout over → relax the link (unless a drain still wants it fast)
   if (uiVisible) drawUI();
@@ -1060,7 +1067,7 @@ function onConnect() {
   // capture on/off) and persists across reboots via the titan.run pref — so turning it off STAYS off.
   // Auto-starting on every connect meant a stray gym session kept logging and then tried to dump it all
   // on connect, freezing the watch.
-  if (state.streaming) reconcileHrm();   // already recording → continuous during a workout; at rest, keep duty-cycling (LED battery) — the heartbeat below keeps the link "live" between HR bursts
+  if (state.streaming) reconcileHrm();   // already recording → HR continuous (raw on only for workout/sleep); low-conf gaps are covered by the TB heartbeat below
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
   // Sync today's step total right away (captures a walk taken while the phone was left behind).
@@ -1085,7 +1092,7 @@ function onDisconnect() {
   logAccum = [];
   logMotion = 0;
   lastAccelV = null;
-  reconcileHrm();   // no phone → if we're idle, drop into the battery-saving HR duty cycle
+  reconcileHrm();   // no phone → HR stays continuous; raw stays off at rest (battery)
   if (uiVisible) drawUI();
 }
 
@@ -1135,79 +1142,32 @@ function applyHrmMode() {
   } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
 }
 
-// ----- 24/7 HRM power: continuous when it matters, duty-cycled when idle ----------
-// Rest = streaming, no workout, no sleep session. THE battery-critical 24/7 case. The HRM/PPG LED — not
-// the radio — is the real drain (a prior ~50%/night bug), so we duty-cycle the LED at rest EVEN when a
-// phone is connected: holding an always-on BLE link must not mean always powering the LED. Whoop's trick
-// — sample HR in short bursts at rest, continuously only during a workout. Connected changes only the
-// DELIVERY (each burst's reading streams live vs banks to flash), not whether we duty-cycle.
-var restDutyTimer = null;    // timeout to the NEXT burst (null = mid-window or not duty-cycling)
-var restDutyOnTimer = null;  // the "measure window done → read + power off" timeout
-
-function restModeActive() {
-  return state.streaming && !state.workout && state.swMode !== "sleep";
+// ----- 24/7 HRM power: HR continuous, RAW only where it's needed ----------
+// The VC31 HR algorithm runs in a C interrupt: subscribing to the 1 Hz HRM event costs ~1 mA and lets the
+// CPU idle, so HR runs CONTINUOUSLY whenever streaming (the HRM LED/AFE stays powered — no rest duty-
+// cycling). The battery-critical lever is instead the RAW WAVEFORM listener: with no HRM-raw listener the
+// event never fires into JS and the CPU idles; registering it (25-50 Hz into JS, for HRV) is the ~5 mA
+// cost. setRawCapture() toggles exactly that listener. Rest = HR only. Workout/sleep-burst = HR + raw.
+var rawCaptureOn = false;
+function setRawCapture(on) {
+  on = !!on;
+  if (on === rawCaptureOn) return;   // idempotent: never stack (or drop the wrong) duplicate listeners
+  rawCaptureOn = on;
+  try {
+    if (on) Bangle.on("HRM-raw", onHRMRaw);
+    else Bangle.removeListener("HRM-raw", onHRMRaw);
+  } catch (e) {}
 }
 
-// Motion-gated cadence: when you're STILL, relax the period (battery); when you're MOVING, keep it
-// tight so HR stays responsive. motionEMA is the always-on accel signal — re-evaluated every cycle, so
-// it tightens the instant you start moving and relaxes once you settle. Whoop does exactly this.
-function restDutyPeriod() {
-  return (motionEMA < CFG.REST_STILL_MOTION) ? CFG.REST_DUTY_PERIOD_STILL_MS : CFG.REST_DUTY_PERIOD_MS;
-}
-
-// One duty cycle: power the HRM on, let it settle for REST_DUTY_ON_MS, emit the bpm as a T5 HR point,
-// power back off, then self-schedule the NEXT burst by the current motion state. The whole loop stands
-// down the moment we leave rest mode (workout/sleep own the power from there). Runs whether or not a
-// phone is connected — emitHrFrame streams the reading LIVE when connected, else banks it to the ring —
-// so a held BLE link still gets ~one HR sample per period without the LED burning between bursts.
-function restDutyTick() {
-  // Reentrancy guard: the lcdPower (screen-wake) handler kicks this out-of-band. If it fires DURING an
-  // OFF gap (a next-burst timer pending), just nulling the handle would orphan that timer and spawn a
-  // SECOND self-scheduling chain — every glance adds another parallel loop, powering the LED far more
-  // than one burst/period (the ~50%/night regression). Cancel the pending burst so only ONE chain lives.
-  if (restDutyTimer) { clearTimeout(restDutyTimer); restDutyTimer = null; }
-  if (!restModeActive()) { stopRestDuty(); return; }
-  try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
-  applyHrmMode();   // force normal mode + 40 Hz rest cadence — else a burst after a workout inherits stale sportMode 1 + 20 ms (inflated HR + more power)
-  if (restDutyOnTimer) clearTimeout(restDutyOnTimer);
-  restDutyOnTimer = setTimeout(restBurstClose, CFG.REST_DUTY_ON_MS);   // hard cap; a good lock closes it early (onHRM)
-}
-
-// Close the current rest burst: emit the reading, power the LED off, schedule the next burst. Called by
-// the ON-window hard-cap timer OR EARLY from onHRM the instant confidence locks (conf>=90) — the VC31 LED
-// is the drain, so ending the burst on a good lock (not always waiting the full window) roughly halves
-// rest HRM duty. Idempotent: both callers guard on restDutyOnTimer so it fires exactly once per burst.
-function restBurstClose() {
-  if (!restDutyOnTimer) return;
-  clearTimeout(restDutyOnTimer);
-  restDutyOnTimer = null;
-  if (state.bpm > 0) emitHrFrame(state.bpm, state.conf);   // live T5 if connected, else → ring (a tiny HR-trend point)
-  if (!restModeActive()) { stopRestDuty(); return; }       // left rest mid-window → don't power off, the new mode owns it
-  try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
-  // gap = full cycle minus the ON window, so REST_DUTY_PERIOD_*_MS keeps meaning "one reading per period"
-  restDutyTimer = setTimeout(restDutyTick, Math.max(1000, restDutyPeriod() - CFG.REST_DUTY_ON_MS));
-}
-
-function startRestDuty() {
-  if (!CFG.REST_DUTY || restDutyTimer || restDutyOnTimer) return;   // already cycling (timer = waiting, onTimer = mid-window)
-  restDutyTick();   // first reading immediately; it self-schedules from there
-}
-
-function stopRestDuty() {
-  if (restDutyTimer) { clearTimeout(restDutyTimer); restDutyTimer = null; }
-  if (restDutyOnTimer) { clearTimeout(restDutyOnTimer); restDutyOnTimer = null; }
-}
-
-// ----- Overnight SLEEP HRM duty-cycle (battery) -------------------------------------------
-// Sleep wants HRV, which needs raw PPG + a clean RR series — but holding the HRM on continuously
-// at 25 Hz all night flattens a ~175 mAh Bangle.js 2 in ~16 h (the CPU never deep-sleeps to run the
-// VC31 algorithm — ~5 mA, ~85-90% of the overnight drain). Whoop doesn't sample continuously at rest
-// either. So overnight we BURST: power the HRM on for SLEEP_DUTY_ON_MS (long enough to settle + grab a
-// solid RR window for HRV), then off for the rest of the period. Unlike rest-duty (which logs only a
-// light T5 point), restModeActive() stays false during sleep — so each ON window logs raw PPG to flash
-// (T2) and HR (T1) through the normal streaming path, exactly as continuous sleep did, just in bursts.
-var sleepDutyTimer = null;    // the per-period "take a burst" interval (null = not duty-cycling)
-var sleepDutyOnTimer = null;  // the "burst window done → power off" timeout
+// ----- Overnight SLEEP raw-HRV bursts (battery) -------------------------------------------
+// Sleep keeps HR CONTINUOUS (the HRM stays powered → an overnight HR trend via onHRM). What duty-cycles
+// overnight is the RAW WAVEFORM (HRV needs raw PPG + a clean RR series, and raw is the expensive path):
+// we register the HRM-raw listener for SLEEP_DUTY_ON_MS (a clean burst), then drop it for the rest of the
+// period. Accel-gated (Whoop's "sample only when still") — a burst fired mid-toss is just noise the server
+// rejects, so if moving we defer and re-check soon. Each ON window logs raw PPG (T2) + HR (T1) exactly as
+// continuous sleep did, just in bursts. The HRM is NEVER powered off between bursts anymore.
+var sleepDutyTimer = null;    // the per-period "open a raw burst" interval (null = not duty-cycling)
+var sleepDutyOnTimer = null;  // the "burst window done → drop the raw listener" timeout
 
 function sleepModeActive() {
   return state.streaming && state.swMode === "sleep" && !state.workout;
@@ -1215,27 +1175,23 @@ function sleepModeActive() {
 
 function sleepDutyTick() {
   if (!sleepModeActive()) { stopSleepDuty(); return; }
-  // Accel-gate: only burst when the wrist is still (clean HRV) — if moving, defer and re-check shortly
-  // instead of wasting a 30 s ON window on motion noise. sleepDutyOnTimer doubles as the retry timer
-  // here (we're not in an ON window when moving, so there's no off-timer to clobber).
+  // Accel-gate: only capture raw when the wrist is still (clean HRV) — if moving, defer and re-check
+  // shortly instead of wasting a 30 s window on motion noise. sleepDutyOnTimer doubles as the retry timer.
   if (motionEMA > CFG.SLEEP_STILL_MOTION) {
     if (sleepDutyOnTimer) clearTimeout(sleepDutyOnTimer);
     sleepDutyOnTimer = setTimeout(sleepDutyTick, CFG.SLEEP_DUTY_RETRY_MS);
     return;
   }
-  try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
-  applyHrmMode();   // 25 Hz rest cadence → clean RR + raw PPG for HRV during the burst
+  setRawCapture(true);   // open the raw waveform for one HRV burst (the HRM is already powered continuously)
   if (sleepDutyOnTimer) clearTimeout(sleepDutyOnTimer);
   sleepDutyOnTimer = setTimeout(function () {
     sleepDutyOnTimer = null;
-    // Close the burst's partial T2 frame BEFORE powering down. Left open, it completes early in the
-    // NEXT burst and its durMs spans the ~150s HRM-off gap — the receiver spreads the samples evenly
-    // across that gap, the built windows claim a ~5-7 Hz rate, and the server's sanity gate rejects
-    // the whole night's PPG (no overnight HRV/recovery). One flush per burst keeps every frame's
-    // timeline honest.
+    // Close the burst's partial T2 frame BEFORE dropping raw. Left open, it completes early in the NEXT
+    // burst and its durMs spans the ~150s gap — the receiver spreads samples across it, the built windows
+    // claim a ~5-7 Hz rate, and the server's sanity gate rejects the whole night's PPG. One flush per
+    // burst keeps every frame's timeline honest.
     writeLogFrame();
-    // The HRM handler logged HR (T1) + raw PPG (T2) across the burst — just power the LED+AFE back down.
-    if (sleepModeActive()) { try { Bangle.setHRMPower(0, "titan"); } catch (e) {} }
+    if (sleepModeActive()) setRawCapture(false);   // burst done → drop raw; the HR trend continues via onHRM
   }, CFG.SLEEP_DUTY_ON_MS);
 }
 
@@ -1275,23 +1231,21 @@ function sleepScreenRestore() {
   sleepWakeSaved = null;
 }
 
-// Single source of truth for HRM power, called on every state transition. Sleep → burst duty-cycle
-// (battery); rest → per-minute duty-cycle (connected OR offline — the LED is the drain, so we duty-cycle
-// even on a live link); workout → continuous HRM at the right sport mode + rate. If SLEEP_DUTY is off,
-// sleep falls through to continuous (the old behaviour) so the night is never left un-sampled.
+// Single source of truth for HRM power + raw capture, called on every state transition. HR is ALWAYS on
+// while streaming (the cheap 1 Hz algorithm); only the raw waveform listener moves: sleep → accel-gated
+// HRV bursts (SLEEP_DUTY), workout → continuous raw, 24/7 rest → no raw (HR only). If SLEEP_DUTY is off,
+// sleep falls through to continuous raw so the night is never left un-sampled.
 function reconcileHrm() {
-  if (!state.streaming) { stopRestDuty(); stopSleepDuty(); return; }   // stopStreaming() owns the power-off
-  if (sleepModeActive() && CFG.SLEEP_DUTY) {
-    stopRestDuty();
-    startSleepDuty();
-  } else if (restModeActive()) {
-    stopSleepDuty();
-    startRestDuty();
+  if (!state.streaming) { stopSleepDuty(); setRawCapture(false); return; }   // stopStreaming() owns the power-off
+  try { Bangle.setHRMPower(1, "titan"); } catch (e) {}   // HR runs continuously whenever streaming
+  applyHrmMode();
+  if (sleepModeActive()) {
+    if (CFG.SLEEP_DUTY) { setRawCapture(false); startSleepDuty(); }   // raw toggled per accel-gated burst
+    else { stopSleepDuty(); setRawCapture(true); }                    // no duty → continuous raw all night
+  } else if (state.workout) {
+    stopSleepDuty(); setRawCapture(true);                             // workout → continuous raw waveform
   } else {
-    stopRestDuty();
-    stopSleepDuty();
-    try { Bangle.setHRMPower(1, "titan"); } catch (e) {}
-    applyHrmMode();
+    stopSleepDuty(); setRawCapture(false);                            // 24/7 rest → HR only, no raw (battery)
   }
 }
 
@@ -1303,8 +1257,8 @@ function startStreaming() {
   state.streaming = true;
   setStreamPref(true);
   resetFrame();
-  // reconcileHrm() powers the VC31 LED+AFE — continuously when connected/working out/sleeping, or in
-  // a per-minute duty cycle when idle+offline. Without power no HRM/HRM-raw events fire.
+  // reconcileHrm() powers the VC31 LED+AFE continuously (the cheap 1 Hz HR algorithm) and registers the
+  // raw waveform listener only where HRV/analysis needs it (workout / sleep bursts). Without power no HRM fires.
   reconcileHrm();
   // Accel is on by default on Bangle.js 2; setPollInterval tightens cadence.
   applyAccelRate();
@@ -1316,7 +1270,7 @@ function stopStreaming() {
   state.streaming = false;
   setStreamPref(false);
   flushFrame(); // emit whatever partial frame we have
-  stopRestDuty();
+  setRawCapture(false);   // drop the raw waveform listener (CPU idles)
   stopSleepDuty();
   sleepScreenRestore();   // safety net: never leave twist/touch wake disabled if a sleep was active
   Bangle.setHRMPower(0, "titan");
@@ -1755,7 +1709,8 @@ function refreshBattery() {
 
 // ----- Wire everything up ---------------------------------------------------
 
-Bangle.on("HRM-raw", onHRMRaw);
+// HRM-raw is registered on demand by setRawCapture() (workouts + sleep HRV bursts) — NOT here. With no
+// listener the 25-50 Hz raw event never fires into JS and the CPU idles; that gating is the battery win.
 Bangle.on("HRM", onHRM);
 Bangle.on("accel", onAccel);
 Bangle.on("GPS", onGPS);
@@ -1774,13 +1729,11 @@ Bangle.on("swipe", function (lr) {
   drawUI();
 });
 
-// Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep). If we're
-// in the offline HR duty cycle, also kick an immediate reading so a glance shows a fresh bpm, not a
-// minute-old one.
+// Repaint the moment the screen wakes (the per-event redraws are skipped while it's asleep). HR is
+// continuous now, so a glance already shows a fresh bpm — no burst to kick.
 Bangle.on("lcdPower", function (on) {
   if (!on) return;
   drawUI();
-  if (restModeActive() && !restDutyOnTimer) restDutyTick();
 });
 
 // Charging cue: buzz the moment it's plugged in (a firm double-pulse) or unplugged (a short blip),
@@ -1957,7 +1910,7 @@ function startSleepSession() {              // the Sleep face START button → t
   saveSleepPref();                          // survive a reboot mid-sleep
   if (state.workout) endWorkout();          // sleep isn't a workout → log T2 PPG (not T6 accel)
   if (!state.streaming) startStreaming();   // guarantee the night is captured for HRV + staging
-  reconcileHrm();                           // sleep → burst the HRM (SLEEP_DUTY): ~30s of 25 Hz raw PPG every 3 min, so HRV is captured all night without flattening the battery
+  reconcileHrm();                           // sleep → HR continuous + accel-gated raw-HRV bursts (SLEEP_DUTY): ~30s of 25 Hz raw PPG every 3 min, so HRV is captured all night without flattening the battery
   sleepScreenOff();                         // dark screen all night (no twist/touch wakes); one button click still wakes it
   // Tell the phone you've started sleeping so the app shows a "Sleeping" state (like a live workout).
   if (state.connected) { try { Bluetooth.println("TN:" + JSON.stringify({ s: 1, t: state.swStartMs })); } catch (e) {} }
@@ -1976,7 +1929,7 @@ function stopTimer() {                       // stop either mode; a SLEEP sessio
   }
   state.swMode = "idle";
   sleepScreenRestore();   // sleep ended → give back wrist-twist/touch wake
-  reconcileHrm();   // sleep ended → if still offline + idle, drop back into the HR duty cycle
+  reconcileHrm();   // sleep ended → HR stays continuous; drop the overnight raw-HRV bursts
   try { Bangle.buzz(60); } catch (e) {}
   if (uiVisible) drawUI();
 }
@@ -2114,7 +2067,7 @@ E.on("kill", function () {
   if (swTimer) clearInterval(swTimer);
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; flushSf = null; }   // stop a chunked drain
   stepTick(); stepSave();   // don't lose the day's steps on unload/reboot
-  stopRestDuty();
+  setRawCapture(false);     // drop the raw waveform listener
   if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
   try { Bangle.setHRMPower(0, "titan"); } catch (e) {}
   try {

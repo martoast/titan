@@ -714,129 +714,137 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('disconnect UX (e) · reconnect clears the indicator', s.watch.state().linkLost === false, `linkLost=${s.watch.state().linkLost}`);
 })();
 
-// 26) (f) CONNECTED-AT-REST HRM DUTY-CYCLE + link heartbeat (battery). Holding a 24/7 BLE link must NOT
-//     run the HRM/PPG LED continuously — that LED (not the radio) caused the prior ~50%/night drain. At
-//     REST we now duty-cycle the LED EVEN while connected (a burst of HR every period, LED off between);
-//     a WORKOUT stays continuous. Because HR now only reaches the phone per-period, a tiny 5 s TB: heart-
-//     beat keeps the phone's 8 s data-staleness watchdog LIVE through the OFF gaps (no false "disconnect").
+// 26) (f) CONNECTED-AT-REST HR is CONTINUOUS (Whoop-like), NOT duty-cycled. The 1 Hz HR algorithm is cheap
+//     (~1 mA), so the HRM LED/AFE stays powered whenever streaming; the expensive RAW WAVEFORM listener
+//     stays OFF at rest and only registers for a workout. HR frames publish only on a good lock (conf≥90);
+//     a low-confidence tick HOLDS the last bpm and publishes nothing. The 5 s TB: heartbeat still keeps the
+//     phone's data-staleness watchdog LIVE through the low-confidence gaps (no false "disconnect").
 (() => {
   const t5Count = (w) => w.allFrames.filter((l) => l.slice(0, 3) === 'T5:').length;
   const s = new Session();
   s.connect();                          // linked; recording ON by default → REST + connected
 
-  // Sample the HRM LED + the phone's data-freshness once a second across >1 full rest duty period.
+  // Across a full "period", the HRM LED stays continuously ON and the RAW listener stays OFF.
   const t5Before = t5Count(s.watch);
-  let onTicks = 0, offTicks = 0, maxStaleMs = 0;
+  let ledOff = 0, rawRegistered = 0;
   for (let t = 0; t < 90; t++) {
     s.watch.accel(t % 2 ? 0.10 : 0.18, 0.02, 1.0);   // light wrist motion (below the 0.20 GPS-arm gate)
-    if (s.watch.hrmPower()) { s.watch.hrm(72); onTicks++; } else offTicks++;  // feed a bpm only while the LED is on
+    if (!s.watch.hrmPower()) ledOff++;
+    if (s.watch.rawRegistered()) rawRegistered++;
+    s.watch.hrm(72, 96);                              // a good lock → publishes a live T5
     s.clock.advance(1000);
-    const stale = s.clock.nowMs() - (s.phone.lastDataAt || s.clock.nowMs());
-    if (stale > maxStaleMs) maxStaleMs = stale;
   }
+  check('connected-rest (f) · HR sensor is CONTINUOUS (LED never powers off at rest)', ledOff === 0, `offTicks=${ledOff}`);
+  check('connected-rest (f) · RAW waveform listener is NOT registered at rest (battery)', rawRegistered === 0, `rawTicks=${rawRegistered}`);
+  check('connected-rest (f) · good-confidence readings stream live HR (T5)', t5Count(s.watch) > t5Before, `t5 ${t5Before}→${t5Count(s.watch)}`);
 
-  check('connected-rest (f) · HRM LED is DUTY-CYCLED, not continuously on',
-    onTicks > 0 && offTicks > 0, `on=${onTicks} off=${offTicks}`);
-  check('connected-rest (f) · each burst still streams live HR to the phone (T5)',
-    t5Count(s.watch) > t5Before, `t5 ${t5Before}→${t5Count(s.watch)}`);
-  check('connected-rest (f) · TB: heartbeat keeps the link "live" (≤8 s between frames)',
-    maxStaleMs <= 8000, `maxStale=${maxStaleMs}ms`);
+  // A run of low-confidence readings must HOLD the last good bpm and publish NOTHING (no bad display).
+  const bpmHeld = s.watch.state().bpm;
+  const t5AtHold = t5Count(s.watch);
+  for (let t = 0; t < 5; t++) { s.watch.hrm(200, 40); s.clock.advance(1000); }   // garbage low-conf spikes
+  check('connected-rest (f) · a low-confidence reading HOLDS the last bpm (no bad display)', s.watch.state().bpm === bpmHeld, `bpm=${s.watch.state().bpm} held=${bpmHeld}`);
+  check('connected-rest (f) · a low-confidence reading does NOT publish', t5Count(s.watch) === t5AtHold, `t5 ${t5AtHold}→${t5Count(s.watch)}`);
+
   const tbCount = s.watch.allFrames.filter((l) => l.slice(0, 3) === 'TB:').length;
-  check('connected-rest (f) · heartbeat frames emitted at ~5 s cadence',
-    tbCount >= 10, `tb=${tbCount}`);
+  check('connected-rest (f) · TB: heartbeat still emitted (~5 s cadence)', tbCount >= 10, `tb=${tbCount}`);
 
-  // WORKOUT ⇒ HRM goes CONTINUOUS: start a lift, verify the LED never drops across the set.
+  // WORKOUT ⇒ the RAW listener REGISTERS + HRM stays continuous.
   s.gotoLift(); s.tapButton();
-  let woOff = 0;
+  let woLedOff = 0, woRawMissing = 0;
   for (let t = 0; t < 40; t++) {
-    s.watch.accel(0.05, 0.03, 1.0); s.watch.hrm(130);
-    if (!s.watch.hrmPower()) woOff++;
+    s.watch.accel(0.05, 0.03, 1.0);
+    for (let k = 0; k < 4; k++) s.watch.hrmRaw(12000 + k);
+    s.watch.hrm(130, 96);
+    if (!s.watch.hrmPower()) woLedOff++;
+    if (!s.watch.rawRegistered()) woRawMissing++;
     s.clock.advance(1000);
   }
-  check('workout (f) · HRM is CONTINUOUS (LED never duty-cycles off)', woOff === 0, `offTicks=${woOff}`);
+  check('workout (f) · HRM is CONTINUOUS (LED never off)', woLedOff === 0, `offTicks=${woLedOff}`);
+  check('workout (f) · RAW waveform listener REGISTERED (continuous raw for in-motion HR/HRV)', woRawMissing === 0, `rawMissing=${woRawMissing}`);
 
-  // Back to REST after the workout ⇒ duty-cycling RESUMES (the LED turns off again within a period).
+  // Back to REST ⇒ the RAW listener DROPS again, HRM still continuous.
   s.watch.sendCommand('C0:'); s.advance(5000);   // finish the lift on the watch
-  let restedOff = 0;
-  for (let t = 0; t < 70; t++) {
+  let restLedOff = 0, restRaw = 0;
+  for (let t = 0; t < 20; t++) {
     s.watch.accel(t % 2 ? 0.10 : 0.18, 0.02, 1.0);
-    if (s.watch.hrmPower()) s.watch.hrm(70); else restedOff++;
+    if (!s.watch.hrmPower()) restLedOff++;
+    if (s.watch.rawRegistered()) restRaw++;
+    s.watch.hrm(70, 96);
     s.clock.advance(1000);
   }
-  check('post-workout (f) · duty-cycling RESUMES at rest (LED turns off again)', restedOff > 0, `off=${restedOff}`);
+  check('post-workout (f) · back to rest: RAW listener removed again, HRM still continuous', restRaw === 0 && restLedOff === 0, `raw=${restRaw} ledOff=${restLedOff}`);
 })();
 
-// 27) (f) OFFLINE rest is UNCHANGED by the connected-rest duty-cycle change. With no phone in range, the
-//     LED must still duty-cycle exactly as before and each burst banks a light T5 HR-trend point to the
-//     ring (appendLog) — not raw PPG — so a day of wear stays weeks of flash, not ~16 h.
+// 27) (f) OFFLINE rest: HR still CONTINUOUS (cheap 1 Hz algorithm) but the RAW listener stays OFF, and a
+//     good-confidence reading banks a light T5 HR-trend point to the ring (appendLog) — THROTTLED so a day
+//     of wear stays weeks of flash. No raw PPG (T2) at rest; nothing streams (no link) and no TB heartbeat.
 (() => {
   const s = new Session();          // boots streaming, NEVER connects → offline the whole time
-  let onTicks = 0, offTicks = 0;
-  for (let t = 0; t < 90; t++) {
+  let ledOff = 0, rawTicks = 0;
+  for (let t = 0; t < 120; t++) {
     s.watch.accel(t % 2 ? 0.10 : 0.18, 0.02, 1.0);
-    if (s.watch.hrmPower()) { s.watch.hrm(66); onTicks++; } else offTicks++;
+    if (!s.watch.hrmPower()) ledOff++;
+    if (s.watch.rawRegistered()) rawTicks++;
+    s.watch.hrm(66, 96);
     s.clock.advance(1000);
   }
-  check('offline-rest (f) · still duty-cycles (unchanged)', onTicks > 0 && offTicks > 0, `on=${onTicks} off=${offTicks}`);
-  // Offline bursts append T5 HR-trend points to the flash ring; nothing streams (no link) and no TB: heartbeat.
-  const t5Logged = Object.values(s.watch.storageFiles).some((f) => (f.data || '').indexOf('T5:') >= 0);
+  const countRing = (tag) => { let n = 0; for (const f of Object.values(s.watch.storageFiles)) { const d = f.data || ''; let i = -1; while ((i = d.indexOf(tag, i + 1)) >= 0) n++; } return n; };
+  const t5Logged = countRing('T5:'), t2Logged = countRing('T2:');
   const tbOffline = s.watch.allFrames.filter((l) => l.slice(0, 3) === 'TB:').length;
-  check('offline-rest (f) · burst banks a T5 trend point to the ring', t5Logged, `logged=${t5Logged}`);
+  check('offline-rest (f) · HR sensor is continuous offline too (LED never off)', ledOff === 0, `off=${ledOff}`);
+  check('offline-rest (f) · RAW listener OFF at offline rest', rawTicks === 0, `raw=${rawTicks}`);
+  check('offline-rest (f) · good readings bank a T5 HR-trend point to the ring', t5Logged > 0, `t5=${t5Logged}`);
+  check('offline-rest (f) · trend banking is THROTTLED (far fewer than one per reading)', t5Logged < 120, `t5=${t5Logged}/120`);
+  check('offline-rest (f) · no raw PPG (T2) logged at rest', t2Logged === 0, `t2=${t2Logged}`);
   check('offline-rest (f) · no heartbeat emitted while disconnected', tbOffline === 0, `tb=${tbOffline}`);
 })();
 
 // ===========================================================================================
-// BATTERY HARDENING — the rest-duty reentrancy fix + the ON-window / period / conn-interval levers.
+// CONTINUOUS-HR MODEL — glance is cheap, publish-on-confidence + hold-last-good, no HR blackout.
 
-// 28) (h) REST-DUTY REENTRANCY. During an OFF gap (a next-burst timer pending) a wrist-glance fires
-//     lcdPower → the firmware kicks restDutyTick out-of-band. It MUST cancel the pending burst, not
-//     orphan it — else every glance spawns another parallel self-scheduling chain and the LED ends up
-//     powered far more than one burst/period (the ~50%/night regression). Assert exactly ONE chain.
+// 28) (h) A WRIST-GLANCE IS CHEAP. At rest a glance (lcdPower) just redraws — the old code kicked a full
+//     HRM burst out-of-band; the new model keeps HR continuous anyway, so a glance must NOT register the
+//     raw waveform listener, and repeated glances must never stack duplicate HRM-raw listeners.
 (() => {
-  const s = new Session();          // offline streaming, STILL rest (5-min period → long OFF gaps)
-  const dutyChains = () => s.clock.timers.filter((t) => t.fn === s.watch.sandbox.restDutyTick).length;
-  s.advance(9000);                  // boot burst closes at its 8s cap → drop into the long OFF gap
-  check('reentrancy (h) · one duty chain pending in the OFF gap (baseline)', dutyChains() === 1, `chains=${dutyChains()}`);
-  // Four wrist-glances, each in an OFF gap (spaced > the 8s ON window). PRE-FIX each orphans the pending
-  // next-burst timer → another parallel chain; POST-FIX each just restarts the single chain.
-  for (let i = 0; i < 4; i++) { s.watch.lcdWake(); s.advance(20000); }
-  s.advance(15000);                 // settle into a quiet OFF gap (no further stimulus)
-  check('reentrancy (h) · still exactly ONE duty chain after screen-wakes during off-gaps (no runaway parallel loops)',
-    dutyChains() === 1, `pendingDutyChains=${dutyChains()}`);
+  const s = new Session();          // offline streaming, still rest
+  s.advance(5000);
+  check('glance (h) · no raw listener at rest (baseline)', s.watch.rawRegistered() === false, `raw=${s.watch.rawRegistered()}`);
+  check('glance (h) · HRM stays powered at rest (continuous HR)', s.watch.hrmPower() === true, `hrm=${s.watch.hrmPower()}`);
+  for (let i = 0; i < 5; i++) { s.watch.lcdWake(); s.advance(3000); }
+  check('glance (h) · glances never register the raw listener at rest', s.watch.rawRegistered() === false, `raw=${s.watch.rawRegistered()}`);
+  check('glance (h) · exactly ZERO HRM-raw listeners stacked (no runaway registration)', s.watch.rawListenerCount() === 0, `count=${s.watch.rawListenerCount()}`);
 })();
 
-// 29) (i) CONFIDENCE-GATED EARLY EXIT + 8s HARD CAP. A good lock (conf>=90) closes the burst EARLY
-//     (don't burn the full window once the bpm is solid); a burst that never locks still closes at the
-//     8s hard cap.
+// 29) (i) HOLD-LAST-GOOD. HR publishes on confidence: a solid reading updates the display AND publishes; a
+//     run of weak (conf<90) readings HOLDS the last good bpm (no jitter to a bad value) and publishes
+//     nothing — then the next good lock resumes cleanly.
 (() => {
-  const s = new Session();          // offline streaming, rest — boot fired a burst (LED on now)
-  check('early-exit (i) · LED on at burst start', s.watch.hrmPower() === true, `hrm=${s.watch.hrmPower()}`);
-  s.watch.hrm(60, 96);              // a solid lock (conf 96)
-  s.advance(1500);                  // well under the 8s cap
-  check('early-exit (i) · a good lock (conf>=90) closes the burst EARLY (LED off < 8s cap)', s.watch.hrmPower() === false, `hrm=${s.watch.hrmPower()}`);
-  s.watch.lcdWake();                // glance → a fresh burst (LED on)
-  check('early-exit (i) · a glance starts a fresh burst', s.watch.hrmPower() === true, `hrm=${s.watch.hrmPower()}`);
-  s.watch.hrm(61, 50);             // a WEAK lock (conf 50) — must NOT early-exit
-  s.advance(4000);                  // 4s < 8s cap
-  check('early-exit (i) · a weak lock keeps the LED on until the 8s hard cap', s.watch.hrmPower() === true, `hrm=${s.watch.hrmPower()}`);
-  s.advance(5000);                  // now past 8s → the hard cap closes it
-  check('early-exit (i) · the 8s hard cap still closes a never-locking burst', s.watch.hrmPower() === false, `hrm=${s.watch.hrmPower()}`);
+  const t5Count = (w) => w.allFrames.filter((l) => l.slice(0, 3) === 'T5:').length;
+  const s = new Session();
+  s.connect(); s.advance(2000);
+  s.watch.hrm(64, 96);
+  check('hold (i) · a good lock sets the displayed bpm', s.watch.state().bpm === 64, `bpm=${s.watch.state().bpm}`);
+  const t5AfterGood = t5Count(s.watch);
+  for (let t = 0; t < 6; t++) { s.watch.hrm(200, 30); s.clock.advance(1000); }   // 6 s of garbage low-conf
+  check('hold (i) · low-confidence readings HOLD the last bpm (not overwritten with garbage)', s.watch.state().bpm === 64, `bpm=${s.watch.state().bpm}`);
+  check('hold (i) · low-confidence readings publish nothing', t5Count(s.watch) === t5AfterGood, `t5 ${t5AfterGood}→${t5Count(s.watch)}`);
+  s.watch.hrm(70, 95);              // a good lock returns
+  check('hold (i) · the next good lock resumes (bpm updates + publishes)', s.watch.state().bpm === 70 && t5Count(s.watch) > t5AfterGood, `bpm=${s.watch.state().bpm} t5=${t5Count(s.watch)}`);
 })();
 
-// 30) (j) 60s STILL PERIOD. At still rest (no motion) with early-exit, the LED is off the vast majority
-//     of the time, but a reading lands ~every 60s — Whoop's resting granularity, NEVER a multi-minute
-//     HR blackout. Assert both: mostly-off (battery) AND ~one burst/min over 10 min (no long gaps).
+// 30) (j) NO HR BLACKOUT. The old model duty-cycled the LED and could leave a multi-minute gap between rest
+//     readings; the new continuous model publishes a fresh HR every second a good lock holds — Whoop-grade
+//     granularity with no gaps. Across 5 min connected a live reading lands (near) every second.
 (() => {
-  const s = new Session();          // offline, STILL rest (no motion fed → 60s still period)
-  let onT = 0, offT = 0, bursts = 0, wasOff = true;
-  for (let t = 0; t < 600; t++) {   // 10 min still, no glances
-    const on = s.watch.hrmPower();
-    if (on) { s.watch.hrm(62, 96); onT++; if (wasOff) bursts++; } else offT++;
-    wasOff = !on;
+  const s = new Session();
+  s.connect(); s.advance(2000);
+  for (let t = 0; t < 300; t++) {
+    s.watch.accel(0.02, 0.01, 1.0);
+    s.watch.hrm(60 + (t % 5), 96);   // a good lock every second
     s.clock.advance(1000);
   }
-  check('still-rest (j) · LED off the vast majority of the time (battery)', offT > onT * 5, `on=${onT} off=${offT}`);
-  check('still-rest (j) · ~a reading every 60s → no multi-minute HR blackout', bursts >= 8, `bursts=${bursts}/10min`);
+  const t5 = s.watch.allFrames.filter((l) => l.slice(0, 3) === 'T5:').length;
+  check('no-blackout (j) · continuous HR streams ~1 reading/s (no multi-minute gap)', t5 >= 250, `t5=${t5}/300s`);
 })();
 
 // 31) (g) DYNAMIC CONNECTION INTERVAL — flush drain. A morning sync tightens the link to {15,30} for the

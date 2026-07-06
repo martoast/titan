@@ -16,6 +16,16 @@ function buildWatch(clock, opts = {}) {
   const VDate = makeVDate(clock, tzRef);
   const listeners = {};                 // "Bangle:accel" -> [fn]
   const on = (ns) => (ev, cb) => { (listeners[ns + ':' + ev] ||= []).push(cb); };
+  // Bangle.removeListener(ev, cb): the battery-critical mechanism — the firmware toggles the HRM-raw
+  // listener on/off (setRawCapture) so the 25-50 Hz raw event only fires into JS during workouts + sleep
+  // bursts. With no listener registered, control.hrmRaw() feeds fire() an EMPTY array → a no-op (the CPU
+  // idles), which is exactly what a scenario asserts for "raw OFF at rest".
+  const removeListener = (ns) => (ev, cb) => {
+    const arr = listeners[ns + ':' + ev];
+    if (!arr) return;
+    const i = arr.indexOf(cb);
+    if (i >= 0) arr.splice(i, 1);
+  };
   const fire = (key, ...a) => (listeners[key] || []).forEach((cb) => cb(...a));
 
   let connected = false;                 // is a phone subscribed to NUS?
@@ -82,6 +92,7 @@ function buildWatch(clock, opts = {}) {
 
   const Bangle = {
     on: on('Bangle'),
+    removeListener: removeListener('Bangle'),
     setGPSPower() {}, setBarometerPower() {}, setHRMPower(v) { hrmOn = !!v; },
     // setOptions merges options; the only one that matters to the pedometer is powerSave.
     setOptions(o) { if (o && o.powerSave !== undefined) powerSave = !!o.powerSave; },
@@ -145,7 +156,11 @@ function buildWatch(clock, opts = {}) {
     storageFiles: files,                          // the flash image (share it to a rebuilt VM = a reboot)
     onDeliver(fn) { deliver = fn; },              // phone registers to receive frames
     isConnected() { return connected; },
-    hrmPower() { return hrmOn; },                 // is the HRM/PPG LED on right now? (asserts rest duty-cycling vs continuous)
+    hrmPower() { return hrmOn; },                 // is the HRM/PPG LED on right now? (continuous whenever streaming)
+    // Is the RAW waveform listener (onHRMRaw) registered right now? The battery-critical bit in the new
+    // model: raw is ON only during workouts + accel-gated sleep bursts, OFF at 24/7 rest.
+    rawRegistered() { return (listeners['Bangle:HRM-raw'] || []).length > 0; },
+    rawListenerCount() { return (listeners['Bangle:HRM-raw'] || []).length; },
     // Screen wake/sleep → fires the firmware's lcdPower handler (a wrist-glance kicks the rest-duty burst).
     lcdWake() { lcdOn = true; fire('Bangle:lcdPower', true); },
     lcdSleep() { lcdOn = false; fire('Bangle:lcdPower', false); },
