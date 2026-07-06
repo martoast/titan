@@ -6,12 +6,33 @@
 
 ---
 
+## Executive summary
+
+**The blocker wasn't architecture — it was measurement.** We had competing theories about where the power
+goes (LED current? sample rate? per-sample JS callbacks? FIFO wakeups?) and no on-device data to settle them.
+So we built the instrumentation first, then used it to adopt the wins and kill the wrong theories with data
+instead of argument.
+
+| Optimization | Result |
+|---|---|
+| Remove duty-cycled HR | ✅ adopted |
+| Continuous native HR | ✅ adopted |
+| Raw-sample-listener gating | ✅ **largest measured win** |
+| FIFO batching (reg 0x13) | ❌ rejected — raised CPU, near-overflow FIFO |
+| Resting LED-current tuning | ⏳ pending — needs a bench current meter |
+
+**Every result below is specific to this platform** (Bangle.js 2 · nRF52840 · Espruino JS runtime · VC31B
+PPG). They are not inherent properties of PPG or of HRV capture in general.
+
+---
+
 ## 1. Goal
 
-Make Titan's heart-rate sensing **Whoop-style: continuous and low-power**, not a Fitbit/Garmin-style
-duty-cycled burst. HR should be published every second a good lock holds, the sensor should never go fully
-dark at rest, and battery should survive multi-day wear on a 175 mAh cell — without sacrificing the raw
-waveform where HRV genuinely needs it.
+Make Titan's heart-rate sensing **continuous and low-power** — inspired by the continuous-sensing architecture
+used in premium wearables such as WHOOP, rather than a duty-cycled burst. (We have not reverse-engineered
+WHOOP; this is a design goal, not a claim of parity.) HR should be published every second a good lock holds,
+the sensor should never go fully dark at rest, and battery should survive multi-day wear on a 175 mAh cell —
+without sacrificing the raw waveform where HRV genuinely needs it.
 
 The blocker wasn't architecture — it was **measurement**. We had competing theories about where the power
 goes (LED current? sample rate? per-sample JS callbacks? FIFO wakeups?) and no on-device data to settle them.
@@ -26,15 +47,18 @@ So the first deliverable was instrumentation; the second was using it to kill th
   the old rest-burst machinery (`restModeActive`/`restDutyTick`/`restBurstClose`/`REST_DUTY_*`) is **deleted**.
 - **Confidence gates *publishing*, not *sampling*.** `onHRM` emits a reading only when `conf >= confidenceTarget`
   (90); below that it **holds last-good** and publishes nothing. No more multi-minute "HR disappeared" gaps.
-- **The raw waveform is the expensive path, so it's gated by a *listener*, not always on.** `setRawCapture(on)`
-  attaches/removes the `HRM-raw` listener (idempotent `Bangle.on`/`removeListener`). It's on **only** during
-  workouts (continuous) and accel-gated sleep HRV bursts — removed at 24/7 rest, so the per-sample event never
-  fires into JS. This is the single biggest power lever and it's driven purely by `analysisDepth`.
+- **On the Bangle.js 2, delivering the raw waveform *into JavaScript* is the expensive path — so it's gated by a
+  *listener*, not always on.** `setRawCapture(on)` attaches/removes the `HRM-raw` listener (idempotent
+  `Bangle.on`/`removeListener`). It's on **only** during workouts (continuous) and accel-gated sleep HRV bursts —
+  removed at 24/7 rest, so the per-sample event never fires into JS. This is the single biggest power lever and
+  it's driven purely by `analysisDepth`.
 
 **Why this is the right split (validated by the experiment + VC31 source):** the 1 Hz `HRM` algorithm runs in
-native C (175-tap FIR + peak detect + median) at ≈0.7 mA and lets the CPU idle. The `HRM-raw` per-sample JS
-callback is the +3 mA cliff. Continuous *HR* is cheap; continuous *raw waveform* is not. Gate the waveform, keep
-the HR.
+native C (175-tap FIR + peak detect + median) and lets the CPU idle; the profiler attributes ≈0.7 mA to it (an
+internal firmware estimate, see §2.3, not a direct electrical measurement). The `HRM-raw` per-sample JS callback
+is the ~+3 mA cliff. So the cost is not the *waveform itself* — it's **exporting every raw sample into the
+JavaScript runtime**. Native HR estimation is inexpensive on this platform; per-sample JS export is expensive.
+Gate the export, keep the native HR.
 
 ### 2.2 Operating-point controller (adaptive, config-driven)
 A closed loop that changes only **how hard the pipeline is driven**, expressed as data:
@@ -51,14 +75,18 @@ because 80 ms polling sits below the FIR's 50 Hz design point and the 20–40 ms
 
 ### 2.3 Instrumentation (dormant in production, our measurement rig)
 `CFG.PROFILE` (off by default, **zero cost when off**) logs one CSV row/sec to a capped 2-segment rolling
-Storage file. 18 columns incl. **real per-device microamps from `E.getPowerUsage()`** (`pwrCPU`/`pwrHRM`/
-`pwrBLE`/`pwrTotal`), plus `confidence`, `bpm`, `motionMag`, `env` (ambient light), `fifoDepth`, `dropped`.
-Rows buffer in RAM and flush every 30 s so the flash write doesn't spike the CPU it's measuring. Experiments
-run via `setForcedOP({...})` — **config only, no reflash per run**.
+Storage file. 18 columns incl. **per-device microamp estimates from `E.getPowerUsage()`** (`pwrCPU`/`pwrHRM`/
+`pwrBLE`/`pwrTotal`) — a *firmware power model*, not a direct electrical measurement — plus `confidence`, `bpm`,
+`motionMag`, `env` (ambient light), `fifoDepth`, `dropped`. Rows buffer in RAM and flush every 30 s so the flash
+write doesn't spike the CPU it's measuring. Experiments run via `setForcedOP({...})` — **config only, no reflash
+per run**.
 
-Verified from Espruino source: `E.getPowerUsage()`'s **CPU term is awake-time-derived**
-(`CPU = 3 + 4000·273152/sysTickTime`, ∝ 1/awake-gap), so it genuinely reflects per-sample wakeup load.
-Its **HRM term is a fixed constant (700 µA)** — blind to LED current.
+The distinction that makes the model usable, verified from Espruino source: `E.getPowerUsage()`'s **CPU term is
+awake-time-derived** (`CPU = 3 + 4000·273152/sysTickTime`, ∝ 1/awake-gap) — so while it's still a model, its
+input is a *real measured quantity* (CPU awake time), and it genuinely tracks per-sample wakeup load. Its **HRM
+term, by contrast, is a fixed constant (700 µA)** — a hardcoded firmware estimate, not derived from anything
+measured, and blind to LED current. That asymmetry is why the CPU axis of the experiment is trustworthy on-device
+and the LED axis is not (§3).
 
 ---
 
@@ -86,9 +114,13 @@ so the HRM IRQ fires every N samples; the C driver drains all N per wake and the
 3. **Motion was not the confounder** — `m_20_4` had *more* motion than `m_20_2` yet *lower* CPU, so the ordering
    tracks fifoBatch, not wrist activity.
 
-**Why.** Batching **bursts** the per-sample `HRM-raw` JS callbacks into one wake — it does not **remove** them.
-Same number of callbacks (the real +3 mA cost), plus extra FIFO-drain overhead. The awake-time metric never
-drops because total awake work is unchanged.
+**Observed vs. inferred.** What the measurements *establish*: batching did not reduce CPU awake time — the
+awake-time-derived `pwrCPU` held or rose across `fifoBatch` 1→2→4, and `fifoDepth` approached overflow. What
+they do *not* establish is the mechanism. A likely explanation, consistent with the VC31 driver source, is that
+the same number of `HRM-raw` JavaScript callbacks are ultimately executed (batching only clusters them into one
+wake rather than eliminating any), while draining N FIFO entries per interrupt adds overhead — so total awake
+work is unchanged or slightly higher. That is an inference, not a measured fact; the retirement decision rests on
+the *observed* result, not the proposed cause.
 
 **Caveats (honest).** (a) The state that matters most — worn, mid-HRV-capture — couldn't be cleanly compared
 because the batched cells drifted onto the table (bpm held, confidence ~0); but batching failing in the easy
@@ -100,9 +132,10 @@ of sample loss — the real signal is the near-ceiling `fifoDepth`.
 gating the raw **listener** (§2.1), which the continuous design already does.
 
 **Also confirmed / still open.** `pwrHRM` read a fixed 700 µA in every single row regardless of LED current —
-confirming the CPU-side is fully measurable on-device but the **LED-current → power axis is not**. Settling
-whether a dimmer resting LED saves meaningful energy requires a bench meter (Nordic PPK2 on the HRM rail). That
-is the one remaining open experiment; the dormant profiler is retained precisely for it.
+confirming that the CPU axis of the model responds to real changes on-device (its input is measured awake time)
+but the **LED-current → power axis does not exist in the model at all** (a hardcoded constant). Settling whether
+a dimmer resting LED saves meaningful energy therefore requires a bench meter (e.g. Nordic PPK2 on the HRM rail).
+That is the one remaining open experiment; the dormant profiler is retained precisely for it.
 
 ---
 
@@ -122,9 +155,10 @@ Wire protocol unchanged (T5/T1 byte-identical) → **firmware reflash only, no i
 
 ## 5. Bottom line
 
-We replaced a duty-cycled burst with **one continuous PPG pipeline** whose only real cost lever is *when the raw
-waveform listener is attached* — HR is cheap and always-on; raw is expensive and captured only for workouts and
+We replaced a duty-cycled burst with **one continuous PPG pipeline** whose only real cost lever is *when the
+raw-sample listener is attached* — native HR estimation is inexpensive on this platform and runs always-on,
+while exporting every raw sample into the JavaScript runtime is expensive, so it's captured only for workouts and
 sleep HRV. We built the instrumentation to prove it, and used it to kill the one plausible-but-wrong optimization
 (FIFO batching) with data instead of argument. The sole unresolved question — how much the resting LED current
-actually costs — is physically unmeasurable on this hardware without a current probe, and is queued for a bench
-session. Everything else is shipped.
+actually costs — cannot be answered by the on-device power model (its HRM term is a hardcoded constant) and needs
+a bench current meter; it's queued for that session. Everything else is shipped.
