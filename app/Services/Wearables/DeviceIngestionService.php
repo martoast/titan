@@ -256,6 +256,31 @@ class DeviceIngestionService
         return true;
     }
 
+    /**
+     * A watch-confirmed WORKOUT end marker (T W): the user finished a run/lift on the band, which carries
+     * the real [start, end, kind, manual]. Dispatch a seal SCOPED to those bounds so it lands even when
+     * the accel windows are thin, arrived late, or never arrived (out of BLE range / airplane) — mirrors
+     * {@see triggerSleepSummary}. The watch's chosen kind stays authoritative (run vs lift).
+     */
+    private function triggerWorkoutSummary(WearableConnection $connection, array $summary): bool
+    {
+        if (empty($summary['confirmed'])) {
+            return false;
+        }
+        $start = (isset($summary['start']) && is_numeric($summary['start'])) ? (int) $summary['start'] : null;
+        $end = (isset($summary['end']) && is_numeric($summary['end'])) ? (int) $summary['end'] : null;
+        if ($start === null || $end === null || $end <= $start) {
+            return false;
+        }
+        // The workout's ACTIVITY kind ('run'/'strength'/…) travels in its own field — `kind` on the
+        // summary is the summary TYPE ('workout_session') and is consumed by writeSummary's router.
+        $kind = (! empty($summary['activity_kind']) && is_string($summary['activity_kind'])) ? $summary['activity_kind'] : null;
+        $manual = ! empty($summary['manual']);
+        \App\Jobs\SealActivityJob::dispatch($connection->profile_id, true, $start, $end, $kind, $manual)->afterCommit();
+
+        return true;
+    }
+
     private function writeSummary(WearableConnection $connection, array $summary, string $tz): bool
     {
         $kind = (string) ($summary['kind'] ?? '');
@@ -287,6 +312,9 @@ class DeviceIngestionService
             // The band's "I'm awake" marker (T9): seal that night and fire the coach's sleep summary,
             // BECAUSE the user confirmed it. (No marker → the cron still computes the data, silently.)
             'sleep_session' => $this->triggerSleepSummary($connection, $summary, $tz),
+            // The band's workout END marker (TW): the user's explicit [start,end,kind]. Seal that workout
+            // SCOPED to the envelope — guaranteed even when the accel windows are thin/late/offline.
+            'workout_session' => $this->triggerWorkoutSummary($connection, $summary),
             // The 24/7 HR trend (≈1 point/minute) → time-series rows for the all-day HR graph.
             'hr_trend' => $this->writeHrTrend($connection, $summary, $tz),
             'body' => (bool) BodyMetric::create(array_filter([

@@ -517,8 +517,91 @@ class ActivitySealTest extends TestCase
             && ($r['height_cm'] ?? null) == 178);
     }
 
+    // ── Dual-path idempotency: the window-based `ended` seal AND the confirmed TW envelope can BOTH
+    //    fire for one workout (live: streamed then confirmed; reconnect: backlog then envelope). They
+    //    must converge on ONE activity_sessions row, in either order, and never when the envelope's
+    //    guaranteed write precedes late-arriving windows. This is the double-count guard for the
+    //    offline-workout durability fix.
+
+    public function test_window_seal_then_confirmed_envelope_stays_one_row(): void
+    {
+        $this->fakeBiosignal();
+        $profile = User::factory()->create()->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 178]);
+
+        $this->storeIndoorWorkoutWindow($profile->id);
+        $w = DeviceIngestion::where('profile_id', $profile->id)->where('kind', 'workout')->first();
+        [$s, $e] = [$w->window_start->timestamp, $w->window_end->timestamp];
+
+        dispatch_sync(new SealActivityJob($profile->id));                                                   // window-based ended seal
+        dispatch_sync(new SealActivityJob($profile->id, sessionStartEpoch: $s, sessionEndEpoch: $e, sessionKind: 'run')); // confirmed envelope
+
+        $this->assertSame(1, ActivitySession::where('profile_id', $profile->id)->count(), 'one row after both seals');
+    }
+
+    public function test_confirmed_envelope_then_window_seal_stays_one_row(): void
+    {
+        $this->fakeBiosignal();
+        $profile = User::factory()->create()->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 178]);
+
+        $this->storeIndoorWorkoutWindow($profile->id);
+        $w = DeviceIngestion::where('profile_id', $profile->id)->where('kind', 'workout')->first();
+        [$s, $e] = [$w->window_start->timestamp, $w->window_end->timestamp];
+
+        dispatch_sync(new SealActivityJob($profile->id, sessionStartEpoch: $s, sessionEndEpoch: $e, sessionKind: 'run')); // confirmed first (windows present)
+        dispatch_sync(new SealActivityJob($profile->id));                                                   // window-based second
+
+        $this->assertSame(1, ActivitySession::where('profile_id', $profile->id)->count(), 'one row after both seals, reverse order');
+    }
+
+    public function test_guaranteed_write_then_late_windows_stays_one_row(): void
+    {
+        $this->fakeBiosignal();
+        $profile = User::factory()->create()->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 178]);
+
+        // Envelope processed with NO windows yet (biosignal was down / airplane) → guaranteed write.
+        // Its button-press start is a few seconds BEFORE the first window will begin — the realistic skew
+        // that could split into two rows if the late window seal didn't reconcile.
+        $end = CarbonImmutable::now()->subMinutes(60);
+        $start = $end->subMinutes(30);
+        dispatch_sync(new SealActivityJob($profile->id, sessionStartEpoch: $start->timestamp, sessionEndEpoch: $end->timestamp, sessionKind: 'run'));
+        $this->assertSame(1, ActivitySession::where('profile_id', $profile->id)->count(), 'guaranteed write made the row');
+
+        // Now the windows arrive (first window a few seconds after the button press) and get sealed.
+        $this->storeIndoorWorkoutWindowAt($profile->id, $start->addSeconds(7), $end);
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $this->assertSame(1, ActivitySession::where('profile_id', $profile->id)->count(),
+            'the late window seal must merge onto the guaranteed-write row, not create a second');
+    }
+
+    private function fakeBiosignal(): void
+    {
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 30.0, 'mean_hr' => 150.0, 'trimp' => 55.0, 'calories_kcal' => 360,
+                'activity_type' => 'run', 'activity_confidence' => 0.9,
+            ]], 'session_count' => 1]]),
+            '*/process/fitness' => Http::response(['vo2max' => 48.0, 'plusminus' => 5.6, 'methods' => ['demographic'],
+                'fitness_level' => 'good', 'fitness_percentile_band' => 2, 'hrr' => null]),
+            '*/process/step-distance' => Http::response(['algo_version' => 'v1', 'estimated' => true,
+                'cadence_spm' => 168.0, 'steps' => 5040, 'stride_m' => 1.05, 'distance_km' => 5.29]),
+        ]);
+    }
+
     /** A connected/indoor workout window: accel + on-chip HR, NO GPS (no track, no speed). */
     private function storeIndoorWorkoutWindow(int $profileId, int $endsAgoMin = 60): void
+    {
+        $end = CarbonImmutable::now()->subMinutes($endsAgoMin);
+        $this->storeIndoorWorkoutWindowAt($profileId, $end->subMinutes(30), $end);
+    }
+
+    /** Same, but at an explicit [start, end] — for the dual-path skew test. */
+    private function storeIndoorWorkoutWindowAt(int $profileId, CarbonImmutable $start, CarbonImmutable $end): void
     {
         $hr = array_fill(0, 1800, 150);
         $fs = 25;
@@ -526,8 +609,6 @@ class ActivitySealTest extends TestCase
         $ax = $ay = array_fill(0, $m, 0.0);
         $az = array_fill(0, $m, 9.8);
         $counts = array_fill(0, 60, 40);
-        $end = CarbonImmutable::now()->subMinutes($endsAgoMin);
-        $start = $end->subMinutes(30);
         $window = [
             'kind' => 'workout', 'start' => $start->toIso8601ZuluString(), 'end' => $end->toIso8601ZuluString(),
             'accel_xyz' => ['x' => $ax, 'y' => $ay, 'z' => $az], 'accel_fs' => $fs, 'accel_unit' => 'ms2',

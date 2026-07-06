@@ -79,6 +79,22 @@ public struct SleepSessionSummary: Codable, Equatable {
     }
 }
 
+/// A `kind=workout_session` marker — the band's confirmed workout END envelope [start, end, kind]. Sent
+/// in `summaries[]`; the server seals a bounded activity_sessions row SCOPED to those bounds (guaranteed
+/// even when the accel windows are thin/late/offline). The workout equivalent of `SleepSessionSummary`.
+public struct WorkoutSessionSummary: Codable, Equatable {
+    public let kind: String          // "workout_session"
+    public let confirmed: Bool
+    public let start: Int            // epoch seconds
+    public let end: Int
+    public let activity_kind: String?  // the watch's CHOSEN kind ("run"/"strength"/…); nil = auto (server classifies)
+    public let manual: Bool
+    public init(start: Int, end: Int, activity_kind: String?, manual: Bool, confirmed: Bool = true) {
+        self.kind = "workout_session"; self.confirmed = confirmed
+        self.start = start; self.end = end; self.activity_kind = activity_kind; self.manual = manual
+    }
+}
+
 /// One point on the 24/7 HR trend — a per-minute aggregate (median bpm). `t` is epoch SECONDS.
 public struct HrTrendPoint: Codable, Equatable {
     public let t: Int

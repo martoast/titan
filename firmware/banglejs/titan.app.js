@@ -205,6 +205,10 @@ var CFG = {
   AUTO_MOTION_LO: 0.09,            // below this = "quiet" (the HI/LO gap is hysteresis → no flapping)
   AUTO_START_SEC: 90,             // sustained ACTIVE this long → auto-start (Apple/Whoop feel)
   AUTO_END_SEC: 300,              // sustained QUIET+recovered this long → auto-end (≥ longest lifting rest)
+  // A workout persists to flash (titan.wo) so a mid-workout reboot doesn't orphan the session. On boot
+  // we RESUME it if it's plausibly still going (younger than this); older = clearly stuck/over, so we
+  // seal it from the persisted start instead of resuming a phantom that never ends. 6 h caps a session.
+  WO_RESUME_MAX_MS: 21600000,     // 6 h — resume a fresher workout, seal-and-drop a staler one
   AUTO_HR_START_DELTA: 25,        // HR > resting + this (sustained) corroborates a workout — catches lifting
   AUTO_HR_END_DELTA: 10,          // HR back within resting + this = recovered (half of the end gate)
   REST_HR_ALPHA: 0.02             // slow EMA for the personal resting-HR baseline (low-motion windows only)
@@ -229,6 +233,8 @@ var state = {
   fullBuzzed: false,   // already nudged "unplug, I'm full" this charge session?
   workout: false,      // a workout is in progress (drives HR/accel capture + 25 Hz rate)
   workoutManual: false,// started by hand (a gym session) → only ends by hand, not on a motion lull
+  woStartMs: 0,        // unix-ms the active workout started (persisted to titan.wo, survives a reboot)
+  woKind: "",          // active workout's kind ("run"/"strength"/… or "" until known) — persisted too
   gps: false,          // is the GPS receiver powered right now? (a subset of a workout)
   gpsFix: false,       // do we have a satellite fix yet?
   gpsSats: 0,          // satellites in view (UI + the app's GPS self-test acquisition readout)
@@ -737,6 +743,10 @@ function emitActivityKind() {
   if (!state.workout) return;
   var k = workoutKind();
   if (!k) return;
+  // Persist the kind the moment it's known (an AUTO workout starts kind-less, then the classifier /
+  // a face press resolves it) so a mid-workout reboot restores the RIGHT kind — a resumed run seals
+  // as a run, not the default strength. Cheap: only writes when it actually changes.
+  if (k !== state.woKind) { state.woKind = k; saveWorkoutPref(); }
   lastKindEmit = getTime();
   var line = "TA:" + JSON.stringify({ k: k });
   // Connected → stream it live. OFFLINE (a phone-free lift/run) → append it to the ring so it flushes
@@ -757,9 +767,12 @@ function startWorkout(manual) {
   // Already in a workout: if this is a MANUAL face press (Run/Lift) promoting an open session, still
   // announce the kind — the early-return previously skipped emitActivityKind(), so the phone never
   // learned it was a lift and showed a run. Now it always tells the phone.
-  if (state.workout) { if (manual) { state.workoutManual = true; emitActivityKind(); } return; }
+  if (state.workout) { if (manual) { state.workoutManual = true; saveWorkoutPref(); emitActivityKind(); } return; }
   state.workout = true;
   state.workoutManual = !!manual;
+  state.woStartMs = Math.round(getTime() * 1000);   // the session's real start epoch (the seal envelope's [start])
+  state.woKind = workoutKind() || "";               // known now for a manual run/lift; "" for an auto (resolved later)
+  saveWorkoutPref();                                // survive a reboot mid-workout (the workout equivalent of titan.sleep)
   // Try for outdoor pace (dropped after GPS_FIX_TIMEOUT if no fix) — unless the primed activity
   // explicitly declines GPS (a lift/swim), so starting one never flicker-powers the receiver.
   powerGps(!(primed && primed.gps === false));
@@ -780,12 +793,40 @@ function emitWorkoutEnd() {
   try { Bluetooth.println("TA:" + JSON.stringify({ k: "end" })); } catch (e) {}
 }
 
+// Persist / clear the active workout so a mid-workout reboot doesn't orphan it (mirrors titan.sleep).
+// { start: unix-ms, kind: "run"/"strength"/…, manual: 0|1 } — enough to resume it or seal it on boot.
+function saveWorkoutPref() { try { require("Storage").writeJSON("titan.wo", { start: state.woStartMs, kind: state.woKind, manual: state.workoutManual ? 1 : 0 }); } catch (e) {} }
+function clearWorkoutPref() { try { require("Storage").erase("titan.wo"); } catch (e) {} }
+
+// The explicit workout SESSION envelope: [start, end, kind, manual]. Sent LIVE when connected, else
+// appended to the flash ring so it flushes on the next sync — exactly like the sleep T9 confirmed
+// marker. This is what makes an OFFLINE workout (started/stopped out of BLE range) seal correctly:
+// the server gets the real bounds + the user's chosen kind, instead of having to infer them from
+// (possibly thin/late/split) accel windows. TW = a compact JSON frame like TA. { s,e: epoch-seconds }.
+function emitWorkoutSession(startSec, endSec, kind, manual) {
+  if (!(endSec > startSec)) return;
+  var line = "TW:" + JSON.stringify({ s: startSec, e: endSec, k: kind || "", m: manual ? 1 : 0 });
+  if (state.connected) { try { Bluetooth.println(line); } catch (e) {} }
+  else { appendLog(line); }
+}
+
 function endWorkout() {
   if (!state.workout) return;
+  // Resolve the session envelope BEFORE clearing the flags workoutKind() reads.
+  var woStartSec = state.woStartMs ? Math.round(state.woStartMs / 1000) : Math.round(getTime());
+  var woKind = state.woKind || workoutKind() || "";
+  var woManual = state.workoutManual;
   state.workout = false;
   state.workoutManual = false;
+  state.woStartMs = 0;
+  state.woKind = "";
   primed = null;           // clear any coach priming so a later auto-workout doesn't inherit its rate
   powerGps(false);
+  if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail FIRST (so its T6 windows sit AHEAD of the envelope in the ring)
+  // The explicit [start,end,kind] envelope — live or banked to the ring. This is the durable end
+  // marker an offline stop relies on; the TA:end pings below stay for the LIVE (connected) path.
+  emitWorkoutSession(woStartSec, Math.round(getTime()), woKind, woManual);
+  clearWorkoutPref();      // session done → don't resume/re-seal it on the next boot
   // Tell the phone the workout is OVER, explicitly. Don't make it infer the end from the sport tag
   // dropping to 0 — at rest the HRM duty-cycles, so those sport==0 frames may never arrive, and the
   // app would leave the workout hanging "live" (never closing, never sealing). This deterministic
@@ -794,7 +835,6 @@ function endWorkout() {
   emitWorkoutEnd();
   setTimeout(emitWorkoutEnd, 1200);
   setTimeout(emitWorkoutEnd, 3500);
-  if (woAccel.length) writeWorkoutAccelFrame(); // flush the offline workout-accel tail
   reconcileHrm();          // back to rest: continuous if connected, else duty-cycle the HRM
   applyAccelRate();
   if (uiVisible) drawUI();
@@ -1006,6 +1046,14 @@ function applyAccelRate() {
   // counting, which is exactly why steps froze while recording/after motion. Keeping steps working beats
   // the ~3-pt classifier gain at 25 Hz (the server classifies fine at 12.5 Hz — it's the overnight rate).
   try { Bangle.setPollInterval(CFG.ACCEL_MS_OVERNIGHT); } catch (e) {}
+  // setPollInterval() force-clears the OS powerSave flag (bangleFlags &= ~JSBF_POWER_SAVE). With powerSave
+  // OFF the firmware's powerSaveTimer FREEZES, and the built-in pedometer only counts while that timer is
+  // under 60s — so if the watch had sat still >60s before we first pinned the rate (e.g. you glance at it,
+  // then press to start a workout), steps DIE until reboot. That's the "steps froze after a manual workout"
+  // bug. Re-enabling powerSave lets motion reset the timer again; our persistent accel listener keeps the
+  // poll pinned at 80ms regardless (powerSave only drops the poll to 800ms when nothing listens to accel),
+  // so this costs zero accel accuracy while keeping the pedometer alive.
+  try { Bangle.setOptions({ powerSave: true }); } catch (e) {}
 }
 
 // Which Bangle sport mode fits the current state: normal (0) at rest, biking (2) for a primed
@@ -2013,6 +2061,39 @@ try {
       sleepScreenOff();    // dark screen again; one button click still wakes it
     } else {
       clearSleepPref();    // stale/stuck session (>16h) → drop it, don't resume a phantom that never ends
+    }
+  }
+} catch (e) {}
+
+// Resume / reconcile an active WORKOUT across a reboot (the workout equivalent of titan.sleep above).
+// A mid-workout crash/flash otherwise ORPHANS the session — its start time + kind lived only in RAM,
+// so on morning sync the server would have to guess it from thin accel windows (the lost/duplicated-
+// workout bug). titan.wo holds the real start + kind so a resumed session ends with the right bounds.
+try {
+  var wp = require("Storage").readJSON("titan.wo", true);
+  if (wp && wp.start) {
+    var woAgeMs = getTime() * 1000 - wp.start;
+    if (woAgeMs > 0 && woAgeMs < CFG.WO_RESUME_MAX_MS) {
+      // Fresh → RESUME it so it keeps capturing and ends normally (button / auto-lull), carrying the
+      // ORIGINAL start + kind into the seal envelope. Restore the matching face-active flag so the
+      // Run/Lift FINISH button still ends it.
+      state.workout = true;
+      state.workoutManual = !!wp.manual;
+      state.woStartMs = wp.start;
+      state.woKind = wp.kind || "";
+      if (wp.kind === "run") { runActive = true; runStartMs = wp.start; runDistM = 0; primed = { type: "run", gps: true, accelHz: 12.5 }; }
+      else if (wp.kind === "strength" || wp.kind === "lift") { liftActive = true; liftStartMs = wp.start; primed = { type: "lift", gps: false, accelHz: 25 }; }
+      if (!state.streaming) startStreaming();
+      reconcileHrm();      // continuous motion-tolerant sport-mode HR again
+      applyAccelRate();    // 25 Hz accel for the classifier
+    } else {
+      // Stale / clearly over (stuck open for hours) → still SEAL it (don't silently drop): emit the end
+      // envelope from the persisted start, capped to a plausible span, then clear it.
+      var wEnd = Math.round(wp.start / 1000) + Math.round(CFG.WO_RESUME_MAX_MS / 1000);
+      var wNow = Math.round(getTime());
+      if (wEnd > wNow) wEnd = wNow;
+      emitWorkoutSession(Math.round(wp.start / 1000), wEnd, wp.kind || "", !!wp.manual);
+      clearWorkoutPref();
     }
   }
 } catch (e) {}

@@ -22,7 +22,7 @@ public struct IngestClient {
     /// not by inspecting kind inside windows).
     public func ship(window: AnyWindow) async -> Result {
         let isSummary: Bool
-        switch window { case .steps, .sleep, .hrTrend: isSummary = true; default: isSummary = false }
+        switch window { case .steps, .sleep, .hrTrend, .workoutSession: isSummary = true; default: isSummary = false }
         // batch_uid must be STABLE across retries — the server dedups on it. Deriving it from the
         // window's content (not a fresh ULID per call) means a retry after a lost response reuses the
         // same uid and the server returns `duplicate` instead of double-ingesting the samples.

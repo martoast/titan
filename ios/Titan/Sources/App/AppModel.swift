@@ -531,6 +531,10 @@ final class AppModel: ObservableObject {
         // The confirmed wake T9 (live OR flushed from the ring) — clears a stuck Sleeping state + surfaces
         // the night even when the live TN s:0 never arrived (the offline-wake case).
         router.onSleepConfirmed = { [weak self] in Task { @MainActor in self?.clearLiveSleep(); self?.checkForSyncedSleep() } }
+        // The confirmed workout envelope (TW, live OR flushed from the ring) — resolve a stuck live run
+        // (endRun is idempotent) and surface the finished workout, even when the live TA:end never arrived
+        // (a workout started/stopped out of BLE range). The workout counterpart of onSleepConfirmed.
+        router.onWorkoutSession = { [weak self] in Task { @MainActor in self?.endRun(notifyBand: false); self?.checkForSyncedWorkout() } }
         let band = BandManager(router: router)
         band.onConnectionChange = { [weak self] up in Task { @MainActor in
             self?.bandConnected = up

@@ -62,6 +62,12 @@ class SealActivityJob implements ShouldQueue
     /** Window hop (s) of the in-motion HR estimator (biosignal STEP_S) — used to expand it to 1 Hz. */
     public const HR_WINDOW_STEP_S = 2.0;
 
+    /** Shortest user-CONFIRMED workout (envelope [start,end]) worth a row — below this it's an accidental tap. */
+    public const MIN_CONFIRMED_SEC = 60;
+
+    /** Slack (seconds) around a confirmed session's [start,end] when scoping which workout windows belong to it. */
+    public const SESSION_MARGIN_S = 300;
+
     public int $tries = 2;
 
     public int $backoff = 15;
@@ -70,16 +76,42 @@ class SealActivityJob implements ShouldQueue
      * @param  bool  $force  The most recent session ended explicitly (phone tagged the final window
      *                       `ended` — user/watch tapped End). Seal it NOW, bypassing the QUIET_MINUTES
      *                       wait and the MIN_SESSION_MIN floor, so a just-finished run appears at once.
+     * @param  int|null  $sessionStartEpoch  A watch-CONFIRMED workout envelope's real [start,end] (epoch
+     *                       seconds) + chosen kind. When present the seal is SCOPED to that window and a
+     *                       bounded activity_sessions row is GUARANTEED even when the accel windows are
+     *                       thin/late/never-arrived (the offline / out-of-range case). Mirrors
+     *                       {@see SealNightJob::sealConfirmedSession}.
      */
-    public function __construct(public int $profileId, public bool $force = false)
-    {
+    public function __construct(
+        public int $profileId,
+        public bool $force = false,
+        public ?int $sessionStartEpoch = null,
+        public ?int $sessionEndEpoch = null,
+        public ?string $sessionKind = null,
+        public bool $sessionManual = false,
+    ) {
         $this->onQueue('biosignal');
     }
 
     public function handle(BiosignalClient $biosignal): void
     {
         $profile = Profile::find($this->profileId);
-        if (! $profile || ! $biosignal->configured()) {
+        if (! $profile) {
+            return;
+        }
+
+        // A user-CONFIRMED workout carries its own explicit [start,end,kind] (the watch's TW end marker).
+        // Seal SCOPED to that — never inferred from window timestamps — so it lands even when the windows
+        // are thin/late or arrived via the offline backlog flush. Runs BEFORE the biosignal gate so the
+        // guaranteed row survives a biosignal outage (airplane mode).
+        if ($this->sessionStartEpoch !== null && $this->sessionEndEpoch !== null
+            && $this->sessionEndEpoch > $this->sessionStartEpoch) {
+            $this->sealConfirmedSession($profile, $biosignal);
+
+            return;
+        }
+
+        if (! $biosignal->configured()) {
             return;
         }
 
@@ -173,8 +205,9 @@ class SealActivityJob implements ShouldQueue
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $session
      */
-    private function sealSession(Profile $profile, BiosignalClient $biosignal, \Illuminate\Support\Collection $session, bool $force = false): void
+    private function sealSession(Profile $profile, BiosignalClient $biosignal, \Illuminate\Support\Collection $session, bool $force = false, ?int $forceEndEpoch = null, ?string $forceKind = null): void
     {
+        $confirmed = $forceEndEpoch !== null;   // sealed from a watch-confirmed envelope (bounds + kind authoritative)
         $ax = $ay = $az = $hr1 = $counts = $speed = $grade = $track = [];
         $unit = 'ms2';
         $fs = 25;
@@ -212,6 +245,18 @@ class SealActivityJob implements ShouldQueue
             $this->append($rr, $w['hr_rr_ms'] ?? []);
             $start = $start ?? ($ingestion->window_start ?? null);
             $end = $ingestion->window_end ?? $end;
+        }
+
+        // A confirmed envelope's END + KIND are authoritative over the windows: the watch knows exactly
+        // when you stopped and what you chose. This corrects an ended-tail that never became a full window
+        // (the "lost tail" bug) and pins run-vs-lift to your choice. We keep $start = the first window's
+        // start so this row shares its updateOrCreate key with any window-based seal of the SAME session
+        // (no duplicate row); only the end/duration/kind are overridden.
+        if ($confirmed) {
+            $end = CarbonImmutable::createFromTimestamp($forceEndEpoch, 'UTC');
+            if ($forceKind !== null && $forceKind !== '') {
+                $kindHint = $forceKind;
+            }
         }
 
         $startIso = $start ? CarbonImmutable::parse($start)->toIso8601ZuluString() : null;
@@ -399,7 +444,7 @@ class SealActivityJob implements ShouldQueue
         // track fits inside a ~tennis-court box yet claims several times that box in distance, it's
         // jitter, not a run: seal the windows (so they don't re-process) but write NO session. Only for
         // GPS cardio — a step-estimated indoor run has no track and is handled by the duration floor.
-        if (! $liftHint && $distanceSource === 'gps') {
+        if (! $liftHint && ! $confirmed && $distanceSource === 'gps') {
             // Both measured from the RAW track geometry (never a computed/mocked distance), so the signal
             // is self-consistent: a scribble walks a long path inside a tiny box; a real run — even a loop —
             // leaves the box, and a real short run is a straight-ish line whose path ≈ its span.
@@ -412,8 +457,16 @@ class SealActivityJob implements ShouldQueue
             }
         }
 
+        // Merge onto an existing row for the SAME session if one is already there — e.g. a confirmed
+        // envelope's GUARANTEED write (its button-press start can differ from the first window's start by
+        // a few seconds, so the natural (profile_id, started_at) key would split one workout into two
+        // rows). Match by start PROXIMITY (±3 min), comfortably under the 20-min gap that separates
+        // genuinely distinct workouts, so a morning + evening run never merge.
+        $startCarbon = $startIso ? CarbonImmutable::parse($startIso) : now();
+        $mergeId = $this->overlappingSessionId($profile, $startCarbon);
+
         $log = ActivitySession::updateOrCreate(
-            ['profile_id' => $profile->id, 'started_at' => $startIso ? CarbonImmutable::parse($startIso) : now()],
+            $mergeId ? ['id' => $mergeId] : ['profile_id' => $profile->id, 'started_at' => $startCarbon],
             array_filter([
                 'source' => $session->first()->source ?? 'titan_band',
                 'ended_at' => $end ? CarbonImmutable::parse($end) : null,
@@ -485,6 +538,144 @@ class SealActivityJob implements ShouldQueue
             'profile_id' => $profile->id, 'activity_session_id' => $log->id,
             'type' => $log->activity_type, 'vo2max' => $log->vo2max,
         ]);
+    }
+
+    /**
+     * Seal ONE watch-CONFIRMED workout scoped to the envelope's real [start, end, kind] — the fix for
+     * a workout done while the phone was out of BLE range (started/stopped offline, or across a reboot).
+     *
+     * Unlike the window-timestamp-inferred seal, this:
+     *   1. Enforces a minimum duration (a sub-60-s tap isn't a workout).
+     *   2. Scopes to workout windows overlapping [start, end] (± margin) — live OR backlog-flushed, so a
+     *      session split across the drop (some windows live, the tail from the ring) seals as ONE row.
+     *   3. Is idempotent with the window-based `ended` seal: if that already made a row for these windows,
+     *      it just corrects the bounds + kind (no duplicate); otherwise it seals the scoped windows.
+     *   4. GUARANTEES a bounded activity_sessions row from the envelope alone even when NO windows arrived
+     *      (airplane mode / biosignal down) — the workout still surfaces, never silently lost.
+     *   5. Keeps the watch's chosen kind authoritative (run vs lift) and the run route/GPS handling.
+     */
+    /**
+     * The id of an already-sealed session whose start is within ±3 min of $start for this profile, or
+     * null. Lets a window-based seal MERGE onto a confirmed envelope's guaranteed-write row (whose
+     * button-press start can be a few seconds off the first window's) instead of writing a duplicate.
+     * The 3-min window is far under SESSION_GAP_MINUTES (20), so genuinely distinct workouts never merge.
+     */
+    private function overlappingSessionId(Profile $profile, CarbonImmutable $start): ?int
+    {
+        $id = ActivitySession::where('profile_id', $profile->id)
+            ->whereBetween('started_at', [$start->subMinutes(3), $start->addMinutes(3)])
+            ->orderByDesc('started_at')
+            ->value('id');
+
+        return $id !== null ? (int) $id : null;
+    }
+
+    private function sealConfirmedSession(Profile $profile, BiosignalClient $biosignal): void
+    {
+        $startEpoch = (int) $this->sessionStartEpoch;
+        $endEpoch = (int) $this->sessionEndEpoch;
+        $durSec = $endEpoch - $startEpoch;
+        if ($durSec < self::MIN_CONFIRMED_SEC) {
+            Log::info('[Biosignal] confirmed workout below minimum — not sealed', [
+                'profile_id' => $profile->id, 'dur_sec' => $durSec,
+            ]);
+
+            return;
+        }
+
+        $startDt = CarbonImmutable::createFromTimestamp($startEpoch, 'UTC');
+        $endDt = CarbonImmutable::createFromTimestamp($endEpoch, 'UTC');
+        $durMin = (int) round($durSec / 60);
+        $kind = ($this->sessionKind !== null && $this->sessionKind !== '') ? $this->sessionKind : null;
+
+        // Workout windows whose span overlaps the session (± margin). Includes ALREADY-sealed ones so we
+        // can reconcile with a prior window-based seal instead of writing a duplicate. Scoping is the
+        // anti-vacuum guarantee: an unrelated earlier session's windows never leak into this one.
+        $loEpoch = $startEpoch - self::SESSION_MARGIN_S;
+        $hiEpoch = $endEpoch + self::SESSION_MARGIN_S;
+        $scoped = DeviceIngestion::query()
+            ->where('profile_id', $profile->id)
+            ->where('kind', 'workout')
+            ->get()
+            ->filter(function (DeviceIngestion $i) use ($loEpoch, $hiEpoch) {
+                $ws = $i->window_start ? CarbonImmutable::parse($i->window_start)->timestamp : null;
+                $we = $i->window_end ? CarbonImmutable::parse($i->window_end)->timestamp : $ws;
+                if ($ws === null && $we === null) {
+                    return false;
+                }
+
+                return ($we ?? $ws) >= $loEpoch && ($ws ?? $we) <= $hiEpoch;
+            });
+
+        // Already sealed into a row (the window-based `ended` seal ran first)? Just correct the bounds +
+        // kind authoritatively — don't create a second row.
+        $existingId = $scoped
+            ->map(fn (DeviceIngestion $i) => $i->result_refs['activity_session_id'] ?? null)
+            ->filter()->first();
+        if ($existingId && ($log = ActivitySession::find($existingId))) {
+            $log->update(array_filter([
+                'ended_at' => $endDt,
+                'duration_min' => $durMin,
+                'activity_type' => $this->confirmedActivityType($kind),
+                'activity_confidence' => $kind ? 1.0 : null,
+                'updated_via' => 'biosignal:sealed-session',
+            ], fn ($v) => $v !== null));
+            Log::info('[Biosignal] confirmed workout reconciled onto existing row', [
+                'profile_id' => $profile->id, 'activity_session_id' => $log->id, 'dur_min' => $durMin,
+            ]);
+
+            return;
+        }
+
+        // Not yet sealed but we DO have the accel/HR/GPS windows → run the full scoped seal (classify,
+        // TRIMP, VO2, route…), with the envelope's end + kind authoritative. force=true bypasses the
+        // quiet wait + the min-duration floor + the phantom-drift reject (the user confirmed it).
+        $unsealed = $scoped->filter(fn (DeviceIngestion $i) => $i->status !== DeviceIngestion::STATUS_SEALED);
+        if ($unsealed->isNotEmpty() && $biosignal->configured()) {
+            $this->sealSession($profile, $biosignal, $unsealed, true, $endEpoch, $kind);
+
+            return;
+        }
+
+        // GUARANTEED write: no usable windows (airplane / never uploaded / biosignal down). Build the row
+        // from the envelope itself so the workout still surfaces — bounded, with the user's chosen kind,
+        // never dropped. Keyed on the envelope start so a later window-based seal merges rather than dupes.
+        $log = ActivitySession::updateOrCreate(
+            ['profile_id' => $profile->id, 'started_at' => $startDt],
+            array_filter([
+                'source' => 'titan_band',
+                'ended_at' => $endDt,
+                'duration_min' => $durMin,
+                'activity_type' => $this->confirmedActivityType($kind),
+                'activity_confidence' => $kind ? 1.0 : null,
+                'updated_via' => 'biosignal:sealed-session-marker',
+            ], fn ($v) => $v !== null),
+        );
+
+        // Mark any scoped-but-sealed-without-a-row windows onto this row (edge: sealed by a min-floor drop).
+        $scoped->each(fn (DeviceIngestion $i) => $i->update([
+            'status' => DeviceIngestion::STATUS_SEALED,
+            'result_refs' => array_merge((array) $i->result_refs, ['activity_session_id' => $log->id, 'sealed' => true]),
+        ]));
+
+        if (! app()->runningUnitTests()) {
+            ReactToWorkoutSealed::dispatch($log->id)->afterCommit();
+        }
+
+        Log::info('[Biosignal] confirmed workout sealed from marker (guaranteed row)', [
+            'profile_id' => $profile->id, 'activity_session_id' => $log->id,
+            'dur_min' => $durMin, 'kind' => $kind, 'scoped_windows' => $scoped->count(),
+        ]);
+    }
+
+    /** Map the watch's chosen kind to an activity_type (lift family → 'strength'; else the kind, or 'other'). */
+    private function confirmedActivityType(?string $kind): string
+    {
+        if ($kind === null || $kind === '') {
+            return 'other';
+        }
+
+        return in_array($kind, ['lift', 'strength', 'hiit', 'yoga'], true) ? 'strength' : $kind;
     }
 
     /**

@@ -82,6 +82,8 @@ class Phone {
     this.events = [];              // ordered log
     this.summaries = [];           // each shown post-workout summary
     this.sleepSummaries = [];      // confirmed sleep markers (T9) — the "saved to server" night
+    this.workoutSessions = [];     // confirmed workout envelopes (TW) — the authoritative [start,end,kind] a workout seals from
+    this.workoutSummaryShown = false;   // a finished-workout summary surfaced from an envelope (offline/out-of-range stop)
     // Sleep — mirrors AppModel: the live "Sleeping" state (TN s:1), its end/summary (TN s:0), and the
     // data the server needs to stage the night (overnight PPG, live T1 or backlog T2).
     this.sleeping = false;
@@ -129,6 +131,18 @@ class Phone {
       if (!k) return;
       if (k === 'end') this._onWorkoutEnd();
       else { this.wa.activityKind = k; this.waLog.activityKind = k; this._setWorkoutKind(k); }
+    } else if (tag === 'TW:') {
+      // The watch's confirmed workout SESSION envelope — [start, end, kind] — live OR replayed from the
+      // ring on reconnect. It ALWAYS resolves the workout: it's the durable end an offline stop relies
+      // on. So it clears any stuck live-run state and surfaces the finished workout even when the live
+      // TA:end never arrived (out of range). Mirrors AppModel.onWorkoutSession. This is what the phone
+      // hands to the server to seal a bounded activity_sessions row.
+      let obj; try { obj = JSON.parse(payload); } catch (e) { return; }
+      if (!obj || !(obj.e > obj.s)) return;
+      this.workoutSessions.push({ start: obj.s, end: obj.e, kind: obj.k || null, manual: obj.m === 1, confirmed: true });
+      this.workoutSummaryShown = true;
+      if (this.runActive) this._endRun(false);   // resolve the live sheet (idempotent — already-ended is a no-op, so never double-counted)
+      this._log(`workout session start=${obj.s} end=${obj.e} kind=${obj.k}`);
     } else if (tag === 'TS:') {
       // Offline ring fully drained → seal whatever workout we recovered from the backlog now.
       this._submit(this.waLog.flush(), 'backlog-synced');

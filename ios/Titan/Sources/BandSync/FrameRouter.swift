@@ -49,6 +49,11 @@ public final class FrameRouter {
     /// sync. The catch-all that resolves the night even when the live `TN s:0` never came (offline wake):
     /// clears any stuck "Sleeping" state and surfaces the summary.
     public var onSleepConfirmed: (() -> Void)?
+    /// The confirmed workout END envelope (`TW`) arrived — live, or flushed from the offline ring on
+    /// reconnect (a workout started/stopped out of BLE range). It ALWAYS resolves the workout: clears a
+    /// stuck live-run state and surfaces the finished session, even when the live `TA:{"k":"end"}` never
+    /// arrived. The workout counterpart of `onSleepConfirmed`.
+    public var onWorkoutSession: (() -> Void)?
     private var totalSamples = 0
     private var recentPpg: [Int16] = []
     private var recentTs: [UInt64] = []
@@ -180,6 +185,19 @@ public final class FrameRouter {
                     onActivityKind?(k)
                 }
             }
+        case "TW:":
+            // The watch's confirmed workout SESSION envelope: {"s":start,"e":end,"k":kind,"m":manual}
+            // (epoch seconds). Live OR replayed from the offline ring on reconnect — the DURABLE end a
+            // stop-out-of-range relies on. Ship it as a `workout_session` summary so the server seals a
+            // bounded activity_sessions row scoped to [start,end] with the chosen kind, and resolve any
+            // stuck live-workout state on the app (mirrors T9 → onSleepConfirmed).
+            if let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
+               let s = (obj["s"] as? NSNumber)?.intValue, let e = (obj["e"] as? NSNumber)?.intValue, e > s {
+                let k = (obj["k"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                let manual = ((obj["m"] as? NSNumber)?.intValue ?? 0) == 1
+                submit(.workoutSession(WorkoutSessionSummary(start: s, end: e, activity_kind: k, manual: manual)))
+                onWorkoutSession?()
+            }
         case "TS:":
             // The band finished draining its offline ring. Seal whatever workout we recovered from the
             // backlog RIGHT NOW (its windows are already `ended`, so the server seals in seconds) instead
@@ -272,7 +290,7 @@ public final class FrameRouter {
 /// `.steps` ships in the batch's `summaries[]`; the windows ship in `windows[]` (see IngestClient).
 public enum AnyWindow: Codable {
     case ppg(PpgWindow), workout(WorkoutWindow), steps(StepDailySummary), sleep(SleepSessionSummary)
-    case hrTrend(HrTrendWindow)
+    case hrTrend(HrTrendWindow), workoutSession(WorkoutSessionSummary)
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
@@ -282,11 +300,13 @@ public enum AnyWindow: Codable {
         case .steps(let s): try c.encode(s)
         case .sleep(let s): try c.encode(s)
         case .hrTrend(let w): try c.encode(w)
+        case .workoutSession(let s): try c.encode(s)
         }
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
         if let s = try? c.decode(SleepSessionSummary.self), s.kind == "sleep_session" { self = .sleep(s) }
+        else if let s = try? c.decode(WorkoutSessionSummary.self), s.kind == "workout_session" { self = .workoutSession(s) }
         else if let s = try? c.decode(StepDailySummary.self), s.kind == "activity" { self = .steps(s) }
         else if let w = try? c.decode(HrTrendWindow.self), w.kind == "hr_trend" { self = .hrTrend(w) }
         else if let w = try? c.decode(WorkoutWindow.self), w.kind == "workout" { self = .workout(w) }

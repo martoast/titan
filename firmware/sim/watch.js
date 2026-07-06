@@ -20,13 +20,25 @@ function buildWatch(clock, opts = {}) {
 
   let connected = false;                 // is a phone subscribed to NUS?
   let osStepCount = 0;                    // the built-in pedometer's running day count (getHealthStatus)
+  // --- OS power-save ↔ built-in pedometer coupling (faithful to Espruino jswrap_bangle.c) -------------
+  // The firmware's step counter ONLY runs while powerSaveTimer < POWER_SAVE_TIMEOUT (60s). The timer is
+  // reset to 0 by motion and climbs while still — BUT ONLY inside the `if (powerSave)` block. Calling
+  // Bangle.setPollInterval() force-clears powerSave (bangleFlags &= ~JSBF_POWER_SAVE), which FREEZES the
+  // timer: if it was already ≥60s (watch sat still >1min), the pedometer stays gated OFF until a reboot,
+  // or until powerSave is re-enabled (setOptions({powerSave:true})) so motion can reset the timer again.
+  // Modelling this coupling is what lets the sim catch the "steps die after a manual workout" bug.
+  let powerSave = true;                   // default ON at boot (Espruino default)
+  let powerSaveTimer = 0;                 // ms of stillness; ≥ POWER_SAVE_TIMEOUT ⇒ step counter gated OFF
+  const POWER_SAVE_TIMEOUT = 60000;
   let dataHandler = null;                // Bluetooth.on('data')
   const allFrames = [];                  // every println line (for inspection)
   let deliver = null;                    // hook: deliver a line to the phone when connected
   const log = [];
 
   // In-memory Storage: StorageFiles support append-write / readLine / erase; plus read/readJSON/write.
-  const files = {};
+  // Passing opts.storageFiles reuses an existing flash image → a REBOOT (rebuild the VM against the same
+  // Storage) faithfully re-runs the firmware's boot-restore path (titan.sleep / titan.wo reconcile).
+  const files = opts.storageFiles || {};
   function storageOpen(name, mode) {
     files[name] ||= { data: '', pos: 0 };
     const f = files[name];
@@ -68,11 +80,16 @@ function buildWatch(clock, opts = {}) {
   const Bangle = {
     on: on('Bangle'),
     setGPSPower() {}, setBarometerPower() {}, setHRMPower() {},
-    setOptions() {}, getOptions() { return {}; }, setPollInterval() {},
+    // setOptions merges options; the only one that matters to the pedometer is powerSave.
+    setOptions(o) { if (o && o.powerSave !== undefined) powerSave = !!o.powerSave; },
+    getOptions() { return { powerSave: powerSave }; },
+    // THE TRAP: Bangle.setPollInterval() force-clears powerSave (bangleFlags &= ~JSBF_POWER_SAVE) as a
+    // side effect — which freezes powerSaveTimer and can permanently gate the step counter OFF.
+    setPollInterval() { powerSave = false; },
     buzz() {}, isLCDOn() { return true; }, isCharging() { return false; },
     // The firmware pedometer. Real Bangle.js counts steps from the accel poll and exposes them here; it
-    // keeps counting DURING a workout (that's the whole point of the 12.5 Hz poll). The sim drives it via
-    // control.walk()/setOsSteps() so a test can prove the Steps face ticks up while recording + HR streams.
+    // keeps counting DURING a workout (that's the whole point of the 12.5 Hz poll) — but ONLY while the OS
+    // powerSaveTimer stays under its 60s gate (see control.walk / control.sitStill).
     getHealthStatus() { return { steps: osStepCount }; }, setLocked() {},
   };
   const NRF = {
@@ -120,6 +137,7 @@ function buildWatch(clock, opts = {}) {
 
   const control = {
     sandbox, allFrames, log,
+    storageFiles: files,                          // the flash image (share it to a rebuilt VM = a reboot)
     onDeliver(fn) { deliver = fn; },              // phone registers to receive frames
     isConnected() { return connected; },
 
@@ -149,9 +167,20 @@ function buildWatch(clock, opts = {}) {
     accel(x, y, z) { fire('Bangle:accel', { x, y, z }); },
     gps(fix) { fire('Bangle:GPS', fix); },
 
-    // Walk `n` steps: advance the built-in pedometer (getHealthStatus) and fire the 'step' events the
-    // firmware sees, exactly as the OS does when you move — works the same whether or not a workout records.
-    walk(n = 1) { for (let i = 0; i < n; i++) { osStepCount++; fire('Bangle:step'); } },
+    // Walk `n` steps. Each step is a MOTION poll: it resets powerSaveTimer (only while powerSave is on —
+    // exactly like the firmware) and advances the built-in pedometer ONLY while the step counter is
+    // ungated (powerSaveTimer < POWER_SAVE_TIMEOUT). If powerSave was left OFF by setPollInterval with the
+    // timer already frozen ≥60s, motion CAN'T reset it → getHealthStatus().steps stays frozen (the bug).
+    walk(n = 1) {
+      for (let i = 0; i < n; i++) {
+        if (powerSave) powerSaveTimer = 0;                              // motion resets the timer — only if powerSave is on
+        if (powerSaveTimer < POWER_SAVE_TIMEOUT) { osStepCount++; fire('Bangle:step'); }
+      }
+    },
+    // Sit still for `ms`: the OS climbs powerSaveTimer toward its 60s gate — but only while powerSave is on
+    // (once off, the timer is frozen). Lets a test park the watch in the ">1min still" state before a workout.
+    sitStill(ms) { if (powerSave) powerSaveTimer = Math.min(powerSaveTimer + (ms | 0), 120000); },
+    powerSaveOn() { return powerSave; },
     setOsSteps(n) { osStepCount = n | 0; },
     osSteps() { return osStepCount; },
     simulateReboot(steps = 0) { osStepCount = steps | 0; },   // a reflash/reboot resets the OS pedometer

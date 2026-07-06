@@ -21,12 +21,45 @@ class Session {
     this.phone = new Phone(this.clock, opts);
     this.server = new Server({ buggy: !!opts.serverBuggy });   // the seal the phone hands off to
     this._sealedMarkers = 0;      // how many delivered confirmed markers we've already handed to the server
+    this._sealedWorkouts = 0;     // how many delivered confirmed workout envelopes we've already sealed
+    this.opts = opts;
     this.dropTAEnd = !!opts.dropTAEnd;   // simulate the "workout over" frame + retries never arriving
+    this._wireDeliver();
+  }
+
+  _wireDeliver() {
     this.watch.onDeliver((line) => {
       if (!this.phone.connected) return;
       if (this.dropTAEnd && line.indexOf('"k":"end"') >= 0) return;   // swallow TA:{"k":"end"}
       this.phone.ingest(line);
     });
+  }
+
+  // Reboot the WATCH: rebuild the firmware VM against the SAME flash image, so it re-runs the real
+  // boot-restore path (titan.wo / titan.sleep reconcile) — a faithful mid-session crash/flash. The phone
+  // + server + clock persist. The BLE link drops through the reboot (as on a real device).
+  reboot() {
+    this.watch.disconnect();
+    this.phone.onDisconnect();
+    this.watch = buildWatch(this.clock, { storageFiles: this.watch.storageFiles });
+    this._wireDeliver();
+  }
+
+  // The phone hands whatever confirmed workout envelopes it has now (live or replayed from the ring) to
+  // the server, which seals each into an activity_sessions row. Idempotent — only NEW envelopes seal.
+  syncWorkoutsToServer() {
+    for (let i = this._sealedWorkouts; i < this.phone.workoutSessions.length; i++) {
+      this.server.sealConfirmedWorkout(this.phone.workoutSessions[i]);
+    }
+    this._sealedWorkouts = this.phone.workoutSessions.length;
+  }
+
+  // Model the workout's accel/HR windows reaching the server (kind=workout). Omit to model the thin/
+  // never-uploaded case (airplane / out of range) — the confirmed seal must STILL produce a row.
+  uploadWorkoutWindows(startSec, endSec, kind) {
+    for (let t = startSec; t < endSec; t += 180) {
+      this.server.ingestWorkoutWindow({ startSec: t, endSec: Math.min(t + 180, endSec), kind: kind || null });
+    }
   }
 
   // The phone uploads whatever confirmed wake markers it has now (live or replayed from the ring) to
@@ -319,6 +352,56 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
     shown1 > shown0 && shown1 === 150, `shown0=${shown0} shown1=${shown1} os=${s.watch.osSteps()}`);
 })();
 
+// 15) THE STEP-COUNTER-DIES-AFTER-A-MANUAL-WORKOUT bug (the exact one the user hit).
+//     Root cause is in the FIRMWARE runtime, not our JS, and it is PRE-EXISTING (applyAccelRate /
+//     startWorkout / startStreaming are byte-identical to the last-good commit). Mechanism, from
+//     Espruino jswrap_bangle.c:
+//       • Bangle.setPollInterval() force-clears the OS `powerSave` flag (bangleFlags &= ~JSBF_POWER_SAVE).
+//       • The built-in pedometer only counts while `powerSaveTimer < 60s` (peripheralPollHandler).
+//       • powerSaveTimer climbs while STILL and resets to 0 on motion — but ONLY while powerSave is on.
+//         Once powerSave is off, the timer is FROZEN at its last value.
+//     Trigger: reflashing the app does NOT wipe Storage, so a user who had recording OFF keeps
+//     titan.run="0" → boot does NOT startStreaming → powerSave stays ON (no setPollInterval yet). The
+//     watch sits still >60s (you glance at it), THEN you press to START a manual workout — the FIRST
+//     setPollInterval — which freezes powerSaveTimer ABOVE 60s. getHealthStatus().steps never climbs
+//     again until a reboot. The fix: applyAccelRate() re-enables powerSave right after setPollInterval,
+//     so motion can reset the timer again; our persistent accel listener keeps the poll pinned at 80ms
+//     regardless (powerSave only drops the poll when nothing listens to accel), so no accuracy is lost.
+(() => {
+  const LIFT = 6;
+  const clock = new VirtualClock();
+  // Reflash-preserving-prefs: recording was previously turned OFF → boot won't startStreaming → the OS
+  // powerSave flag stays ON until the workout's first setPollInterval. This is the vulnerable state.
+  const w = buildWatch(clock, { storageFiles: { 'titan.run': { data: '0', pos: 0 } } });
+
+  // Baseline: steps count fine before any workout (the user: "steps worked before I did a workout").
+  // With powerSave ON, motion self-corrects the gate — walking counts even after a still spell.
+  for (let i = 0; i < 30; i++) w.walk(1);
+  check('step-freeze · steps count before any workout (powerSave still ON)',
+    w.osSteps() === 30 && w.powerSaveOn() === true, `os=${w.osSteps()} powerSave=${w.powerSaveOn()}`);
+
+  // You glance at the watch for a bit (stationary) before starting — the OS climbs past its 60s still gate.
+  w.sitStill(70000);
+
+  // Press to START a manual lift, then press to END it — the EXACT start→stop the user performed.
+  w.swipeRight(LIFT); w.press(1);   // liftTap → startStreaming → applyAccelRate → setPollInterval (powerSave OFF, timer frozen ≥60s)
+  clock.advance(3000);
+  w.press(1);                       // FINISH → endWorkout → applyAccelRate again
+  clock.advance(3000);
+
+  // Now WALK. Pre-fix the OS pedometer is frozen (powerSave left off with the timer stuck ≥60s).
+  const before = w.osSteps();
+  for (let i = 0; i < 40; i++) w.walk(1);
+  const after = w.osSteps();
+  check('step-freeze · getHealthStatus().steps keeps climbing after a manual workout start→stop',
+    after === before + 40,
+    `before=${before} after=${after}${after === before ? ' — FROZEN: setPollInterval left powerSave OFF with powerSaveTimer stuck ≥60s' : ''}`);
+  check('step-freeze · powerSave re-enabled by applyAccelRate (so motion can reset the OS timer)',
+    w.powerSaveOn() === true, `powerSave=${w.powerSaveOn()}`);
+  check('step-freeze · Steps face reflects the live climb (not frozen)',
+    w.sandbox.stepCount() >= 70, `shown=${w.sandbox.stepCount()}`);
+})();
+
 // The user's real bug shape: a NAP (start + stop on the Sleep face within one afternoon) must SEAL
 // into its own sleep_logs row and surface on the Sleep page — connected, offline, or across a reboot —
 // with sane stages, never the "Awake 100% / 8h 15m" phantom. The seal is modelled by server.js
@@ -486,6 +569,134 @@ const lastMarker = (p) => p.sleepSummaries[p.sleepSummaries.length - 1];
   const bp = buggy.server.sleepLogs[0];
   check('mid-nap drop (PRE-FIX) · reproduces the miss — phantom all-awake block, not a clean nap',
     !bp || bp.allAwake || bp.awakeMin > bp.durationMin, bp ? `allAwake=${bp.allAwake} awake=${bp.awakeMin} dur=${bp.durationMin}` : '(no row)');
+})();
+
+// ===========================================================================================
+// WORKOUT OFFLINE DURABILITY — the same guarantee sleep got (confirmed session, sealed on reconnect).
+// A workout done while the phone is disconnected — including the real path "connected at start → walk
+// out of BLE range → STOP out of range → reconnect later" — must be captured on the watch and seal into
+// ONE bounded activity_sessions row on reconnect, with the right kind, surviving a mid-workout reboot.
+// The watch now persists the session (titan.wo) + writes an explicit [start,end,kind] END envelope (TW)
+// to the replay log; the server seals SCOPED to that envelope (mirrors SealActivityJob::sealConfirmedSession).
+const lastWo = (p) => p.workoutSessions[p.workoutSessions.length - 1];
+const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
+
+// 21) (a) A workout done ENTIRELY OFFLINE (airplane — never connected during it). The END envelope is
+//     banked to the ring at STOP and replayed on the next connect; the server seals a bounded session
+//     even though NO accel windows ever reached it. PRE-FIX: no windows → the workout is silently LOST.
+(() => {
+  const s = new Session();
+  s.gotoLift(); s.tapButton(); s.work(WO_MIN, 132); s.tapButton();   // whole lift offline (never connected)
+  check('offline workout (a) · nothing on the server yet (airplane)', s.server.activitySessions.length === 0 && s.phone.workoutSessions.length === 0, '');
+  s.advance(120_000); s.connect(); s.advance(40_000);   // later: reconnect → ring drains → TW replayed
+  check('offline workout (a) · confirmed envelope recovered on reconnect (not lost at stop)',
+    s.phone.workoutSessions.some((x) => x.confirmed), `envelopes=${s.phone.workoutSessions.length}`);
+  s.syncWorkoutsToServer();   // NOTE: no uploadWorkoutWindows() — airplane: the accel windows never reached the server
+  const wo = s.server.activitySessions[0];
+  check('offline workout (a) · sealed into ONE activity_session from the marker (guaranteed, not lost)',
+    s.server.activitySessions.length === 1 && !!wo && wo.durationMin >= 2 && wo.activityType === 'strength',
+    wo ? `rows=${s.server.activitySessions.length} dur=${wo.durationMin} type=${wo.activityType}` : '(NONE — workout lost)');
+
+  // Repro the miss FIRST: the pre-fix server, fed the SAME airplane delivery (windows never arrived, no
+  // explicit envelope), seals nothing → the workout vanishes.
+  const buggy = new Session({ serverBuggy: true });
+  buggy.gotoLift(); buggy.tapButton(); buggy.work(WO_MIN, 132); buggy.tapButton();
+  buggy.advance(120_000); buggy.connect(); buggy.advance(40_000);
+  buggy.syncWorkoutsToServer();   // buggy path infers from windows — there are none
+  check('offline workout (a) PRE-FIX · reproduces the loss (no windows → no session)',
+    buggy.server.activitySessions.length === 0, `rows=${buggy.server.activitySessions.length}`);
+})();
+
+// 22) (b) THE EXACT REAL-WORLD FAILURE. Band CONNECTED at START (phone shows a live workout). User walks
+//     off — phone left charging → band OUT OF RANGE mid-workout → link drops. User presses STOP while
+//     DISCONNECTED. Returns later → band reconnects. The finished session must be persisted on-watch at
+//     STOP, replayed on reconnect, seal into ONE row (right duration incl. the offline tail), and the
+//     live workout state must resolve — not stay stuck, not double-count.
+(() => {
+  const s = new Session();
+  s.connect(); s.gotoLift(); s.tapButton();
+  s.work(60, 132);                 // 1 min live → the phone opens the live workout off the sport-HR stream
+  check('mid-drop (b) · phone opened a live workout at start (connected)', s.phone.runActive === true && s.phone.liveSheetShown === true, `runActive=${s.phone.runActive}`);
+  s.disconnect();                  // walked out of range → link drops MID-workout
+  s.work(WO_MIN, 132);             // 2 min more, now offline (banked to the ring)
+  s.tapButton();                   // STOP while DISCONNECTED → envelope logged to the ring
+  check('mid-drop (b) · envelope NOT delivered yet (still out of range, stop happened offline)', s.phone.workoutSessions.length === 0, `envelopes=${s.phone.workoutSessions.length}`);
+  s.connect(); s.advance(40_000);  // returns → band reconnects → ring replays TW
+  check('mid-drop (b) · confirmed envelope replayed on reconnect (stop-seal did not need a live link)',
+    s.phone.workoutSessions.some((x) => x.confirmed), `envelopes=${s.phone.workoutSessions.length}`);
+  check('mid-drop (b) · live workout state resolved on reconnect (not stuck, not double-counted)',
+    s.phone.runActive === false && s.phone.workoutSummaryShown === true, `runActive=${s.phone.runActive} summary=${s.phone.workoutSummaryShown}`);
+  const env = lastWo(s.phone);
+  s.uploadWorkoutWindows(env.start, env.end, 'strength'); s.syncWorkoutsToServer();
+  const wo = s.server.activitySessions[0];
+  check('mid-drop (b) · sealed as ONE activity_session (~3 min incl. the offline tail, not doubled)',
+    s.server.activitySessions.length === 1 && !!wo && wo.durationMin >= 3 && wo.activityType === 'strength',
+    wo ? `rows=${s.server.activitySessions.length} dur=${wo.durationMin}` : '(NONE — workout lost)');
+
+  // Repro the miss FIRST: the pre-fix server, WITHOUT the explicit envelope, infers the session from the
+  // windows — and the offline tail near the stop never became a reliable window, so the duration is
+  // TRUNCATED to the live portion (the "ended-tail window loss").
+  const buggy = new Session({ serverBuggy: true });
+  buggy.connect(); buggy.gotoLift(); buggy.tapButton(); buggy.work(60, 132);
+  buggy.disconnect(); buggy.work(WO_MIN, 132); buggy.tapButton();
+  buggy.connect(); buggy.advance(40_000);
+  const be = lastWo(buggy.phone);
+  buggy.uploadWorkoutWindows(be.start, be.start + 60, 'strength');   // only the live 1-min portion survived as windows
+  buggy.syncWorkoutsToServer();
+  const bwo = buggy.server.activitySessions[0];
+  check('mid-drop (b) PRE-FIX · reproduces the truncation (tail lost — duration far short of the real ~3 min)',
+    !!bwo && bwo.durationMin < 2, bwo ? `dur=${bwo.durationMin}` : '(no row)');
+})();
+
+// 23) (c) MID-WORKOUT REBOOT. The watch reloads mid-lift (a crash/flash). The session is reconstructed
+//     from the persisted titan.wo pref (not RAM), keeps the ORIGINAL start, and seals as ONE session
+//     spanning both sides of the reboot — never orphaned.
+(() => {
+  const s = new Session();
+  s.connect(); s.gotoLift(); s.tapButton(); s.work(WO_MIN, 130);   // 2 min, then reboot
+  const pref = JSON.parse(s.watch.storageFiles['titan.wo'].data);
+  check('reboot (c) · workout persisted to titan.wo (survives a mid-workout reload)', !!pref && pref.start > 0 && pref.kind === 'strength', JSON.stringify(pref));
+  s.reboot();   // rebuild the firmware VM against the same flash → re-runs boot-restore (titan.wo reconcile)
+  check('reboot (c) · session RESUMED from flash (workout still active, original start, right kind)',
+    s.watch.state().workout === true && s.watch.state().woStartMs === pref.start && s.watch.state().woKind === 'strength',
+    `workout=${s.watch.state().workout} start=${s.watch.state().woStartMs} kind=${s.watch.state().woKind}`);
+  s.connect();                       // BLE returns after the reboot
+  s.work(WO_MIN, 130);               // 2 more min post-reboot
+  s.watch.sendCommand('C0:');         // phone "End" → finishLift → endWorkout → envelope (original start)
+  s.advance(5000);
+  const env = lastWo(s.phone);
+  check('reboot (c) · envelope carries the ORIGINAL start (session not orphaned by the reload)',
+    !!env && Math.abs(env.start * 1000 - pref.start) < 2000, env ? `env.start=${env.start} orig=${Math.round(pref.start / 1000)}` : '(none)');
+  s.uploadWorkoutWindows(env.start, env.end, 'strength'); s.syncWorkoutsToServer();
+  const wo = s.server.activitySessions[0];
+  check('reboot (c) · sealed ONE session spanning both sides of the reboot (~4 min)',
+    s.server.activitySessions.length === 1 && !!wo && wo.durationMin >= 4, wo ? `rows=${s.server.activitySessions.length} dur=${wo.durationMin}` : '(none)');
+})();
+
+// 24) (d) LIFT vs RUN both survive offline with the RIGHT kind (the watch's choice is authoritative).
+(() => {
+  // An offline RUN → recovered + sealed as a RUN (not re-guessed as strength).
+  const r = new Session();
+  r.gotoRun(); r.tapButton(); r.gps(WO_MIN, 150); r.tapButton();   // whole run offline
+  r.advance(120_000); r.connect(); r.advance(40_000);
+  const re = lastWo(r.phone);
+  check('kind (d) · offline RUN envelope recovered with kind=run', !!re && re.kind === 'run', re ? `kind=${re.kind}` : '(none)');
+  r.uploadWorkoutWindows(re.start, re.end, 'run'); r.syncWorkoutsToServer();
+  const rwo = r.server.activitySessions[0];
+  check('kind (d) · offline RUN sealed as a run', !!rwo && rwo.activityType === 'run' && rwo.durationMin >= 2, rwo ? `type=${rwo.activityType} dur=${rwo.durationMin}` : '(none)');
+
+  // A RUN across a mid-workout reboot keeps kind=run.
+  const s = new Session();
+  s.connect(); s.gotoRun(); s.tapButton(); s.gps(WO_MIN, 150);
+  const pref = JSON.parse(s.watch.storageFiles['titan.wo'].data);
+  check('kind (d) · run persisted to titan.wo with kind=run', !!pref && pref.kind === 'run', JSON.stringify(pref));
+  s.reboot();
+  check('kind (d) · run RESUMED across the reboot as a run', s.watch.state().workout === true && s.watch.state().woKind === 'run', `kind=${s.watch.state().woKind}`);
+  s.connect(); s.gps(WO_MIN, 150); s.watch.sendCommand('C0:'); s.advance(5000);
+  const se = lastWo(s.phone);
+  s.uploadWorkoutWindows(se.start, se.end, 'run'); s.syncWorkoutsToServer();
+  const swo = s.server.activitySessions[0];
+  check('kind (d) · run across a reboot still seals as a run', !!swo && swo.activityType === 'run', swo ? `type=${swo.activityType}` : '(none)');
 })();
 
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
