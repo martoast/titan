@@ -31,7 +31,9 @@ struct TitanApp: App {
                         // Whoop-style ALWAYS-ON: backgrounding must NOT drop the band — the persistent
                         // 24/7 link keeps streaming while the app is backgrounded / the phone is locked.
                         // (No release; the old burst-sync that dropped the link here is retired.)
-                        break
+                        // DO ship the trailing partial windows (HR trend + PPG) so the cloud graph is
+                        // current and nothing is lost if iOS jetsams the suspended app.
+                        model.flushWindowsForBackground()
                     default:
                         break
                     }

@@ -593,7 +593,7 @@ private struct HrSection: View {
 }
 
 /// A lightweight line+area HR chart over the day's points (x = time of day, y = bpm, auto-scaled).
-private struct HrGraph: View {
+struct HrGraph: View {
     let points: [HrResponse.Point]
     let color: Color
 

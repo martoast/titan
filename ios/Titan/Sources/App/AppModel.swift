@@ -277,6 +277,15 @@ final class AppModel: ObservableObject {
         checkForSyncedSleep()     // …and a night that sealed from the ring while we were away
     }
 
+    /// App is going to the background → ship the trailing partial windows NOW so nothing waits in RAM.
+    /// Under the always-on model a disconnect (the old only caller of flush) is rare, so without this the
+    /// HR-trend tail could sit un-uploaded for up to a full FLUSH_AT window — and be lost if iOS jetsams
+    /// the suspended app. `flush(live: true)` drains the HR trend + trailing PPG windows and, via
+    /// `deferWorkoutFlush`, leaves a live run's window intact. The link itself stays up (always-on).
+    func flushWindowsForBackground() {
+        router?.flush(live: true)
+    }
+
     /// Surface a workout that FINISHED while the app wasn't watching — started offline or in the
     /// background, then recovered from the band's ring on this sync (the phone never saw it live, so
     /// `endRun` never showed a summary). Polls the runs list for a sealed session newer than the last

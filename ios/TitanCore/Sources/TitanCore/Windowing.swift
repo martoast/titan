@@ -116,7 +116,9 @@ public struct HrTrendWindow: Codable, Equatable {
 /// and 1/min from the offline duty-cycle both collapse to 1/min. Emits an `hr_trend` window once
 /// enough minutes have closed; `flush()` ships the tail on disconnect/suspend.
 public final class HrTrendBuilder {
-    private static let FLUSH_AT = 30          // upload after ~30 closed minutes (or on flush)
+    private static let FLUSH_AT = 5           // upload after ~5 closed minutes (or on flush) — keeps the
+                                              // cloud HR graph near-live while worn; the background flush
+                                              // (AppModel.flushWindowsForBackground) ships the tail too
 
     private var bucketMin: UInt64 = 0         // current minute bucket (epoch minutes), 0 = none yet
     private var bpms: [Int] = []

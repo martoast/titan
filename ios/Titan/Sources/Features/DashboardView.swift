@@ -156,20 +156,32 @@ struct DashboardView: View {
                 }.buttonStyle(PressCard())
             }
 
-            // Heart — 24/7 HR detail.
+            // Heart — 24/7 HR, live on the card (mini sparkline + today's resting bpm), full graph one tap in.
             NavigationLink { HeartScreen() } label: {
                 GlassCard {
-                    HStack(spacing: Theme.Space.m) {
-                        ZStack {
-                            Circle().fill(Theme.Palette.pink.opacity(0.16)).frame(width: 40, height: 40)
-                            Image(systemName: "waveform.path.ecg").foregroundStyle(Theme.Palette.pink).font(.system(size: 17, weight: .semibold))
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        HStack(spacing: Theme.Space.m) {
+                            ZStack {
+                                Circle().fill(Theme.Palette.pink.opacity(0.16)).frame(width: 40, height: 40)
+                                Image(systemName: "waveform.path.ecg").foregroundStyle(Theme.Palette.pink).font(.system(size: 17, weight: .semibold))
+                            }
                             Text("Heart").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                            Text("Resting HR & your 24/7 heart-rate graph").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            Spacer()
+                            if let rhr = model.hrDay?.resting_hr {
+                                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                    Text("\(rhr)").font(Theme.Font.num(22)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+                                    Text("bpm resting").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                }
+                            }
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+                        if let pts = model.hrDay?.points, pts.count >= 2 {
+                            HrGraph(points: pts, color: Theme.Palette.pink).frame(height: 40)
+                        } else {
+                            Text("Your 24/7 heart-rate graph — building today's trend")
+                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
             }.buttonStyle(PressCard())
@@ -262,10 +274,11 @@ struct DashboardView: View {
         .animation(Theme.Motion.spring, value: appeared)
         .animation(Theme.Motion.snappy, value: model.dashboardPhase)
         .titanScreen("Today", glow: Theme.Palette.recovery(model.dashboard?.readiness?.score))
-        .refreshable { Haptic.soft(); await model.refresh(); await model.loadNutrition(); await model.loadInsights(); await model.loadJournal() }
+        .refreshable { Haptic.soft(); await model.refresh(); await model.loadHr(); await model.loadNutrition(); await model.loadInsights(); await model.loadJournal() }
         .task {
             appeared = true          // let the screen animate in immediately, not after the network
             await model.refresh()
+            await model.loadHr()          // today's 24/7 HR trend for the Heart card sparkline
             await model.loadNutrition()   // today's macros for the Fuel card
             await model.loadCycle()       // learn whether to show the Cycle card
             await model.loadInsights()
