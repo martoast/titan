@@ -65,6 +65,7 @@ class MealController extends Controller
             'mealCoach' => \App\Support\MealCoach::assess($profile),
             'suggestions' => $profile->mealSuggestions()->latest()->take(6)->get(),
             'pantry' => \App\Support\Pantry::get($profile),
+            'hydration' => \App\Support\Hydration::today($profile),
         ]);
     }
 
@@ -246,6 +247,15 @@ class MealController extends Controller
         $profile->save();
 
         return redirect('/meals')->with('status', 'Macro targets updated.');
+    }
+
+    /** Quick-add water (Glass / Bottle / Large) — the web twin of the iOS Fuel hydration card. */
+    public function water(Request $request)
+    {
+        $data = $request->validate(['ml' => ['required', 'integer', 'min:1', 'max:5000']]);
+        \App\Support\Hydration::add($request->user()->ensureProfile(), $data['ml']);
+
+        return back()->with('status', '+'.$data['ml'].' ml logged.');
     }
 
     // --- helpers -----------------------------------------------------------

@@ -22,3 +22,6 @@ Route::post('/meals/parse-text', [MealController::class, 'parseText'])->name('me
 Route::post('/meals', [MealController::class, 'store'])->name('meals.store');
 Route::delete('/meals/{meal}', [MealController::class, 'destroy'])->name('meals.destroy');
 Route::post('/meals/targets', [MealController::class, 'targets'])->name('meals.targets');
+
+// Hydration — a quick-add water log (Glass / Bottle / Large), mirroring the iOS Fuel hydration card.
+Route::post('/meals/water', [MealController::class, 'water'])->name('meals.water');

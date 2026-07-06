@@ -175,6 +175,57 @@
         </div>
     </div>
 
+    {{-- Hydration — bodyweight-based daily target + quick-add, mirroring the iOS Fuel hydration card --}}
+    @php
+        $hyd = $hydration;
+        $hydL = number_format($hyd['total_ml'] / 1000, 1);
+        $hydTargetL = number_format($hyd['target_ml'] / 1000, 1);
+        $hydCirc = 226.2;                                  // 2πr for r=36
+        $hydOffset = $hydCirc * (1 - min(100, $hyd['pct']) / 100);
+    @endphp
+    <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Hydration</div>
+            <div class="text-xs font-semibold text-cyan-300 nums">{{ $hyd['pct'] }}%</div>
+        </div>
+        <div class="flex items-center gap-5">
+            {{-- Progress ring --}}
+            <div class="relative shrink-0 h-24 w-24">
+                <svg class="h-24 w-24 -rotate-90" viewBox="0 0 84 84">
+                    <circle cx="42" cy="42" r="36" fill="none" stroke="currentColor" stroke-width="7" class="text-white/[0.06]"/>
+                    <circle cx="42" cy="42" r="36" fill="none" stroke="url(#hydGrad)" stroke-width="7" stroke-linecap="round"
+                            stroke-dasharray="{{ $hydCirc }}" stroke-dashoffset="{{ $hydOffset }}"/>
+                    <defs>
+                        <linearGradient id="hydGrad" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#38bdf8"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <div class="absolute inset-0 grid place-items-center text-center">
+                    <div>
+                        <div class="text-xl font-bold text-gray-100 nums leading-none">{{ $hydL }}</div>
+                        <div class="text-[10px] text-gray-500 nums mt-0.5">of {{ $hydTargetL }}L</div>
+                    </div>
+                </div>
+            </div>
+            {{-- Quick-add buttons --}}
+            <div class="flex-1 space-y-2">
+                @foreach ([['Glass', 250], ['Bottle', 500], ['Large', 750]] as [$label, $ml])
+                    <form method="POST" action="{{ route('meals.water') }}">
+                        @csrf
+                        <input type="hidden" name="ml" value="{{ $ml }}">
+                        <button type="submit"
+                                class="w-full flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm text-gray-200 active:bg-white/10 hover:bg-white/[0.07] transition">
+                            <svg class="h-3.5 w-3.5 text-cyan-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2s6 6.4 6 11a6 6 0 11-12 0c0-4.6 6-11 6-11z"/></svg>
+                            <span class="font-semibold">{{ $label }}</span>
+                            <span class="ml-auto text-xs text-gray-500 nums">+{{ $ml }} ml</span>
+                        </button>
+                    </form>
+                @endforeach
+            </div>
+        </div>
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {{-- Left: log + meals list --}}
         <div class="lg:col-span-2 space-y-6">
