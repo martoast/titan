@@ -1039,6 +1039,23 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   s.watch.profileOn(false);
 })();
 
+// 40) BATCH-FLUSH: rows buffer in RAM and hit flash only every PROFILE_FLUSH_ROWS ticks — so a flash write
+//     (which spikes the CPU it's measuring) happens ~every 30 s, not every second. Assert: buffered but NOT
+//     flushed before the threshold, flushed after it, and the tail flushed on stop.
+(() => {
+  const s = new Session();
+  s.connect(); s.watch.profileOn(true);
+  const N = s.watch.sandbox.CFG.PROFILE_FLUSH_ROWS;
+  for (let t = 0; t < N - 5; t++) { s.watch.hrm(66, 95); s.clock.advance(1000); }
+  check('batch-flush (40) - rows buffer in RAM before the flush threshold', s.watch.profBufferedCount() > 0, `buffered=${s.watch.profBufferedCount()}`);
+  check('batch-flush (40) - NOTHING written to flash yet (measured seconds stay flash-free)', s.watch.profFlushedRows().length === 0, `flushed=${s.watch.profFlushedRows().length}`);
+  for (let t = 0; t < 10; t++) { s.watch.hrm(66, 95); s.clock.advance(1000); }
+  check('batch-flush (40) - a batch flushes to flash once the buffer fills', s.watch.profFlushedRows().length >= N, `flushed=${s.watch.profFlushedRows().length}`);
+  const flushedBefore = s.watch.profFlushedRows().length, buffered = s.watch.profBufferedCount();
+  s.watch.profileOn(false);
+  check('batch-flush (40) - the tail buffer is flushed on stop (no rows lost)', s.watch.profFlushedRows().length === flushedBefore + buffered, `flushed=${s.watch.profFlushedRows().length} expected=${flushedBefore + buffered}`);
+})();
+
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
 for (const r of results) console.log(`${r.ok ? '  ✓' : '  ✗'} ${r.name}${r.ok ? '' : `\n      → ${r.detail}`}`);
 console.log(`\n${results.length - failures}/${results.length} checks passed\n`);

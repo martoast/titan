@@ -255,7 +255,11 @@ var CFG = {
   PROFILE: false,
   PROFILE_MS: 1000,                 // one row per second
   PROFILE_FILE: "titan.prof",       // segments are PROFILE_FILE+"0"/"1"
-  PROFILE_MAX_BYTES: 400 * 1024     // ~400 KB total (~2 h @ 1 Hz; raise PROFILE_MS for multi-day capture)
+  PROFILE_MAX_BYTES: 400 * 1024,    // ~400 KB total (~2 h @ 1 Hz; raise PROFILE_MS for multi-day capture)
+  // Rows are buffered in RAM and flushed to flash every PROFILE_FLUSH_ROWS ticks — a flash write spikes the
+  // CPU it's measuring, so flushing ~every 30 s (not every tick) leaves 29/30 measured seconds flash-free
+  // (clean pwrCPU); discard the row logged right after a flush.
+  PROFILE_FLUSH_ROWS: 30
 
   // ===== HOW TO RUN THE EXPERIMENTS (change CONFIG at the IDE console — NO reflash per run) ===
   // 1) setProfile(true)                       // start logging the dataset
@@ -1393,6 +1397,7 @@ function reconcileHrm() {
 // proxy, so pwrCPU directly measures the raw-callback cost (Exp 1/4) without any external hardware.
 var profTimer = null;   // the per-second logger interval (null = not logging)
 var profSeg = 0, profSegBytes = 0;   // 2-segment ring cursor
+var profRows = [];    // RAM buffer of pending rows — flushed to flash in batches (see PROFILE_FLUSH_ROWS)
 var profDropped = 0;    // best-effort FIFO overflow/gap counter (a failure mode to watch while fifoBatch batches)
 
 // HRM-env: ambient light measured with the LED OFF — a real signal-quality input (bright ambient light
@@ -1429,8 +1434,10 @@ function readFifoDepth() {
 
 // Append one row to the rolling ring: when the active segment fills half the budget, flip to the other
 // segment and ERASE it first (that segment holds the oldest rows → drop-oldest). Total ≤ PROFILE_MAX_BYTES.
-function profAppend(row) {
-  var data = row + "\n", len = data.length;
+function profFlush() {
+  if (!profRows.length) return;
+  var data = profRows.join("\n") + "\n", len = data.length;   // one join + one flash write for the whole batch
+  profRows = [];
   if (profSegBytes + len > (CFG.PROFILE_MAX_BYTES >> 1)) {
     profSeg ^= 1; profSegBytes = 0;
     try { require("Storage").open(profName(profSeg), "r").erase(); } catch (e) {}
@@ -1467,7 +1474,8 @@ function profileTick() {
     fifoDepth,                         // fifoDepth — current VC31B FIFO fill (reg 0x03, bottom 6 bits; 0 if unreadable)
     profDropped                        // dropped — best-effort FIFO overflow/gap counter (0 if not derivable)
   ].join(",");
-  profAppend(row);
+  profRows.push(row);
+  if (profRows.length >= CFG.PROFILE_FLUSH_ROWS) profFlush();   // batched flash write (keeps the measured second flash-free)
 }
 
 function startProfiler() {
@@ -1480,6 +1488,7 @@ function startProfiler() {
 }
 function stopProfiler() {
   if (!profTimer) return;
+  profFlush();   // persist any buffered rows before stopping
   clearInterval(profTimer); profTimer = null;
   try { Bangle.removeListener("HRM-env", onHRMEnv); } catch (e) {}
   try { Bangle.setOptions({ hrmPushEnv: false }); } catch (e) {}

@@ -259,7 +259,19 @@ function buildWatch(clock, opts = {}) {
     setFifoFill(n) { fifoFill = n | 0; },                   // model the FIFO fill that hrmRd(0x03) → fifoDepth returns
     setForcedOP(op) { sandbox.setForcedOP(op); },           // pin/clear an OP (experiment override)
     profileOn(v) { sandbox.setProfile(v); },                // toggle the telemetry logger at runtime
-    profRows() {                                            // all CSV rows across the 2-segment ring
+    profRows() {                                            // all CSV rows: flushed (flash) + buffered (RAM)
+      const rows = [];
+      for (const nm of [sandbox.CFG.PROFILE_FILE + '0', sandbox.CFG.PROFILE_FILE + '1']) {
+        const f = files[nm]; if (!f) continue;
+        for (const ln of (f.data || '').split('\n')) if (ln.length) rows.push(ln);
+      }
+      // Rows still buffered in RAM (the profiler flushes to flash in batches, not per-tick), so a reader
+      // sees them regardless of flush timing — "rows accumulate" reflects reality either way.
+      try { for (const ln of (sandbox.profRows || [])) if (ln && ln.length) rows.push(ln); } catch (e) {}
+      return rows;
+    },
+    profRowCount() { return this.profRows().length; },
+    profFlushedRows() {                                     // rows persisted to FLASH only (excludes the RAM buffer)
       const rows = [];
       for (const nm of [sandbox.CFG.PROFILE_FILE + '0', sandbox.CFG.PROFILE_FILE + '1']) {
         const f = files[nm]; if (!f) continue;
@@ -267,7 +279,7 @@ function buildWatch(clock, opts = {}) {
       }
       return rows;
     },
-    profRowCount() { return this.profRows().length; },
+    profBufferedCount() { try { return (sandbox.profRows || []).length; } catch (e) { return 0; } },
   };
   return control;
 }
