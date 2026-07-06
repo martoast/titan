@@ -35,6 +35,12 @@ struct DashboardView: View {
             }
 
             // Hero: the three Whoop rings — Sleep · Recovery · Strain — then the recovery headline.
+            // Cold open (no cached dashboard yet) → shimmering ring placeholders, not three empty "—" rings.
+            if model.dashboardPhase == .loading && model.dashboard == nil {
+                HeroRingsSkeleton()
+                    .frame(maxWidth: .infinity)
+                    .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
+            } else {
             VStack(spacing: Theme.Space.m) {
                 HStack(alignment: .top, spacing: Theme.Space.s) {
                     NavigationLink { SleepView() } label: {
@@ -68,6 +74,7 @@ struct DashboardView: View {
             }
             .frame(maxWidth: .infinity)
             .opacity(appeared ? 1 : 0).offset(y: appeared ? 0 : 16)
+            }
 
             // Fuel — today's macros at a glance, right where your eye already goes. Taps into the full
             // Fuel world (snap a meal, your usuals, hydration, fasting).
@@ -326,6 +333,26 @@ struct DashboardView: View {
     private var divider: some View { Rectangle().fill(Theme.Palette.cardStroke).frame(width: 1, height: 34) }
     private func int(_ v: Double?) -> String { v.map { String(Int($0.rounded())) } ?? "—" }
     private func dec(_ v: Double?) -> String { v.map { String(format: "%.1f", $0) } ?? "—" }
+}
+
+/// Cold-open placeholder for the hero: three shimmering ring stand-ins (matching the Sleep·Recovery·Strain
+/// sizes) + a headline bar, so the first paint reads as "loading" rather than three empty "—" rings.
+private struct HeroRingsSkeleton: View {
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            HStack(alignment: .top, spacing: Theme.Space.s) {
+                ringGhost(92); ringGhost(116); ringGhost(92)
+            }
+            .padding(.top, Theme.Space.s)
+            Shimmer().frame(width: 180, height: 20)
+        }
+    }
+    private func ringGhost(_ size: CGFloat) -> some View {
+        Shimmer()
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Theme.Palette.cardStroke, lineWidth: 1))
+    }
 }
 
 /// Subtle press-scale for tappable cards.
