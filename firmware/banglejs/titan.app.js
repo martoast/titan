@@ -250,7 +250,7 @@ var CFG = {
   // input (bright ambient vs poor contact); 0 if none. fifoDepth is the current VC31B FIFO fill (reg 0x03) and
   // dropped a best-effort FIFO overflow/gap counter — the two failure modes to watch while fifoBatch batches
   // (0 if not derivable). Both are read only inside the profiler tick → zero cost when PROFILE is off.
-  // Pull it over the Espruino IDE with:  require("Storage").read("titan.prof0")  (and ...prof1)
+  // Pull it over the Espruino IDE with:  require("Storage").open("titan.prof0","r").read()  (and ...prof1)
   // or dump it over BLE with the C7 {"dump":1} command (→ "TP:"-prefixed lines).
   PROFILE: false,
   PROFILE_MS: 1000,                 // one row per second
