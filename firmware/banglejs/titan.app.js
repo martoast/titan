@@ -203,7 +203,65 @@ var CFG = {
   WO_RESUME_MAX_MS: 21600000,     // 6 h — resume a fresher workout, seal-and-drop a staler one
   AUTO_HR_START_DELTA: 25,        // HR > resting + this (sustained) corroborates a workout — catches lifting
   AUTO_HR_END_DELTA: 10,          // HR back within resting + this = recovered (half of the end gate)
-  REST_HR_ALPHA: 0.02             // slow EMA for the personal resting-HR baseline (low-motion windows only)
+  REST_HR_ALPHA: 0.02,            // slow EMA for the personal resting-HR baseline (low-motion windows only)
+
+  // ===== OPERATING POINT + CONTROLLER (instrumentation build) ================================
+  // Philosophy, kept literally true in the code: the PIPELINE never changes —
+  //   sensors → operating-point controller → continuous acquisition → continuous estimation →
+  //   optional analyses → metrics.
+  // A CONTROLLER only changes HOW HARD the pipeline is driven, expressed as an OperatingPoint
+  // { sampleRate(Hz), ledCurrent, analysisDepth }:
+  //   • sampleRate → hrmPollInterval (Hz→ms: 100→10, 50→20, 25→40, 12.5→80, 6.25→160, 5→200).
+  //   • ledCurrent → VC31B green-LED current. "auto" leaves adaptive brightness on (hrmGreenAdjust:true);
+  //     a number forces a fixed current (hrmGreenAdjust:false + Bangle.hrmWr(0x17,val)).
+  //   • analysisDepth → "hr" = no raw listener (1 Hz HR only); "full" = raw listener on (HRV / RR).
+  // The named points below are DATA, not hardcoded branches. pickOperatingPoint() chooses among them
+  // from SIGNAL QUALITY (motion / confidence / battery); workout & sleep only BIAS the choice.
+  OP: {
+    REST:    { id: "REST",    sampleRate: 25,   ledCurrent: "auto", analysisDepth: "hr" },   // light motion / weak lock at rest
+    STILL:   { id: "STILL",   sampleRate: 12.5, ledCurrent: "auto", analysisDepth: "hr" },   // dead-still desk / quiet sleep → low power
+    WORKOUT: { id: "WORKOUT", sampleRate: 50,   ledCurrent: 0xE0,   analysisDepth: "full" }  // in-motion: fast raw + bright LED
+  },
+  // The controller's decision thresholds — EVERY gate is a config number (no literals in the code).
+  // (The old bare `conf>=90` publish gate + the motion gates now live here as tunable knobs.)
+  CONTROLLER: {
+    confidenceTarget: 90,     // conf below this at rest = raise acquisition (was the hardcoded `conf>=90`)
+    motionThreshold: 0.05,    // motionEMA above this = "moving" → off the low-power STILL floor
+    batteryThreshold: 15      // battery % below this biases DOWN to STILL to protect runtime
+  },
+  // Pin a specific OperatingPoint to BYPASS the controller (this is what makes A/B + sweep experiments
+  // config-only — no reflash). null = the closed-loop controller runs. Set via setForcedOP({...}) or C7.
+  forcedOP: null,
+
+  // ===== TELEMETRY LOGGER (the profiling dataset) ============================================
+  // TOGGLEABLE + OFF by default (zero production bloat/drain: the timer never starts, and the per-event
+  // busy counter is guarded by this flag). When on, appends one compact CSV row per PROFILE_MS to a
+  // capped 2-segment rolling Storage file (titan.prof0 / titan.prof1; the oldest half is dropped when
+  // full). Row columns:
+  //   timestamp,opId,batteryVoltage,batteryPct,confidence,bpm,motionMag,ledCurrent,sampleRate,rawEnabled,cpuBusyEst
+  // Pull it over the Espruino IDE with:  require("Storage").read("titan.prof0")  (and ...prof1)
+  // or dump it over BLE with the C7 {"dump":1} command (→ "TP:"-prefixed lines).
+  PROFILE: false,
+  PROFILE_MS: 1000,                 // one row per second
+  PROFILE_FILE: "titan.prof",       // segments are PROFILE_FILE+"0"/"1"
+  PROFILE_MAX_BYTES: 400 * 1024     // ~400 KB total (~2 h @ 1 Hz; raise PROFILE_MS for multi-day capture)
+
+  // ===== HOW TO RUN THE EXPERIMENTS (change CONFIG at the IDE console — NO reflash per run) ===
+  // 1) setProfile(true)                       // start logging the dataset
+  // 2) pin an OperatingPoint (or step a sweep), let it run, then read titan.prof0/1:
+  //   Exp1 CALLBACK COST : setForcedOP({id:"e1hr",  sampleRate:25, ledCurrent:0x50, analysisDepth:"hr"})
+  //                        vs {...,id:"e1full", analysisDepth:"full"} — identical rate+LED, toggles ONLY the
+  //                        raw JS callback. NOTE: the *current* delta needs an EXTERNAL power meter; the
+  //                        conf/bpm/motion under each depth come straight from the logged rows.
+  //   Exp2 LED SWEEP     : for c in [0x30,0x50,0x5A,0xE0]:
+  //                        setForcedOP({id:"e2_"+c, sampleRate:25, ledCurrent:c, analysisDepth:"full"})
+  //                        — hrmGreenAdjust is forced false; rows capture resulting confidence/bpm/motion.
+  //   Exp3 RATE SWEEP    : for hz in [100,50,25,12.5]:
+  //                        setForcedOP({id:"e3_"+hz, sampleRate:hz, ledCurrent:0x5A, analysisDepth:"full"})
+  //   Exp4 PROC DEPTH    : analysisDepth "hr" vs "full" at a fixed sampleRate+ledCurrent (as Exp1).
+  // 3) setForcedOP(null)                       // hand control back to the closed-loop controller.
+  // Most analyses (LED/rate → confidence, transitions, energy attribution) are read straight off the
+  // dataset; only Exp1's absolute current draw needs the external meter.
 };
 
 // ----- State ----------------------------------------------------------------
@@ -578,6 +636,7 @@ function pushLiveSample(ppg) {
 
 function onHRMRaw(e) {
   if (!state.streaming) return;
+  if (CFG.PROFILE) profBusy++;   // raw-callback cost is the headline the profiler measures (Exp 1/4)
   pushSample(extractPPG(e));
 }
 
@@ -587,6 +646,7 @@ function onHRM(e) {
   // point (publishHr). A low-confidence reading HOLDS the last good bpm (no jitter to a bad value) and
   // publishes nothing; the 5 s TB heartbeat keeps the link "live" through those gaps. HR streams
   // continuously (the HRM stays powered) — HRV/recovery is still computed server-side from the raw PPG.
+  if (CFG.PROFILE) profBusy++;
   var bpm = e.bpm | 0, conf = e.confidence | 0;
   state.conf = conf;
   if (conf >= 90 && bpm > 0) {
@@ -631,6 +691,7 @@ function emitHrFrame(bpm, conf) {
 }
 
 function onAccel(a) {
+  if (CFG.PROFILE) profBusy++;
   // Bangle reports accel in g as {x,y,z,...}. We cache the latest for live T1
   // frames, AND accumulate movement (sum of |Δaccel|, which cancels the constant
   // 1 g of gravity) into the current overnight frame — a real actigraphy count
@@ -1127,20 +1188,63 @@ function hrmSportFor() {
   return CFG.HRM_SPORT_RUN;
 }
 
-// Tune the HRM for rest vs workout: force a motion-tolerant SPORT mode + 50 Hz raw PPG during a
-// workout, normal mode + 25 Hz at rest. This is the single biggest accuracy fix for in-motion HR —
-// the stock default (normal mode) is the documented cause of flat/wrong bpm under load. Called on
-// every state transition that can change rest↔workout. Guarded: pre-2v19 firmware may lack an option.
-function applyHrmMode() {
+// ----- Operating-point controller ------------------------------------------
+// The pipeline is fixed; this layer decides HOW HARD to drive it. curOp* hold the point currently
+// applied, so a re-evaluation only power-cycles the HRM when the sample RATE actually changes (no churn).
+var curOpId = null, curSampleRate = 0, curLed = "auto", curPollMs = 0;
+
+// Hz → the nearest supported hrmPollInterval (ms ∈ {10,20,40,80,160,200}).
+function hrmPollMs(hz) {
+  var ms = Math.round(1000 / hz), a = [10, 20, 40, 80, 160, 200], best = a[0], bd = 1e9;
+  for (var i = 0; i < a.length; i++) { var dd = Math.abs(a[i] - ms); if (dd < bd) { bd = dd; best = a[i]; } }
+  return best;
+}
+
+// Choose the OperatingPoint from SIGNAL QUALITY — motion (motionEMA), confidence (state.conf), battery —
+// NOT from a raw sleep/workout flag. Stillness drives the resting power level (a dead-still desk lands on
+// the same low-power STILL point sleep does); workout/sleep only BIAS it. forcedOP pins it (experiments).
+function pickOperatingPoint() {
+  if (CFG.forcedOP) return CFG.forcedOP;                     // experiment override — bypasses the controller
+  var K = CFG.CONTROLLER, O = CFG.OP;
+  if (state.workout) return O.WORKOUT;                       // in-motion HR is hard → full depth + fast + bright
+  if (sleepModeActive()) return O.REST;                     // overnight HRV rate (raw captured in accel-gated bursts)
+  if (state.battery > 0 && state.battery < K.batteryThreshold) return O.STILL;   // low battery → protect runtime
+  if (motionEMA > K.motionThreshold) return O.REST;         // real motion → faster + adaptive LED
+  if (state.conf > 0 && state.conf < K.confidenceTarget) return O.REST;          // weak lock → cleaner window
+  return O.STILL;                                            // dead-still wrist → the low-power floor
+}
+
+// Apply an OperatingPoint to the (unchanged) pipeline: HRM poll rate (power-cycle only if it changed),
+// motion-tolerant sport mode, LED current, and — unless the sleep-burst scheduler owns it (skipRaw) —
+// the raw analysis listener. Guarded: pre-2v19 firmware may lack an option.
+function applyOperatingPoint(op, skipRaw) {
   if (!state.streaming) return;
+  var pollMs = hrmPollMs(op.sampleRate), rateChanged = (pollMs !== curPollMs);
   state.hrmSport = hrmSportFor();
   try {
-    Bangle.setOptions({
-      hrmSportMode: state.hrmSport,
-      hrmPollInterval: state.workout ? CFG.HRM_MS_WORKOUT : CFG.HRM_MS_REST
-    });
+    // "auto" leaves the VC31B adaptive green brightness on; a number forces a fixed current below.
+    Bangle.setOptions({ hrmSportMode: state.hrmSport, hrmPollInterval: pollMs, hrmGreenAdjust: op.ledCurrent === "auto" });
+    if (op.ledCurrent !== "auto") { try { Bangle.hrmWr(0x17, op.ledCurrent); } catch (e) {} }
   } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
+  // A poll-interval change only takes effect when the VC31 HRM restarts → power-cycle it. Synchronous, so
+  // HR stays continuous (it ends powered on before the next event/tick — no observable blackout).
+  if (rateChanged) {
+    try { Bangle.setHRMPower(0, "titan"); Bangle.setHRMPower(1, "titan"); } catch (e) {}
+    curPollMs = pollMs;
+  }
+  curOpId = op.id; curSampleRate = op.sampleRate; curLed = op.ledCurrent;
+  if (!skipRaw) setRawCapture(op.analysisDepth === "full");
 }
+
+// Re-evaluate the controller (from the 5 s housekeeping tick). Only re-applies — through the single
+// source of truth reconcileHrm — when the CHOSEN point changes, so a stable state never churns power.
+function runController() {
+  if (!state.streaming || CFG.forcedOP) return;
+  if (pickOperatingPoint().id !== curOpId) reconcileHrm();
+}
+
+// Pin / clear a forced OperatingPoint at runtime (experiments — change config, no reflash) + apply it now.
+function setForcedOP(op) { CFG.forcedOP = op || null; reconcileHrm(); }
 
 // ----- 24/7 HRM power: HR continuous, RAW only where it's needed ----------
 // The VC31 HR algorithm runs in a C interrupt: subscribing to the 1 Hz HRM event costs ~1 mA and lets the
@@ -1238,14 +1342,87 @@ function sleepScreenRestore() {
 function reconcileHrm() {
   if (!state.streaming) { stopSleepDuty(); setRawCapture(false); return; }   // stopStreaming() owns the power-off
   try { Bangle.setHRMPower(1, "titan"); } catch (e) {}   // HR runs continuously whenever streaming
-  applyHrmMode();
-  if (sleepModeActive()) {
-    if (CFG.SLEEP_DUTY) { setRawCapture(false); startSleepDuty(); }   // raw toggled per accel-gated burst
-    else { stopSleepDuty(); setRawCapture(true); }                    // no duty → continuous raw all night
-  } else if (state.workout) {
-    stopSleepDuty(); setRawCapture(true);                             // workout → continuous raw waveform
+  var op = pickOperatingPoint();   // the controller picks the acquisition point from signal quality (+ bias)
+  // Sleep captures HRV in accel-gated RAW BURSTS (not continuous), so the burst scheduler owns the raw
+  // listener; the controller still sets the acquisition point (rate + LED). forcedOP bypasses the bursts.
+  if (sleepModeActive() && !CFG.forcedOP) {
+    applyOperatingPoint(op, true);   // skipRaw — raw is sleep-managed below
+    if (CFG.SLEEP_DUTY) startSleepDuty();               // raw toggled per accel-gated burst
+    else { stopSleepDuty(); setRawCapture(true); }      // no duty → continuous raw all night
   } else {
-    stopSleepDuty(); setRawCapture(false);                            // 24/7 rest → HR only, no raw (battery)
+    stopSleepDuty();
+    applyOperatingPoint(op, false);   // controller drives the raw listener from analysisDepth
+  }
+}
+
+// ----- Telemetry logger (profiling dataset) --------------------------------
+// TOGGLEABLE + OFF by default. One CSV row per CFG.PROFILE_MS to a capped 2-segment rolling Storage file
+// (drop-oldest ring, mirrors the overnight log ring). profBusy is a per-interval sensor-callback count — a
+// cheap CPU-load proxy (Espruino exposes no idle-fraction on this build), so cpuBusyEst rises with raw depth.
+var profTimer = null;   // the per-second logger interval (null = not logging)
+var profBusy = 0;       // sensor callbacks since the last row (raw+accel+hr) — the cpuBusyEst proxy
+var profSeg = 0, profSegBytes = 0;   // 2-segment ring cursor
+
+function profName(i) { return CFG.PROFILE_FILE + i; }
+
+// Battery VOLTAGE (the sensitive signal). Espruino on Bangle.js 2: NRF.getBattery() returns volts; fall
+// back to the analog divider on D3, else 0. (E.getBattery() is %, logged separately as batteryPct.)
+function battVoltage() {
+  try { if (NRF.getBattery) return NRF.getBattery(); } catch (e) {}
+  try { return analogRead(D3) * 3.3 * 2; } catch (e) {}
+  return 0;
+}
+
+// The ACTIVE green-LED current: the forced value when we pinned one, else read it back from the VC31B
+// (Bangle.hrmRd(0x17)) since adaptive brightness ("auto") may have moved it.
+function readLedCurrent() {
+  if (curLed !== undefined && curLed !== "auto") return curLed;
+  try { return Bangle.hrmRd(0x17); } catch (e) { return -1; }
+}
+
+// Append one row to the rolling ring: when the active segment fills half the budget, flip to the other
+// segment and ERASE it first (that segment holds the oldest rows → drop-oldest). Total ≤ PROFILE_MAX_BYTES.
+function profAppend(row) {
+  var data = row + "\n", len = data.length;
+  if (profSegBytes + len > (CFG.PROFILE_MAX_BYTES >> 1)) {
+    profSeg ^= 1; profSegBytes = 0;
+    try { require("Storage").open(profName(profSeg), "r").erase(); } catch (e) {}
+  }
+  try { require("Storage").open(profName(profSeg), "a").write(data); profSegBytes += len; } catch (e) {}
+}
+
+function profileTick() {
+  var row = [
+    Math.round(getTime() * 1000),      // timestamp (unix ms)
+    curOpId || "-",                    // opId — the active operating point
+    battVoltage().toFixed(3),          // batteryVoltage (V)
+    state.battery,                     // batteryPct
+    state.conf,                        // confidence (last HRM)
+    state.bpm,                         // bpm (last good lock)
+    motionEMA.toFixed(4),              // motionMag (accel EMA)
+    readLedCurrent(),                  // ledCurrent (active)
+    curSampleRate || 0,                // sampleRate (Hz)
+    rawCaptureOn ? 1 : 0,              // rawEnabled
+    profBusy                           // cpuBusyEst (sensor-callback count this interval — load proxy)
+  ].join(",");
+  profAppend(row);
+  profBusy = 0;
+}
+
+function startProfiler() { if (!profTimer) profTimer = setInterval(profileTick, CFG.PROFILE_MS); }
+function stopProfiler() { if (profTimer) { clearInterval(profTimer); profTimer = null; } }
+function setProfile(on) { CFG.PROFILE = !!on; if (CFG.PROFILE) startProfiler(); else stopProfiler(); }
+
+// Stream the dataset over BLE (C7 {"dump":1}) — each row as a "TP:"-prefixed line. Trivial + connected-only.
+function dumpProfile() {
+  if (!state.connected) return;
+  for (var i = 0; i < 2; i++) {
+    try {
+      var d = require("Storage").read(profName(i));
+      if (!d) continue;
+      var lines = d.split("\n");
+      for (var j = 0; j < lines.length; j++) if (lines[j].length) { try { Bluetooth.println("TP:" + lines[j]); } catch (e) {} }
+    } catch (e) {}
   }
 }
 
@@ -2009,6 +2186,14 @@ Bluetooth.on("data", function (d) {
       // while you walk, and worse right after a reflash resets the band below the phone's day total). The
       // band streams its own count up (T8); the SERVER does the authoritative per-day MAX merge with the
       // phone. Kept as an explicit no-op so the iOS push isn't fed to the REPL and the pin isn't restored.
+    } else if (line.substr(0, 3) === "C7:") {     // instrumentation: profiler + forced-OP control, no reflash
+      try {                                        // {on:1|0} start/stop logger · {dump:1} stream rows · {op:{...}}|{clearOp:1}
+        var pc = JSON.parse(line.substr(3));
+        if (pc.on !== undefined) setProfile(!!pc.on);
+        if (pc.op) setForcedOP(pc.op);
+        if (pc.clearOp) setForcedOP(null);
+        if (pc.dump) dumpProfile();
+      } catch (e) { /* malformed — ignore */ }
     }
   }
 });
@@ -2039,6 +2224,7 @@ state.connected = NRF.getSecurityStatus().connected;
 var uiTimer = setInterval(function () {
   refreshBattery();
   updateAutoDetect();   // Whoop-style hands-free workout start/stop (one 5 s epoch)
+  runController();       // signal-quality controller: re-pick the operating point if it changed (no churn)
 }, 5000);
 
 // Tick the stopwatch once a second, but ONLY while you're actually looking at a running timer
@@ -2066,6 +2252,7 @@ E.on("kill", function () {
   if (stepSaveTimer) clearInterval(stepSaveTimer);
   if (swTimer) clearInterval(swTimer);
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; flushSf = null; }   // stop a chunked drain
+  stopProfiler();           // stop the telemetry logger (no-op if it was never running)
   stepTick(); stepSave();   // don't lose the day's steps on unload/reboot
   setRawCapture(false);     // drop the raw waveform listener
   if (altBuf.length) { try { emitAltFrame(); } catch (e) {} }   // don't lose the partial minute
@@ -2142,6 +2329,10 @@ try {
     }
   }
 } catch (e) {}
+
+// Telemetry logger: start ONLY if it was baked on (CFG.PROFILE). OFF by default → zero prod cost; the
+// interval never runs and the per-event busy counter is skipped. Toggle at runtime with setProfile(true).
+if (CFG.PROFILE) startProfiler();
 
 // Initial paint.
 refreshBattery();

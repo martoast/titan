@@ -877,6 +877,89 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('conn-interval (g) · restored to {30,45} after the workout', !!afterIv && afterIv.minInterval === 30 && afterIv.maxInterval === 45, JSON.stringify(afterIv));
 })();
 
+// ===========================================================================================
+// OPERATING-POINT CONTROLLER + TELEMETRY LOGGER (instrumentation build). The pipeline is unchanged; a
+// controller picks HOW HARD to drive it from SIGNAL QUALITY, forcedOP pins it for experiments, and a
+// toggleable per-second logger builds the profiling dataset (OFF by default → writes NOTHING).
+
+// 33) The controller is SIGNAL-QUALITY driven, not flag driven: a dead-still wrist lands on the low-power
+//     STILL point; sustained motion raises it off that floor; a workout biases it to the full-depth point.
+(() => {
+  const s = new Session();
+  s.connect(); s.advance(2000);
+  for (let t = 0; t < 20; t++) { s.watch.accel(0.001, 0.0, 1.0); s.watch.hrm(60, 96); s.clock.advance(1000); }  // dead still, good lock
+  check('controller · dead-still wrist lands on the low-power STILL point (raw off)',
+    s.watch.pickOP().id === 'STILL' && s.watch.rawRegistered() === false, `op=${s.watch.pickOP().id} raw=${s.watch.rawRegistered()}`);
+  for (let t = 0; t < 40; t++) { s.watch.accel(t % 2 ? 0.35 : -0.35, 0.0, 1.0); s.clock.advance(200); }        // sustained motion
+  check('controller · sustained motion raises the OP off the STILL floor (signal-quality, not a flag)',
+    s.watch.pickOP().id !== 'STILL', `op=${s.watch.pickOP().id} motionEMA=${s.watch.sandbox.motionEMA.toFixed(3)}`);
+  s.gotoLift(); s.tapButton();   // a workout biases to full depth regardless of stillness
+  check('controller · a workout forces the full-depth WORKOUT point (raw registered)',
+    s.watch.pickOP().id === 'WORKOUT' && s.watch.opId() === 'WORKOUT' && s.watch.rawRegistered() === true,
+    `pick=${s.watch.pickOP().id} applied=${s.watch.opId()} raw=${s.watch.rawRegistered()}`);
+  s.watch.sendCommand('C0:'); s.advance(5000);
+  check('controller · back to rest → raw listener drops again (analysisDepth hr)', s.watch.rawRegistered() === false, `raw=${s.watch.rawRegistered()}`);
+})();
+
+// 34) forcedOP OVERRIDES the controller (the config-only experiment knob): a pinned OP is returned as-is
+//     and its analysisDepth drives the raw listener even at rest; clearing it hands control back.
+(() => {
+  const s = new Session();
+  s.connect(); s.advance(2000);
+  s.watch.setForcedOP({ id: 'EXP', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full' });
+  check('forcedOP · pickOperatingPoint returns the pinned OP (bypasses the controller)', s.watch.pickOP().id === 'EXP', `op=${s.watch.pickOP().id}`);
+  check('forcedOP · analysisDepth:full pins the raw listener ON even at rest', s.watch.rawRegistered() === true, `raw=${s.watch.rawRegistered()}`);
+  check('forcedOP · a forced fixed LED current is written to VC31B 0x17', s.watch.ledCurrent() === 0x50, `led=${s.watch.ledCurrent()}`);
+  // The controller must NOT override the pin even when signal quality would normally choose otherwise.
+  for (let t = 0; t < 20; t++) { s.watch.accel(0.001, 0.0, 1.0); s.watch.hrm(60, 96); s.clock.advance(1000); }  // dead still
+  check('forcedOP · controller does NOT re-pick while pinned (stays EXP through a still spell)', s.watch.opId() === 'EXP', `applied=${s.watch.opId()}`);
+  s.watch.setForcedOP(null);
+  check('forcedOP cleared · controller resumes → raw off at rest', s.watch.rawRegistered() === false && s.watch.pickOP().id !== 'EXP', `raw=${s.watch.rawRegistered()} op=${s.watch.pickOP().id}`);
+})();
+
+// 35) TELEMETRY LOGGER: nothing when OFF (default); accumulates ~1 row/s with all 11 fields when ON; stops
+//     writing when toggled OFF again.
+(() => {
+  const s = new Session();
+  s.connect();
+  for (let t = 0; t < 10; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(60, 96); s.clock.advance(1000); }
+  check('telemetry · writes NOTHING while PROFILE is off (default)', s.watch.profRowCount() === 0, `rows=${s.watch.profRowCount()}`);
+
+  s.watch.profileOn(true);   // runtime start
+  for (let t = 0; t < 12; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(61 + (t % 3), 96); s.clock.advance(1000); }
+  const rows = s.watch.profRows();
+  check('telemetry · rows accumulate ~1/s once PROFILE is on', rows.length >= 10, `rows=${rows.length}`);
+  const f = rows[rows.length - 1].split(',');
+  check('telemetry · each row carries all 11 fields', f.length === 11, `n=${f.length} row=${rows[rows.length - 1]}`);
+  // timestamp, opId, batteryVoltage, batteryPct, confidence, bpm, motionMag, ledCurrent, sampleRate, rawEnabled, cpuBusyEst
+  check('telemetry · row fields are sane (opId set, voltage>0, batteryPct>0, confidence=96, rawEnabled=0 at rest)',
+    /^(REST|STILL|WORKOUT)$/.test(f[1]) && parseFloat(f[2]) > 0 && parseInt(f[3]) > 0 && parseInt(f[4]) === 96 && f[9] === '0',
+    `opId=${f[1]} V=${f[2]} pct=${f[3]} conf=${f[4]} raw=${f[9]}`);
+
+  const before = s.watch.profRowCount();
+  s.watch.profileOn(false);   // runtime stop
+  for (let t = 0; t < 10; t++) { s.clock.advance(1000); }
+  check('telemetry · stops writing the moment PROFILE is toggled off', s.watch.profRowCount() === before, `before=${before} after=${s.watch.profRowCount()}`);
+})();
+
+// 36) TELEMETRY captures the callback-cost signal (Exp 1/4): with the raw listener ON (analysisDepth full),
+//     rawEnabled=1 and cpuBusyEst (the sensor-callback proxy) is strictly higher than at hr-only rest.
+(() => {
+  const s = new Session();
+  s.connect(); s.watch.profileOn(true);
+  for (let t = 0; t < 8; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(60, 96); s.clock.advance(1000); }   // hr-only rest
+  const restRows = s.watch.profRows();
+  const restBusy = Math.max(...restRows.map((r) => parseInt(r.split(',')[10])));
+  s.watch.setForcedOP({ id: 'e1full', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full' });             // raw ON, same rest
+  for (let t = 0; t < 8; t++) { s.watch.accel(0.01, 0.0, 1.0); for (let k = 0; k < 4; k++) s.watch.hrmRaw(12000 + k); s.watch.hrm(60, 96); s.clock.advance(1000); }
+  const fullRows = s.watch.profRows().slice(restRows.length);
+  check('telemetry (Exp 1) · rawEnabled flips 0→1 when analysisDepth goes hr→full at fixed acquisition',
+    restRows[restRows.length - 1].split(',')[9] === '0' && fullRows[fullRows.length - 1].split(',')[9] === '1', '');
+  const fullBusy = Math.max(...fullRows.map((r) => parseInt(r.split(',')[10])));
+  check('telemetry (Exp 1) · cpuBusyEst is higher with the raw callback on (the measured callback cost)',
+    fullBusy > restBusy, `restBusy=${restBusy} fullBusy=${fullBusy}`);
+})();
+
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
 for (const r of results) console.log(`${r.ok ? '  ✓' : '  ✗'} ${r.name}${r.ok ? '' : `\n      → ${r.detail}`}`);
 console.log(`\n${results.length - failures}/${results.length} checks passed\n`);

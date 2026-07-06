@@ -43,6 +43,7 @@ function buildWatch(clock, opts = {}) {
   let powerSave = true;                   // default ON at boot (Espruino default)
   let powerSaveTimer = 0;                 // ms of stillness; ≥ POWER_SAVE_TIMEOUT ⇒ step counter gated OFF
   const POWER_SAVE_TIMEOUT = 60000;
+  const hrmRegs = {};                    // VC31B registers written via Bangle.hrmWr (0x17 = green-LED current)
   let dataHandler = null;                // Bluetooth.on('data')
   const allFrames = [];                  // every println line (for inspection)
   let deliver = null;                    // hook: deliver a line to the phone when connected
@@ -100,6 +101,8 @@ function buildWatch(clock, opts = {}) {
     // THE TRAP: Bangle.setPollInterval() force-clears powerSave (bangleFlags &= ~JSBF_POWER_SAVE) as a
     // side effect — which freezes powerSaveTimer and can permanently gate the step counter OFF.
     setPollInterval() { powerSave = false; },
+    // VC31B raw register access (the operating-point controller forces the green-LED current via 0x17).
+    hrmWr(reg, val) { hrmRegs[reg] = val; }, hrmRd(reg) { return hrmRegs[reg] === undefined ? 0x50 : hrmRegs[reg]; },
     buzz() {}, isLCDOn() { return lcdOn; }, isCharging() { return false; },
     // The firmware pedometer. Real Bangle.js counts steps from the accel poll and exposes them here; it
     // keeps counting DURING a workout (that's the whole point of the 12.5 Hz poll) — but ONLY while the OS
@@ -109,6 +112,7 @@ function buildWatch(clock, opts = {}) {
   const NRF = {
     on: on('NRF'),
     getSecurityStatus() { return { connected }; },
+    getBattery() { return 3.9; },   // nRF52 VDD volts — the telemetry logger's battery-voltage source
     disconnect() { control.disconnect(); },
     getAddress() { return 'aa:bb:cc:dd:e7:c3'; },
     setConnectionInterval(o) { if (o) connIntervals.push({ minInterval: o.minInterval, maxInterval: o.maxInterval }); },
@@ -212,6 +216,22 @@ function buildWatch(clock, opts = {}) {
     simulateReboot(steps = 0) { osStepCount = steps | 0; },   // a reflash/reboot resets the OS pedometer
 
     state() { return sandbox.state; },             // firmware state object (workout/connected/hrmSport/…)
+
+    // ----- Operating-point controller + telemetry (instrumentation build) -----
+    pickOP() { return sandbox.pickOperatingPoint(); },      // what the controller WOULD choose right now
+    opId() { return sandbox.curOpId; },                     // the operating point currently applied
+    ledCurrent() { return hrmRegs[0x17]; },                 // the forced VC31B green current (undefined = auto)
+    setForcedOP(op) { sandbox.setForcedOP(op); },           // pin/clear an OP (experiment override)
+    profileOn(v) { sandbox.setProfile(v); },                // toggle the telemetry logger at runtime
+    profRows() {                                            // all CSV rows across the 2-segment ring
+      const rows = [];
+      for (const nm of [sandbox.CFG.PROFILE_FILE + '0', sandbox.CFG.PROFILE_FILE + '1']) {
+        const f = files[nm]; if (!f) continue;
+        for (const ln of (f.data || '').split('\n')) if (ln.length) rows.push(ln);
+      }
+      return rows;
+    },
+    profRowCount() { return this.profRows().length; },
   };
   return control;
 }
