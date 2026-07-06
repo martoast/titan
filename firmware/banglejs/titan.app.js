@@ -2411,3 +2411,16 @@ if (CFG.PROFILE) startProfiler();
 // Initial paint.
 refreshBattery();
 drawUI();
+
+// --- REPL / experiment control API ------------------------------------------------------------
+// Expose the profiling + operating-point controls to the global scope so they're callable from the
+// Espruino IDE console. Assigned by STRING KEY so the names survive a MINIFIED flash build (which
+// mangles the local function identifiers but never these literal property keys). Without this,
+// setProfile(...) / setForcedOP(...) are "not defined" on a minified build. Guarded for the sim.
+try {
+  global["setProfile"] = setProfile;         // setProfile(true|false) — start/stop the telemetry log
+  global["setForcedOP"] = setForcedOP;       // setForcedOP({id,sampleRate,ledCurrent,analysisDepth,fifoBatch}) / null
+  global["startStreaming"] = startStreaming; // HR capture on
+  global["stopStreaming"] = stopStreaming;   // HR capture off (quiets the console)
+  global["CFG"] = CFG;                        // inspect/tweak thresholds live
+} catch (e) {}
