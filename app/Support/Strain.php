@@ -48,7 +48,14 @@ class Strain
         $steps = (int) ($act->steps ?? 0);
         $ambient = max($mvpa * 0.8, $steps * 0.004);
 
-        $load = $workout + $ambient;
+        // All-day HR load (the 24/7 stream, Whoop-style): Banister TRIMP over the day's hr_samples that
+        // fall OUTSIDE a logged workout (workout minutes are already in $workout). Resting minutes sit at
+        // ~0 HRR → ~0 TRIMP, so a quiet day stays light; sustained elevated HR (a hike, a hard commute)
+        // accrues real strain even with no "workout" logged. Taken as the STRONGER of {step/MVPA ambient,
+        // HR load} rather than summed, so a brisk walk that lifts both steps and HR isn't double-counted.
+        $hrLoad = self::hrZoneLoad($profile, $dayStart, $startUtc, $endUtc);
+
+        $load = $workout + max($ambient, $hrLoad);
         $strain = round(self::MAX * (1 - exp(-$load / self::K)), 1);
         [$band, $label] = self::band($strain);
 
@@ -67,6 +74,68 @@ class Strain
             'advice' => $advice,
             'readiness' => $readiness !== null ? (int) round($readiness) : null,
         ];
+    }
+
+    /**
+     * All-day cardiovascular load from the 24/7 HR stream, as Banister TRIMP summed over the day's
+     * hr_samples that fall OUTSIDE any logged workout window (those are already counted as $workout).
+     *
+     * Each sample is ~1 minute (the trend is bucketed to 1/min upstream). Per-minute TRIMP =
+     * HRR · gender_coef · e^(gender_exp · HRR), where HRR = (bpm − rest) / (max − rest) is the Karvonen
+     * heart-rate reserve, clamped to [0,1]. At rest bpm ≈ restHR → HRR ≈ 0 → ~0 load, so a quiet day
+     * doesn't inflate. maxHR = Tanaka (208 − 0.7·age); restHR = the latest sealed resting HR (fallback 60).
+     */
+    private static function hrZoneLoad(Profile $profile, Carbon $dayStart, Carbon $startUtc, Carbon $endUtc): float
+    {
+        // hr_samples.recorded_at is stored as the owner's LOCAL wall-clock (see DeviceIngestionService::
+        // writeHrTrend), so it's queried by the local-day range — same convention as MobileHrController —
+        // NOT the UTC instants used for the (UTC-stored) workout/activity tables.
+        $samples = $profile->hrSamples()
+            ->whereBetween('recorded_at', [$dayStart->copy()->startOfDay(), $dayStart->copy()->endOfDay()])
+            ->orderBy('recorded_at')
+            ->get(['recorded_at', 'bpm']);
+        if ($samples->isEmpty()) {
+            return 0.0;
+        }
+
+        // Workout windows to exclude (their load is $workout). started_at..ended_at (fallback +duration).
+        $windows = $profile->activitySessions()
+            ->where('started_at', '<', $endUtc)
+            ->where(fn ($q) => $q->where('ended_at', '>=', $startUtc)->orWhereNull('ended_at'))
+            ->get(['started_at', 'ended_at', 'duration_min'])
+            ->map(fn ($s) => [
+                $s->started_at,
+                $s->ended_at ?? $s->started_at->copy()->addMinutes((int) ($s->duration_min ?? 0)),
+            ]);
+        $inWorkout = function (Carbon $t) use ($windows): bool {
+            foreach ($windows as [$a, $b]) {
+                if ($t >= $a && $t < $b) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        $age = $profile->birthdate ? (int) $profile->birthdate->age : 35;
+        $maxHr = 208.0 - 0.7 * $age;                                  // Tanaka
+        $rest = (float) ($profile->recoveryLogs()->whereNotNull('resting_hr')
+            ->latest('logged_at')->value('resting_hr') ?: 60);
+        $reserve = max(1.0, $maxHr - $rest);
+        // Female coefficients (Banister); male otherwise. sex stored 'F'/'M' (nullable → male default).
+        $female = strtoupper((string) $profile->sex) === 'F';
+        [$coef, $exp] = $female ? [0.86, 1.67] : [0.64, 1.92];
+
+        $load = 0.0;
+        foreach ($samples as $s) {
+            if ($s->bpm <= 0 || $inWorkout($s->recorded_at)) {
+                continue;
+            }
+            $hrr = min(1.0, max(0.0, ((float) $s->bpm - $rest) / $reserve));
+            $load += $hrr * $coef * exp($exp * $hrr);                 // ~1 min per sample
+        }
+
+        return $load;
     }
 
     /**

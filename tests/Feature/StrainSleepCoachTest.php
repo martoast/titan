@@ -34,6 +34,54 @@ class StrainSleepCoachTest extends TestCase
         $this->assertGreaterThan(0, $worked);
     }
 
+    public function test_all_day_elevated_hr_raises_strain_without_a_logged_workout(): void
+    {
+        $p = User::factory()->create()->ensureProfile();
+        $p->update(['birthdate' => now()->subYears(30)->toDateString(), 'sex' => 'M']);
+        $p->recoveryLogs()->create(['logged_at' => now()->toDateString(), 'resting_hr' => 55]);
+
+        // Baseline: a quiet day of resting HR only → should stay light (near-zero HR load).
+        $start = now()->startOfDay();
+        for ($m = 0; $m < 90; $m++) {
+            $p->hrSamples()->create(['recorded_at' => $start->copy()->addMinutes($m), 'bpm' => 58, 'confidence' => 95]);
+        }
+        $quiet = Strain::assess($p)['strain'];
+
+        // Now 60 minutes of sustained elevated HR (~140 bpm ≈ Z3) with NO workout logged.
+        for ($m = 120; $m < 180; $m++) {
+            $p->hrSamples()->create(['recorded_at' => $start->copy()->addMinutes($m), 'bpm' => 140, 'confidence' => 95]);
+        }
+        $elevated = Strain::assess($p)['strain'];
+
+        $this->assertGreaterThan($quiet, $elevated);          // 24/7 HR load moved the number
+        $this->assertGreaterThan(0, $elevated);
+        $this->assertLessThanOrEqual(21.0, $elevated);
+    }
+
+    public function test_hr_load_inside_a_workout_is_not_double_counted(): void
+    {
+        $p = User::factory()->create()->ensureProfile();
+        $p->update(['birthdate' => now()->subYears(30)->toDateString(), 'sex' => 'M']);
+        $p->recoveryLogs()->create(['logged_at' => now()->toDateString(), 'resting_hr' => 55]);
+
+        // A logged workout window with its own TRIMP, and elevated HR samples that fall INSIDE it.
+        $start = now()->startOfDay()->addHours(9);
+        $p->activitySessions()->create([
+            'started_at' => $start, 'ended_at' => $start->copy()->addMinutes(45),
+            'duration_min' => 45, 'trimp' => 70, 'source' => 'titan_band',
+        ]);
+        for ($m = 0; $m < 45; $m++) {
+            $p->hrSamples()->create(['recorded_at' => $start->copy()->addMinutes($m), 'bpm' => 150, 'confidence' => 95]);
+        }
+
+        // Strain should equal the workout-only strain (the in-window HR samples add nothing on top).
+        $withHr = Strain::assess($p)['strain'];
+        $p->hrSamples()->delete();
+        $workoutOnly = Strain::assess($p)['strain'];
+
+        $this->assertEqualsWithDelta($workoutOnly, $withHr, 0.05);   // in-workout HR not double-counted
+    }
+
     public function test_sleep_coach_flags_debt_on_short_nights(): void
     {
         $p = User::factory()->create()->ensureProfile();
