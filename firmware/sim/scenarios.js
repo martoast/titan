@@ -917,47 +917,57 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('forcedOP cleared · controller resumes → raw off at rest', s.watch.rawRegistered() === false && s.watch.pickOP().id !== 'EXP', `raw=${s.watch.rawRegistered()} op=${s.watch.pickOP().id}`);
 })();
 
-// 35) TELEMETRY LOGGER: nothing when OFF (default); accumulates ~1 row/s with all 11 fields when ON; stops
-//     writing when toggled OFF again.
+// 35) TELEMETRY LOGGER: nothing when OFF (default); accumulates ~1 row/s with all 16 fields (incl. real
+//     E.getPowerUsage power attribution + HRM-env ambient light) when ON; stops writing when toggled OFF.
 (() => {
   const s = new Session();
   s.connect();
   for (let t = 0; t < 10; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(60, 96); s.clock.advance(1000); }
   check('telemetry · writes NOTHING while PROFILE is off (default)', s.watch.profRowCount() === 0, `rows=${s.watch.profRowCount()}`);
+  check('telemetry · HRM-env option stays OFF in production (no ambient-light event cost)', s.watch.hrmPushEnvOn() === false, `pushEnv=${s.watch.hrmPushEnvOn()}`);
 
   s.watch.profileOn(true);   // runtime start
-  for (let t = 0; t < 12; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(61 + (t % 3), 96); s.clock.advance(1000); }
+  check('telemetry · turning PROFILE on enables the hrmPushEnv option', s.watch.hrmPushEnvOn() === true, `pushEnv=${s.watch.hrmPushEnvOn()}`);
+  for (let t = 0; t < 12; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(61 + (t % 3), 96); s.watch.hrmEnv(1200 + t); s.clock.advance(1000); }
   const rows = s.watch.profRows();
   check('telemetry · rows accumulate ~1/s once PROFILE is on', rows.length >= 10, `rows=${rows.length}`);
   const f = rows[rows.length - 1].split(',');
-  check('telemetry · each row carries all 11 fields', f.length === 11, `n=${f.length} row=${rows[rows.length - 1]}`);
-  // timestamp, opId, batteryVoltage, batteryPct, confidence, bpm, motionMag, ledCurrent, sampleRate, rawEnabled, cpuBusyEst
+  check('telemetry · each row carries all 16 fields', f.length === 16, `n=${f.length} row=${rows[rows.length - 1]}`);
+  // 0 timestamp,1 opId,2 batteryVoltage,3 batteryPct,4 confidence,5 bpm,6 motionMag,7 ledCurrent,8 sampleRate,
+  // 9 rawEnabled,10 pwrCPU,11 pwrHRM,12 pwrLCD,13 pwrBLE,14 pwrTotal,15 env
   check('telemetry · row fields are sane (opId set, voltage>0, batteryPct>0, confidence=96, rawEnabled=0 at rest)',
     /^(REST|STILL|WORKOUT)$/.test(f[1]) && parseFloat(f[2]) > 0 && parseInt(f[3]) > 0 && parseInt(f[4]) === 96 && f[9] === '0',
     `opId=${f[1]} V=${f[2]} pct=${f[3]} conf=${f[4]} raw=${f[9]}`);
+  check('telemetry · real power attribution present (pwrCPU>0, pwrTotal>0, total ≥ CPU)',
+    parseInt(f[10]) > 0 && parseInt(f[14]) > 0 && parseInt(f[14]) >= parseInt(f[10]),
+    `pwrCPU=${f[10]} pwrHRM=${f[11]} pwrLCD=${f[12]} pwrBLE=${f[13]} pwrTotal=${f[14]}`);
+  check('telemetry · HRM-env ambient-light column populated while PROFILE is on', parseInt(f[15]) > 0, `env=${f[15]}`);
 
   const before = s.watch.profRowCount();
   s.watch.profileOn(false);   // runtime stop
+  check('telemetry · toggling PROFILE off disables the hrmPushEnv option again', s.watch.hrmPushEnvOn() === false, `pushEnv=${s.watch.hrmPushEnvOn()}`);
+  s.watch.hrmEnv(9999);       // an ambient sample now is a no-op (event disabled + handler removed)
+  check('telemetry · HRM-env is silent once PROFILE is off (state reset, handler removed)', s.watch.state().hrmEnv === 0, `hrmEnv=${s.watch.state().hrmEnv}`);
   for (let t = 0; t < 10; t++) { s.clock.advance(1000); }
   check('telemetry · stops writing the moment PROFILE is toggled off', s.watch.profRowCount() === before, `before=${before} after=${s.watch.profRowCount()}`);
 })();
 
 // 36) TELEMETRY captures the callback-cost signal (Exp 1/4): with the raw listener ON (analysisDepth full),
-//     rawEnabled=1 and cpuBusyEst (the sensor-callback proxy) is strictly higher than at hr-only rest.
+//     rawEnabled=1 and pwrCPU (real E.getPowerUsage microamps) is strictly higher than at hr-only rest.
 (() => {
   const s = new Session();
   s.connect(); s.watch.profileOn(true);
   for (let t = 0; t < 8; t++) { s.watch.accel(0.01, 0.0, 1.0); s.watch.hrm(60, 96); s.clock.advance(1000); }   // hr-only rest
   const restRows = s.watch.profRows();
-  const restBusy = Math.max(...restRows.map((r) => parseInt(r.split(',')[10])));
+  const restCpu = Math.max(...restRows.map((r) => parseInt(r.split(',')[10])));
   s.watch.setForcedOP({ id: 'e1full', sampleRate: 25, ledCurrent: 0x50, analysisDepth: 'full' });             // raw ON, same rest
   for (let t = 0; t < 8; t++) { s.watch.accel(0.01, 0.0, 1.0); for (let k = 0; k < 4; k++) s.watch.hrmRaw(12000 + k); s.watch.hrm(60, 96); s.clock.advance(1000); }
   const fullRows = s.watch.profRows().slice(restRows.length);
   check('telemetry (Exp 1) · rawEnabled flips 0→1 when analysisDepth goes hr→full at fixed acquisition',
     restRows[restRows.length - 1].split(',')[9] === '0' && fullRows[fullRows.length - 1].split(',')[9] === '1', '');
-  const fullBusy = Math.max(...fullRows.map((r) => parseInt(r.split(',')[10])));
-  check('telemetry (Exp 1) · cpuBusyEst is higher with the raw callback on (the measured callback cost)',
-    fullBusy > restBusy, `restBusy=${restBusy} fullBusy=${fullBusy}`);
+  const fullCpu = Math.max(...fullRows.map((r) => parseInt(r.split(',')[10])));
+  check('telemetry (Exp 1) · pwrCPU (E.getPowerUsage) is higher with the raw callback on (real on-device callback cost)',
+    fullCpu > restCpu, `restCpu=${restCpu} fullCpu=${fullCpu}`);
 })();
 
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');

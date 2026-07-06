@@ -30,6 +30,7 @@ function buildWatch(clock, opts = {}) {
 
   let connected = false;                 // is a phone subscribed to NUS?
   let hrmOn = false;                      // is the HRM/PPG LED powered right now? (setHRMPower) — the battery-critical bit
+  let hrmPushEnv = false;                 // is the HRM-env ambient-light event enabled? (setOptions, profiler-only)
   let lcdOn = true;                       // is the screen lit? (drives lcdPower events → the rest-duty screen-wake kick)
   const connIntervals = [];              // every NRF.setConnectionInterval({minInterval,maxInterval}) call (battery: {30,45} rest ↔ {15,30} fast)
   let osStepCount = 0;                    // the built-in pedometer's running day count (getHealthStatus)
@@ -95,8 +96,12 @@ function buildWatch(clock, opts = {}) {
     on: on('Bangle'),
     removeListener: removeListener('Bangle'),
     setGPSPower() {}, setBarometerPower() {}, setHRMPower(v) { hrmOn = !!v; },
-    // setOptions merges options; the only one that matters to the pedometer is powerSave.
-    setOptions(o) { if (o && o.powerSave !== undefined) powerSave = !!o.powerSave; },
+    // setOptions merges options; the two that matter here are powerSave (pedometer) and hrmPushEnv (the
+    // profiler's ambient-light event — enabled only while the telemetry logger runs).
+    setOptions(o) {
+      if (o && o.powerSave !== undefined) powerSave = !!o.powerSave;
+      if (o && o.hrmPushEnv !== undefined) hrmPushEnv = !!o.hrmPushEnv;
+    },
     getOptions() { return { powerSave: powerSave }; },
     // THE TRAP: Bangle.setPollInterval() force-clears powerSave (bangleFlags &= ~JSBF_POWER_SAVE) as a
     // side effect — which freezes powerSaveTimer and can permanently gate the step counter OFF.
@@ -127,6 +132,19 @@ function buildWatch(clock, opts = {}) {
     setTimeZone(h) { tzRef.h = h; },
     on: on('E'),
     setConsole() {},
+    // The on-device power meter the telemetry logger reads (real Espruino: microamp estimates per
+    // sub-device + a total). CPU rises when the HRM-raw listener is registered — the 25-50 Hz raw callback
+    // into JS is real work — so a scenario can assert the callback-cost signal shows up in pwrCPU. HRM/LCD/BLE
+    // track the LED, screen and link so energy attribution is exercised end-to-end.
+    getPowerUsage() {
+      const rawOn = (listeners['Bangle:HRM-raw'] || []).length > 0;
+      const CPU = rawOn ? 1400 : 700;   // raw-callback load (the Exp 1/4 signal)
+      const HRM = hrmOn ? 700 : 0;
+      const LCD = lcdOn ? 100 : 0;
+      const BLE = connected ? 150 : 40;
+      const device = { CPU, HRM, LCD, BLE };
+      return { device, total: CPU + HRM + LCD + BLE };
+    },
   };
 
   const sandbox = {
@@ -194,6 +212,10 @@ function buildWatch(clock, opts = {}) {
 
     hrm(bpm, conf = 96) { fire('Bangle:HRM', { bpm, confidence: conf }); },
     hrmRaw(raw) { fire('Bangle:HRM-raw', { raw }); },
+    // Ambient-light sample (LED off). The real sensor only emits HRM-env while hrmPushEnv is set, and the
+    // firmware only enables it while profiling — so if the option is off this is a faithful no-op.
+    hrmEnv(val) { if (hrmPushEnv) fire('Bangle:HRM-env', val); },
+    hrmPushEnvOn() { return hrmPushEnv; },
     accel(x, y, z) { fire('Bangle:accel', { x, y, z }); },
     gps(fix) { fire('Bangle:GPS', fix); },
 

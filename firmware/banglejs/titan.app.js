@@ -234,11 +234,15 @@ var CFG = {
   forcedOP: null,
 
   // ===== TELEMETRY LOGGER (the profiling dataset) ============================================
-  // TOGGLEABLE + OFF by default (zero production bloat/drain: the timer never starts, and the per-event
-  // busy counter is guarded by this flag). When on, appends one compact CSV row per PROFILE_MS to a
-  // capped 2-segment rolling Storage file (titan.prof0 / titan.prof1; the oldest half is dropped when
-  // full). Row columns:
-  //   timestamp,opId,batteryVoltage,batteryPct,confidence,bpm,motionMag,ledCurrent,sampleRate,rawEnabled,cpuBusyEst
+  // TOGGLEABLE + OFF by default (zero production bloat/drain: the timer never starts, and the HRM-env
+  // event + hrmPushEnv option are only enabled while this flag is on). When on, appends one compact CSV
+  // row per PROFILE_MS to a capped 2-segment rolling Storage file (titan.prof0 / titan.prof1; the oldest
+  // half is dropped when full). Row columns:
+  //   timestamp,opId,batteryVoltage,batteryPct,confidence,bpm,motionMag,ledCurrent,sampleRate,rawEnabled,pwrCPU,pwrHRM,pwrLCD,pwrBLE,pwrTotal,env
+  // pwr* are REAL per-device microamp estimates from E.getPowerUsage() (the on-device power meter — directly
+  // attributes energy: CPU rises with the raw-callback load, HRM with the LED/AFE, BLE with the link); 0 if a
+  // sub-device or the API is absent. env is the last HRM-env ambient-light reading (LED off) — signal-quality
+  // input (bright ambient vs poor contact); 0 if none.
   // Pull it over the Espruino IDE with:  require("Storage").read("titan.prof0")  (and ...prof1)
   // or dump it over BLE with the C7 {"dump":1} command (→ "TP:"-prefixed lines).
   PROFILE: false,
@@ -251,8 +255,8 @@ var CFG = {
   // 2) pin an OperatingPoint (or step a sweep), let it run, then read titan.prof0/1:
   //   Exp1 CALLBACK COST : setForcedOP({id:"e1hr",  sampleRate:25, ledCurrent:0x50, analysisDepth:"hr"})
   //                        vs {...,id:"e1full", analysisDepth:"full"} — identical rate+LED, toggles ONLY the
-  //                        raw JS callback. NOTE: the *current* delta needs an EXTERNAL power meter; the
-  //                        conf/bpm/motion under each depth come straight from the logged rows.
+  //                        raw JS callback. The current delta reads straight off the logged pwrCPU column
+  //                        (E.getPowerUsage) — no external meter needed; conf/bpm/motion also come from the rows.
   //   Exp2 LED SWEEP     : for c in [0x30,0x50,0x5A,0xE0]:
   //                        setForcedOP({id:"e2_"+c, sampleRate:25, ledCurrent:c, analysisDepth:"full"})
   //                        — hrmGreenAdjust is forced false; rows capture resulting confidence/bpm/motion.
@@ -260,8 +264,8 @@ var CFG = {
   //                        setForcedOP({id:"e3_"+hz, sampleRate:hz, ledCurrent:0x5A, analysisDepth:"full"})
   //   Exp4 PROC DEPTH    : analysisDepth "hr" vs "full" at a fixed sampleRate+ledCurrent (as Exp1).
   // 3) setForcedOP(null)                       // hand control back to the closed-loop controller.
-  // Most analyses (LED/rate → confidence, transitions, energy attribution) are read straight off the
-  // dataset; only Exp1's absolute current draw needs the external meter.
+  // All analyses (LED/rate → confidence, transitions, energy attribution AND absolute current draw) are read
+  // straight off the dataset now — E.getPowerUsage() supplies real per-device microamps on-device.
 };
 
 // ----- State ----------------------------------------------------------------
@@ -289,7 +293,8 @@ var state = {
   gpsFix: false,       // do we have a satellite fix yet?
   gpsSats: 0,          // satellites in view (UI + the app's GPS self-test acquisition readout)
   speed: 0,            // last GPS speed (m/s), UI only
-  linkLost: false      // a REAL (debounced) phone disconnect → persistent on-face "phone off" indicator
+  linkLost: false,     // a REAL (debounced) phone disconnect → persistent on-face "phone off" indicator
+  hrmEnv: 0            // last HRM-env ambient-light reading (LED off) — updated only while PROFILE is on
 };
 
 // On-watch locomotion gate for GPS (battery). A slow EMA of per-sample |Δaccel| (g);
@@ -636,7 +641,6 @@ function pushLiveSample(ppg) {
 
 function onHRMRaw(e) {
   if (!state.streaming) return;
-  if (CFG.PROFILE) profBusy++;   // raw-callback cost is the headline the profiler measures (Exp 1/4)
   pushSample(extractPPG(e));
 }
 
@@ -646,7 +650,6 @@ function onHRM(e) {
   // point (publishHr). A low-confidence reading HOLDS the last good bpm (no jitter to a bad value) and
   // publishes nothing; the 5 s TB heartbeat keeps the link "live" through those gaps. HR streams
   // continuously (the HRM stays powered) — HRV/recovery is still computed server-side from the raw PPG.
-  if (CFG.PROFILE) profBusy++;
   var bpm = e.bpm | 0, conf = e.confidence | 0;
   state.conf = conf;
   if (conf >= 90 && bpm > 0) {
@@ -691,7 +694,6 @@ function emitHrFrame(bpm, conf) {
 }
 
 function onAccel(a) {
-  if (CFG.PROFILE) profBusy++;
   // Bangle reports accel in g as {x,y,z,...}. We cache the latest for live T1
   // frames, AND accumulate movement (sum of |Δaccel|, which cancels the constant
   // 1 g of gravity) into the current overnight frame — a real actigraphy count
@@ -1357,11 +1359,19 @@ function reconcileHrm() {
 
 // ----- Telemetry logger (profiling dataset) --------------------------------
 // TOGGLEABLE + OFF by default. One CSV row per CFG.PROFILE_MS to a capped 2-segment rolling Storage file
-// (drop-oldest ring, mirrors the overnight log ring). profBusy is a per-interval sensor-callback count — a
-// cheap CPU-load proxy (Espruino exposes no idle-fraction on this build), so cpuBusyEst rises with raw depth.
+// (drop-oldest ring, mirrors the overnight log ring). Energy attribution is now REAL: each row pulls
+// per-device microamps from E.getPowerUsage() (the on-device power meter) instead of the old callback-count
+// proxy, so pwrCPU directly measures the raw-callback cost (Exp 1/4) without any external hardware.
 var profTimer = null;   // the per-second logger interval (null = not logging)
-var profBusy = 0;       // sensor callbacks since the last row (raw+accel+hr) — the cpuBusyEst proxy
 var profSeg = 0, profSegBytes = 0;   // 2-segment ring cursor
+
+// HRM-env: ambient light measured with the LED OFF — a real signal-quality input (bright ambient light
+// hurts confidence differently than poor skin contact). The event + its hrmPushEnv option are enabled ONLY
+// while the profiler runs (registered/removed in start/stopProfiler, mirroring setRawCapture) so it costs
+// nothing in production. The handler is defensive to the event shape (bare number or {raw:...}).
+function onHRMEnv(e) {
+  state.hrmEnv = (e && e.raw !== undefined) ? e.raw : (typeof e === "number" ? e : 0);
+}
 
 function profName(i) { return CFG.PROFILE_FILE + i; }
 
@@ -1392,6 +1402,10 @@ function profAppend(row) {
 }
 
 function profileTick() {
+  // Real per-device current from the on-device power meter. Guarded: older builds lack E.getPowerUsage() and
+  // a device may not report every sub-device → each field falls back to 0.
+  var dev = {}, pTotal = 0;
+  try { var u = E.getPowerUsage(); if (u) { dev = u.device || {}; pTotal = u.total || 0; } } catch (e) {}
   var row = [
     Math.round(getTime() * 1000),      // timestamp (unix ms)
     curOpId || "-",                    // opId — the active operating point
@@ -1403,14 +1417,31 @@ function profileTick() {
     readLedCurrent(),                  // ledCurrent (active)
     curSampleRate || 0,                // sampleRate (Hz)
     rawCaptureOn ? 1 : 0,              // rawEnabled
-    profBusy                           // cpuBusyEst (sensor-callback count this interval — load proxy)
+    dev.CPU || 0,                      // pwrCPU (µA) — rises with the raw-callback load
+    dev.HRM || 0,                      // pwrHRM (µA) — the LED/AFE
+    dev.LCD || 0,                      // pwrLCD (µA)
+    dev.BLE || 0,                      // pwrBLE (µA) — the link
+    pTotal,                            // pwrTotal (µA) — whole-device estimate
+    state.hrmEnv || 0                  // env (last HRM-env ambient-light reading; 0 if none)
   ].join(",");
   profAppend(row);
-  profBusy = 0;
 }
 
-function startProfiler() { if (!profTimer) profTimer = setInterval(profileTick, CFG.PROFILE_MS); }
-function stopProfiler() { if (profTimer) { clearInterval(profTimer); profTimer = null; } }
+function startProfiler() {
+  if (profTimer) return;
+  // Enable the ambient-light event + register its handler ONLY while profiling (mirror setRawCapture's
+  // on/off discipline so there's zero cost in production).
+  try { Bangle.setOptions({ hrmPushEnv: true }); } catch (e) {}
+  try { Bangle.on("HRM-env", onHRMEnv); } catch (e) {}
+  profTimer = setInterval(profileTick, CFG.PROFILE_MS);
+}
+function stopProfiler() {
+  if (!profTimer) return;
+  clearInterval(profTimer); profTimer = null;
+  try { Bangle.removeListener("HRM-env", onHRMEnv); } catch (e) {}
+  try { Bangle.setOptions({ hrmPushEnv: false }); } catch (e) {}
+  state.hrmEnv = 0;
+}
 function setProfile(on) { CFG.PROFILE = !!on; if (CFG.PROFILE) startProfiler(); else stopProfiler(); }
 
 // Stream the dataset over BLE (C7 {"dump":1}) — each row as a "TP:"-prefixed line. Trivial + connected-only.
