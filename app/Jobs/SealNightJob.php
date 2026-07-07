@@ -76,11 +76,26 @@ class SealNightJob implements ShouldQueue
     public int $backoff = 15;
 
     /**
+     * A confirmed session seals the instant the band's "I'm awake" marker lands — it does NOT wait for
+     * quiescence. But staging reads per-epoch motion that each raw window only gains once its
+     * ProcessWindowJob has run. When a night replays in bulk (offline overnight → reconnect), the seal
+     * can outrun that processing, stage on nothing, and mark the raw windows sealed — so the stages are
+     * lost for good. So we DEFER: if the session's own windows are still being processed, requeue and
+     * try again shortly, up to this many times (~STAGING_DEFER_S apart) before honestly falling back to
+     * a duration-only row.
+     */
+    public const MAX_STAGING_DEFERS = 12;
+
+    public const STAGING_DEFER_S = 30;
+
+    /**
      * @param  int  $profileId  the profile whose night to seal
      * @param  string|null  $night  optional explicit night date (Y-m-d, local); null = auto-detect the latest completed night
      * @param  bool  $confirmed  the user MARKED AWAKE on the band → fire the coach's sleep summary. The
      *                           automatic (cron) seal leaves this false: it computes the data silently,
      *                           so you only get a sleep push when YOU end the session (no wrong-time noise).
+     * @param  int  $stagingDefers  how many times this confirmed seal has already waited for its raw
+     *                              windows to finish processing (bounded by MAX_STAGING_DEFERS).
      */
     public function __construct(
         public int $profileId,
@@ -88,6 +103,7 @@ class SealNightJob implements ShouldQueue
         public bool $confirmed = false,
         public ?int $sessionBedEpoch = null,
         public ?int $sessionWakeEpoch = null,
+        public int $stagingDefers = 0,
     ) {
         $this->onQueue('biosignal');
     }
@@ -411,6 +427,25 @@ class SealNightJob implements ShouldQueue
 
                 return ($we ?? $ws) >= $loEpoch && ($ws ?? $we) <= $hiEpoch;
             });
+
+        // Don't stage before this session's own raw windows have been processed into epoch features:
+        // if any scoped window is still in flight (received/queued/processing) and staging is even
+        // possible (biosignal up), requeue and try again shortly. Otherwise the seal would stage on
+        // nothing, write a duration-only row, and mark these windows sealed — losing the stages for
+        // good. Bounded so a genuinely-offline night (windows that never arrive) still falls back.
+        $pending = $scoped->whereIn('status', [
+            DeviceIngestion::STATUS_RECEIVED, DeviceIngestion::STATUS_QUEUED, DeviceIngestion::STATUS_PROCESSING,
+        ]);
+        if ($pending->isNotEmpty() && $biosignal->configured() && $this->stagingDefers < self::MAX_STAGING_DEFERS) {
+            Log::info('[Biosignal] confirmed session staging deferred — raw windows still processing', [
+                'profile_id' => $profile->id, 'pending' => $pending->count(),
+                'scoped' => $scoped->count(), 'defer' => $this->stagingDefers + 1,
+            ]);
+            self::dispatch($profile->id, $this->night, true, $bed, $wake, $this->stagingDefers + 1)
+                ->delay(now()->addSeconds(self::STAGING_DEFER_S));
+
+            return;
+        }
 
         // Stage the scoped windows (best-effort). All-awake / no-signal → $metrics stays null and we
         // fall back to a duration-only row (the phantom guard) rather than presenting garbage.
