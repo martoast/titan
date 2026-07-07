@@ -53,7 +53,9 @@ struct RootView: View {
                         CoachView().tabItem { Label("Coach", systemImage: "bubble.left.and.text.bubble.right.fill") }
                         DashboardView().tabItem { Label("Today", systemImage: "circle.hexagongrid.fill") }
                         TrendsView().tabItem { Label("Trends", systemImage: "chart.xyaxis.line") }
-                        CommunityView().tabItem { Label("Community", systemImage: "person.2.fill") }
+                        if AppFeatures.community {
+                            CommunityView().tabItem { Label("Community", systemImage: "person.2.fill") }
+                        }
                         ProfileView().tabItem { Label("You", systemImage: "person.fill") }
                     }
                     .transition(.opacity)

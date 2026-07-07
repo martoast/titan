@@ -68,23 +68,25 @@ struct ProfileView: View {
             .buttonStyle(PressCard())
             .sheet(isPresented: $showBand) { DevicesView() }
 
-            Button { Haptic.tap(); showCommunity = true } label: {
-                GlassCard {
-                    HStack {
-                        Label("Community & sharing", systemImage: "person.2.fill").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
-                        Spacer()
-                        HStack(spacing: 7) {
-                            PulseDot(on: model.communityEnabled)
-                            Text(model.communityEnabled ? "Public" : "Private")
-                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+            if AppFeatures.community {
+                Button { Haptic.tap(); showCommunity = true } label: {
+                    GlassCard {
+                        HStack {
+                            Label("Community & sharing", systemImage: "person.2.fill").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            Spacer()
+                            HStack(spacing: 7) {
+                                PulseDot(on: model.communityEnabled)
+                                Text(model.communityEnabled ? "Public" : "Private")
+                                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+                            }
                         }
                     }
                 }
+                .buttonStyle(PressCard())
+                .sheet(isPresented: $showCommunity) { CommunitySettingsView() }
+                .task { await model.loadCommunitySettings() }
             }
-            .buttonStyle(PressCard())
-            .sheet(isPresented: $showCommunity) { CommunitySettingsView() }
-            .task { await model.loadCommunitySettings() }
 
             GlassCard {
                 Toggle(isOn: $barcodeEnabled) {
