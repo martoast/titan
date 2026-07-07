@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Meal;
 use App\Models\Profile;
 use Carbon\Carbon;
+use Database\Seeders\Concerns\SeedsProfile;
 use Illuminate\Database\Seeder;
 
 /**
@@ -14,9 +15,11 @@ use Illuminate\Database\Seeder;
  */
 class MealsSeeder extends Seeder
 {
+    use SeedsProfile;
+
     public function run(): void
     {
-        $profile = Profile::find(1) ?? Profile::orderBy('id')->first();
+        $profile = $this->targetProfile();
         if (! $profile) {
             return;
         }

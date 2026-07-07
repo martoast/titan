@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Conversation;
 use App\Models\Profile;
+use Database\Seeders\Concerns\SeedsProfile;
 use Illuminate\Database\Seeder;
 
 /**
@@ -13,9 +14,11 @@ use Illuminate\Database\Seeder;
  */
 class CoachSeeder extends Seeder
 {
+    use SeedsProfile;
+
     public function run(): void
     {
-        $profile = Profile::query()->orderBy('id')->first();
+        $profile = $this->targetProfile();
         if (! $profile) {
             return;
         }

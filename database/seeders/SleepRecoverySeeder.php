@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Models\SleepLog;
+use Database\Seeders\Concerns\SeedsProfile;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 
@@ -19,9 +20,11 @@ use Illuminate\Support\Carbon;
  */
 class SleepRecoverySeeder extends Seeder
 {
+    use SeedsProfile;
+
     public function run(): void
     {
-        $profile = Profile::find(1) ?? Profile::orderBy('id')->first();
+        $profile = $this->targetProfile();
 
         if (! $profile) {
             return; // No profiles yet — nothing to hang data off.

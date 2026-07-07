@@ -6,6 +6,7 @@ use App\Models\BiomarkerReading;
 use App\Models\BodyMetric;
 use App\Models\Profile;
 use App\Support\Biomarkers;
+use Database\Seeders\Concerns\SeedsProfile;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 
@@ -16,9 +17,11 @@ use Illuminate\Support\Carbon;
  */
 class HealthDataSeeder extends Seeder
 {
+    use SeedsProfile;
+
     public function run(): void
     {
-        $profile = Profile::find(1);
+        $profile = $this->targetProfile();
         if (! $profile) {
             $this->command?->warn('HealthDataSeeder: profile 1 not found — skipping.');
 

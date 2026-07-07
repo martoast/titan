@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\PhysiqueAnalysis;
 use App\Models\Profile;
+use Database\Seeders\Concerns\SeedsProfile;
 use Illuminate\Database\Seeder;
 
 /**
@@ -19,9 +20,11 @@ use Illuminate\Database\Seeder;
  */
 class PhysiqueSeeder extends Seeder
 {
+    use SeedsProfile;
+
     public function run(): void
     {
-        $alex = Profile::orderBy('id')->first();
+        $alex = $this->targetProfile();
         if (! $alex) {
             return; // No profiles yet — nothing to hang sample data off.
         }

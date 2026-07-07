@@ -7,6 +7,7 @@ use App\Models\Profile;
 use App\Models\Workout;
 use App\Models\WorkoutExercise;
 use App\Models\WorkoutSet;
+use Database\Seeders\Concerns\SeedsProfile;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 
@@ -20,9 +21,11 @@ use Illuminate\Support\Carbon;
  */
 class WorkoutsSeeder extends Seeder
 {
+    use SeedsProfile;
+
     public function run(): void
     {
-        $profile = Profile::orderBy('id')->first(); // profile 1 = Alex
+        $profile = $this->targetProfile();
         if (! $profile) {
             return;
         }
