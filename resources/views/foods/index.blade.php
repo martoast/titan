@@ -1,5 +1,5 @@
 <x-titan-layout title="Your foods" subtitle="What you eat most, tracked from your meals">
-    <div class="max-w-2xl">
+    <div class="max-w-3xl mx-auto">
         @if (count($foods))
             <x-section-header title="Most-eaten foods" :trailing="count($foods).' tracked'" />
             <x-card pad="p-0" class="overflow-hidden">

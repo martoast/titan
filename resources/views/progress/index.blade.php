@@ -18,7 +18,7 @@
         $photoGroups = $photos->groupBy(fn ($p) => \Illuminate\Support\Carbon::parse($p->taken_at)->format('Y-m-d'));
     @endphp
 
-    <div class="space-y-5 max-w-2xl">
+    <div class="space-y-5 max-w-3xl mx-auto">
 
         {{-- Progress photo gallery / timeline --}}
         <x-card pad="p-5">
