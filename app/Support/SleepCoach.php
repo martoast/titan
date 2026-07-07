@@ -104,12 +104,19 @@ class SleepCoach
 
         $need = min(self::NEED_CAP_H, $baseline + min($debt * 0.5, 1.5) + $strainBump);
 
-        // Last night's performance, vs a full baseline night.
+        // Last night's raw duration…
         $last = $nights->first();
         $lastH = $last ? round($last->duration_min / 60.0, 1) : null;
-        $performance = $lastH !== null ? (int) round(min(100, $lastH / $baseline * 100)) : null;
 
-        [$band, $label, $advice] = self::coach($performance, $debt, $need, $lastH);
+        // …plus any naps today: a nap is real recovery, so it adds to the effective sleep that
+        // drives the performance ring (and thus the dashboard Sleep pillar). Nights still own debt/need.
+        $napMin = (int) $profile->sleepLogs()->where('is_nap', true)
+            ->whereDate('slept_at', $day)->sum('duration_min');
+        $effectiveH = $lastH !== null ? round($lastH + $napMin / 60.0, 1) : ($napMin > 0 ? round($napMin / 60.0, 1) : null);
+
+        $performance = $effectiveH !== null ? (int) round(min(100, $effectiveH / $baseline * 100)) : null;
+
+        [$band, $label, $advice] = self::coach($performance, $debt, $need, $effectiveH);
 
         return [
             'need_h' => round($need, 1),
@@ -117,6 +124,8 @@ class SleepCoach
             'debt_h' => round($debt, 1),
             'strain_bump_h' => $strainBump,
             'last_h' => $lastH,
+            'nap_min' => $napMin,
+            'effective_h' => $effectiveH,
             'performance_pct' => $performance,
             'band' => $band,
             'label' => $label,

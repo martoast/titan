@@ -18,8 +18,10 @@
         };
 
         // ── The day's four pillars ───────────────────────────────────────────────
+        // Sleep pillar reflects effective sleep = last night + today's naps.
         $slPerf = $sleepCoach['performance_pct'] ?? null;
-        $slLastH = $sleepCoach['last_h'] ?? null;
+        $slLastH = $sleepCoach['effective_h'] ?? ($sleepCoach['last_h'] ?? null);
+        $slNapMin = $sleepCoach['nap_min'] ?? 0;
 
         $stStrain = $strain['strain'];
         $stHigh   = max(1, $strain['target']['high']);
@@ -101,7 +103,11 @@
                 <div class="text-center">
                     <div class="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-gray-500">Sleep</div>
                     <div class="mt-0.5 text-xs text-gray-400">
-                        {{ $sleepCoach['label'] ?? 'No nights yet' }}
+                        @if ($slNapMin > 0)
+                            <span class="text-titan-violet">+{{ intdiv($slNapMin, 60) ? intdiv($slNapMin, 60).'h ' : '' }}{{ $slNapMin % 60 }}m nap</span>
+                        @else
+                            {{ $sleepCoach['label'] ?? 'No nights yet' }}
+                        @endif
                         @if ($sleepCoach && ($sleepCoach['need_h'] ?? null)) · need {{ rtrim(rtrim(number_format($sleepCoach['need_h'], 1), '0'), '.') }}h @endif
                     </div>
                 </div>
