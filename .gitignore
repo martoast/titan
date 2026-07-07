@@ -32,3 +32,4 @@ ios/**/.build/
 ios/**/.swiftpm/
 ios/**/*.xcodeproj
 ios/**/DerivedData/
+_screenshots/
