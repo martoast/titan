@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Support\BiologicalAge;
 use App\Support\DailyFocus;
+use App\Support\Hydration;
+use App\Support\Macros;
 use App\Support\MealCoach;
 use App\Support\Readiness;
 use App\Support\SleepCoach;
@@ -80,6 +82,8 @@ class DashboardController extends Controller
             'strain' => $strain,
             'sleepCoach' => $sleepCoach,
             'meal' => MealCoach::assess($p),
+            'macros' => Macros::forHome($p),
+            'hydration' => Hydration::today($p),
             'bioAge' => $bioAge,
         ]);
     }

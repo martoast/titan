@@ -50,9 +50,10 @@ class DailyStepsTest extends TestCase
         $user = User::factory()->create();
         $user->ensureProfile()->dailyActivity()->create(['date' => now()->toDateString(), 'steps' => 6400, 'source' => 'manual']);
 
-        // Steps now feed the Strain card (ambient load); the dashboard leads with the Recovery →
-        // Strain → Sleep loop + today's focus, not a raw steps tile.
+        // Steps feed the Training card (ambient load); the dashboard leads with the Recovery hero
+        // then the day's pillars — Sleep, Training, Fuel, Hydration — not a raw steps tile.
         $this->actingAs($user)->get('/dashboard')->assertOk()
-            ->assertSee('Recovery')->assertSee('Strain')->assertSee('Sleep');
+            ->assertSee('Recovery')->assertSee('Training')->assertSee('Sleep')
+            ->assertSee('Fuel')->assertSee('Hydration');
     }
 }

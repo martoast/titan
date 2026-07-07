@@ -29,11 +29,6 @@ use Illuminate\Support\Facades\Storage;
  */
 class MealController extends Controller
 {
-    /** Placeholder macro targets if the profile hasn't set its own. */
-    private const DEFAULT_TARGETS = [
-        'calories' => 2800, 'protein_g' => 200, 'carbs_g' => 280, 'fat_g' => 80,
-    ];
-
     public function __construct(private AiService $ai) {}
 
     /** Daily view: today's meals, totals vs targets, 7-day calorie trend. */
@@ -260,17 +255,11 @@ class MealController extends Controller
 
     // --- helpers -----------------------------------------------------------
 
-    /** Macro targets for a profile -- overrides in settings['macro_targets'] win. */
+    /** Macro targets for a profile -- overrides in settings['macro_targets'] win.
+     *  Shared with the home dashboard's Fuel card via Macros so the two never disagree. */
     private function targetsFor(Profile $profile): array
     {
-        $set = $profile->settings['macro_targets'] ?? [];
-
-        return [
-            'calories' => (int) ($set['calories'] ?? self::DEFAULT_TARGETS['calories']),
-            'protein_g' => (int) ($set['protein_g'] ?? self::DEFAULT_TARGETS['protein_g']),
-            'carbs_g' => (int) ($set['carbs_g'] ?? self::DEFAULT_TARGETS['carbs_g']),
-            'fat_g' => (int) ($set['fat_g'] ?? self::DEFAULT_TARGETS['fat_g']),
-        ];
+        return \App\Support\Macros::goalTargets($profile);
     }
 
     /** Last 7 days of total calories (ending on $day), for the trend chart. */
