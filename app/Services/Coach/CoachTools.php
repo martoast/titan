@@ -19,6 +19,9 @@ class CoachTools
     public function __construct(
         protected Profile $profile,
         protected ?\App\Models\Conversation $conversation = null,
+        // The photo attached to THIS turn (already on the `public` disk), or null. When set, the coach
+        // can SEE it (it's sent as a vision message) AND gets the scan_photo tool to log it accurately.
+        protected ?string $imagePath = null,
     ) {}
 
     /** Specialized tools, grouped — gated out of the default toolset until the turn needs them. */
@@ -124,6 +127,15 @@ class CoachTools
     private function allSchemas(): array
     {
         $tools = [];
+
+        // A photo is attached to this turn (the coach can see it). Offer the accurate snap-to-log
+        // pipeline as a tool so meals/labs still log with real grounding — but only to RECORD; general
+        // questions about the photo the coach answers itself from the image.
+        if ($this->imagePath !== null) {
+            $tools[] = $this->fn('scan_photo', 'The user attached a PHOTO to this turn and you can SEE it. Call this ONLY to RECORD what the photo shows: a meal/food/nutrition-label to log or save, or a bloodwork/lab sheet to record. It runs the accurate pipeline — grounds meal macros against the user\'s own history + official branded labels, transcribes lab values, saves a progress photo — and logs it. Do NOT call it for general questions about the photo (form check, "what is this", gym-machine how-to, technique) — just answer those yourself from the image.', [
+                'intent' => ['type' => 'string', 'enum' => ['log', 'save'], 'description' => 'For a food photo: "log" records eating it now, added to today (default). "save" just remembers the food/product as a reference in their foods, without logging it to today.'],
+            ], []);
+        }
 
         // The "how was my day" tool — one call pulls everything for a single day: wearable vitals
         // (HRV, resting HR, respiratory rate), readiness, last night's sleep, today's strain,
@@ -560,6 +572,36 @@ class CoachTools
     }
 
     /** Build one OpenAI function-tool schema. */
+    /**
+     * Record what the attached photo shows via the accurate snap-to-log pipeline (ScanService). The coach
+     * has already SEEN the image (vision message); this just does the logging with real grounding. Returns
+     * a compact result the coach confirms concisely — the side effect (the logged meal/labs) is the point.
+     *
+     * @param  array<string,mixed>  $args
+     */
+    private function scanPhoto(array $args): mixed
+    {
+        if ($this->imagePath === null) {
+            return ['error' => 'No photo is attached to this turn.'];
+        }
+        // Bias save-vs-log via the pipeline's caption signal; vision still reads the image either way.
+        $caption = strtolower(trim((string) ($args['intent'] ?? ''))) === 'save' ? 'save this to my foods' : null;
+
+        try {
+            $res = app(\App\Services\Coach\ScanService::class)->scanStored($this->profile, $this->imagePath, $caption);
+        } catch (\Throwable $e) {
+            return ['error' => 'Could not read the photo: '.$e->getMessage()];
+        }
+
+        return [
+            'kind' => $res['kind'] ?? 'other',
+            'logged' => $res['logged'] ?? false,
+            'result' => $res['reply'] ?? null,
+            'data' => $res['data'] ?? null,
+            '_show' => 'Confirm concisely what you logged or saved, leading with the key numbers (calories/protein for a meal; the marker count for bloodwork). Don\'t re-describe the whole photo.',
+        ];
+    }
+
     private function fn(string $name, string $description, array $properties, array $required): array
     {
         return [
@@ -583,6 +625,7 @@ class CoachTools
     public function dispatch(string $name, array $args): mixed
     {
         return match ($name) {
+            'scan_photo' => $this->scanPhoto($args),
             'daily_summary' => $this->dailySummary((string) ($args['date'] ?? 'today')),
             'tool_docs' => ['tool' => $args['tool'] ?? '', 'docs' => \App\Services\Coach\ToolDocs::get((string) ($args['tool'] ?? ''))],
             'device_status' => $this->deviceStatus(),

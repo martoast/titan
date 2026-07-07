@@ -85,7 +85,8 @@ class CoachStartersTest extends TestCase
         $p = $this->profile(['sex' => 'M']);
         $groups = Nav::groups($p);
 
-        $this->assertSame(['Daily', 'Body', 'Progress', 'Library'], array_keys($groups));
+        // The 5-tab IA mirrors the native iOS app.
+        $this->assertSame(['Coach', 'Today', 'Trends', 'Community', 'You'], array_keys($groups));
         // Primary bottom-bar tabs all exist as destinations.
         foreach (Nav::PRIMARY as $path) {
             $this->assertContains($path, array_column(Nav::flat($p), 'path'));

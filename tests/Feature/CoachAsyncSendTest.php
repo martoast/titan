@@ -8,7 +8,6 @@ use App\Models\Conversation;
 use App\Models\Profile;
 use App\Models\User;
 use App\Services\Coach\CoachService;
-use App\Services\Coach\ScanService;
 use App\Services\Notifications\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -77,7 +76,7 @@ class CoachAsyncSendTest extends TestCase
         $notifications->shouldReceive('notify')->once();
 
         (new GenerateCoachReply($conversation->id, $assistant->id, 'hi'))
-            ->handle($coach, app(ScanService::class), $notifications);
+            ->handle($coach, $notifications);
 
         $assistant->refresh();
         $this->assertSame(ChatMessage::STATUS_COMPLETE, $assistant->status);

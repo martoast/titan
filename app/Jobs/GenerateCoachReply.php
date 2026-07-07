@@ -5,7 +5,6 @@ namespace App\Jobs;
 use App\Models\ChatMessage;
 use App\Models\Conversation;
 use App\Services\Coach\CoachService;
-use App\Services\Coach\ScanService;
 use App\Services\Notifications\NotificationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -49,7 +48,7 @@ class GenerateCoachReply implements ShouldQueue
         public ?string $imagePath = null,
     ) {}
 
-    public function handle(CoachService $coach, ScanService $scans, NotificationService $notifications): void
+    public function handle(CoachService $coach, NotificationService $notifications): void
     {
         $assistant = ChatMessage::find($this->assistantMessageId);
         $conversation = Conversation::find($this->conversationId);
@@ -64,38 +63,12 @@ class GenerateCoachReply implements ShouldQueue
             return;
         }
 
-        if ($this->imagePath !== null) {
-            $this->handlePhoto($scans, $conversation, $profile, $assistant);
-        } else {
-            // Fills + statuses the placeholder itself; never throws.
-            $coach->generate($conversation, $profile, $assistant, $this->userText);
-        }
+        // Text OR photo — both go through the coach brain now. On a photo turn the image is passed through
+        // so the coach can SEE it (vision message) AND log it accurately via the scan_photo tool. Fills +
+        // statuses the placeholder itself; never throws.
+        $coach->generate($conversation, $profile, $assistant, $this->userText, $this->imagePath);
 
         $this->notifyDone($notifications, $profile, $conversation, $assistant);
-    }
-
-    private function handlePhoto(ScanService $scans, Conversation $conversation, $profile, ChatMessage $assistant): void
-    {
-        $assistant->update(['status' => ChatMessage::STATUS_STREAMING]);
-
-        try {
-            $result = $scans->scanStored($profile, $this->imagePath, $this->userText !== '' ? $this->userText : null);
-
-            if (blank($conversation->title)) {
-                $conversation->update(['title' => ($result['kind'] ?? '') === 'bloodwork' ? 'Bloodwork scan' : 'Photo log']);
-            }
-
-            $assistant->update([
-                'content' => $result['reply'] ?? "I logged that photo for you.",
-                'status' => ChatMessage::STATUS_COMPLETE,
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('[Coach] background photo scan failed', ['error' => $e->getMessage()]);
-            $assistant->update([
-                'content' => "I couldn't read that photo just now (the vision service is unavailable). Try again in a moment.",
-                'status' => ChatMessage::STATUS_FAILED,
-            ]);
-        }
     }
 
     /** Best-effort push so the reply surfaces even if the app is backgrounded (no-op without a token). */

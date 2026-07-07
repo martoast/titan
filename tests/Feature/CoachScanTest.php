@@ -40,6 +40,40 @@ class CoachScanTest extends TestCase
         $this->assertStringContainsString('macros', $response->json('reply'));
     }
 
+    public function test_scan_photo_tool_is_offered_only_when_a_photo_is_attached(): void
+    {
+        $profile = User::factory()->create()->ensureProfile();
+        $names = fn (array $schemas) => array_column(array_column($schemas, 'function'), 'name');
+
+        // Hybrid: with a photo on the turn the coach gets the scan_photo logging tool; without one it doesn't.
+        $withPhoto = (new \App\Services\Coach\CoachTools($profile, null, 'coach/scans/x.jpg'))->schemas();
+        $noPhoto = (new \App\Services\Coach\CoachTools($profile, null, null))->schemas();
+
+        $this->assertContains('scan_photo', $names($withPhoto));
+        $this->assertNotContains('scan_photo', $names($noPhoto));
+    }
+
+    public function test_scan_photo_tool_runs_the_pipeline_and_logs_a_meal(): void
+    {
+        Storage::fake('public');
+        $profile = User::factory()->create()->ensureProfile();
+        $path = UploadedFile::fake()->image('plate.jpg')->store('coach/scans', 'public');
+
+        $vision = Mockery::mock(AiService::class);
+        $vision->shouldReceive('vision')->once()->andReturn(json_encode([
+            'kind' => 'meal',
+            'meal' => ['name' => 'Oats', 'calories' => 320, 'protein_g' => 12, 'carbs_g' => 55, 'fat_g' => 6, 'confidence' => 'high'],
+        ]));
+        $this->app->instance(AiService::class, $vision);
+
+        // The coach, having SEEN the photo, calls scan_photo to log it accurately via the pipeline.
+        $result = (new \App\Services\Coach\CoachTools($profile, null, $path))->dispatch('scan_photo', []);
+
+        $this->assertSame('meal', $result['kind']);
+        $this->assertTrue($result['logged']);
+        $this->assertDatabaseHas('meals', ['name' => 'Oats', 'calories' => 320, 'source' => 'photo']);
+    }
+
     public function test_a_caption_is_passed_to_the_vision_read_and_kept_on_the_turn(): void
     {
         Storage::fake('public');

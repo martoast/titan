@@ -91,6 +91,9 @@ class CoachService
     private const KEEP_RECENT = 12;     // …keeping this many recent turns verbatim
     private const HISTORY_CAP = 40;     // hard ceiling on replayed turns, summary aside
 
+    /** Injected only on a photo turn — tells the coach it can see the attached image + when to log it. */
+    private const PHOTO_NOTE = 'The user attached a photo to their latest message and you CAN SEE it. Look at it and address what they asked. If it is a meal / food / nutrition-facts label or a bloodwork / lab sheet they want recorded, call scan_photo to log it accurately. For anything else — a gym machine, their form, "what is this" — just answer from the image. Never say you cannot see images.';
+
     /**
      * Append the user's message, run the tool-calling coach, persist + return the
      * assistant reply. Throws AiException on AI failure (controller catches it).
@@ -190,21 +193,27 @@ class CoachService
      * it survives the phone suspending: the request that kicked it off is long gone by the time this
      * finishes. Never throws — a failure is recorded on the row so the client always sees a resolution.
      */
-    public function generate(Conversation $conversation, Profile $profile, ChatMessage $assistant, string $userText): void
+    public function generate(Conversation $conversation, Profile $profile, ChatMessage $assistant, string $userText, ?string $imagePath = null): void
     {
         $userText = trim($userText);
 
         if (blank($conversation->title)) {
-            $conversation->update(['title' => Str::limit($userText, 48)]);
+            $conversation->update(['title' => Str::limit($userText !== '' ? $userText : 'Photo', 48)]);
         }
 
         $this->compactIfNeeded($conversation);
 
-        $tools = (new CoachTools($profile, $conversation))->route($userText);
+        // A photo turn: the coach SEES the image (vision message below) and gets the scan_photo tool so
+        // meals/labs still log accurately. A text turn passes null → identical to before.
+        $tools = (new CoachTools($profile, $conversation, $imagePath))->route($userText);
         $messages = array_merge(
             [['role' => 'system', 'content' => $this->systemPrompt($profile)]],
+            $imagePath !== null ? [['role' => 'system', 'content' => self::PHOTO_NOTE]] : [],
             $this->history($conversation),
         );
+        if ($imagePath !== null) {
+            $messages = $this->attachImageToLastUserTurn($messages, $imagePath, $userText);
+        }
 
         $assistant->update(['status' => ChatMessage::STATUS_STREAMING]);
 
@@ -312,6 +321,40 @@ class CoachService
         }
 
         return $out;
+    }
+
+    /**
+     * Replace the LAST user turn's plain text with a vision content array (text + the image as a base64
+     * data URL) so the coach model actually SEES the photo. The stored message holds `![photo](url)`
+     * markdown for the chat UI; OpenAI can't fetch that localhost URL, so we inline the bytes here.
+     * Falls back to the unchanged (text-only) messages if the file can't be read.
+     *
+     * @param  array<int,array<string,mixed>>  $messages
+     * @return array<int,array<string,mixed>>
+     */
+    private function attachImageToLastUserTurn(array $messages, string $imagePath, string $userText): array
+    {
+        try {
+            $disk = \Illuminate\Support\Facades\Storage::disk('public');
+            $mime = $disk->mimeType($imagePath) ?: 'image/jpeg';
+            $dataUrl = 'data:'.$mime.';base64,'.base64_encode((string) $disk->get($imagePath));
+        } catch (\Throwable) {
+            return $messages;
+        }
+
+        $parts = [
+            ['type' => 'text', 'text' => $userText !== '' ? $userText : 'I sent you a photo — take a look.'],
+            ['type' => 'image_url', 'image_url' => ['url' => $dataUrl, 'detail' => 'auto']],
+        ];
+
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            if (($messages[$i]['role'] ?? '') === 'user') {
+                $messages[$i]['content'] = $parts;
+                break;
+            }
+        }
+
+        return $messages;
     }
 
     /**
