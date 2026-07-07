@@ -148,6 +148,16 @@ class DeviceIngestionService
         [$start, $end] = $this->reanchorIfClockBad($start, $end);
         $date = $end->setTimezone($tz)->toDateString();
 
+        // Persist window bounds in the APP timezone. Eloquent's `datetime` cast reads columns back in
+        // config('app.timezone'), so a UTC Carbon stored as-is round-trips to the WRONG instant on any
+        // non-UTC server (e.g. a window at 08:00Z reads back as 08:00 local). That silently shifts the
+        // window out of the confirmed-seal's UTC [bed,wake] scope → the night sealed duration-only with
+        // no stages. Converting here makes the read-back instant correct on every server; on a UTC
+        // server this is a no-op. (Verified: 08:00Z → stored "02:00" in MX → reads back 08:00Z.)
+        $appTz = config('app.timezone', 'UTC');
+        $start = $start->setTimezone($appTz);
+        $end = $end->setTimezone($appTz);
+
         // raw/{profile}/{yyyy-mm-dd}/{batch_uid}.ndjson.gz -- one window per line.
         $ext = $kind === 'ppg_raw' ? 'ppg.gz' : 'ndjson.gz';
         $objectKey = "raw/{$connection->profile_id}/{$date}/{$windowUid}.{$ext}";
