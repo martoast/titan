@@ -373,41 +373,30 @@ class CoachController extends Controller
             $conversation = $profile->conversations()->create();
         }
 
-        try {
-            $result = $this->scans->scan($profile, $request->file('photo'), $caption ?: null);
-        } catch (AiException $e) {
-            Log::warning('[Coach] scan AI unavailable', ['error' => $e->getMessage()]);
+        // Bank the photo while the request is alive (the upload must land now).
+        $path = $request->file('photo')->store('coach/scans', 'public');
+        $imageUrl = Storage::disk('public')->url($path);
 
-            return response()->json([
-                'ok' => false,
-                'offline' => true,
-                'conversation_id' => $conversation->id,
-                'reply' => "I couldn't read that photo just now (the vision service is unavailable). Try again in a moment.",
-            ], 200);
-        }
-
-        if (blank($conversation->title)) {
-            $conversation->update(['title' => $result['kind'] === 'bloodwork' ? 'Bloodwork scan' : 'Photo log']);
-        }
-
-        // The photo (+ the user's caption) becomes a user turn; the coach's confirmation an
-        // assistant turn -- so the whole exchange survives a refresh.
+        // The photo (+ caption) becomes a user turn; then the HYBRID coach runs — it SEES the image and
+        // can call scan_photo to log a meal/labs accurately. Same path as the native async send, run
+        // synchronously here so the web chat gets its reply in one response. The whole exchange persists.
         $conversation->messages()->create([
             'role' => 'user',
-            'content' => ($caption !== '' ? $caption."\n\n" : '').'![photo]('.$result['image_url'].')',
+            'content' => ($caption !== '' ? $caption."\n\n" : '').'![photo]('.$imageUrl.')',
         ]);
-        $conversation->messages()->create([
-            'role' => 'assistant',
-            'content' => $result['reply'],
+        $assistant = $conversation->messages()->create([
+            'role' => 'assistant', 'content' => '', 'status' => ChatMessage::STATUS_PENDING,
         ]);
 
+        // generate() fills + statuses the placeholder itself and never throws (a failure is recorded on it).
+        $this->coach->generate($conversation, $profile, $assistant, $caption, $path);
+        $assistant->refresh();
+
         return response()->json([
-            'ok' => true,
+            'ok' => $assistant->status !== ChatMessage::STATUS_FAILED,
             'conversation_id' => $conversation->id,
-            'kind' => $result['kind'],
-            'logged' => $result['logged'],
-            'image_url' => $result['image_url'],
-            'reply' => $result['reply'],
+            'image_url' => $imageUrl,
+            'reply' => (string) $assistant->content,
         ]);
     }
 
