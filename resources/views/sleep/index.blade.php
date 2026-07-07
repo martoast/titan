@@ -13,6 +13,12 @@
             {{ $errors->first() }}
         </div>
     @endif
+    @if (session('status'))
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 2500)"
+             class="mb-4 rounded-xl bg-titan-mint/10 border border-titan-mint/20 px-4 py-3 text-sm text-titan-mint">
+            {{ session('status') }}
+        </div>
+    @endif
 
     <div class="space-y-4 md:space-y-5">
         {{-- Last-night summary --}}
@@ -89,6 +95,93 @@
             @else
                 <p class="text-sm text-gray-500">No sleep logged yet. Add your first night below.</p>
             @endif
+        </x-card>
+
+        {{-- ═══ Quick log (no wearable) — log last night + naps, water-style ═══ --}}
+        @php
+            $fmtDur = fn (int $m) => intdiv($m, 60).'h '.str_pad((string) ($m % 60), 2, '0', STR_PAD_LEFT).'m';
+            $stepDefault = $todayNight ? round($todayNight->duration_min / 60, 1) : $baselineH;
+        @endphp
+        <x-card pad="p-4 md:p-5">
+            <div class="mb-4 flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="font-display font-bold text-gray-100">Log your sleep</h3>
+                    <p class="mt-0.5 text-xs text-gray-500">No band needed — tap in last night, then add any naps.</p>
+                </div>
+                @if ($totalTodayMin > 0)
+                    <div class="shrink-0 text-right">
+                        <div class="font-display text-2xl font-bold nums text-titan-indigo leading-none">{{ $fmtDur($totalTodayMin) }}</div>
+                        <div class="mt-1 text-[10px] uppercase tracking-wider text-gray-500">total today</div>
+                    </div>
+                @endif
+            </div>
+
+            {{-- Last night: a big hours stepper --}}
+            <div x-data="{ h: {{ $stepDefault }} }" class="rounded-card border border-white/5 bg-white/[0.02] p-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Last night</span>
+                    @if ($todayNight)
+                        <span class="text-[11px] text-gray-500">logged · adjust anytime</span>
+                    @endif
+                </div>
+                <div class="mt-3 flex items-center justify-center gap-6">
+                    <button type="button" @click="h = Math.max(0, +(h - 0.5).toFixed(1))"
+                            class="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-2xl text-gray-200 active:bg-white/10 hover:bg-white/[0.07] transition">−</button>
+                    <div class="w-32 text-center">
+                        <span class="font-display text-4xl font-bold nums text-gray-50" x-text="h.toFixed(1)"></span><span class="text-xl text-gray-500">h</span>
+                    </div>
+                    <button type="button" @click="h = Math.min(14, +(h + 0.5).toFixed(1))"
+                            class="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-2xl text-gray-200 active:bg-white/10 hover:bg-white/[0.07] transition">+</button>
+                </div>
+                <form method="POST" action="{{ route('sleep.night') }}" class="mt-4">
+                    @csrf
+                    <input type="hidden" name="hours" :value="h">
+                    <button type="submit" class="h-11 w-full rounded-chip bg-gradient-to-r from-titan-indigo to-titan-cyan font-semibold text-white active:opacity-90 transition">
+                        {{ $todayNight ? 'Update last night' : 'Save last night' }}
+                    </button>
+                </form>
+            </div>
+
+            {{-- Naps: quick-add chips + today's list --}}
+            <div class="mt-4">
+                <div class="mb-2 flex items-center justify-between">
+                    <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Naps today</span>
+                    @if ($napMin > 0)
+                        <span class="text-[11px] text-gray-500 nums">+{{ $fmtDur($napMin) }} · {{ $todayNaps->count() }} {{ $todayNaps->count() === 1 ? 'nap' : 'naps' }}</span>
+                    @endif
+                </div>
+
+                @if ($todayNaps->count())
+                    <div class="mb-3 space-y-1.5">
+                        @foreach ($todayNaps as $n)
+                            <div class="flex items-center gap-2 rounded-full border border-white/5 bg-white/[0.02] px-3.5 py-1.5">
+                                <svg class="h-3.5 w-3.5 shrink-0 text-titan-violet" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                                <span class="text-sm font-semibold text-gray-200 nums">{{ $fmtDur((int) $n->duration_min) }}</span>
+                                <span class="text-xs text-gray-500">{{ $n->session_start ? \Illuminate\Support\Carbon::parse($n->session_start)->format('g:i A') : '' }}</span>
+                                <form method="POST" action="{{ route('sleep.nap.remove', $n) }}" class="ml-auto">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="grid h-6 w-6 place-items-center rounded-full text-gray-500 active:bg-white/10 hover:text-gray-300 transition" aria-label="Remove nap">
+                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                </form>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+
+                <div class="grid grid-cols-3 gap-2">
+                    @foreach ([['Power', 20], ['Nap', 45], ['Long', 90]] as [$label, $min])
+                        <form method="POST" action="{{ route('sleep.nap') }}">
+                            @csrf
+                            <input type="hidden" name="minutes" value="{{ $min }}">
+                            <button type="submit" class="flex w-full flex-col items-center gap-0.5 rounded-chip border border-white/10 bg-white/[0.04] px-2 py-2.5 active:bg-white/10 hover:bg-white/[0.07] transition">
+                                <span class="text-sm font-semibold text-gray-200">{{ $label }}</span>
+                                <span class="text-[11px] text-gray-500 nums">+{{ $min }} min</span>
+                            </button>
+                        </form>
+                    @endforeach
+                </div>
+            </div>
         </x-card>
 
         {{-- 7-day averages --}}
@@ -218,7 +311,7 @@
         {{-- Manual log form — deferred behind a tap; the band logs nights automatically --}}
         <x-card pad="p-4 md:p-5" x-data="{ logOpen: {{ $errors->any() ? 'true' : 'false' }} }">
             <button type="button" @click="logOpen = !logOpen" class="flex w-full items-center justify-between gap-3 text-left">
-                <span class="font-display font-bold text-gray-100">Log sleep manually</span>
+                <span class="font-display font-bold text-gray-100">Add a detailed entry <span class="font-normal text-gray-500">— specific date, quality, stages</span></span>
                 <svg class="h-5 w-5 shrink-0 text-gray-500 transition" :class="logOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
             </button>
             <form method="POST" action="/sleep" x-show="logOpen" x-collapse x-cloak class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
