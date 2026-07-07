@@ -281,6 +281,35 @@ def resting_hr_from_ibi(ibi_ms: np.ndarray, window_beats: int = 30) -> Optional[
     return float(np.percentile(medians, 5))
 
 
+def _epochs_from_ibi(ibi_ms: np.ndarray) -> Optional[dict]:
+    """Per-30s-epoch sleep features (HR + RMSSD) from an IBI series.
+
+    The band's OVERNIGHT DEFAULT is an IBI stream (+ accel), not raw PPG — but the epoch grid
+    that sleep staging needs was only ever built on the PPG path. Without this, a watch-ended
+    night has no per-epoch features, so it seals with a duration but 0% on every stage. Motion
+    is left at zero here and filled from the device's own accelerometer by the caller (real
+    actigraphy beats any proxy). HR/RMSSD mirror the PPG-path epoch computation above.
+    """
+    ibi_ms = ibi_ms[np.isfinite(ibi_ms)]
+    total_ms = float(np.sum(ibi_ms)) if ibi_ms.size else 0.0
+    if ibi_ms.size < 2 or total_ms <= 0:
+        return None
+    n_ep = max(1, int(round(total_ms / 1000.0 / SLEEP_EPOCH_SEC)))
+    end_t = np.cumsum(ibi_ms)  # each interval ends at end_t[i] ms from the window start
+    ep_hr, ep_rmssd = [], []
+    for e in range(n_ep):
+        lo, hi = e * SLEEP_EPOCH_SEC * 1000.0, (e + 1) * SLEEP_EPOCH_SEC * 1000.0
+        seg = ibi_ms[(end_t >= lo) & (end_t < hi)]
+        seg = seg[(seg >= 300) & (seg <= 2000)]
+        ep_hr.append(float(60000.0 / np.mean(seg)) if seg.size else 0.0)
+        if seg.size >= 3:
+            d = np.diff(seg)
+            ep_rmssd.append(float(min(np.sqrt(np.mean(d * d)), 250.0)))
+        else:
+            ep_rmssd.append(float("nan"))
+    return {"hr": ep_hr, "motion": [0.0] * n_ep, "rmssd": ep_rmssd}
+
+
 def process_hrv(
     ibi_ms: Optional[list] = None,
     ppg: Optional[list] = None,
@@ -299,6 +328,7 @@ def process_hrv(
         ibi_arr, quality_mean, epochs = ppg_to_ibi(ppg, sample_rate_hz)
     elif ibi_ms is not None:
         ibi_arr = _to_array(ibi_ms)
+        epochs = _epochs_from_ibi(ibi_arr)  # band default is IBI → still build the staging grid
     else:
         raise ValueError("Provide either ibi_ms or (ppg + sample_rate_hz).")
 

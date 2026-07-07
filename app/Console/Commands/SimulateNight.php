@@ -32,6 +32,7 @@ class SimulateNight extends Command
         {--speed=1 : Time compression factor; 0 = no inter-batch delay (used for visual pacing only)}
         {--minutes=480 : Total night length in minutes}
         {--seed= : Deterministic RNG seed for a reproducible night}
+        {--confirmed : Simulate the WATCH-ENDED flow — stream raw windows + a confirmed sleep_session marker (real bedtime/wake) and let the SERVER stage from the windows (exercises SealNightJob::sealConfirmedSession) instead of shipping pre-baked stages}
         {--dry : Generate + print the night but do not POST to the ingestion API}';
 
     protected $description = 'Simulate a night with the Titan virtual band and stream it into the real ingestion pipeline.';
@@ -133,18 +134,22 @@ class SimulateNight extends Command
             'device_id' => $device->device_id,
             'timezone' => $tz,
             'summaries' => [
-                [
-                    'kind' => 'sleep',
-                    'date' => $date,
-                    'duration_min' => $summary['duration_min'],
-                    'deep_min' => $summary['deep_min'],
-                    'rem_min' => $summary['rem_min'],
-                    'light_min' => $summary['light_min'],
-                    'awake_min' => $summary['awake_min'],
-                    'bedtime' => $bedtime->format('H:i'),
-                    'wake_time' => $wake->format('H:i'),
-                    'quality' => $summary['quality'],
-                ],
+                // The watch-ended flow sends a confirmed sleep_session marker (no stages — the SERVER
+                // stages from the raw windows). Otherwise ship the pre-baked Shape-C sleep summary.
+                $this->option('confirmed')
+                    ? ['kind' => 'sleep_session', 'confirmed' => true, 'bedtime' => $bedtime->timestamp, 'wake' => $wake->timestamp]
+                    : [
+                        'kind' => 'sleep',
+                        'date' => $date,
+                        'duration_min' => $summary['duration_min'],
+                        'deep_min' => $summary['deep_min'],
+                        'rem_min' => $summary['rem_min'],
+                        'light_min' => $summary['light_min'],
+                        'awake_min' => $summary['awake_min'],
+                        'bedtime' => $bedtime->format('H:i'),
+                        'wake_time' => $wake->format('H:i'),
+                        'quality' => $summary['quality'],
+                    ],
                 ['kind' => 'recovery', 'date' => $date, 'hrv_ms' => (int) round($rmssd), 'resting_hr' => $rhr],
                 // A plausible day of ambient movement (steps + a realistic hourly profile) so the
                 // steps goal AND circadian rhythm populate in the demo.

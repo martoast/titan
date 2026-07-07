@@ -39,6 +39,26 @@ def test_endpoint_returns_metrics_block():
     assert m["valid"] is True
 
 
+def test_ibi_path_builds_sleep_epochs_from_accel():
+    """The band's overnight default is an IBI stream (+ accel), not raw PPG. Sleep staging needs a
+    per-30s-epoch grid (HR + motion); it used to be built only on the PPG path, so a watch-ended
+    night staged on nothing and sealed with a duration but 0% on every stage. The IBI path must now
+    produce the epoch grid, with motion coming from the device's accelerometer. Regression guard.
+    """
+    ibi = synthetic_overnight_ibi(minutes=60)
+    n = len(ibi)
+    accel = [0.2] * n                      # mostly still…
+    for i in range(n // 2, n // 2 + max(1, n // 20)):
+        accel[i] = 9.0                     # …with a mid-night toss-and-turn
+    result = hrv_core.process_hrv(ibi_ms=ibi, accel=accel)
+
+    assert result["epoch_hr"], "IBI path must produce per-epoch HR"
+    assert result["epoch_motion"], "IBI path must produce per-epoch motion (from accel)"
+    assert len(result["epoch_motion"]) == len(result["epoch_hr"])
+    assert 100 <= len(result["epoch_motion"]) <= 140  # ~60 min / 30 s ≈ 120 epochs
+    assert max(result["epoch_motion"]) > min(result["epoch_motion"])  # the movement burst shows up
+
+
 def test_poor_signal_is_gated_invalid():
     """Too few, mostly-garbage beats => valid=false (suppress poor signal)."""
     bad = [1000, 250, 2500, 240, 3000, 200, 1000]  # most rejected as implausible
