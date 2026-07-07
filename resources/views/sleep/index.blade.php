@@ -1,9 +1,9 @@
 <x-titan-layout title="Sleep" subtitle="Duration, quality and stage trends">
     @php
         $stageColors = [
-            'deep'  => ['label' => 'Deep',  'class' => 'bg-indigo-500'],
-            'rem'   => ['label' => 'REM',   'class' => 'bg-cyan-400'],
-            'light' => ['label' => 'Light', 'class' => 'bg-indigo-300/60'],
+            'deep'  => ['label' => 'Deep',  'class' => 'bg-titan-indigo'],
+            'rem'   => ['label' => 'REM',   'class' => 'bg-titan-violet'],
+            'light' => ['label' => 'Light', 'class' => 'bg-titan-indigo/50'],
             'awake' => ['label' => 'Awake', 'class' => 'bg-gray-600'],
         ];
     @endphp
@@ -16,13 +16,13 @@
 
     <div class="space-y-4 md:space-y-5">
         {{-- Last-night summary --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <x-card pad="p-4 md:p-5">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="font-display font-bold text-gray-100">Last night</h3>
                 @if ($latest)
                     <div class="flex items-center gap-2">
                         @if ($fromWearable)
-                            <span class="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                            <span class="inline-flex items-center gap-1 rounded-full border border-titan-mint/20 bg-titan-mint/10 px-2 py-0.5 text-[10px] font-medium text-titan-mint">
                                 <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12.55a11 11 0 0114 0M8.5 16.05a6 6 0 017 0M2 9.05a16 16 0 0120 0M12 20h.01"/></svg>
                                 Wearable
                             </span>
@@ -89,26 +89,26 @@
             @else
                 <p class="text-sm text-gray-500">No sleep logged yet. Add your first night below.</p>
             @endif
-        </div>
+        </x-card>
 
         {{-- 7-day averages --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <x-card pad="p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100 mb-4">7-day average</h3>
             <div class="grid grid-cols-2 gap-3 md:gap-4">
                 <div>
                     <div class="text-[11px] uppercase tracking-wide text-gray-500">Avg. duration</div>
-                    <div class="font-display text-2xl font-bold nums text-indigo-300">{{ $avgDurationLabel ?? '—' }}</div>
+                    <div class="font-display text-2xl font-bold nums text-titan-indigo">{{ $avgDurationLabel ?? '—' }}</div>
                 </div>
                 <div>
                     <div class="text-[11px] uppercase tracking-wide text-gray-500">Avg. quality</div>
-                    <div class="font-display text-2xl font-bold nums text-cyan-300">{{ $avgQuality !== null ? $avgQuality.'/100' : '—' }}</div>
+                    <div class="font-display text-2xl font-bold nums text-titan-cyan">{{ $avgQuality !== null ? $avgQuality.'/100' : '—' }}</div>
                 </div>
             </div>
             <p class="text-xs text-gray-600 mt-3">Based on your {{ $count7 }} most recent night{{ $count7 === 1 ? '' : 's' }}.</p>
-        </div>
+        </x-card>
 
         {{-- Sleep regularity (SRI) — consistency of timing; predicts mortality more than duration --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <x-card pad="p-4 md:p-5">
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <h3 class="font-display font-bold text-gray-100">Sleep regularity</h3>
@@ -145,10 +145,10 @@
             @else
                 <p class="mt-3 text-sm text-gray-500">Log (or sync) at least {{ \App\Support\SleepRegularity::MIN_NIGHTS }} nights <span class="text-gray-600">with bedtime + wake time</span> to see your regularity score.</p>
             @endif
-        </div>
+        </x-card>
 
         {{-- Circadian rest-activity rhythm — day/night contrast; blunted rhythm predicts mortality --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <x-card pad="p-4 md:p-5">
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <h3 class="font-display font-bold text-gray-100">Circadian rhythm</h3>
@@ -181,15 +181,15 @@
                         $fmtHour = fn ($h) => \Illuminate\Support\Carbon::today()->setTime($h, 0)->format('g A');
                     @endphp
                     <div class="mt-3 grid grid-cols-3 gap-2 text-center">
-                        <div class="rounded-xl border border-white/5 bg-white/[0.02] px-2 py-2">
+                        <div class="rounded-chip border border-white/5 bg-white/[0.02] px-2 py-2">
                             <div class="text-[10px] uppercase tracking-wide text-gray-500">Stability</div>
                             <div class="font-display text-lg font-bold nums text-gray-200 leading-none mt-0.5">{{ number_format($circadian['is'], 2) }}</div>
                         </div>
-                        <div class="rounded-xl border border-white/5 bg-white/[0.02] px-2 py-2">
+                        <div class="rounded-chip border border-white/5 bg-white/[0.02] px-2 py-2">
                             <div class="text-[10px] uppercase tracking-wide text-gray-500">Most active</div>
                             <div class="font-display text-lg font-bold nums text-gray-200 leading-none mt-0.5">{{ $fmtHour($circadian['m10_onset']) }}</div>
                         </div>
-                        <div class="rounded-xl border border-white/5 bg-white/[0.02] px-2 py-2">
+                        <div class="rounded-chip border border-white/5 bg-white/[0.02] px-2 py-2">
                             <div class="text-[10px] uppercase tracking-wide text-gray-500">Deep rest</div>
                             <div class="font-display text-lg font-bold nums text-gray-200 leading-none mt-0.5">{{ $fmtHour($circadian['l5_onset']) }}</div>
                         </div>
@@ -201,10 +201,10 @@
             @else
                 <p class="mt-3 text-sm text-gray-500">Wear your band across {{ \App\Support\CircadianRhythm::MIN_DAYS }}+ full days to see your rest-activity rhythm.</p>
             @endif
-        </div>
+        </x-card>
 
         {{-- 14-day trend --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <x-card pad="p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100 mb-4">14-day trend</h3>
             @if ($trend->count())
                 <div class="relative h-44 md:h-56">
@@ -213,10 +213,10 @@
             @else
                 <p class="text-sm text-gray-500">Not enough data yet — log a few nights to see your trend.</p>
             @endif
-        </div>
+        </x-card>
 
         {{-- Manual log form — deferred behind a tap; the band logs nights automatically --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ logOpen: {{ $errors->any() ? 'true' : 'false' }} }">
+        <x-card pad="p-4 md:p-5" x-data="{ logOpen: {{ $errors->any() ? 'true' : 'false' }} }">
             <button type="button" @click="logOpen = !logOpen" class="flex w-full items-center justify-between gap-3 text-left">
                 <span class="font-display font-bold text-gray-100">Log sleep manually</span>
                 <svg class="h-5 w-5 shrink-0 text-gray-500 transition" :class="logOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -255,7 +255,7 @@
                 </div>
 
                 <div x-data="{ open: false }" class="sm:col-span-2">
-                    <button type="button" @click="open = !open" class="text-xs font-medium text-indigo-400 active:text-indigo-300">
+                    <button type="button" @click="open = !open" class="text-xs font-medium text-titan-indigo active:opacity-80">
                         <span x-show="!open">+ Add sleep stages (optional)</span>
                         <span x-show="open" x-cloak>− Hide sleep stages</span>
                     </button>
@@ -290,12 +290,12 @@
                 </div>
 
                 <div class="sm:col-span-2">
-                    <button type="submit" class="w-full md:w-auto h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-400 px-6 font-semibold text-white active:opacity-90 transition">
+                    <button type="submit" class="w-full md:w-auto h-12 rounded-chip bg-gradient-to-r from-titan-indigo to-titan-cyan px-6 font-semibold text-white active:opacity-90 transition">
                         Save sleep
                     </button>
                 </div>
             </form>
-        </div>
+        </x-card>
     </div>
 
     @if ($trend->count())
@@ -313,7 +313,7 @@
                                 type: 'bar',
                                 label: 'Hours',
                                 data: data.map(d => d.hours),
-                                backgroundColor: 'rgba(99, 102, 241, 0.55)',
+                                backgroundColor: 'rgba(109, 107, 246, 0.55)',
                                 borderRadius: 4,
                                 yAxisID: 'y',
                             },
@@ -321,8 +321,8 @@
                                 type: 'line',
                                 label: 'Quality',
                                 data: data.map(d => d.quality),
-                                borderColor: 'rgb(34, 211, 238)',
-                                backgroundColor: 'rgb(34, 211, 238)',
+                                borderColor: '#22D3EE',
+                                backgroundColor: '#22D3EE',
                                 tension: 0.3,
                                 spanGaps: true,
                                 yAxisID: 'y1',

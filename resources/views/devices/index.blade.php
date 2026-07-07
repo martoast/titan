@@ -145,7 +145,7 @@
         </a>
 
         {{-- Validation lab — Bangle vs Polar H10 --}}
-        <a href="{{ route('devices.validate') }}" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 transition hover:border-emerald-500/40 active:bg-white/[0.04]">
+        <a href="{{ route('devices.validate') }}" class="block glass-card p-4 md:p-5 transition hover:border-emerald-500/40 active:bg-white/[0.04]">
             <div class="flex items-center gap-3">
                 <span class="shrink-0 grid place-items-center h-10 w-10 rounded-xl bg-emerald-500/15 text-emerald-300">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l2 5 4-12 2 7h6"/></svg>
@@ -159,7 +159,7 @@
         </a>
 
         {{-- Pair a new device --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ open: {{ $connections->isEmpty() ? 'true' : 'false' }} }">
+        <div class="glass-card p-4 md:p-5" x-data="{ open: {{ $connections->isEmpty() ? 'true' : 'false' }} }">
             <button type="button" @click="open = !open" class="w-full flex items-center justify-between gap-3">
                 <div class="flex items-center gap-3 min-w-0">
                     <span class="h-10 w-10 shrink-0 grid place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 text-white">
@@ -196,7 +196,7 @@
         </div>
 
         {{-- Apple Health import --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5"
+        <div class="glass-card p-4 md:p-5"
              x-data="{ open: false, fileName: '' }">
             <button type="button" @click="open = !open" class="w-full flex items-center justify-between gap-3">
                 <div class="flex items-center gap-3 min-w-0">
@@ -257,7 +257,7 @@
         </div>
 
         {{-- Polar AccessLink connect --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <div class="glass-card p-4 md:p-5">
             <div class="flex items-start gap-3">
                 <span class="h-10 w-10 shrink-0 grid place-items-center rounded-xl bg-gradient-to-br from-rose-500 to-orange-400 text-white">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12h-4l-3 8L9 4l-3 8H3"/></svg>
@@ -289,7 +289,7 @@
 
         {{-- Last sync summary --}}
         @if ($lastIngestion)
-            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <div class="glass-card p-4 md:p-5">
                 <div class="text-[11px] uppercase tracking-wide text-gray-500">Last batch received</div>
                 <div class="mt-1 flex items-baseline gap-2">
                     <span class="font-display text-xl font-bold text-gray-100">{{ $lastIngestion->created_at->diffForHumans() }}</span>
@@ -308,10 +308,10 @@
 
         {{-- Connected devices --}}
         <div class="space-y-3">
-            <div class="text-[11px] uppercase tracking-wide text-gray-500 px-1">Connected devices</div>
+            <x-section-header title="Connected devices" />
             @forelse ($connections as $connection)
                 @php [$name, $grad] = $sourceMeta[$connection->source] ?? [ucfirst($connection->source), 'from-indigo-500 to-cyan-400']; @endphp
-                <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+                <div class="glass-card p-4 md:p-5">
                     <div class="flex items-start gap-3">
                         <span class="h-11 w-11 shrink-0 grid place-items-center rounded-xl bg-gradient-to-br {{ $grad }} text-white">
                             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM5 9h14M7 9V6a1 1 0 011-1h8a1 1 0 011 1v3m-1 0v4a1 1 0 01-1 1H9a1 1 0 01-1-1V9"/></svg>

@@ -246,7 +246,7 @@
         </section>
 
         {{-- ════════════════ PROGRESS · % to goal + this week's living you ════════════════ --}}
-        <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <section class="glass-card p-4 md:p-5">
             <div class="grid grid-cols-3 gap-3">
                 <div class="text-center">
                     <div class="font-display text-2xl font-black nums bg-gradient-to-r from-indigo-400 to-cyan-300 bg-clip-text text-transparent leading-none">{{ $pct !== null ? $pct.'%' : '—' }}</div>
@@ -332,7 +332,7 @@
         </section>
 
         {{-- ════════════════ PROGRESS GALLERY ════════════════ --}}
-        <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <section class="glass-card p-4 md:p-5">
             <div class="flex items-center justify-between gap-3 mb-4">
                 <div>
                     <h3 class="font-display text-lg font-bold text-gray-100">Progress photos</h3>
@@ -443,7 +443,7 @@
 
         {{-- ════════════════ LATEST PHYSIQUE READ ════════════════ --}}
         @if ($latestAnalysis && (is_array($latestAnalysis->muscle_ratings) && count($latestAnalysis->muscle_ratings) || $latestAnalysis->summary))
-            <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+            <section class="glass-card p-4 md:p-5">
                 <h3 class="font-display font-bold text-gray-100 mb-4">Latest physique read</h3>
                 @if (is_array($latestAnalysis->muscle_ratings) && count($latestAnalysis->muscle_ratings))
                     <div class="space-y-2.5 min-w-0">

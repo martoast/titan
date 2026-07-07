@@ -12,10 +12,10 @@
 
         // Severity tiers — informational, never alarming red. Major is a warm amber, not crisis red.
         $sevStyles = [
-            'major'    => ['label' => 'Major',        'dot' => 'bg-orange-400', 'pill' => 'border-orange-500/25 bg-orange-500/10 text-orange-200'],
-            'moderate' => ['label' => 'Moderate',     'dot' => 'bg-amber-400',  'pill' => 'border-amber-500/25 bg-amber-500/10 text-amber-200'],
-            'timing'   => ['label' => 'Timing',       'dot' => 'bg-sky-400',    'pill' => 'border-sky-500/25 bg-sky-500/10 text-sky-200'],
-            'info'     => ['label' => 'Good to know', 'dot' => 'bg-indigo-400', 'pill' => 'border-indigo-500/25 bg-indigo-500/10 text-indigo-200'],
+            'major'    => ['label' => 'Major',        'dot' => 'bg-orange-400',   'pill' => 'border-orange-500/25 bg-orange-500/10 text-orange-200'],
+            'moderate' => ['label' => 'Moderate',     'dot' => 'bg-titan-amber',  'pill' => 'border-titan-amber/25 bg-titan-amber/10 text-titan-amber'],
+            'timing'   => ['label' => 'Timing',       'dot' => 'bg-titan-cyan',   'pill' => 'border-titan-cyan/25 bg-titan-cyan/10 text-titan-cyan'],
+            'info'     => ['label' => 'Good to know', 'dot' => 'bg-titan-indigo', 'pill' => 'border-titan-indigo/25 bg-titan-indigo/10 text-titan-indigo'],
         ];
 
         $groups = ['Supplements' => $supplements, 'Medications' => $medications, 'Other' => $others];
@@ -30,15 +30,15 @@
         {{-- ============================================================= --}}
         {{-- Hero — today's checklist, grouped by time of day               --}}
         {{-- ============================================================= --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-6">
+        <x-card pad="p-4 md:p-5" class="mb-6">
             <div class="flex items-center justify-between mb-4">
                 <div class="min-w-0">
                     <div class="font-display text-base font-bold text-gray-100">Today</div>
                     <div class="text-[11px] text-gray-500">One tap to log a dose</div>
                 </div>
                 <button type="button" @click="openAdd()" aria-label="Add something you take"
-                        class="h-10 w-10 shrink-0 grid place-items-center rounded-xl bg-indigo-500/90 text-white active:bg-indigo-400">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        class="h-10 w-10 shrink-0 grid place-items-center rounded-chip bg-titan-mint text-titan-bg active:bg-titan-mint/80">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 </button>
             </div>
 
@@ -52,14 +52,14 @@
             {{-- Slots --}}
             <div class="space-y-3">
                 <template x-for="s in today.slots" :key="s.key">
-                    <div x-show="slotVisible(s)" x-cloak class="rounded-xl border border-white/5 bg-gray-900/40 overflow-hidden">
+                    <div x-show="slotVisible(s)" x-cloak class="rounded-chip border border-white/5 bg-black/20 overflow-hidden">
                         <button type="button" @click="toggle(s)" class="w-full flex items-center justify-between gap-3 px-3.5 py-2.5">
                             <span class="flex items-center gap-2 min-w-0">
                                 <span class="text-base leading-none" x-text="slotIcon(s.key)"></span>
                                 <span class="font-display font-bold text-gray-200" x-text="s.label"></span>
                             </span>
                             <span class="flex items-center gap-2 shrink-0">
-                                <span x-show="untaken(s) === 0" x-cloak class="text-[11px] text-emerald-300/70"
+                                <span x-show="untaken(s) === 0" x-cloak class="text-[11px] text-titan-mint"
                                       x-text="s.label + ' — done ' + slotIcon(s.key)"></span>
                                 <svg class="h-4 w-4 text-gray-600 transition" :class="isOpen(s) && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                             </span>
@@ -72,7 +72,7 @@
                                             class="w-full flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition active:bg-white/5"
                                             :class="item.taken && 'opacity-50'">
                                         <span class="grid place-items-center h-6 w-6 shrink-0 rounded-full border transition"
-                                              :class="item.taken ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-300' : 'border-white/20 text-transparent'">
+                                              :class="item.taken ? 'border-titan-mint/60 bg-titan-mint/20 text-titan-mint' : 'border-white/20 text-transparent'">
                                             <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                         </span>
                                         <span class="flex-1 min-w-0">
@@ -83,7 +83,7 @@
                                             <span class="block text-xs text-gray-500" x-text="item.dose + (item.with_food ? ' · with food' : '')"></span>
                                         </span>
                                         <span class="shrink-0 text-[11px] font-semibold"
-                                              :class="item.taken ? 'text-gray-600' : 'text-indigo-300'"
+                                              :class="item.taken ? 'text-gray-600' : 'text-titan-mint'"
                                               x-text="item.taken ? 'undo' : 'take'"></span>
                                     </button>
                                 </template>
@@ -100,12 +100,12 @@
             </div>
 
             <a x-show="today.worth_knowing > 0" x-cloak href="#worth-knowing"
-               class="mt-3 inline-flex items-center gap-2 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.07] px-3 py-2 text-xs text-indigo-200 active:bg-indigo-500/15">
+               class="mt-3 inline-flex items-center gap-2 rounded-chip border border-titan-indigo/20 bg-titan-indigo/[0.08] px-3 py-2 text-xs text-titan-indigo active:bg-titan-indigo/15">
                 <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <span x-text="today.worth_knowing + (today.worth_knowing === 1 ? ' thing worth knowing' : ' things worth knowing')"></span>
                 <span aria-hidden="true">→</span>
             </a>
-        </div>
+        </x-card>
 
         {{-- ============================================================= --}}
         {{-- Full protocol                                                  --}}
@@ -115,14 +115,11 @@
                 @foreach ($groups as $groupLabel => $items)
                     @continue($items->isEmpty())
                     <div>
-                        <div class="flex items-center gap-2 mb-2 px-1">
-                            <span class="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">{{ $groupLabel }}</span>
-                            <span class="text-[11px] text-gray-600">{{ $items->count() }}</span>
-                        </div>
+                        <x-section-header :title="$groupLabel" :trailing="(string) $items->count()" />
                         <div class="space-y-2">
                             @foreach ($items as $item)
                                 @php $pct = $adherence[$item->id] ?? null; @endphp
-                                <div class="rounded-xl border border-white/5 bg-gray-900/50 overflow-hidden"
+                                <x-card pad="p-0" class="overflow-hidden"
                                      x-data="{ open: false, edit: false }">
                                     {{-- Row summary --}}
                                     <button type="button" @click="open = !open" class="w-full flex items-center gap-3 p-4 text-left">
@@ -145,7 +142,7 @@
                                         </div>
                                         @if ($pct !== null)
                                             <div class="shrink-0 text-right">
-                                                <div class="text-sm font-semibold nums {{ $pct >= 85 ? 'text-emerald-300' : ($pct >= 60 ? 'text-amber-300' : 'text-gray-400') }}">{{ $pct }}%</div>
+                                                <div class="text-sm font-semibold nums {{ $pct >= 85 ? 'text-titan-mint' : ($pct >= 60 ? 'text-titan-amber' : 'text-gray-400') }}">{{ $pct }}%</div>
                                                 <div class="text-[10px] text-gray-600">14-day</div>
                                             </div>
                                         @endif
@@ -161,7 +158,7 @@
                                                         <span>Adherence (last 14 days)</span><span class="nums">{{ $pct }}%</span>
                                                     </div>
                                                     <div class="h-2 w-full rounded-full bg-white/5 overflow-hidden">
-                                                        <div class="h-full rounded-full {{ $pct >= 85 ? 'bg-emerald-500/70' : ($pct >= 60 ? 'bg-amber-500/70' : 'bg-gray-500/60') }}" style="width: {{ $pct }}%"></div>
+                                                        <div class="h-full rounded-full {{ $pct >= 85 ? 'bg-titan-mint/70' : ($pct >= 60 ? 'bg-titan-amber/70' : 'bg-gray-500/60') }}" style="width: {{ $pct }}%"></div>
                                                     </div>
                                                 </div>
                                             @endif
@@ -184,7 +181,7 @@
                                                 </form>
                                                 <form method="POST" action="{{ route('stack.destroy', $item->id) }}" onsubmit="return confirm('Remove {{ addslashes($item->name) }} from your list?')" class="ml-auto">
                                                     @csrf @method('DELETE')
-                                                    <button type="submit" class="text-gray-600 hover:text-rose-400 px-2 py-1.5" title="Remove">
+                                                    <button type="submit" class="text-gray-600 hover:text-titan-pink px-2 py-1.5" title="Remove">
                                                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                                     </button>
                                                 </form>
@@ -265,23 +262,23 @@
                                                 </label>
 
                                                 <div class="flex items-center gap-2">
-                                                    <button type="submit" class="rounded-lg bg-indigo-500/90 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white">Save changes</button>
+                                                    <button type="submit" class="rounded-chip bg-titan-mint hover:bg-titan-mint/90 px-4 py-2 text-sm font-medium text-titan-bg">Save changes</button>
                                                     <button type="button" @click="edit = false" class="text-xs text-gray-500 active:text-gray-300">Cancel</button>
                                                 </div>
                                             </form>
                                         </div>
                                     </div>
-                                </div>
+                                </x-card>
                             @endforeach
                         </div>
                     </div>
                 @endforeach
             </div>
         @else
-            <div class="rounded-xl border border-dashed border-white/10 bg-gray-900/30 p-8 text-center mb-6">
+            <div class="rounded-card border border-dashed border-white/10 bg-white/[0.02] p-8 text-center mb-6">
                 <p class="text-gray-400 text-sm">Nothing here yet. Add a supplement or medication — search it, or just snap the bottle.</p>
-                <button type="button" @click="openAdd()" class="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-indigo-500/90 px-4 py-2 text-sm font-semibold text-white active:bg-indigo-400">
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                <button type="button" @click="openAdd()" class="mt-3 inline-flex items-center gap-1.5 rounded-chip bg-titan-mint px-4 py-2 text-sm font-semibold text-titan-bg active:bg-titan-mint/80">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                     Add your first
                 </button>
             </div>
@@ -290,14 +287,14 @@
         {{-- ============================================================= --}}
         {{-- Worth knowing — interactions (informational, cited, calm)      --}}
         {{-- ============================================================= --}}
-        <div id="worth-knowing" class="rounded-2xl border border-white/5 bg-white/[0.02] p-4 md:p-5 mb-6 scroll-mt-20">
+        <x-card id="worth-knowing" pad="p-4 md:p-5" class="mb-6 scroll-mt-20">
             <div class="flex items-center gap-2 mb-3">
-                <svg class="h-5 w-5 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <svg class="h-5 w-5 text-titan-indigo" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <h2 class="font-display text-base font-bold text-gray-100">Worth knowing</h2>
             </div>
 
             {{-- Pinned disclaimer --}}
-            <div class="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] px-3.5 py-2.5 text-xs text-indigo-200/90 leading-relaxed mb-4">
+            <div class="rounded-chip border border-titan-indigo/20 bg-titan-indigo/[0.07] px-3.5 py-2.5 text-xs text-titan-indigo/90 leading-relaxed mb-4">
                 {{ $disclaimer }}
             </div>
 
@@ -307,7 +304,7 @@
                 <div class="space-y-2.5">
                     @foreach ($flags as $flag)
                         @php $sv = $sevStyles[$flag->severity] ?? $sevStyles['info']; @endphp
-                        <div class="rounded-xl border border-white/5 bg-gray-900/50 p-3.5">
+                        <div class="rounded-chip border border-white/5 bg-black/20 p-3.5">
                             <div class="flex items-start gap-2.5">
                                 <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full {{ $sv['dot'] }}"></span>
                                 <div class="min-w-0 flex-1">
@@ -325,7 +322,7 @@
                     @endforeach
                 </div>
             @endif
-        </div>
+        </x-card>
 
         {{-- ============================================================= --}}
         {{-- Add sheet (bottom sheet) — two first-class paths               --}}
@@ -337,7 +334,7 @@
             <div x-show="addOpen"
                  x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0"
                  x-transition:leave="transition ease-in duration-200" x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full"
-                 class="fixed inset-x-0 bottom-0 z-50 max-h-[90dvh] flex flex-col rounded-t-3xl border-t border-white/10 bg-[#0b0d10] pb-safe md:inset-x-auto md:left-1/2 md:bottom-auto md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[34rem] md:max-w-[calc(100vw-2rem)] md:rounded-3xl md:border">
+                 class="fixed inset-x-0 bottom-0 z-50 max-h-[90dvh] flex flex-col rounded-t-3xl border-t border-white/10 bg-titan-bg2 pb-safe md:inset-x-auto md:left-1/2 md:bottom-auto md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[34rem] md:max-w-[calc(100vw-2rem)] md:rounded-3xl md:border">
                 <div class="flex justify-center pt-3 md:hidden"><div class="h-1.5 w-10 rounded-full bg-white/20"></div></div>
 
                 {{-- header --}}
@@ -357,8 +354,8 @@
                     {{-- ---- HOME: the two paths ---- --}}
                     <div x-show="addView === 'home'" class="space-y-3">
                         <button type="button" @click="addView = 'one'"
-                                class="w-full flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left active:bg-white/[0.06]">
-                            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-500/15 text-indigo-300">
+                                class="w-full flex items-center gap-3 rounded-card border border-white/10 bg-white/[0.03] p-4 text-left active:bg-white/[0.06]">
+                            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-chip bg-titan-mint/15 text-titan-mint">
                                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
                             </span>
                             <span class="min-w-0">
@@ -368,8 +365,8 @@
                         </button>
 
                         <button type="button" @click="addView = 'shelf'"
-                                class="w-full flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left active:bg-white/[0.06]">
-                            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-cyan-500/15 text-cyan-300">
+                                class="w-full flex items-center gap-3 rounded-card border border-white/10 bg-white/[0.03] p-4 text-left active:bg-white/[0.06]">
+                            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-chip bg-titan-cyan/15 text-titan-cyan">
                                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
                             </span>
                             <span class="min-w-0">
@@ -393,18 +390,18 @@
                         <div x-show="searching" class="text-xs text-gray-500 px-1">Searching…</div>
                         <div x-show="!searching && results.length > 0" class="space-y-1.5">
                             <template x-for="(r, i) in results" :key="i">
-                                <button type="button" @click="pick(r)" class="w-full flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-gray-900/50 px-3.5 py-2.5 text-left active:bg-white/5">
+                                <button type="button" @click="pick(r)" class="w-full flex items-center justify-between gap-3 rounded-chip border border-white/5 bg-black/20 px-3.5 py-2.5 text-left active:bg-white/5">
                                     <span class="min-w-0">
                                         <span class="block text-sm font-medium text-gray-100 truncate" x-text="r.name + (r.dose_amount ? ' · ' + (r.dose_amount + ' ' + (r.dose_unit || '')).trim() : '')"></span>
                                         <span class="block text-[11px] text-gray-500 truncate" x-text="[r.brand, r.kind, r.source].filter(Boolean).join(' · ')"></span>
                                     </span>
-                                    <span class="text-[11px] font-semibold text-indigo-300 shrink-0">Add</span>
+                                    <span class="text-[11px] font-semibold text-titan-mint shrink-0">Add</span>
                                 </button>
                             </template>
                         </div>
                         <p x-show="!searching && query.trim().length >= 2 && results.length === 0" class="text-xs text-gray-500 px-1">
                             No matches.
-                            <button type="button" @click="pickManual()" class="text-indigo-300 font-medium">Add “<span x-text="query"></span>” manually →</button>
+                            <button type="button" @click="pickManual()" class="text-titan-mint font-medium">Add “<span x-text="query"></span>” manually →</button>
                         </p>
 
                         {{-- snap a bottle --}}
@@ -414,9 +411,9 @@
                             </div>
                             <label class="block cursor-pointer">
                                 <input type="file" accept="image/*" capture="environment" class="sr-only" @change="scanFile($event, 'single')">
-                                <div class="rounded-2xl border-2 border-dashed border-indigo-500/40 bg-indigo-500/[0.06] active:bg-indigo-500/10 p-5 text-center">
-                                    <div class="mx-auto h-10 w-10 rounded-xl bg-indigo-500/15 grid place-items-center mb-2">
-                                        <svg class="h-5 w-5 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.66-.9l.82-1.2A2 2 0 0110.07 4h3.86a2 2 0 011.66.9l.82 1.2a2 2 0 001.66.9H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                <div class="rounded-card border-2 border-dashed border-titan-mint/40 bg-titan-mint/[0.07] active:bg-titan-mint/10 p-5 text-center">
+                                    <div class="mx-auto h-10 w-10 rounded-chip bg-titan-mint/15 grid place-items-center mb-2">
+                                        <svg class="h-5 w-5 text-titan-mint" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.66-.9l.82-1.2A2 2 0 0110.07 4h3.86a2 2 0 011.66.9l.82 1.2a2 2 0 001.66.9H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                                     </div>
                                     <p class="font-display font-bold text-gray-100 text-sm" x-text="scanning ? 'Reading the label…' : 'Snap a bottle'"></p>
                                     <p class="text-[11px] text-gray-500 mt-0.5">I'll read the name, dose & brand off the label</p>
@@ -500,7 +497,7 @@
                                 </div>
                             </div>
 
-                            <button type="submit" class="w-full rounded-xl bg-indigo-500/90 hover:bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white">Save</button>
+                            <button type="submit" class="w-full rounded-chip bg-titan-mint hover:bg-titan-mint/90 px-4 py-2.5 text-sm font-semibold text-titan-bg">Save</button>
                         </form>
                     </div>
 
@@ -510,9 +507,9 @@
                             <div>
                                 <label class="block cursor-pointer">
                                     <input type="file" accept="image/*" capture="environment" class="sr-only" @change="scanFile($event, 'shelf')">
-                                    <div class="rounded-2xl border-2 border-dashed border-cyan-500/40 bg-cyan-500/[0.06] active:bg-cyan-500/10 p-7 text-center">
-                                        <div class="mx-auto h-12 w-12 rounded-2xl bg-cyan-500/15 grid place-items-center mb-3">
-                                            <svg class="h-6 w-6 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.66-.9l.82-1.2A2 2 0 0110.07 4h3.86a2 2 0 011.66.9l.82 1.2a2 2 0 001.66.9H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                    <div class="rounded-card border-2 border-dashed border-titan-cyan/40 bg-titan-cyan/[0.07] active:bg-titan-cyan/10 p-7 text-center">
+                                        <div class="mx-auto h-12 w-12 rounded-card bg-titan-cyan/15 grid place-items-center mb-3">
+                                            <svg class="h-6 w-6 text-titan-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.66-.9l.82-1.2A2 2 0 0110.07 4h3.86a2 2 0 011.66.9l.82 1.2a2 2 0 001.66.9H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                                         </div>
                                         <p class="font-display font-bold text-gray-100" x-text="scanning ? 'Reading your shelf…' : 'Lay them out, take one photo'"></p>
                                         <p class="text-[11px] text-gray-500 mt-1">I'll pull every label I can read; you confirm each</p>
@@ -527,10 +524,10 @@
                                 {{-- Zero-typing: each label is an include/exclude row, included by default --}}
                                 <template x-for="(c, i) in candidates" :key="i">
                                     <button type="button" @click="c.include = !c.include"
-                                            class="w-full flex items-center gap-3 rounded-xl border border-white/5 bg-gray-900/50 px-3.5 py-3 text-left transition active:bg-white/5"
+                                            class="w-full flex items-center gap-3 rounded-chip border border-white/5 bg-black/20 px-3.5 py-3 text-left transition active:bg-white/5"
                                             :class="!c.include && 'opacity-40'">
                                         <span class="grid place-items-center h-6 w-6 shrink-0 rounded-md border transition"
-                                              :class="c.include ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-300' : 'border-white/20 text-transparent'">
+                                              :class="c.include ? 'border-titan-mint/60 bg-titan-mint/20 text-titan-mint' : 'border-white/20 text-transparent'">
                                             <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                         </span>
                                         <span class="flex-1 min-w-0">
@@ -540,7 +537,7 @@
                                     </button>
                                 </template>
                                 <button type="button" @click="addShelf()" :disabled="busy || includedCount === 0"
-                                        class="w-full rounded-lg bg-indigo-500/90 hover:bg-indigo-500 disabled:opacity-50 px-3 py-2.5 text-sm font-semibold text-white"
+                                        class="w-full rounded-chip bg-titan-mint hover:bg-titan-mint/90 disabled:opacity-50 px-3 py-2.5 text-sm font-semibold text-titan-bg"
                                         x-text="'Add ' + includedCount + ' to what you take'"></button>
                             </div>
                         </template>
@@ -552,7 +549,7 @@
 
         {{-- Brief confirmation while the page refreshes after an add --}}
         <div x-show="justAdded" x-cloak x-transition.opacity class="fixed top-4 inset-x-0 z-[60] flex justify-center pointer-events-none">
-            <div class="rounded-full bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-white shadow-lg">Added ✓</div>
+            <div class="rounded-full bg-titan-mint px-4 py-2 text-sm font-semibold text-titan-bg shadow-lg">Added ✓</div>
         </div>
     </div>
 

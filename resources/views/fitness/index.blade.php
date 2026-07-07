@@ -33,7 +33,7 @@
         };
         $r = 52; $circ = 2 * pi() * $r; $dash = $circ * $stepGoal['pct'] / 100;
     @endphp
-    <div class="rounded-3xl border border-white/5 bg-gradient-to-b from-white/[0.05] to-white/[0.02] p-5 md:p-6 mb-4"
+    <div class="rounded-card border border-white/5 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-5 md:p-6 mb-4 shadow-card"
          x-data="{ edit: {{ $steps === 0 ? 'true' : 'false' }} }">
         <div class="flex items-center gap-5">
             {{-- Progress ring --}}
@@ -60,12 +60,12 @@
                     @endif
                 </p>
                 <button type="button" @click="edit = !edit" x-show="!edit"
-                        class="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-200 active:bg-white/10">Update steps</button>
+                        class="mt-3 rounded-chip border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-200 active:bg-white/10">Update steps</button>
                 <form method="POST" action="{{ route('fitness.steps') }}" x-show="edit" x-cloak class="mt-3 flex items-center gap-2">
                     @csrf
                     <input type="number" name="steps" min="0" max="200000" value="{{ $steps ?: '' }}" inputmode="numeric" placeholder="steps today"
-                           class="min-w-0 flex-1 h-10 rounded-lg bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 nums focus:border-cyan-500/50 focus:outline-none">
-                    <button type="submit" class="h-10 rounded-lg bg-cyan-500/90 px-3 text-sm font-semibold text-gray-950 active:bg-cyan-400">Save</button>
+                           class="min-w-0 flex-1 h-10 rounded-chip bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 nums focus:border-titan-cyan/50 focus:outline-none">
+                    <button type="submit" class="h-10 rounded-chip bg-titan-cyan px-3 text-sm font-semibold text-gray-950 active:opacity-90">Save</button>
                 </form>
             </div>
         </div>
@@ -78,17 +78,17 @@
 
         {{-- Guided sit-to-stand test — lower-body function / frailty screen (Rikli & Jones 30CST) --}}
         @php $cs = session('chairStand'); @endphp
-        <div class="mt-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4" x-data="{ open: {{ $cs ? 'true' : 'false' }} }">
+        <div class="mt-3 glass-card p-4" x-data="{ open: {{ $cs ? 'true' : 'false' }} }">
             <div class="flex items-center justify-between gap-3">
                 <div>
                     <div class="text-[11px] uppercase tracking-wide text-gray-500">Functional fitness</div>
                     <h3 class="font-display font-bold text-gray-100 mt-0.5">30-second chair-stand test</h3>
                 </div>
-                <button type="button" @click="open = !open" class="shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-200 active:bg-white/10" x-text="open ? 'Hide' : 'Take the test'"></button>
+                <button type="button" @click="open = !open" class="shrink-0 rounded-chip border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-200 active:bg-white/10" x-text="open ? 'Hide' : 'Take the test'"></button>
             </div>
             @if ($cs)
-                @php $csTone = match ($cs['band']) { 'good' => 'text-emerald-300', 'average' => 'text-cyan-300', default => 'text-amber-300' }; @endphp
-                <div class="mt-3 rounded-xl bg-gray-950/50 border border-white/5 p-3.5">
+                @php $csTone = match ($cs['band']) { 'good' => 'text-titan-mint', 'average' => 'text-titan-cyan', default => 'text-titan-amber' }; @endphp
+                <div class="mt-3 rounded-chip bg-gray-950/50 border border-white/5 p-3.5">
                     <div class="flex items-baseline gap-2">
                         <span class="font-display text-3xl font-black nums {{ $csTone }} leading-none">{{ $cs['reps'] }}</span>
                         <span class="text-sm text-gray-500">stands in 30 s</span>
@@ -102,8 +102,8 @@
                 <form method="POST" action="{{ route('fitness.chair-stand') }}" class="mt-3 flex items-center gap-2">
                     @csrf
                     <input type="number" name="reps" min="0" max="60" inputmode="numeric" placeholder="stands in 30s" required
-                           class="w-36 h-10 rounded-lg bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 nums focus:border-cyan-500/50 focus:outline-none">
-                    <button type="submit" class="h-10 rounded-lg bg-cyan-500/90 px-4 text-sm font-semibold text-gray-950 active:bg-cyan-400">Score it</button>
+                           class="w-36 h-10 rounded-chip bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 nums focus:border-titan-cyan/50 focus:outline-none">
+                    <button type="submit" class="h-10 rounded-chip bg-titan-cyan px-4 text-sm font-semibold text-gray-950 active:opacity-90">Score it</button>
                 </form>
                 <p class="mt-2 text-[10px] text-gray-600">Gait speed is the "sixth vital sign" (Studenski 2011). A wellness screen, not a diagnosis.</p>
             </div>
@@ -111,16 +111,16 @@
 
         {{-- Floors climbed (barometer) — ≥35/wk → all-cause mortality HR 0.84 (Harvard Alumni) --}}
         @if ($floorsToday > 0)
-            <div class="mt-4 flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
-                <div class="font-display text-2xl font-black nums text-teal-300 leading-none">{{ $floorsToday }}</div>
+            <div class="mt-4 flex items-center gap-3 glass-card p-4">
+                <div class="font-display text-2xl font-black nums text-titan-mint leading-none">{{ $floorsToday }}</div>
                 <div class="text-sm text-gray-400">floors climbed today<span class="block text-[11px] text-gray-600">from the barometer — stairs are one of the cheapest longevity wins.</span></div>
             </div>
         @endif
 
         {{-- Movement breaks: how many waking hours had real movement (don't sit too long) --}}
         @if ($movement)
-            @php $mvTone = $movement['met'] ? 'text-emerald-300' : ($movement['longest_sit'] >= 4 ? 'text-orange-300' : 'text-amber-300'); @endphp
-            <div class="mt-4 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+            @php $mvTone = $movement['met'] ? 'text-titan-mint' : ($movement['longest_sit'] >= 4 ? 'text-orange-300' : 'text-titan-amber'); @endphp
+            <div class="mt-4 glass-card p-4">
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <div class="text-[11px] uppercase tracking-wide text-gray-500">Active hours</div>
@@ -141,7 +141,7 @@
     </div>
 
     {{-- VO2max hero --}}
-    <div class="rounded-3xl border border-white/5 bg-gradient-to-b from-white/[0.05] to-white/[0.02] p-6 text-center">
+    <div class="rounded-card border border-white/5 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-6 text-center shadow-card">
         <p class="text-[11px] uppercase tracking-wider text-gray-500">Estimated VO₂max</p>
         <div class="mt-1 flex items-end justify-center gap-2">
             <span class="font-display text-6xl font-black nums {{ $vo2Tone }} leading-none">{{ $vo2 !== null ? number_format($vo2, 1) : '—' }}</span>
@@ -174,13 +174,13 @@
 
     {{-- This-week load --}}
     <div class="mt-3 grid grid-cols-2 gap-3">
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+        <div class="glass-card p-4">
             <div class="text-[11px] uppercase tracking-wide text-gray-500">This week · load</div>
-            <div class="font-display text-3xl font-bold nums text-indigo-300 mt-1 leading-none">{{ $weekTrimp > 0 ? number_format($weekTrimp, 0) : '—' }}<span class="text-gray-500 text-base font-normal"> TRIMP</span></div>
+            <div class="font-display text-3xl font-bold nums text-titan-indigo mt-1 leading-none">{{ $weekTrimp > 0 ? number_format($weekTrimp, 0) : '—' }}<span class="text-gray-500 text-base font-normal"> TRIMP</span></div>
         </div>
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+        <div class="glass-card p-4">
             <div class="text-[11px] uppercase tracking-wide text-gray-500">Latest recovery</div>
-            <div class="font-display text-3xl font-bold nums text-cyan-300 mt-1 leading-none">{{ $latestHrr !== null ? number_format($latestHrr, 0) : '—' }}<span class="text-gray-500 text-base font-normal"> HRR</span></div>
+            <div class="font-display text-3xl font-bold nums text-titan-cyan mt-1 leading-none">{{ $latestHrr !== null ? number_format($latestHrr, 0) : '—' }}<span class="text-gray-500 text-base font-normal"> HRR</span></div>
         </div>
     </div>
 
@@ -198,7 +198,7 @@
             // Balance bar: where ACWR sits across 0.5–2.0, with the 0.8–1.3 sweet spot shaded.
             $pos = $tl['acwr'] !== null ? max(0, min(100, (($tl['acwr'] - 0.5) / 1.5) * 100)) : null;
         @endphp
-        <div class="mt-3 rounded-2xl border {{ $tone[0] }} {{ $tone[1] }} p-4">
+        <div class="mt-3 rounded-card border {{ $tone[0] }} {{ $tone[1] }} p-4 shadow-card">
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <div class="text-[11px] uppercase tracking-wide text-gray-500">Training load · {{ $tl['label'] }}</div>
@@ -226,9 +226,9 @@
     @endif
 
     {{-- Sessions --}}
-    <h2 class="mt-6 mb-2 text-[11px] uppercase tracking-wider text-gray-500">Recent sessions</h2>
+    <div class="mt-6"><x-section-header title="Recent sessions" /></div>
     @if ($sessions->isEmpty())
-        <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-8 text-center text-sm text-gray-400">
+        <div class="rounded-card border border-dashed border-white/10 bg-white/[0.02] p-8 text-center text-sm text-gray-400">
             No cardio sessions yet. Start a workout on your band — runs, rides and walks land here automatically.
         </div>
     @else
@@ -236,8 +236,8 @@
             @foreach ($sessions as $s)
                 @php $hasRoute = $s->hasRoute(); $tag = $hasRoute ? 'a' : 'div'; @endphp
                 <{{ $tag }} @if ($hasRoute) href="{{ route('fitness.run', $s) }}" @endif
-                    class="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-3.5 @if ($hasRoute) hover:bg-white/[0.06] hover:border-white/10 transition @endif">
-                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-indigo-300">
+                    class="flex items-center gap-3 glass-card p-3.5 @if ($hasRoute) hover:bg-white/[0.07] transition @endif">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-chip bg-titan-cyan/10 text-titan-cyan">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $icon($s->activity_type) }}" /></svg>
                     </div>
                     <div class="min-w-0 flex-1">
@@ -248,13 +248,13 @@
                         <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-gray-400 nums">
                             @if ($s->duration_min)<span>{{ $s->duration_min }} min</span>@endif
                             @if ($s->distance_km)<span>{{ number_format($s->distance_km, 1) }} km</span>@endif
-                            @if ($s->max_hr)<span><span class="text-pink-400/90">{{ $s->max_hr }} peak</span><span class="text-gray-600">@if ($s->avg_hr) · {{ $s->avg_hr }} avg @endif</span> bpm</span>@elseif ($s->avg_hr)<span>{{ $s->avg_hr }} avg bpm</span>@endif
+                            @if ($s->max_hr)<span><span class="text-titan-pink">{{ $s->max_hr }} peak</span><span class="text-gray-600">@if ($s->avg_hr) · {{ $s->avg_hr }} avg @endif</span> bpm</span>@elseif ($s->avg_hr)<span>{{ $s->avg_hr }} avg bpm</span>@endif
                             @if ($s->hardZoneMin() >= 0.5)<span class="text-rose-400/80" title="Minutes at ≥80% of your max HR — the hard zones">{{ rtrim(rtrim(number_format($s->hardZoneMin(), 1), '0'), '.') }} min hard</span>@endif
-                            @if ($s->avg_hr && $s->hrSourceLabel())<span class="{{ $s->hr_source === 'onchip' ? 'text-gray-600' : 'text-emerald-400/70' }}" title="How this session's heart rate was measured">{{ $s->hrSourceLabel() }}</span>@endif
+                            @if ($s->avg_hr && $s->hrSourceLabel())<span class="{{ $s->hr_source === 'onchip' ? 'text-gray-600' : 'text-titan-mint/80' }}" title="How this session's heart rate was measured">{{ $s->hrSourceLabel() }}</span>@endif
                             @if ($s->trimp)<span>TRIMP {{ number_format($s->trimp, 0) }}</span>@endif
                             @if ($s->calories_kcal)<span>{{ $s->calories_kcal }} kcal</span>@endif
-                            @if ($s->hrr_bpm)<span class="text-cyan-400/80">HRR {{ number_format($s->hrr_bpm, 0) }}</span>@endif
-                            @if ($s->vo2max)<span class="text-emerald-400/80">VO₂ {{ number_format($s->vo2max, 1) }}</span>@endif
+                            @if ($s->hrr_bpm)<span class="text-titan-cyan/80">HRR {{ number_format($s->hrr_bpm, 0) }}</span>@endif
+                            @if ($s->vo2max)<span class="text-titan-mint/80">VO₂ {{ number_format($s->vo2max, 1) }}</span>@endif
                         </div>
                     </div>
                     @if ($hasRoute)

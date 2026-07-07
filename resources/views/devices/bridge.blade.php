@@ -8,7 +8,7 @@
          x-init="init()">
 
         {{-- ===== credentials ===== --}}
-        <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <section class="glass-card p-4 md:p-5">
             <div class="flex items-center justify-between gap-3">
                 <h3 class="font-display font-bold text-gray-100">Device credentials</h3>
                 <span class="text-[11px] uppercase tracking-wide px-2 py-0.5 rounded"
@@ -41,7 +41,7 @@
         </section>
 
         {{-- ===== connection + live waveform ===== --}}
-        <section class="rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden">
+        <section class="glass-card overflow-hidden">
             <div class="relative h-40 bg-gray-950">
                 <canvas x-ref="wave" class="absolute inset-0 w-full h-full"></canvas>
                 <div class="absolute top-3 left-4 flex items-center gap-2">
@@ -95,7 +95,7 @@
         </section>
 
         {{-- ===== activity log ===== --}}
-        <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <section class="glass-card p-4 md:p-5">
             <div class="flex items-center justify-between">
                 <h3 class="font-display font-bold text-gray-100">Ingest log</h3>
                 <a href="/recovery" class="text-sm text-indigo-400 hover:underline">View recovery →</a>

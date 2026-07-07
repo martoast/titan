@@ -7,7 +7,7 @@
     {{-- Day switcher — full-width on mobile, arrows pinned to the edges --}}
     <div class="flex items-center gap-3 mb-5">
         <a href="/meals?day={{ $day->copy()->subDay()->format('Y-m-d') }}"
-           class="h-10 w-10 shrink-0 grid place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 active:bg-white/10">
+           class="h-10 w-10 shrink-0 grid place-items-center rounded-chip border border-white/10 bg-white/[0.03] text-gray-300 active:bg-white/10">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
         </a>
         <div class="flex-1 text-center">
@@ -15,7 +15,7 @@
             <div class="text-xs text-gray-500 nums">{{ $day->format('M j, Y') }}</div>
         </div>
         <a href="/meals?day={{ $day->copy()->addDay()->format('Y-m-d') }}"
-           class="h-10 w-10 shrink-0 grid place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 active:bg-white/10 {{ $isToday ? 'opacity-30 pointer-events-none' : '' }}">
+           class="h-10 w-10 shrink-0 grid place-items-center rounded-chip border border-white/10 bg-white/[0.03] text-gray-300 active:bg-white/10 {{ $isToday ? 'opacity-30 pointer-events-none' : '' }}">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </a>
     </div>
@@ -27,7 +27,7 @@
 
     @if ($isToday)
         {{-- Your kitchen — what you have on hand, so suggestions are makeable right now --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-3" x-data="{ open: false }">
+        <x-card pad="p-4 md:p-5" class="mb-3" x-data="{ open: false }">
             <button type="button" @click="open = !open" class="w-full flex items-center justify-between gap-3">
                 <div class="flex items-center gap-2 min-w-0">
                     <span class="text-base">🧊</span>
@@ -58,11 +58,11 @@
                 <form method="POST" action="{{ route('meals.pantry') }}" class="flex items-center gap-2">
                     @csrf
                     <input type="text" name="items" placeholder="ground beef, eggs, milk, tuna…" required
-                           class="flex-1 h-10 rounded-xl bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 focus:border-cyan-500/50 focus:outline-none">
-                    <button type="submit" class="h-10 shrink-0 rounded-xl bg-white/5 border border-white/10 px-4 text-sm font-semibold text-gray-200 active:bg-white/10">Add</button>
+                           class="flex-1 h-10 rounded-chip bg-gray-900 border border-white/10 px-3 text-sm text-gray-100 focus:border-titan-amber/50 focus:outline-none">
+                    <button type="submit" class="h-10 shrink-0 rounded-chip bg-white/5 border border-white/10 px-4 text-sm font-semibold text-gray-200 active:bg-white/10">Add</button>
                 </form>
             </div>
-        </div>
+        </x-card>
 
         {{-- What should I eat? — next-meal timing + AI suggestions with generated photos --}}
         @php
@@ -71,16 +71,16 @@
                 'overdue' => 'text-amber-300', 'soon' => 'text-amber-300', 'done' => 'text-emerald-300', default => 'text-indigo-300',
             };
         @endphp
-        <div class="rounded-2xl border border-indigo-500/20 bg-gradient-to-b from-indigo-500/[0.07] to-transparent p-4 md:p-5 mb-5">
+        <div class="rounded-card border border-titan-indigo/20 bg-gradient-to-b from-titan-indigo/[0.09] to-transparent p-4 md:p-5 mb-5">
             <div class="flex items-center justify-between gap-3">
                 <div class="min-w-0">
-                    <div class="text-[11px] uppercase tracking-wider text-indigo-300/80 font-semibold">🍽️ {{ $mc['label'] }}</div>
+                    <div class="text-[11px] uppercase tracking-[0.12em] text-indigo-300/80 font-semibold">🍽️ {{ $mc['label'] }}</div>
                     <p class="text-sm text-gray-300 mt-0.5 leading-snug">{{ $mc['advice'] }}</p>
                 </div>
                 <form method="POST" action="{{ route('meals.suggest') }}" class="shrink-0" x-data="{ busy: false }" @submit="busy = true">
                     @csrf
                     <button type="submit" :disabled="busy"
-                            class="inline-flex items-center gap-1.5 rounded-xl bg-indigo-500/90 px-3.5 py-2 text-xs font-semibold text-white active:bg-indigo-400 disabled:opacity-60">
+                            class="inline-flex items-center gap-1.5 rounded-chip bg-titan-indigo px-3.5 py-2 text-xs font-semibold text-white active:opacity-90 disabled:opacity-60">
                         <svg x-show="!busy" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
                         <svg x-show="busy" x-cloak class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path></svg>
                         <span x-text="busy ? 'Cooking up ideas…' : '{{ count($pantry) ? 'Cook from my kitchen' : 'Suggest meals' }}'"></span>
@@ -93,14 +93,14 @@
                 <div class="mt-4 -mx-4 px-4 md:mx-0 md:px-0 flex gap-3 overflow-x-auto no-scrollbar snap-x">
                     @foreach ($suggestions as $s)
                         <a href="{{ route('meals.recipe', $s) }}" class="shrink-0 w-44 snap-start active:opacity-80">
-                            <div class="rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden">
+                            <div class="rounded-card border border-white/5 bg-white/[0.03] overflow-hidden">
                                 <div class="relative aspect-[4/3] bg-gray-950">
                                     @if ($s->imageUrl())
                                         <img src="{{ $s->imageUrl() }}" alt="{{ $s->name }}" class="absolute inset-0 h-full w-full object-cover">
                                     @else
                                         <div class="absolute inset-0 grid place-items-center text-2xl">🍲</div>
                                     @endif
-                                    @if ($s->protein_g)<span class="absolute top-2 left-2 rounded-full bg-black/55 backdrop-blur px-2 py-0.5 text-[10px] font-semibold text-emerald-200 nums">{{ (int) $s->protein_g }}g protein</span>@endif
+                                    @if ($s->protein_g)<span class="absolute top-2 left-2 rounded-full bg-black/55 backdrop-blur px-2 py-0.5 text-[10px] font-semibold text-titan-mint nums">{{ (int) $s->protein_g }}g protein</span>@endif
                                 </div>
                                 <div class="p-2.5">
                                     <div class="font-semibold text-gray-100 text-[13px] leading-tight line-clamp-2">{{ $s->name }}</div>
@@ -115,38 +115,37 @@
     @endif
 
     {{-- Daily totals bar --}}
-    <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5 mb-6"
-         x-data="{ open: false }">
+    <x-card pad="p-5" class="mb-6" x-data="{ open: false }">
         <div class="flex items-start justify-between mb-4">
             <div>
-                <div class="text-xs uppercase tracking-wide text-gray-500">Calories</div>
+                <div class="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-gray-500">Calories</div>
                 <div class="mt-1 flex items-baseline gap-2">
-                    <span class="text-3xl font-bold text-gray-100">{{ number_format($totals['calories']) }}</span>
-                    <span class="text-sm text-gray-500">/ {{ number_format($targets['calories']) }} kcal</span>
+                    <span class="font-display text-3xl font-bold text-gray-50 nums">{{ number_format($totals['calories']) }}</span>
+                    <span class="text-sm text-gray-500 nums">/ {{ number_format($targets['calories']) }} kcal</span>
                 </div>
             </div>
-            <button @click="open = !open" class="text-xs text-gray-500 hover:text-gray-300">Edit targets</button>
+            <button @click="open = !open" class="text-xs font-medium text-gray-500 hover:text-gray-300">Edit targets</button>
         </div>
 
         {{-- Calorie bar --}}
         @php $calPct = $pct($totals['calories'], $targets['calories']); @endphp
         <div class="h-2.5 w-full rounded-full bg-white/5 overflow-hidden mb-5">
-            <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style="width: {{ $calPct }}%"></div>
+            <div class="h-full rounded-full bg-gradient-to-r from-titan-amber to-amber-300" style="width: {{ $calPct }}%"></div>
         </div>
 
-        {{-- Macro bars --}}
+        {{-- Macro bars — protein→mint, carbs→amber, fat→pink (iOS Fuel) --}}
         <div class="grid grid-cols-3 gap-4">
             @php
                 $macros = [
-                    ['Protein', 'protein_g', 'from-rose-500 to-orange-400'],
-                    ['Carbs',   'carbs_g',   'from-amber-500 to-yellow-400'],
-                    ['Fat',     'fat_g',     'from-sky-500 to-indigo-400'],
+                    ['Protein', 'protein_g', 'from-titan-mint to-emerald-300'],
+                    ['Carbs',   'carbs_g',   'from-titan-amber to-amber-300'],
+                    ['Fat',     'fat_g',     'from-titan-pink to-rose-300'],
                 ];
             @endphp
             @foreach ($macros as [$label, $key, $grad])
                 @php $mp = $pct($totals[$key], $targets[$key]); @endphp
                 <div>
-                    <div class="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">{{ $label }}</div>
+                    <div class="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-gray-500 mb-0.5">{{ $label }}</div>
                     <div class="text-sm font-semibold text-gray-100 nums mb-1.5">
                         {{ rtrim(rtrim(number_format($totals[$key], 1), '0'), '.') }}<span class="text-gray-500 font-normal">/{{ $targets[$key] }}g</span>
                     </div>
@@ -165,15 +164,15 @@
                     <label class="block">
                         <span class="text-xs text-gray-500">{{ $lbl }}</span>
                         <input type="number" step="1" min="0" name="{{ $k }}" value="{{ $targets[$k] }}"
-                               class="mt-1 w-full rounded-lg bg-gray-950 border border-white/10 px-3 py-2 text-sm text-gray-100 focus:border-indigo-500 focus:ring-0">
+                               class="mt-1 w-full rounded-lg bg-gray-950 border border-white/10 px-3 py-2 text-sm text-gray-100 nums focus:border-titan-amber/60 focus:ring-0">
                     </label>
                 @endforeach
                 <div class="col-span-2 sm:col-span-4 flex justify-end">
-                    <button class="rounded-lg bg-indigo-500/90 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white">Save targets</button>
+                    <button class="rounded-chip bg-titan-amber px-4 py-2 text-sm font-bold text-gray-950 active:opacity-90">Save targets</button>
                 </div>
             </form>
         </div>
-    </div>
+    </x-card>
 
     {{-- Hydration — bodyweight-based daily target + quick-add, mirroring the iOS Fuel hydration card --}}
     @php
@@ -183,10 +182,10 @@
         $hydCirc = 226.2;                                  // 2πr for r=36
         $hydOffset = $hydCirc * (1 - min(100, $hyd['pct']) / 100);
     @endphp
-    <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5 mb-6">
+    <x-card pad="p-5" class="mb-6">
         <div class="flex items-center justify-between mb-4">
-            <div class="text-xs uppercase tracking-wide text-gray-500">Hydration</div>
-            <div class="text-xs font-semibold text-cyan-300 nums">{{ $hyd['pct'] }}%</div>
+            <div class="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-gray-500">Hydration</div>
+            <div class="text-xs font-semibold text-titan-cyan nums">{{ $hyd['pct'] }}%</div>
         </div>
         <div class="flex items-center gap-5">
             {{-- Progress ring --}}
@@ -224,16 +223,16 @@
                 @endforeach
             </div>
         </div>
-    </div>
+    </x-card>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {{-- Left: log + meals list --}}
         <div class="lg:col-span-2 space-y-6">
             {{-- Snap-a-meal + text entry --}}
-            <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5" x-data="{ tab: 'photo' }">
+            <x-card pad="p-5" x-data="{ tab: 'photo' }">
                 <div class="flex items-center gap-1 mb-4 text-sm">
-                    <button @click="tab='photo'" :class="tab==='photo' ? 'bg-indigo-500/15 text-indigo-300' : 'text-gray-400 hover:text-gray-100'" class="rounded-lg px-3 py-1.5 font-medium transition">Snap a meal</button>
-                    <button @click="tab='text'" :class="tab==='text' ? 'bg-indigo-500/15 text-indigo-300' : 'text-gray-400 hover:text-gray-100'" class="rounded-lg px-3 py-1.5 font-medium transition">Describe it</button>
+                    <button @click="tab='photo'" :class="tab==='photo' ? 'bg-titan-amber/15 text-titan-amber' : 'text-gray-400 hover:text-gray-100'" class="rounded-chip px-3 py-1.5 font-medium transition">Snap a meal</button>
+                    <button @click="tab='text'" :class="tab==='text' ? 'bg-titan-amber/15 text-titan-amber' : 'text-gray-400 hover:text-gray-100'" class="rounded-chip px-3 py-1.5 font-medium transition">Describe it</button>
                     <a href="/meals/add" class="ml-auto text-xs text-gray-500 active:text-gray-300">Manual</a>
                 </div>
 
@@ -245,7 +244,7 @@
                     <x-upload-zone kind="image" name="photo" required accept="image/*"
                                    label="Tap to add a meal photo" hint="AI estimates ingredients & macros — you confirm before saving" />
                     <button type="submit" :disabled="loading"
-                            class="mt-3 w-full rounded-lg bg-indigo-500/90 hover:bg-indigo-500 disabled:opacity-50 px-4 py-2.5 text-sm font-medium text-white">
+                            class="mt-3 w-full rounded-chip bg-titan-amber disabled:opacity-50 px-4 py-2.5 text-sm font-bold text-gray-950 active:opacity-90">
                         <span x-show="!loading">Analyze photo</span>
                         <span x-show="loading" x-cloak>Analyzing…</span>
                     </button>
@@ -257,23 +256,23 @@
                     @csrf
                     <input type="hidden" name="eaten_at" :value="new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16)">
                     <textarea name="text" rows="3" required placeholder="e.g. 2 scrambled eggs, a bowl of oatmeal with banana, black coffee"
-                              class="w-full rounded-lg bg-gray-950 border border-white/10 px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:border-indigo-500 focus:ring-0"></textarea>
+                              class="w-full rounded-lg bg-gray-950 border border-white/10 px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:border-titan-amber/60 focus:ring-0"></textarea>
                     <button type="submit" :disabled="loading"
-                            class="mt-2 w-full rounded-lg bg-indigo-500/90 hover:bg-indigo-500 disabled:opacity-50 px-4 py-2.5 text-sm font-medium text-white">
+                            class="mt-2 w-full rounded-chip bg-titan-amber disabled:opacity-50 px-4 py-2.5 text-sm font-bold text-gray-950 active:opacity-90">
                         <span x-show="!loading">Estimate macros</span>
                         <span x-show="loading" x-cloak>Thinking…</span>
                     </button>
                 </form>
-            </div>
+            </x-card>
 
             {{-- Meals list --}}
             <div class="space-y-3">
                 @forelse ($meals as $meal)
-                    <div class="rounded-xl border border-white/5 bg-gray-900/50 p-4 flex gap-4">
+                    <x-card pad="p-4" class="flex gap-4">
                         @if ($meal->photoUrl())
-                            <img src="{{ $meal->photoUrl() }}" alt="" class="h-20 w-20 rounded-lg object-cover shrink-0 bg-gray-950">
+                            <img src="{{ $meal->photoUrl() }}" alt="" class="h-20 w-20 rounded-chip object-cover shrink-0 bg-gray-950">
                         @else
-                            <div class="h-20 w-20 rounded-lg bg-gray-950 grid place-items-center shrink-0">
+                            <div class="h-20 w-20 rounded-chip bg-gray-950 grid place-items-center shrink-0">
                                 <svg class="h-7 w-7 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h18M3 3v18M3 7h18M7 3v4m0 8a3 3 0 106 0 3 3 0 00-6 0z"/></svg>
                             </div>
                         @endif
@@ -290,11 +289,11 @@
                                     </button>
                                 </form>
                             </div>
-                            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs nums">
                                 <span class="text-gray-100 font-medium">{{ number_format($meal->calories) }} kcal</span>
-                                <span class="text-rose-300/80">P {{ rtrim(rtrim(number_format($meal->protein_g, 1), '0'), '.') }}g</span>
-                                <span class="text-amber-300/80">C {{ rtrim(rtrim(number_format($meal->carbs_g, 1), '0'), '.') }}g</span>
-                                <span class="text-sky-300/80">F {{ rtrim(rtrim(number_format($meal->fat_g, 1), '0'), '.') }}g</span>
+                                <span class="text-titan-mint">P {{ rtrim(rtrim(number_format($meal->protein_g, 1), '0'), '.') }}g</span>
+                                <span class="text-titan-amber">C {{ rtrim(rtrim(number_format($meal->carbs_g, 1), '0'), '.') }}g</span>
+                                <span class="text-titan-pink">F {{ rtrim(rtrim(number_format($meal->fat_g, 1), '0'), '.') }}g</span>
                             </div>
                             @if ($meal->items->isNotEmpty())
                                 <div class="mt-1.5 text-xs text-gray-500 truncate">
@@ -302,9 +301,9 @@
                                 </div>
                             @endif
                         </div>
-                    </div>
+                    </x-card>
                 @empty
-                    <div class="rounded-xl border border-dashed border-white/10 bg-gray-900/30 p-8 text-center">
+                    <div class="rounded-card border border-dashed border-white/10 bg-white/[0.02] p-8 text-center">
                         <p class="text-gray-400 text-sm">No meals logged {{ $isToday ? 'yet today' : 'this day' }}.</p>
                         <p class="text-gray-600 text-xs mt-1">Snap a photo or describe a meal above to get started.</p>
                     </div>
@@ -314,16 +313,16 @@
 
         {{-- Right: 7-day trend --}}
         <div class="lg:col-span-1">
-            <div class="rounded-xl border border-white/5 bg-gray-900/50 p-5">
-                <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">7-day calories</div>
-                <div class="text-2xl font-bold text-gray-100 mb-4">
+            <x-card pad="p-5">
+                <div class="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-gray-500 mb-1">7-day calories</div>
+                <div class="font-display text-2xl font-bold text-gray-50 nums mb-4">
                     {{ number_format(round(collect($trend)->avg('calories'))) }}
                     <span class="text-sm font-normal text-gray-500">avg/day</span>
                 </div>
                 <div x-data="mealsTrend(@js($trend), {{ $targets['calories'] }})" x-init="render()">
                     <canvas x-ref="canvas" height="200"></canvas>
                 </div>
-            </div>
+            </x-card>
         </div>
     </div>
 
@@ -341,7 +340,7 @@
                             datasets: [{
                                 label: 'Calories',
                                 data: trend.map(d => d.calories),
-                                backgroundColor: trend.map(d => d.calories > target * 1.1 ? 'rgba(244,63,94,0.7)' : 'rgba(99,102,241,0.7)'),
+                                backgroundColor: trend.map(d => d.calories > target * 1.1 ? 'rgba(255,77,141,0.8)' : 'rgba(255,176,32,0.75)'),
                                 borderRadius: 6,
                                 borderSkipped: false,
                             }],

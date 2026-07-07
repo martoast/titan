@@ -6,7 +6,7 @@
 
         {{-- ===== devices ===== --}}
         <section class="grid grid-cols-2 gap-3">
-            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+            <div class="glass-card p-4">
                 <div class="flex items-center gap-2">
                     <span class="h-2.5 w-2.5 rounded-full" :class="polar.connected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'"></span>
                     <span class="text-sm font-semibold text-gray-100">Polar H10</span>
@@ -16,7 +16,7 @@
                 <button @click="connectPolar()" x-show="!polar.connected" class="mt-2 w-full h-10 rounded-xl bg-white/5 border border-white/10 text-sm font-semibold text-gray-200 hover:bg-white/10 transition">Connect</button>
                 <p x-show="polar.connected" class="mt-2 text-xs text-emerald-300/80 nums" x-text="polar.rrCount + ' RR intervals'"></p>
             </div>
-            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+            <div class="glass-card p-4">
                 <div class="flex items-center gap-2">
                     <span class="h-2.5 w-2.5 rounded-full" :class="bangle.connected ? 'bg-cyan-400 animate-pulse' : 'bg-gray-600'"></span>
                     <span class="text-sm font-semibold text-gray-100">Bangle.js</span>
@@ -29,7 +29,7 @@
         </section>
 
         {{-- ===== capture controls ===== --}}
-        <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <section class="glass-card p-4 md:p-5">
             <div class="flex items-center justify-between gap-3">
                 <div>
                     <h3 class="font-display font-bold text-gray-100">Capture</h3>
@@ -69,7 +69,7 @@
         </section>
 
         {{-- ===== charts ===== --}}
-        <section x-show="points.length > 0" x-cloak class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <section x-show="points.length > 0" x-cloak class="glass-card p-4 md:p-5">
             <h4 class="text-sm font-semibold text-gray-300">RMSSD per minute — <span class="text-cyan-300">Bangle</span> vs <span class="text-emerald-300">Polar</span></h4>
             <canvas x-ref="ts" class="mt-2 w-full" style="height:180px"></canvas>
             <h4 class="mt-5 text-sm font-semibold text-gray-300">Bland–Altman — agreement (diff vs mean)</h4>
@@ -78,7 +78,7 @@
         </section>
 
         {{-- ===== log ===== --}}
-        <section class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <section class="glass-card p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100">Log</h3>
             <div class="mt-2 space-y-1 max-h-48 overflow-y-auto font-mono text-xs">
                 <template x-for="(l,i) in log" :key="i"><div :class="l.k==='err'?'text-rose-300':(l.k==='ok'?'text-emerald-300':'text-gray-400')"><span class="text-gray-600" x-text="l.t"></span> <span x-text="l.m"></span></div></template>

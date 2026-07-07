@@ -36,7 +36,7 @@
                 <div class="space-y-2">
                     @foreach ($results as $row)
                         @php $p = $row['page']; @endphp
-                        <a href="/brain/{{ $p->slug }}" class="block rounded-2xl border border-white/5 bg-white/[0.03] p-4 transition hover:border-indigo-500/40 hover:bg-gray-900 active:bg-white/[0.06]">
+                        <a href="/brain/{{ $p->slug }}" class="block glass-card p-4 transition hover:border-indigo-500/40 hover:bg-gray-900 active:bg-white/[0.06]">
                             <div class="flex items-center justify-between gap-3">
                                 <div class="flex items-center gap-2 min-w-0">
                                     @if ($p->is_pinned)<span class="text-indigo-400 text-xs">★</span>@endif
@@ -66,7 +66,7 @@
         @else
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                 @foreach ($pages as $p)
-                    <a href="/brain/{{ $p->slug }}" class="group rounded-2xl border border-white/5 bg-white/[0.03] p-4 transition hover:border-indigo-500/40 hover:bg-gray-900 active:bg-white/[0.06]">
+                    <a href="/brain/{{ $p->slug }}" class="group glass-card p-4 transition hover:border-indigo-500/40 hover:bg-gray-900 active:bg-white/[0.06]">
                         <div class="flex items-center gap-2 min-w-0">
                             @if ($p->is_pinned)<span class="shrink-0 text-indigo-400 text-xs" title="Pinned (core memory)">★</span>@endif
                             <span class="font-medium text-gray-100 truncate">{{ $p->title }}</span>
@@ -83,7 +83,7 @@
 
     {{-- Brain dump + document upload — deferred; the page leads with what it already knows --}}
     <div x-data="{ addOpen: {{ $errors->any() ? 'true' : 'false' }} }">
-    <button type="button" @click="addOpen = !addOpen" class="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3.5 text-left active:bg-white/[0.05]">
+    <button type="button" @click="addOpen = !addOpen" class="flex w-full items-center justify-between gap-3 glass-card px-4 py-3.5 text-left active:bg-white/[0.05]">
         <span class="flex items-center gap-2.5">
             <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-500/15 text-indigo-300">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -93,7 +93,7 @@
         <svg class="h-5 w-5 shrink-0 text-gray-500 transition" :class="addOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
     </button>
     <div x-show="addOpen" x-collapse x-cloak class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <div class="glass-card p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100">Brain dump</h3>
             <p class="text-sm text-gray-500 mt-1 mb-3">Paste anything — training history, nutrition notes, goals, injuries. The AI librarian files it into clean wiki pages.</p>
             <form method="POST" action="/brain/dump">
@@ -107,7 +107,7 @@
             </form>
         </div>
 
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <div class="glass-card p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100">Upload a document</h3>
             <p class="text-sm text-gray-500 mt-1 mb-3">Bloodwork PDF, lab report, doctor's notes (PDF / DOCX / TXT). Text is extracted and filed into the brain.</p>
             <form method="POST" action="/brain/upload" enctype="multipart/form-data">

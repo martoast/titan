@@ -9,7 +9,7 @@
         @csrf
         @unless ($isNew) @method('PUT') @endunless
 
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-6 space-y-5">
+        <div class="glass-card p-4 md:p-6 space-y-5">
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1.5">Title</label>
                 <input type="text" name="title" value="{{ old('title', $page->title) }}" required

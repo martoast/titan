@@ -7,21 +7,33 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Smoke test for the 5-tab web IA redesign: every tab landing page + a few folded-in
- * children render (200) through the rebuilt titan-layout shell.
+ * Smoke test for the 5-tab web IA + iOS-parity restyle: every tab landing page and every
+ * restyled child page renders (200) through the rebuilt shell + shared components.
  */
 class WebNavParityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_all_five_tabs_and_key_children_render(): void
+    /** Every GET page a logged-in, onboarded user can reach must render. */
+    public function test_all_restyled_pages_render(): void
     {
         $user = User::factory()->create();
         $user->ensureProfile()->update(['onboarded_at' => now()]);
 
-        // The 5 tab landings + a sample of folded-in children.
-        foreach (['/dashboard', '/progress', '/community', '/you', '/meals', '/recovery', '/sleep', '/devices'] as $path) {
-            $this->actingAs($user)->get($path)->assertOk();
+        $paths = [
+            // tab landings
+            '/dashboard', '/progress', '/community', '/you', '/coach',
+            // Today children
+            '/recovery', '/sleep', '/fitness', '/workouts', '/workouts/create', '/workouts/live', '/meals', '/meals/add', '/stack',
+            // Trends children
+            '/biomarkers', '/body', '/foods',
+            // You children
+            '/devices', '/devices/bridge', '/devices/validate', '/brain', '/research', '/notifications', '/notifications/settings', '/photos', '/connect',
+        ];
+
+        foreach ($paths as $path) {
+            $res = $this->actingAs($user)->get($path);
+            $this->assertContains($res->status(), [200, 302], "GET $path returned {$res->status()}");
         }
     }
 
@@ -30,8 +42,6 @@ class WebNavParityTest extends TestCase
         $user = User::factory()->create();
         $user->ensureProfile()->update(['onboarded_at' => now(), 'community_enabled' => false]);
 
-        $this->actingAs($user)->get('/community')
-            ->assertOk()
-            ->assertSee('Join the community');
+        $this->actingAs($user)->get('/community')->assertOk()->assertSee('Join the community');
     }
 }

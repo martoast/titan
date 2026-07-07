@@ -18,7 +18,7 @@
         @endif
 
         {{-- Push status + test --}}
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+        <div class="glass-card p-4">
             @if ($hasPush)
                 <div class="flex items-center gap-3">
                     <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-400">
@@ -48,7 +48,7 @@
         </div>
 
         {{-- Coaching intensity --}}
-        <form method="POST" action="/notifications/settings" class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+        <form method="POST" action="/notifications/settings" class="glass-card p-4">
             @csrf
             <input type="hidden" name="section" value="intensity">
             <h2 class="font-display text-lg font-bold text-gray-100">How present should I be?</h2>
@@ -72,7 +72,7 @@
         </form>
 
         {{-- Fine-tune individual reminders --}}
-        <form method="POST" action="/notifications/settings" class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+        <form method="POST" action="/notifications/settings" class="glass-card p-4">
             @csrf
             <input type="hidden" name="section" value="types">
             <h2 class="font-display text-lg font-bold text-gray-100">Fine-tune</h2>

@@ -14,7 +14,7 @@
         </form>
     </div>
 
-    <article class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-6">
+    <article class="glass-card p-4 md:p-6">
         <header class="mb-4 pb-4 border-b border-white/5">
             <div class="flex items-start gap-2">
                 @if ($page->is_pinned)<span class="mt-1 shrink-0 text-indigo-400" title="Pinned (core memory)">★</span>@endif

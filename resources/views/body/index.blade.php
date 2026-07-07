@@ -3,12 +3,12 @@
     <div class="space-y-4 md:space-y-5">
 
     @if (session('status'))
-        <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+        <div class="rounded-chip border border-titan-mint/30 bg-titan-mint/10 px-4 py-3 text-sm text-titan-mint">
             {{ session('status') }}
         </div>
     @endif
     @if ($errors->any())
-        <div class="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+        <div class="rounded-chip border border-titan-pink/30 bg-titan-pink/10 px-4 py-3 text-sm text-titan-pink">
             {{ $errors->first() }}
         </div>
     @endif
@@ -26,41 +26,35 @@
     @endphp
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
         @foreach ($stats as [$label, $val, $unit])
-            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
-                <div class="text-[11px] uppercase tracking-wide text-gray-500">{{ $label }}</div>
-                <div class="mt-1 font-display text-xl font-bold text-gray-100 nums">
-                    @if ($val !== null)
-                        {{ rtrim(rtrim(number_format((float) $val, 2, '.', ''), '0'), '.') }}<span class="text-xs text-gray-500 font-normal ml-1">{{ $unit }}</span>
-                    @else
-                        <span class="text-sm text-gray-600 font-normal">—</span>
-                    @endif
-                </div>
-            </div>
+            @php $mval = $val !== null ? rtrim(rtrim(number_format((float) $val, 2, '.', ''), '0'), '.') : '—'; @endphp
+            <x-card>
+                <x-metric :value="$mval" :unit="$val !== null ? $unit : null" :label="$label" color="violet" />
+            </x-card>
         @endforeach
     </div>
 
     {{-- ===================== Trend charts ===================== --}}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        <x-card pad="p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100 mb-3">Weight</h3>
             @if (count($series['weight']) >= 2)
-                <div class="h-48 md:h-56"><canvas x-data x-init="$nextTick(() => window.titanLine($el, @js($series['weight']), '#818cf8', '{{ $weightUnit }}'))"></canvas></div>
+                <div class="h-48 md:h-56"><canvas x-data x-init="$nextTick(() => window.titanLine($el, @js($series['weight']), '#A78BFA', '{{ $weightUnit }}'))"></canvas></div>
             @else
                 <p class="text-sm text-gray-500">Log at least two weigh-ins to see your trend.</p>
             @endif
-        </div>
-        <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5">
+        </x-card>
+        <x-card pad="p-4 md:p-5">
             <h3 class="font-display font-bold text-gray-100 mb-3">Body fat %</h3>
             @if (count($series['bodyfat']) >= 2)
-                <div class="h-48 md:h-56"><canvas x-data x-init="$nextTick(() => window.titanLine($el, @js($series['bodyfat']), '#22d3ee', '%'))"></canvas></div>
+                <div class="h-48 md:h-56"><canvas x-data x-init="$nextTick(() => window.titanLine($el, @js($series['bodyfat']), '#FF4D8D', '%'))"></canvas></div>
             @else
                 <p class="text-sm text-gray-500">Log at least two body-fat readings to see your trend.</p>
             @endif
-        </div>
+        </x-card>
     </div>
 
     {{-- ===================== Add form (deferred behind a tap) ===================== --}}
-    <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5" x-data="{ logOpen: {{ $errors->any() ? 'true' : 'false' }} }">
+    <x-card pad="p-4 md:p-5" x-data="{ logOpen: {{ $errors->any() ? 'true' : 'false' }} }">
         <button type="button" @click="logOpen = !logOpen" class="flex w-full items-center justify-between gap-3 text-left">
             <span class="font-display font-bold text-gray-100">Add a measurement</span>
             <svg class="h-5 w-5 shrink-0 text-gray-500 transition" :class="logOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -98,21 +92,21 @@
             </label>
             <div class="col-span-2 sm:col-span-4">
                 <button type="submit"
-                        class="w-full md:w-auto h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-400 px-6 text-base font-semibold text-white active:opacity-90 transition">
+                        class="w-full md:w-auto h-12 rounded-chip bg-gradient-to-r from-titan-violet to-titan-indigo px-6 text-base font-semibold text-white active:opacity-90 transition">
                     Save measurement
                 </button>
             </div>
             </form>
         </div>
-    </div>
+    </x-card>
 
     {{-- ===================== History ===================== --}}
     @if ($history->isNotEmpty())
         <div>
-            <h3 class="font-display text-sm font-bold text-gray-400 uppercase tracking-wide mb-3">History</h3>
-            <div class="overflow-x-auto no-scrollbar rounded-2xl border border-white/5">
+            <x-section-header title="History" />
+            <div class="glass-card overflow-x-auto no-scrollbar">
                 <table class="w-full text-sm whitespace-nowrap">
-                    <thead class="bg-gray-900/60 text-gray-500">
+                    <thead class="bg-white/[0.03] text-gray-500">
                         <tr class="text-left">
                             <th class="px-4 py-2 font-medium">Date</th>
                             <th class="px-4 py-2 font-medium text-right">Weight ({{ $weightUnit }})</th>
@@ -139,7 +133,7 @@
                                     <form method="POST" action="{{ route('body.destroy', $h['id']) }}"
                                           onsubmit="return confirm('Delete this measurement?')">
                                         @csrf @method('DELETE')
-                                        <button class="text-gray-600 hover:text-rose-400 active:text-rose-400 transition" title="Delete">
+                                        <button class="text-gray-600 hover:text-titan-pink active:text-titan-pink transition" title="Delete">
                                             <svg class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                         </button>
                                     </form>

@@ -16,7 +16,7 @@
     @endif
 
     {{-- What this is --}}
-    <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-5">
+    <div class="glass-card p-4 md:p-5 mb-5">
         <h3 class="font-display font-bold text-gray-100">Your account, controlled by your agent</h3>
         <p class="text-sm text-gray-400 mt-1.5 leading-relaxed">
             Generate a token, hand it to your AI agent (Claude via MCP, or any HTTP client), and it can do everything you'd do here —
@@ -26,7 +26,7 @@
     </div>
 
     {{-- Mint a token --}}
-    <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-5">
+    <div class="glass-card p-4 md:p-5 mb-5">
         <h3 class="font-display font-bold text-gray-100 mb-3">Generate a token</h3>
         <form method="POST" action="{{ route('connect.tokens.store') }}" class="flex flex-col sm:flex-row sm:items-end gap-3">
             @csrf
@@ -47,7 +47,7 @@
     </div>
 
     {{-- Setup snippet --}}
-    <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-4 md:p-5 mb-5">
+    <div class="glass-card p-4 md:p-5 mb-5">
         <h3 class="font-display font-bold text-gray-100 mb-3">Point your agent at it</h3>
         <p class="text-xs text-gray-500 mb-2">Any agent can call the API directly:</p>
         <pre class="overflow-x-auto rounded-xl bg-gray-950 border border-white/10 p-3 text-[11px] text-gray-300 leading-relaxed"><code>curl {{ $apiBase }}/tool \
@@ -68,13 +68,13 @@
     </div>
 
     {{-- Existing tokens --}}
-    <h3 class="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Your tokens</h3>
+    <x-section-header title="Your tokens" />
     @if ($tokens->isEmpty())
         <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center text-sm text-gray-500">No tokens yet.</div>
     @else
         <div class="space-y-2">
             @foreach ($tokens as $token)
-                <div class="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-3.5">
+                <div class="flex items-center justify-between gap-3 glass-card p-3.5">
                     <div class="min-w-0">
                         <div class="font-semibold text-gray-100 truncate">{{ $token->name }}</div>
                         <div class="text-[11px] text-gray-500 nums">
