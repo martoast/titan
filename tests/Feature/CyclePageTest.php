@@ -19,7 +19,7 @@ class CyclePageTest extends TestCase
 
         $resp = $this->actingAs($u)->get('/cycle');
         $resp->assertOk();
-        $resp->assertSee('Track your cycle');
+        $resp->assertSee('Log your period to begin');
     }
 
     public function test_period_logging_and_ring_render(): void

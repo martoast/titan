@@ -23,6 +23,19 @@ class CycleController extends Controller
         $status = Cycle::status($profile);
         $insight = Cycle::recoveryByPhase($profile);
 
+        $tz = $profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $today = Carbon::now($tz)->startOfDay();
+
+        // Flo-style week strip + a 6-week projected calendar (grid-aligned to Sunday), each day
+        // classified by phase so she can plan ahead. Only meaningful once a cycle is logged.
+        $week = [];
+        $calendarDays = [];
+        if ($status['has_data'] ?? false) {
+            $week = Cycle::calendar($profile, $today->copy()->startOfWeek(Carbon::SUNDAY), 7);
+            $gridStart = $today->copy()->startOfMonth()->startOfWeek(Carbon::SUNDAY);
+            $calendarDays = Cycle::calendar($profile, $gridStart, 42);
+        }
+
         // Recent history: last 8 cycles, newest first, with their (known) lengths.
         $history = $profile->menstrualCycles()
             ->orderByDesc('start_date')->take(8)->get()
@@ -39,10 +52,14 @@ class CycleController extends Controller
             'status' => $status,
             'insight' => $insight,
             'history' => $history,
+            'week' => $week,
+            'calendarDays' => $calendarDays,
+            'monthLabel' => $today->format('F Y'),
+            'monthNum' => $today->month,
             'symptoms' => Cycle::SYMPTOMS,
             'flows' => Cycle::FLOWS,
             'config' => $status['config'],
-            'today' => Carbon::now($profile->settings['timezone'] ?? config('app.timezone', 'UTC'))->toDateString(),
+            'today' => $today->toDateString(),
         ]);
     }
 

@@ -1,281 +1,343 @@
-<x-titan-layout title="Cycle" subtitle="Your menstrual cycle, woven into the rest of Titan">
+<x-titan-layout title="Cycle" subtitle="Your cycle, woven into the rest of Titan">
     @php
         $has = $status['has_data'] ?? false;
+        // Titan palette phase colors (mirrors iOS Theme.Palette)
         $phaseColors = [
-            'menstrual' => '#fb7185', 'follicular' => '#34d399', 'fertile' => '#22d3ee',
-            'ovulation' => '#a78bfa', 'luteal' => '#fbbf24', 'unknown' => '#9ca3af',
+            'menstrual' => '#FF4D8D', 'follicular' => '#34E5C0', 'fertile' => '#22D3EE',
+            'ovulation' => '#A78BFA', 'luteal' => '#FFB020', 'unknown' => '#9ca3af',
         ];
         $accent = $phaseColors[$status['phase'] ?? 'unknown'] ?? '#9ca3af';
 
-        // --- Build the cycle ring (SVG arc segments + today/ovulation markers) ---
-        $ring = null;
         if ($has) {
-            $len = max(21, (int) $status['avg_length']);
-            $period = (int) $status['period_length'];
-            $ovDay = (int) ($status['ovulation']['day'] ?? ($len - ($config['luteal_length'] ?? 14)));
-            $fStart = max(1, $ovDay - \App\Support\Cycle::FERTILE_PRE);
-            $fEnd = $ovDay + \App\Support\Cycle::FERTILE_POST;
-            $C = 2 * M_PI * 52;
-            $seg = function ($startDay, $days) use ($len, $C) {
-                $l = max(0, $days) / $len * $C;
-                return ['len' => round($l, 2), 'gap' => round($C - $l, 2), 'deg' => round((($startDay - 1) / $len) * 360 - 90, 2)];
+            // ── Flo-style prediction hero: the single most imminent event ──────────────
+            $day = (int) $status['cycle_day'];
+            $periodLen = (int) $status['period_length'];
+            $np = $status['next_period']['in_days'];
+            $ov = $status['ovulation']['in_days'];
+            [$heroTop, $heroBig] = match (true) {
+                $status['late'] => ['Period', abs($np).'d late'],
+                $day <= $periodLen => ['Period', 'Day '.$day],
+                $ov === 0 => ['Ovulation', 'Today'],
+                $ov > 0 && $ov <= 6 => ['Ovulation in', $ov.' day'.($ov === 1 ? '' : 's')],
+                $np !== null && $np >= 0 => ['Period in', $np.' day'.($np === 1 ? '' : 's')],
+                default => [$status['phase_label'], 'Day '.$day],
             };
-            $segments = [
-                ['c' => $phaseColors['menstrual'], 's' => $seg(1, $period)],
-                ['c' => $phaseColors['follicular'], 's' => $seg($period + 1, max(0, $fStart - 1 - $period))],
-                ['c' => $phaseColors['fertile'], 's' => $seg($fStart, $fEnd - $fStart + 1)],
-                ['c' => $phaseColors['luteal'], 's' => $seg($fEnd + 1, $len - $fEnd)],
-            ];
-            $markerAngle = fn ($day) => (($day - 1) / $len) * 2 * M_PI - M_PI / 2;
-            $todayA = $markerAngle((int) $status['cycle_day']);
-            $ovA = $markerAngle($ovDay);
-            $ring = [
-                'segments' => $segments,
-                'today' => ['x' => round(60 + 52 * cos($todayA), 2), 'y' => round(60 + 52 * sin($todayA), 2)],
-                'ov' => ['x' => round(60 + 52 * cos($ovA), 2), 'y' => round(60 + 52 * sin($ovA), 2)],
-            ];
+
+            // ── Pregnancy chance (awareness) ───────────────────────────────────────────
+            $hormonalBc = ! ($status['fertile_window']['applicable'] ?? true);
+            $cl = $status['conception']['likelihood'];
+            $chanceLabel = strtoupper($cl);
+            $chanceColor = ['high' => '#FF4D8D', 'medium' => '#FFB020', 'low' => '#34E5C0'][$cl] ?? '#34E5C0';
         }
+
+        // A single day-cell renderer, shared by the week strip and the calendar grid.
+        $dayCell = function (array $d, string $today, bool $small = false) {
+            $dt = \Illuminate\Support\Carbon::parse($d['date']);
+            $isToday = $d['date'] === $today;
+            $size = $small ? 'h-9 w-9' : 'h-9 w-9';
+            $cls = 'relative grid '.$size.' place-items-center rounded-full text-sm nums transition ';
+            $style = '';
+            if ($isToday) {
+                $cls .= 'bg-titan-pink font-bold text-white';
+            } elseif (! empty($d['period'])) {
+                $cls .= 'text-white'; $style = 'background:#FF4D8Dcc';
+            } elseif (! empty($d['ovulation'])) {
+                $cls .= 'text-titan-violet'; $style = 'border:1.5px dashed #A78BFA';
+            } elseif (! empty($d['fertile'])) {
+                $cls .= 'text-gray-100'; $style = 'background:#22D3EE2e';
+            } else {
+                $cls .= 'text-gray-300';
+            }
+            return ['dt' => $dt, 'cls' => $cls, 'style' => $style];
+        };
     @endphp
 
-    @if (session('status'))
-        <div class="mb-4 rounded-chip bg-titan-mint/10 border border-titan-mint/20 px-4 py-2.5 text-sm text-titan-mint">{{ session('status') }}</div>
-    @endif
+    <div x-data="{ calOpen: false, periodOpen: false }" class="space-y-4 md:space-y-5">
 
-    @if (! $has)
-        {{-- Empty state: warm setup --}}
-        <div class="max-w-md mx-auto text-center py-6">
-            <div class="mx-auto mb-4 h-14 w-14 rounded-full grid place-items-center bg-titan-pink/15">
-                <svg class="h-7 w-7 text-titan-pink" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-2.64-6.36M21 4v4h-4"/></svg>
-            </div>
-            <h2 class="font-display text-xl font-bold text-gray-100">Track your cycle</h2>
-            <p class="text-sm text-gray-400 mt-1.5 leading-relaxed">{{ $status['note'] }}</p>
-            <form method="POST" action="/cycle/period" class="mt-5">
-                @csrf
-                <input type="hidden" name="event" value="start">
-                <input type="hidden" name="date" value="{{ $today }}">
-                <button class="w-full rounded-chip px-4 py-3 font-semibold text-titan-bg bg-titan-pink active:opacity-90 transition">My period started today</button>
-            </form>
-            <p class="text-[11px] text-gray-600 mt-3">Or set a past start date and your averages in <a href="#cycle-settings" class="underline">settings</a> below.</p>
-        </div>
-    @else
-        {{-- ===== Hero: the cycle ring ===== --}}
-        <x-card pad="p-5" class="rounded-card mb-4">
-            <div class="flex flex-col items-center">
-                <div class="relative">
-                    <svg viewBox="0 0 120 120" class="h-52 w-52" style="transform:rotate(0deg)">
-                        <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="10"/>
-                        @foreach ($ring['segments'] as $s)
-                            <circle cx="60" cy="60" r="52" fill="none" stroke="{{ $s['c'] }}" stroke-width="10" stroke-linecap="round"
-                                    stroke-dasharray="{{ $s['s']['len'] }} {{ $s['s']['gap'] }}"
-                                    transform="rotate({{ $s['s']['deg'] }} 60 60)" opacity="0.9"/>
-                        @endforeach
-                        {{-- ovulation marker --}}
-                        <circle cx="{{ $ring['ov']['x'] }}" cy="{{ $ring['ov']['y'] }}" r="3.5" fill="#a78bfa" stroke="#07070A" stroke-width="1.5"/>
-                        {{-- today marker --}}
-                        <circle cx="{{ $ring['today']['x'] }}" cy="{{ $ring['today']['y'] }}" r="6" fill="#fff" stroke="{{ $accent }}" stroke-width="3"/>
-                    </svg>
-                    <div class="absolute inset-0 grid place-items-center text-center">
-                        <div>
-                            <div class="text-[11px] uppercase tracking-wider text-gray-500">Day</div>
-                            <div class="font-display text-4xl font-extrabold leading-none" style="color:{{ $accent }}">{{ $status['cycle_day'] }}</div>
-                            <div class="mt-1 text-sm font-semibold text-gray-200">{{ $status['phase_label'] }}</div>
-                        </div>
-                    </div>
+        @if (session('status'))
+            <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 2500)"
+                 class="rounded-chip bg-titan-mint/10 border border-titan-mint/20 px-4 py-2.5 text-sm text-titan-mint">{{ session('status') }}</div>
+        @endif
+
+        @if (! $has)
+            {{-- ═══════════ Empty state ═══════════ --}}
+            <x-card pad="p-6 md:p-8" class="text-center">
+                <div class="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-titan-pink/15">
+                    <svg class="h-8 w-8 text-titan-pink" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2s6 6.4 6 11a6 6 0 11-12 0c0-4.6 6-11 6-11z"/></svg>
                 </div>
-
-                <p class="mt-4 text-center text-sm text-gray-300 leading-relaxed max-w-sm">{{ $status['note'] }}</p>
-
-                {{-- phase legend --}}
-                <div class="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
-                    @foreach (['menstrual'=>'Menstrual','follicular'=>'Follicular','fertile'=>'Fertile','luteal'=>'Luteal'] as $k => $label)
-                        <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:{{ $phaseColors[$k] }}"></span>{{ $label }}</span>
-                    @endforeach
-                </div>
-            </div>
-        </x-card>
-
-        {{-- ===== Quick actions ===== --}}
-        <div class="grid grid-cols-2 gap-3 mb-4">
-            <form method="POST" action="/cycle/period">
-                @csrf
-                <input type="hidden" name="event" value="start">
-                <input type="hidden" name="date" value="{{ $today }}">
-                <button class="w-full rounded-chip border border-titan-pink/30 bg-titan-pink/10 px-3 py-3 text-sm font-semibold text-titan-pink active:bg-titan-pink/20 transition">
-                    Period started today
+                <h2 class="font-display text-2xl font-bold text-gray-50">Log your period to begin</h2>
+                <p class="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-gray-400">Set the first day of your last period and Titan maps your phases, predicts your next one, shows your daily pregnancy chance, and factors your cycle into recovery &amp; nutrition.</p>
+                <button @click="periodOpen = true" class="mt-5 inline-flex items-center gap-2 rounded-chip bg-gradient-to-r from-titan-pink to-titan-violet px-6 py-3 font-bold text-white active:opacity-90">
+                    <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2s6 6.4 6 11a6 6 0 11-12 0c0-4.6 6-11 6-11z"/></svg>
+                    Log period
                 </button>
-            </form>
-            <a href="#log-today" class="rounded-chip border border-white/10 bg-white/[0.04] px-3 py-3 text-sm font-semibold text-gray-200 text-center active:bg-white/[0.08] transition">
-                Log how I feel
-            </a>
-        </div>
-
-        {{-- ===== Predictions ===== --}}
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-            <x-card pad="p-4">
-                <div class="text-[11px] uppercase tracking-wider text-gray-500">Next period</div>
-                <div class="mt-1 font-display text-xl font-bold text-gray-100">
-                    @if ($status['late'])<span class="text-titan-pink">{{ $status['next_period']['late_days'] }}d late</span>
-                    @elseif ($status['next_period']['in_days'] === 0) Today
-                    @else in {{ $status['next_period']['in_days'] }}d @endif
-                </div>
-                <div class="text-[11px] text-gray-500 mt-0.5">{{ \Illuminate\Support\Carbon::parse($status['next_period']['date'])->format('M j') }}</div>
-            </x-card>
-            <x-card pad="p-4">
-                <div class="text-[11px] uppercase tracking-wider text-gray-500">Ovulation</div>
-                <div class="mt-1 font-display text-xl font-bold text-gray-100">
-                    @if ($status['ovulation']['in_days'] === 0) Today
-                    @elseif ($status['ovulation']['in_days'] > 0) in {{ $status['ovulation']['in_days'] }}d
-                    @else {{ abs($status['ovulation']['in_days']) }}d ago @endif
-                </div>
-                <div class="text-[11px] text-gray-500 mt-0.5">est · {{ \Illuminate\Support\Carbon::parse($status['ovulation']['date'])->format('M j') }}</div>
-            </x-card>
-            <x-card pad="p-4" class="col-span-2 sm:col-span-1">
-                <div class="text-[11px] uppercase tracking-wider text-gray-500">Cycle</div>
-                <div class="mt-1 font-display text-xl font-bold text-gray-100">{{ $status['avg_length'] }}d avg</div>
-                <div class="text-[11px] text-gray-500 mt-0.5">{{ ucfirst($status['regularity']) }} · {{ $status['cycles_tracked'] }} tracked</div>
-            </x-card>
-        </div>
-
-        {{-- ===== Fertile window / conception (awareness only) ===== --}}
-        @if ($status['fertile_window']['applicable'])
-            @php $cl = $status['conception']['likelihood']; $clColor = ['high'=>'#22d3ee','medium'=>'#34d399','low'=>'#9ca3af'][$cl]; @endphp
-            <x-card pad="p-4" class="mb-4">
-                <div class="flex items-center justify-between">
-                    <div class="text-[11px] uppercase tracking-wider text-gray-500">Fertile window</div>
-                    <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full" style="color:{{ $clColor }};background:{{ $clColor }}1a">{{ ucfirst($cl) }} chance today</span>
-                </div>
-                <div class="mt-1.5 text-sm text-gray-200">
-                    {{ \Illuminate\Support\Carbon::parse($status['fertile_window']['start'])->format('M j') }} – {{ \Illuminate\Support\Carbon::parse($status['fertile_window']['end'])->format('M j') }}
-                    @if ($status['fertile_window']['active']) <span class="text-titan-cyan font-semibold">· active now</span> @endif
-                </div>
-                <p class="mt-1 text-xs text-gray-500">{{ $status['conception']['note'] }}</p>
-                <p class="mt-2 text-[11px] text-titan-amber/70 leading-relaxed">⚠ {{ $status['disclaimer'] }}</p>
             </x-card>
         @else
-            <x-card pad="p-4" class="mb-4 text-xs text-gray-400">
-                On hormonal birth control, the usual fertile-window estimate doesn’t apply. <span class="text-titan-amber/70">{{ $status['disclaimer'] }}</span>
-            </x-card>
-        @endif
-
-        {{-- ===== Phase insight (ties to recovery) ===== --}}
-        <x-card pad="p-4" class="mb-4">
-            <div class="text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">This phase</div>
-            <p class="text-sm text-gray-300 leading-relaxed">{{ $status['phase_blurb'] }}</p>
-            @if (! empty($insight['note']))
-                <div class="mt-3 flex gap-2 rounded-chip bg-titan-indigo/[0.08] border border-titan-indigo/15 p-3">
-                    <svg class="h-4 w-4 shrink-0 mt-0.5 text-titan-indigo" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                    <p class="text-xs text-indigo-200/90 leading-relaxed">{{ $insight['note'] }}</p>
-                </div>
-            @endif
-        </x-card>
-
-        {{-- ===== Log today ===== --}}
-        <x-card id="log-today" pad="p-4" class="mb-4"
-             x-data="cycleLog({{ \Illuminate\Support\Js::from($status['today_log']['symptoms'] ?? []) }})">
-            <h3 class="font-display font-bold text-gray-100 mb-3">Log today</h3>
-            <form method="POST" action="/cycle/day" class="space-y-4">
-                @csrf
-                <input type="hidden" name="date" value="{{ $today }}">
-
-                <div>
-                    <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Flow</label>
-                    <div class="flex flex-wrap gap-2">
-                        @foreach ($flows as $f)
-                            <label class="cursor-pointer">
-                                <input type="radio" name="flow" value="{{ $f }}" class="peer sr-only" @checked(($status['today_log']['flow'] ?? null) === $f)>
-                                <span class="block rounded-full border border-white/10 px-3.5 py-1.5 text-xs text-gray-300 peer-checked:border-titan-pink/50 peer-checked:bg-titan-pink/15 peer-checked:text-titan-pink transition">{{ ucfirst($f) }}</span>
-                            </label>
-                        @endforeach
-                    </div>
+            {{-- ═══════════ HERO — week strip · prediction · chance · actions ═══════════ --}}
+            <x-card pad="p-5 md:p-6">
+                {{-- month + calendar --}}
+                <div class="flex items-center justify-between">
+                    <span class="font-display font-bold text-gray-100">{{ $monthLabel }}</span>
+                    <button @click="calOpen = true" class="grid h-8 w-8 place-items-center rounded-full text-titan-pink active:bg-white/5" aria-label="Open calendar">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M5 5h14a1 1 0 011 1v13a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1z"/></svg>
+                    </button>
                 </div>
 
-                <div>
-                    <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Symptoms</label>
-                    <div class="flex flex-wrap gap-2">
-                        @foreach ($symptoms as $sym)
-                            <button type="button" @click="toggle('{{ $sym }}')"
-                                    :class="has('{{ $sym }}') ? 'border-titan-pink/50 bg-titan-pink/15 text-titan-pink' : 'border-white/10 text-gray-400'"
-                                    class="rounded-full border px-3 py-1.5 text-xs transition">{{ str_replace('_',' ', $sym) }}</button>
-                        @endforeach
-                    </div>
-                    <template x-for="s in selected" :key="s"><input type="hidden" name="symptoms[]" :value="s"></template>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Mood (1–5)</label>
-                        <input type="number" name="mood" min="1" max="5" value="{{ $status['today_log']['mood'] ?? '' }}" class="w-full rounded-chip bg-titan-bg border border-white/10 px-3 py-2.5 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
-                    </div>
-                    <div>
-                        <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Energy (1–5)</label>
-                        <input type="number" name="energy" min="1" max="5" value="{{ $status['today_log']['energy'] ?? '' }}" class="w-full rounded-chip bg-titan-bg border border-white/10 px-3 py-2.5 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
-                    </div>
-                </div>
-
-                <button class="w-full rounded-chip bg-titan-pink px-4 py-3 font-semibold text-titan-bg active:opacity-90 transition">Save today</button>
-            </form>
-        </x-card>
-
-        {{-- ===== History ===== --}}
-        @if ($history->isNotEmpty())
-            <x-card pad="p-4" class="mb-4">
-                <h3 class="font-display font-bold text-gray-100 mb-3">Recent cycles</h3>
-                <div class="space-y-1.5">
-                    @foreach ($history as $h)
-                        <div class="flex items-center justify-between text-sm">
-                            <span class="text-gray-300">{{ $h['start'] }}</span>
-                            <span class="text-gray-500 text-xs">
-                                {{ $h['length'] ? $h['length'].'-day cycle' : 'current' }}@if ($h['period']) · {{ $h['period'] }}d period @endif
-                            </span>
+                {{-- week strip --}}
+                <div class="mt-4 flex">
+                    @foreach ($week as $d)
+                        @php $c = $dayCell($d, $today); @endphp
+                        <div class="flex flex-1 flex-col items-center gap-1.5">
+                            <span class="text-[10px] font-bold uppercase {{ $d['date'] === $today ? 'text-gray-200' : 'text-gray-600' }}">{{ substr($c['dt']->format('D'), 0, 1) }}</span>
+                            <div class="{{ $c['cls'] }}" @if ($c['style']) style="{{ $c['style'] }}" @endif>{{ $c['dt']->day }}</div>
                         </div>
                     @endforeach
                 </div>
-            </x-card>
-        @endif
-    @endif
 
-    {{-- ===== Settings (always available) ===== --}}
-    <x-card id="cycle-settings" pad="p-4" class="mb-4">
-        <h3 class="font-display font-bold text-gray-100 mb-3">Cycle settings</h3>
-        <form method="POST" action="/cycle/settings" class="space-y-4">
-            @csrf
-            <input type="hidden" name="enabled" value="1">
-            <div class="grid grid-cols-3 gap-3">
-                <div>
-                    <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Cycle days</label>
-                    <input type="number" name="avg_length" min="21" max="45" value="{{ $config['avg_length'] }}" class="w-full rounded-chip bg-titan-bg border border-white/10 px-3 py-2.5 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
+                {{-- prediction hero --}}
+                <div class="mt-6 text-center">
+                    <div class="text-sm text-gray-400">{{ $heroTop }}</div>
+                    <div class="font-display text-5xl font-bold leading-none text-gray-50 md:text-6xl" style="text-shadow: 0 0 30px {{ $accent }}44;">{{ $heroBig }}</div>
                 </div>
-                <div>
-                    <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Period days</label>
-                    <input type="number" name="avg_period" min="1" max="10" value="{{ $config['avg_period'] }}" class="w-full rounded-chip bg-titan-bg border border-white/10 px-3 py-2.5 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
+
+                {{-- pregnancy chance --}}
+                <div class="mt-4 text-center">
+                    @if ($hormonalBc)
+                        <p class="mx-auto max-w-xs text-xs text-gray-500">On hormonal birth control, the usual fertile-window estimate doesn’t apply.</p>
+                    @else
+                        <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">Chance of pregnancy today</div>
+                        <div class="mt-1 font-display text-lg font-bold" style="color: {{ $chanceColor }}">{{ $chanceLabel }}</div>
+                    @endif
                 </div>
-                <div>
-                    <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Luteal days</label>
-                    <input type="number" name="luteal_length" min="9" max="17" value="{{ $config['luteal_length'] }}" class="w-full rounded-chip bg-titan-bg border border-white/10 px-3 py-2.5 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
+
+                {{-- circular actions --}}
+                <div class="mt-5 flex items-start justify-center gap-8">
+                    <button @click="periodOpen = true" class="flex flex-col items-center gap-2">
+                        <span class="grid h-14 w-14 place-items-center rounded-full bg-titan-pink text-white active:opacity-90">
+                            <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2s6 6.4 6 11a6 6 0 11-12 0c0-4.6 6-11 6-11z"/></svg>
+                        </span>
+                        <span class="text-[11px] text-gray-400">Log period</span>
+                    </button>
+                    <button @click="document.getElementById('log-today').scrollIntoView({ behavior: 'smooth' })" class="flex flex-col items-center gap-2">
+                        <span class="grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-gray-100 active:bg-white/10">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m7-7H5"/></svg>
+                        </span>
+                        <span class="text-[11px] text-gray-400">Symptoms</span>
+                    </button>
+                    <button @click="calOpen = true" class="flex flex-col items-center gap-2">
+                        <span class="grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-gray-100 active:bg-white/10">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M5 5h14a1 1 0 011 1v13a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1z"/></svg>
+                        </span>
+                        <span class="text-[11px] text-gray-400">Calendar</span>
+                    </button>
                 </div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Birth control</label>
-                    <select name="birth_control" class="w-full rounded-chip bg-titan-bg border border-white/10 px-3 py-2.5 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
-                        @foreach (['none'=>'None','pill'=>'Pill','patch'=>'Patch','ring'=>'Ring','hormonal_iud'=>'Hormonal IUD','copper_iud'=>'Copper IUD','implant'=>'Implant','injection'=>'Injection','other'=>'Other'] as $v => $label)
-                            <option value="{{ $v }}" @selected($config['birth_control'] === $v)>{{ $label }}</option>
+            </x-card>
+
+            {{-- ═══════════ Phase card ═══════════ --}}
+            <x-card pad="p-4 md:p-5">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-display font-bold text-gray-100">{{ $status['phase_label'] }}</h3>
+                    <span class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style="color: {{ $accent }}; background: {{ $accent }}1a;">Day {{ $status['cycle_day'] }}</span>
+                </div>
+                @if (! empty($status['phase_blurb']))
+                    <p class="mt-2 text-sm leading-relaxed text-gray-300">{{ $status['phase_blurb'] }}</p>
+                @endif
+                <div class="mt-4 grid grid-cols-3 gap-3">
+                    <div class="text-center">
+                        <div class="font-display text-xl font-bold nums text-titan-pink leading-none">
+                            @if ($status['late']){{ $status['next_period']['late_days'] }}d @elseif ($np === 0) Today @else {{ $np }}d @endif
+                        </div>
+                        <div class="mt-1 text-[10px] uppercase tracking-wide text-gray-500">{{ $status['late'] ? 'Late' : 'Next period' }}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="font-display text-xl font-bold nums text-titan-violet leading-none">
+                            @if ($ov === 0) Today @elseif ($ov > 0){{ $ov }}d @else {{ abs($ov) }}d ago @endif
+                        </div>
+                        <div class="mt-1 text-[10px] uppercase tracking-wide text-gray-500">Ovulation</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="font-display text-xl font-bold nums text-titan-cyan leading-none">{{ $status['fertile_window']['active'] ? 'Now' : ($status['avg_length'].'d') }}</div>
+                        <div class="mt-1 text-[10px] uppercase tracking-wide text-gray-500">{{ $status['fertile_window']['active'] ? 'Fertile' : 'Cycle' }}</div>
+                    </div>
+                </div>
+            </x-card>
+
+            {{-- ═══════════ Fertile window (awareness only) ═══════════ --}}
+            @if ($status['fertile_window']['applicable'])
+                <x-card pad="p-4 md:p-5">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Fertile window</div>
+                        <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold" style="color: {{ $chanceColor }}; background: {{ $chanceColor }}1a;">{{ ucfirst($cl) }} chance</span>
+                    </div>
+                    <div class="mt-1.5 text-sm text-gray-200">
+                        {{ \Illuminate\Support\Carbon::parse($status['fertile_window']['start'])->format('M j') }} – {{ \Illuminate\Support\Carbon::parse($status['fertile_window']['end'])->format('M j') }}
+                        @if ($status['fertile_window']['active']) <span class="font-semibold text-titan-cyan">· active now</span> @endif
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500">{{ $status['conception']['note'] }}</p>
+                </x-card>
+            @endif
+
+            {{-- ═══════════ This phase × recovery (Titan's cross-signal edge) ═══════════ --}}
+            @if (! empty($insight['note']))
+                <x-card pad="p-4 md:p-5">
+                    <div class="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500 mb-2">Your body, this phase</div>
+                    <div class="flex gap-2.5 rounded-chip border border-titan-indigo/15 bg-titan-indigo/[0.08] p-3">
+                        <svg class="mt-0.5 h-4 w-4 shrink-0 text-titan-indigo" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <p class="text-xs leading-relaxed text-indigo-200/90">{{ $insight['note'] }}</p>
+                    </div>
+                </x-card>
+            @endif
+
+            {{-- ═══════════ Log today (flow · symptoms · mood · energy) ═══════════ --}}
+            <x-card id="log-today" pad="p-4 md:p-5"
+                 x-data="cycleLog({{ \Illuminate\Support\Js::from($status['today_log']['symptoms'] ?? []) }})">
+                <h3 class="mb-3 font-display font-bold text-gray-100">Log today</h3>
+                <form method="POST" action="/cycle/day" class="space-y-4">
+                    @csrf
+                    <input type="hidden" name="date" value="{{ $today }}">
+                    <div>
+                        <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Flow</label>
+                        <div class="flex flex-wrap gap-2">
+                            @foreach ($flows as $f)
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="flow" value="{{ $f }}" class="peer sr-only" @checked(($status['today_log']['flow'] ?? null) === $f)>
+                                    <span class="block rounded-full border border-white/10 px-3.5 py-1.5 text-xs text-gray-300 transition peer-checked:border-titan-pink/50 peer-checked:bg-titan-pink/15 peer-checked:text-titan-pink">{{ ucfirst($f) }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div>
+                        <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Symptoms</label>
+                        <div class="flex flex-wrap gap-2">
+                            @foreach ($symptoms as $sym)
+                                <button type="button" @click="toggle('{{ $sym }}')"
+                                        :class="has('{{ $sym }}') ? 'border-titan-pink/50 bg-titan-pink/15 text-titan-pink' : 'border-white/10 text-gray-400'"
+                                        class="rounded-full border px-3 py-1.5 text-xs transition">{{ str_replace('_', ' ', $sym) }}</button>
+                            @endforeach
+                        </div>
+                        <template x-for="s in selected" :key="s"><input type="hidden" name="symptoms[]" :value="s"></template>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Mood (1–5)</label>
+                            <input type="number" name="mood" min="1" max="5" value="{{ $status['today_log']['mood'] ?? '' }}" class="h-11 w-full rounded-chip border border-white/10 bg-titan-bg px-3 text-base text-gray-100 nums focus:border-titan-pink focus:ring-0">
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Energy (1–5)</label>
+                            <input type="number" name="energy" min="1" max="5" value="{{ $status['today_log']['energy'] ?? '' }}" class="h-11 w-full rounded-chip border border-white/10 bg-titan-bg px-3 text-base text-gray-100 nums focus:border-titan-pink focus:ring-0">
+                        </div>
+                    </div>
+                    <button class="h-11 w-full rounded-chip bg-titan-pink font-semibold text-gray-950 active:opacity-90">Save today</button>
+                </form>
+            </x-card>
+
+            {{-- ═══════════ Recent cycles ═══════════ --}}
+            @if ($history->isNotEmpty())
+                <x-card pad="p-4 md:p-5">
+                    <h3 class="mb-3 font-display font-bold text-gray-100">Recent cycles</h3>
+                    <div class="space-y-1.5">
+                        @foreach ($history as $h)
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="text-gray-300">{{ $h['start'] }}</span>
+                                <span class="text-xs text-gray-500">{{ $h['length'] ? $h['length'].'-day cycle' : 'current' }}@if ($h['period']) · {{ $h['period'] }}d period @endif</span>
+                            </div>
                         @endforeach
-                    </select>
+                    </div>
+                </x-card>
+            @endif
+        @endif
+
+        {{-- ═══════════ Settings (always available) ═══════════ --}}
+        <x-card id="cycle-settings" pad="p-4 md:p-5">
+            <h3 class="mb-3 font-display font-bold text-gray-100">Cycle settings</h3>
+            <form method="POST" action="/cycle/settings" class="space-y-4">
+                @csrf
+                <input type="hidden" name="enabled" value="1">
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Cycle days</label>
+                        <input type="number" name="avg_length" min="21" max="45" value="{{ $config['avg_length'] }}" class="h-11 w-full rounded-chip border border-white/10 bg-titan-bg px-3 text-base text-gray-100 nums focus:border-titan-pink focus:ring-0">
+                    </div>
+                    <div>
+                        <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Period days</label>
+                        <input type="number" name="avg_period" min="1" max="10" value="{{ $config['avg_period'] }}" class="h-11 w-full rounded-chip border border-white/10 bg-titan-bg px-3 text-base text-gray-100 nums focus:border-titan-pink focus:ring-0">
+                    </div>
+                    <div>
+                        <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Luteal days</label>
+                        <input type="number" name="luteal_length" min="9" max="17" value="{{ $config['luteal_length'] }}" class="h-11 w-full rounded-chip border border-white/10 bg-titan-bg px-3 text-base text-gray-100 nums focus:border-titan-pink focus:ring-0">
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">I'm…</label>
-                    <select name="intent" class="w-full rounded-chip bg-titan-bg border border-white/10 px-3 py-2.5 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
-                        @foreach (['tracking'=>'Just tracking','conceiving'=>'Trying to conceive','avoiding'=>'Avoiding pregnancy'] as $v => $label)
-                            <option value="{{ $v }}" @selected($config['intent'] === $v)>{{ $label }}</option>
-                        @endforeach
-                    </select>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Birth control</label>
+                        <select name="birth_control" class="h-11 w-full rounded-chip border border-white/10 bg-titan-bg px-3 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
+                            @foreach (['none'=>'None','pill'=>'Pill','patch'=>'Patch','ring'=>'Ring','hormonal_iud'=>'Hormonal IUD','copper_iud'=>'Copper IUD','implant'=>'Implant','injection'=>'Injection','other'=>'Other'] as $v => $label)
+                                <option value="{{ $v }}" @selected($config['birth_control'] === $v)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">I'm…</label>
+                        <select name="intent" class="h-11 w-full rounded-chip border border-white/10 bg-titan-bg px-3 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
+                            @foreach (['tracking'=>'Just tracking','conceiving'=>'Trying to conceive','avoiding'=>'Avoiding pregnancy'] as $v => $label)
+                                <option value="{{ $v }}" @selected($config['intent'] === $v)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                 </div>
+                <button class="h-11 w-full rounded-chip border border-white/10 bg-white/[0.04] font-semibold text-gray-200 active:bg-white/[0.08]">Save settings</button>
+            </form>
+            <p class="mt-3 text-[11px] leading-relaxed text-gray-600">⚠ {{ \App\Support\Cycle::DISCLAIMER }}</p>
+        </x-card>
+
+        {{-- ═══════════ Log-period modal ═══════════ --}}
+        <div x-show="periodOpen" x-cloak class="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style="display:none;">
+            <div @click="periodOpen = false" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+            <div class="relative w-full max-w-md rounded-t-card sm:rounded-card border border-white/10 bg-titan-bg2 p-5 shadow-2xl" @click.stop x-transition>
+                <h3 class="font-display text-lg font-bold text-gray-100">When did your period start?</h3>
+                <form method="POST" action="/cycle/period" class="mt-4 space-y-3">
+                    @csrf
+                    <input type="hidden" name="event" value="start">
+                    <input type="date" name="date" value="{{ $today }}" max="{{ $today }}" required
+                           class="h-12 w-full rounded-chip border border-white/10 bg-titan-bg px-3 text-base text-gray-100 focus:border-titan-pink focus:ring-0">
+                    <button class="h-12 w-full rounded-chip bg-gradient-to-r from-titan-pink to-titan-violet font-bold text-white active:opacity-90">Log period start</button>
+                    <button type="button" @click="periodOpen = false" class="h-11 w-full rounded-chip text-sm text-gray-400 active:bg-white/5">Cancel</button>
+                </form>
             </div>
-            <button class="w-full rounded-chip border border-white/10 bg-white/[0.04] px-4 py-3 font-semibold text-gray-200 active:bg-white/[0.08] transition">Save settings</button>
-        </form>
-        <p class="mt-3 text-[11px] text-gray-600 leading-relaxed">Titan’s cycle features are for awareness and coaching, not contraception or medical diagnosis. For decisions about pregnancy or any symptom that worries you, see a healthcare provider.</p>
-    </x-card>
+        </div>
+
+        {{-- ═══════════ Calendar modal (projected — plan ahead) ═══════════ --}}
+        <div x-show="calOpen" x-cloak class="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style="display:none;">
+            <div @click="calOpen = false" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+            <div class="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card sm:rounded-card border border-white/10 bg-titan-bg2 p-5 shadow-2xl" @click.stop>
+                <div class="mb-4 flex items-center justify-between">
+                    <h3 class="font-display font-bold text-gray-100">{{ $monthLabel }}</h3>
+                    <button @click="calOpen = false" class="grid h-8 w-8 place-items-center rounded-full text-gray-400 active:bg-white/5" aria-label="Close">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="grid grid-cols-7 gap-1 text-center">
+                    @foreach (['S','M','T','W','T','F','S'] as $dow)
+                        <div class="text-[10px] font-bold uppercase text-gray-600">{{ $dow }}</div>
+                    @endforeach
+                    @foreach ($calendarDays as $d)
+                        @php $c = $dayCell($d, $today); $inMonth = (int) $c['dt']->month === $monthNum; @endphp
+                        <div class="flex justify-center py-0.5 {{ $inMonth ? '' : 'opacity-30' }}">
+                            <div class="{{ $c['cls'] }}" @if ($c['style']) style="{{ $c['style'] }}" @endif>{{ $c['dt']->day }}</div>
+                        </div>
+                    @endforeach
+                </div>
+                {{-- legend --}}
+                <div class="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1.5 text-[11px] text-gray-400">
+                    <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full" style="background:#FF4D8Dcc"></span>Period</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full" style="background:#22D3EE2e"></span>Fertile</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full" style="border:1.5px dashed #A78BFA"></span>Ovulation</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-titan-pink"></span>Today</span>
+                </div>
+                <p class="mt-4 text-center text-[11px] leading-relaxed text-gray-600">Projected from your averages — estimates for awareness, not a contraceptive method.</p>
+            </div>
+        </div>
+    </div>
 
     <script>
         function cycleLog(initial) {
