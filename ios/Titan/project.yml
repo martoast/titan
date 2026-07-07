@@ -67,3 +67,21 @@ targets:
         # A free personal Apple ID team works for on-device dev builds (7-day provisioning).
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: AM886483DX
+
+# A shared scheme so `xcodebuild`/Xcode Organizer archive consistently (Release), and CI/fastlane
+# can build it later. Debug for run/test, Release for profile/archive/analyze.
+schemes:
+  Titan:
+    build:
+      targets:
+        Titan: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
