@@ -9,8 +9,9 @@ Route::get('/', function () {
     return auth()->check() ? redirect('/coach') : view('welcome');
 });
 
-// Public legal pages (no auth) — App Store requires a reachable Privacy Policy URL.
+// Public legal pages (no auth) — App Store requires reachable Privacy Policy + Support URLs.
 Route::view('/privacy', 'legal.privacy')->name('privacy');
+Route::view('/support', 'legal.support')->name('support');
 
 // --- Browser-test login shortcut (LOCAL ONLY) ---
 // Authenticates a user without a password so the headless browser harness can sign in. Registered
