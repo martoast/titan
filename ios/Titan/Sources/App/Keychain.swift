@@ -40,6 +40,7 @@ enum Keychain {
 
     // Keys
     static let userToken = "titan.user.token"
+    static let userProfile = "titan.user.profile"   // cached AuthUser JSON — rehydrates the session on launch
     static let deviceId = "titan.device.id"
     static let deviceSecret = "titan.device.secret"
 }

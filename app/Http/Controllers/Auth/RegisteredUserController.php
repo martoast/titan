@@ -44,7 +44,7 @@ class RegisteredUserController extends Controller
 
         event(new Registered($user));
 
-        Auth::login($user);
+        Auth::login($user, true);   // persist the session past close, same as a normal login
 
         // New users land in the onboarding wizard, not the dashboard.
         return redirect(route('onboarding', absolute: false));

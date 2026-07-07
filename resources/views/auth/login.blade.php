@@ -22,7 +22,7 @@
         </div>
 
         <div class="auth-row">
-            <label class="checkbox"><input type="checkbox" name="remember"> Remember me</label>
+            <label class="checkbox"><input type="checkbox" name="remember" checked> Remember me</label>
             @if (Route::has('password.request'))
                 <a class="link" href="{{ route('password.request') }}">Forgot password?</a>
             @endif

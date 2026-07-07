@@ -108,6 +108,14 @@ final class AppModel: ObservableObject {
     init() {
         let token = Keychain.get(Keychain.userToken)
         api = APIClient(baseURL: Self.baseURL, token: token)
+        // Rehydrate the signed-in user from the Keychain cache so a valid token means "logged in"
+        // IMMEDIATELY on launch — even offline. Without this, `isLoggedIn` (== user != nil) stayed false
+        // on every cold start because bootstrap() never set `user`, so the app showed the login screen
+        // despite a perfectly good token. The token is validated in the background by bootstrap().
+        if token != nil, let u = Self.cachedUser() {
+            user = u
+            onboarded = u.onboarded ?? true
+        }
         // Seed the catch-up watermark to "now" on first launch, so installing the app never retro-pops
         // a historical workout — only ones that finish after this point get a catch-up summary.
         if UserDefaults.standard.object(forKey: Self.lastSeenWorkoutKey) == nil {
@@ -186,6 +194,9 @@ final class AppModel: ObservableObject {
     func completeOnboarding(_ fields: [String: Any]) async -> Bool {
         do {
             onboarded = try await api.submitOnboarding(fields).onboarded
+            // Keep the cached user's onboarded flag current so a relaunch (even offline) doesn't flash the
+            // onboarding screen again.
+            if let u = user { setUser(AuthUser(id: u.id, name: u.name, email: u.email, onboarded: onboarded)) }
             await bootstrap()
             return true
         } catch {
@@ -209,7 +220,7 @@ final class AppModel: ObservableObject {
             let res = try await api.login(email: email, password: password, deviceName: deviceName())
             api.token = res.token
             Keychain.set(res.token, for: Keychain.userToken)
-            user = res.user
+            setUser(res.user)                         // persists the user so the next launch is instant + offline-safe
             onboarded = res.user.onboarded ?? true
             await bootstrap()
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
@@ -218,15 +229,41 @@ final class AppModel: ObservableObject {
     func logout() async {
         await api.logout()
         Keychain.delete(Keychain.userToken)
+        Keychain.delete(Keychain.userProfile)
         api.token = nil
         user = nil; dashboard = nil
+    }
+
+    /// Set + persist the signed-in user (Keychain-cached JSON), so `init()` can restore it on the next
+    /// cold launch without a network round-trip. The single place `user` is assigned on sign-in.
+    func setUser(_ u: AuthUser) {
+        user = u
+        if let data = try? JSONEncoder().encode(u), let s = String(data: data, encoding: .utf8) {
+            Keychain.set(s, for: Keychain.userProfile)
+        }
+    }
+
+    /// The Keychain-cached user from a prior login (nil if none / undecodable).
+    static func cachedUser() -> AuthUser? {
+        guard let s = Keychain.get(Keychain.userProfile), let data = s.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(AuthUser.self, from: data)
+    }
+
+    /// A 401 from a data endpoint may be transient (a race, a briefly-flaky gateway). Don't nuke a valid
+    /// Keychain token + bounce to login on ONE — confirm with /api/me first. Only a CONFIRMED 401 there is
+    /// a genuinely revoked token → real logout. A network/other failure is treated as transient (keep the
+    /// session). This is what stops a stray 401 from silently logging the user out.
+    func handleUnauthorized() async {
+        do { try await api.verifyToken() }                       // token still good → keep the session
+        catch APIError.unauthorized { await logout() }           // confirmed dead → real logout
+        catch { /* transient / offline → keep the session */ }
     }
 
     func refresh() async {
         if dashboard == nil { dashboardPhase = .loading }
         do { dashboard = try await api.dashboard(); dashboardPhase = .loaded }
         catch {
-            if case APIError.unauthorized = error { await logout() }
+            if case APIError.unauthorized = error { await handleUnauthorized() }
             else { dashboardPhase = dashboard == nil ? .failed : .loaded }
         }
     }
@@ -647,7 +684,7 @@ final class AppModel: ObservableObject {
 
     func loadNutrition() async {
         do { nutrition = try await api.nutritionToday() }
-        catch { if case APIError.unauthorized = error { await logout() } }
+        catch { if case APIError.unauthorized = error { await handleUnauthorized() } }
         await loadMealLibrary()
     }
 
@@ -783,7 +820,7 @@ final class AppModel: ObservableObject {
 
     func loadTargets() async {
         do { targets = try await api.targets() }
-        catch { if case APIError.unauthorized = error { await logout() } }
+        catch { if case APIError.unauthorized = error { await handleUnauthorized() } }
     }
 
     func saveTargets(calories: Int, protein: Int, carbs: Int, fat: Int, sleepH: Double) async {
@@ -804,7 +841,7 @@ final class AppModel: ObservableObject {
 
     func loadProgress() async {
         do { progressPhotos = try await api.progressPhotos() }
-        catch { if case APIError.unauthorized = error { await logout() } }
+        catch { if case APIError.unauthorized = error { await handleUnauthorized() } }
     }
 
     func uploadProgress(_ imageData: Data, pose: String?, weightKg: Double?, notes: String?) async {

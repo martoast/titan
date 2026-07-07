@@ -50,6 +50,12 @@ struct LoginResponse: Codable {
     let user: AuthUser
 }
 
+/// `GET /api/me` — a lightweight identity/token-validity probe (see APIClient.verifyToken).
+struct MeResponse: Codable {
+    struct U: Codable { let name: String?; let email: String? }
+    let user: U
+}
+
 /// `GET /api/me/dashboard`
 struct Dashboard: Codable {
     let readiness: Readiness?

@@ -20,7 +20,7 @@ if (app()->environment('local')) {
             : \App\Models\User::query()->oldest('id')->first();
         abort_unless($user, 404, 'No user available to log in.');
 
-        \Illuminate\Support\Facades\Auth::login($user);
+        \Illuminate\Support\Facades\Auth::login($user, true);   // remember, so the dev session persists too
         $request->session()->regenerate();
 
         return redirect($request->string('to', '/coach'));

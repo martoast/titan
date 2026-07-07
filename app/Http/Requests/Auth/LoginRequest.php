@@ -42,7 +42,13 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        // Stay logged in across browser/app closes by default (like every normal app): always issue the
+        // long-lived remember-me cookie, which re-authenticates even after the session's idle window
+        // lapses. The user stays signed in until they explicitly log out. ("Remember me" defaults on;
+        // unticking it opts out of persistence for that login.)
+        $remember = $this->has('remember') ? $this->boolean('remember') : true;
+
+        if (! Auth::attempt($this->only('email', 'password'), $remember)) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([

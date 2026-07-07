@@ -94,6 +94,13 @@ final class APIClient {
 
     func logout() async { _ = try? await session.data(for: request("api/logout", method: "POST")) }
 
+    /// Cheap probe that the stored token still authenticates. Throws `APIError.unauthorized` ONLY on a
+    /// confirmed 401; a network/transport failure throws something else — so a caller can tell a genuinely
+    /// revoked token from a transient blip and avoid nuking a good session on the latter.
+    func verifyToken() async throws {
+        _ = try await send(request("api/me"), as: MeResponse.self)
+    }
+
     // MARK: onboarding + profile edit
 
     func onboardingStatus() async throws -> Bool {
