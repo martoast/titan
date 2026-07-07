@@ -109,6 +109,44 @@ class BiosignalSimulator
     }
 
     /**
+     * Synthesize a raw PPG waveform (Int16 samples at $fs Hz) from an IBI series — so the simulator
+     * can stream the REAL Titan-band overnight shape (`ppg_raw`, server does peak-detect → IBI →
+     * stages) instead of pre-detected IBI. Each beat is a narrow Gaussian pulse; we only touch the
+     * few samples around each beat, so a whole night synthesizes in O(beats) not O(beats × samples).
+     *
+     * @param  array<int,int>  $ibiMs
+     * @return array<int,int>  Int16-range PPG samples
+     */
+    public static function ppgFromIbi(array $ibiMs, int $fs): array
+    {
+        $beatT = [];
+        $t = 0.0;
+        foreach ($ibiMs as $ms) {
+            $t += $ms / 1000.0;
+            $beatT[] = $t;
+        }
+        $dur = $t;
+        $n = max(1, (int) floor($dur * $fs));
+        $ppg = array_fill(0, $n, 0.0);
+
+        $sigma = 0.04;                       // ~40 ms systolic pulse width
+        $twoSig2 = 2 * $sigma * $sigma;
+        $halfW = (int) ceil(4 * $sigma * $fs);  // ±4σ of samples per beat
+        foreach ($beatT as $bt) {
+            $center = ($bt + 0.05) * $fs;
+            $lo = max(0, (int) floor($center) - $halfW);
+            $hi = min($n - 1, (int) ceil($center) + $halfW);
+            for ($i = $lo; $i <= $hi; $i++) {
+                $dt = $i / $fs - $bt - 0.05;
+                $ppg[$i] += exp(-($dt * $dt) / $twoSig2);
+            }
+        }
+
+        // Scale into a comfortable Int16 range (deterministic; peak detection doesn't need noise).
+        return array_map(fn ($v) => (int) round($v * 6000), $ppg);
+    }
+
+    /**
      * Accelerometer activity counts (Actigraph-style epoch counts) for `$epochs`
      * 30-second epochs at the given motion level. Sleep ≈ near-zero with occasional
      * micro-movements; running ≈ high, steady.

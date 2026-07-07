@@ -33,6 +33,8 @@ class SimulateNight extends Command
         {--minutes=480 : Total night length in minutes}
         {--seed= : Deterministic RNG seed for a reproducible night}
         {--confirmed : Simulate the WATCH-ENDED flow — stream raw windows + a confirmed sleep_session marker (real bedtime/wake) and let the SERVER stage from the windows (exercises SealNightJob::sealConfirmedSession) instead of shipping pre-baked stages}
+        {--raw-ppg : Stream the REAL Titan-band overnight shape — kind=ppg_raw with raw PPG samples (server peak-detects → IBI → stages), accel omitted like the offline T2 log — instead of pre-detected IBI windows}
+        {--ppg-hz=25 : PPG sample rate for --raw-ppg (offline T2 runs ~12–25 Hz)}
         {--dry : Generate + print the night but do not POST to the ingestion API}';
 
     protected $description = 'Simulate a night with the Titan virtual band and stream it into the real ingestion pipeline.';
@@ -71,19 +73,33 @@ class SimulateNight extends Command
         $bar = $this->output->createProgressBar(count($segments));
         $bar->start();
 
+        $rawPpg = (bool) $this->option('raw-ppg');
+        $ppgHz = max(8, (int) $this->option('ppg-hz'));
         foreach ($segments as $seg) {
             $w = $sim->generateWindow($seg['state'], $seg['minutes'] * 60);
             $start = $cursor->copy();
             $end = $cursor->copy()->addMinutes($seg['minutes']);
 
-            $windows[] = [
-                'kind' => 'ibi',
-                'start' => $start->toIso8601ZuluString(),
-                'end' => $end->toIso8601ZuluString(),
-                'ibi_ms' => $w['ibi_ms'],
-                'accel_counts' => $w['accel_counts'],
-                'confidence' => $seg['state'] === 'rest' ? 0.7 : 0.95,
-            ];
+            $windows[] = $rawPpg
+                // The REAL Titan-band overnight shape: raw PPG, server peak-detects → IBI → stages.
+                // Accel is OMITTED (like the offline T2 log) so the server uses its PPG-quality motion
+                // proxy — matching PpgWindow (ios/TitanCore Windowing.swift).
+                ? [
+                    'kind' => 'ppg_raw',
+                    'start' => $start->toIso8601ZuluString(),
+                    'end' => $end->toIso8601ZuluString(),
+                    'sample_rate_hz' => $ppgHz,
+                    'ppg' => BiosignalSimulator::ppgFromIbi($w['ibi_ms'], $ppgHz),
+                    'src' => 'banglejs2',
+                ]
+                : [
+                    'kind' => 'ibi',
+                    'start' => $start->toIso8601ZuluString(),
+                    'end' => $end->toIso8601ZuluString(),
+                    'ibi_ms' => $w['ibi_ms'],
+                    'accel_counts' => $w['accel_counts'],
+                    'confidence' => $seg['state'] === 'rest' ? 0.7 : 0.95,
+                ];
             $allIbi = array_merge($allIbi, $w['ibi_ms']);
             if ($seg['state'] !== 'rest' && count($w['ibi_ms']) > 5) {
                 // 5-min median HR proxy → RHR is the min of these (§4).
