@@ -27,6 +27,14 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Titan
+        # Version = single source of truth (the build settings below). Bump CURRENT_PROJECT_VERSION
+        # for each TestFlight upload; MARKETING_VERSION is the user-facing App Store version.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # Export compliance: Titan uses ONLY standard HTTPS/TLS + HMAC-SHA256 (device signing) — both
+        # are exempt encryption. Declaring this here skips the manual encryption question on EVERY
+        # TestFlight/App Store upload. (If you ever add non-standard/proprietary crypto, revisit this.)
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIBackgroundModes:
           - bluetooth-central
@@ -49,7 +57,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.alexmartos.titan
-        MARKETING_VERSION: "0.1.0"
+        MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"            # iPhone
         SWIFT_VERSION: "5.9"
