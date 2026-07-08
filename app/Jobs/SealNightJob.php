@@ -84,9 +84,11 @@ class SealNightJob implements ShouldQueue
      * try again shortly, up to this many times (~STAGING_DEFER_S apart) before honestly falling back to
      * a duration-only row.
      */
-    public const MAX_STAGING_DEFERS = 12;
+    // Recheck every few seconds (not 30) so a confirmed night stages the INSTANT its windows finish
+    // processing — the post-wake summary fills in near-immediately instead of waiting out a long timer.
+    public const MAX_STAGING_DEFERS = 24;
 
-    public const STAGING_DEFER_S = 30;
+    public const STAGING_DEFER_S = 5;
 
     /**
      * @param  int  $profileId  the profile whose night to seal

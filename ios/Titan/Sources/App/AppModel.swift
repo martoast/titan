@@ -1352,8 +1352,10 @@ final class AppModel: ObservableObject {
     /// returns yesterday's, so we only accept a detail whose start is near the bedtime we just ended.
     private func fetchSealedSleep(bedtimeEpoch: Int) {
         Task { @MainActor [weak self] in
-            for attempt in 0..<10 {
-                try? await Task.sleep(nanoseconds: attempt == 0 ? 3_000_000_000 : 4_000_000_000)
+            // Check quickly (the night may already be sealed) then every ~3s for ~65s — long enough to
+            // catch server staging, short cadence so the metrics fill in near-immediately.
+            for attempt in 0..<22 {
+                try? await Task.sleep(nanoseconds: attempt == 0 ? 1_500_000_000 : 3_000_000_000)
                 guard let self, self.sleepSummary != nil else { return }   // dismissed
                 guard let resp = try? await self.api.sleepDetail(), let d = resp.detail,
                       (d.duration_min ?? 0) > 0 else { continue }
