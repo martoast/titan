@@ -61,6 +61,25 @@ class SleepDetail
         $resp = RecoveryLog::where('profile_id', $profile->id)
             ->whereNotNull('resp_rate')->orderByDesc('logged_at')->value('resp_rate');
 
+        // The night's START as a Unix timestamp. The app compares this to the bedtime of the session it
+        // just ended, to be sure it's showing THIS night's summary (not yesterday's, which is what
+        // sleepDetail() still returns until the new night seals). Was hardcoded to 30 — the constant
+        // epoch length — which made every match fail, so the post-sleep summary never enriched.
+        $tz = $profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $startEpoch = $last->session_start
+            ? $last->session_start->timestamp
+            : (function () use ($last, $tz) {
+                if (! $last->bedtime) {
+                    return Carbon::parse($last->slept_at->toDateString(), $tz)->startOfDay()->timestamp;
+                }
+                $bt = Carbon::parse($last->slept_at->toDateString().' '.$last->bedtime, $tz);
+                // Bedtime clock later than wake clock ⇒ went to bed the previous calendar day.
+                if ($last->wake_time && (string) $last->bedtime > (string) $last->wake_time) {
+                    $bt = $bt->subDay();
+                }
+                return $bt->timestamp;
+            })();
+
         return [
             'date' => $last->slept_at?->toDateString(),
             'performance_pct' => $assess['performance_pct'] ?? $last->quality,
@@ -80,7 +99,7 @@ class SleepDetail
             'bedtime' => $last->bedtime ? Carbon::parse($last->bedtime)->format('H:i') : null,
             'wake_time' => $last->wake_time ? Carbon::parse($last->wake_time)->format('H:i') : null,
             'hypnogram' => is_array($last->hypnogram) && count($last->hypnogram) ? $last->hypnogram : null,
-            'epoch_sec' => 30,
+            'epoch_sec' => $startEpoch,
         ];
     }
 
