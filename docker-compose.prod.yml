@@ -48,6 +48,12 @@ services:
   queue:
     <<: *app
     command: ["php", "artisan", "queue:work", "redis", "--queue=biosignal,default", "--sleep=1", "--tries=3", "--max-time=3600"]
+    # Each worker processes one window at a time; with 1, a night's ~30 windows seal
+    # serially (~80s). Run several so windows fan out across the biosignal workers and the
+    # sleep summary stages in seconds. Match QUEUE_WORKERS to UVICORN_WORKERS in .env.
+    # Default 1 = current behaviour (no surprise CPU/RAM jump on an unsized box).
+    deploy:
+      replicas: ${QUEUE_WORKERS:-1}
     healthcheck:  # the image default curls nginx, which workers don't run
       test: ["CMD-SHELL", "pgrep -f 'queue:work' >/dev/null || exit 1"]
       interval: 30s
@@ -78,6 +84,11 @@ services:
     restart: unless-stopped
     environment:
       BIOSIGNAL_TOKEN: ${BIOSIGNAL_TOKEN}
+      # Concurrent DSP workers. Sealing a night fans out ~30 per-window HRV calls; with 1
+      # worker they serialise (~80s). Set to ~(cores-1) so windows process in parallel and
+      # the sleep summary's stages land in seconds. Each worker loads the models (~300MB),
+      # so size to RAM too — pair with QUEUE_WORKERS in .env. Default 1 = current behaviour.
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
     networks: [titan]
 
   # ── MySQL ───────────────────────────────────────────────────────────────────

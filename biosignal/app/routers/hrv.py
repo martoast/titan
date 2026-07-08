@@ -25,6 +25,7 @@ class HrvWindow(BaseModel):
     sample_rate_hz: Optional[int] = Field(default=None, description="PPG sample rate (Hz).")
     start: Optional[str] = Field(default=None, description="Window start (ISO-8601 UTC).")
     end: Optional[str] = Field(default=None, description="Window end (ISO-8601 UTC).")
+    want_resp: bool = Field(default=True, description="Compute per-window waveform respiratory rate. The overnight sealer sets this False — it recomputes RR whole-night from the aggregated IBI and prefers that — so the ~1s/window waveform estimate is skipped on the sleep-staging critical path.")
 
     @model_validator(mode="after")
     def _need_a_signal(self):
@@ -66,6 +67,7 @@ async def process_hrv(window: HrvWindow) -> HrvResponse:
             ppg=window.ppg,
             sample_rate_hz=window.sample_rate_hz,
             accel=window.accel_counts,
+            want_resp=window.want_resp,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

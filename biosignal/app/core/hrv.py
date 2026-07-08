@@ -315,10 +315,17 @@ def process_hrv(
     ppg: Optional[list] = None,
     sample_rate_hz: Optional[int] = None,
     accel: Optional[list] = None,
+    want_resp: bool = True,
 ) -> dict:
     """End-to-end overnight HRV pipeline. Returns the metrics dict for the API.
 
     Accepts either an IBI series (band default) or raw PPG (audit/reprocess path).
+
+    want_resp=False skips the per-window waveform respiratory-rate estimate — the single
+    most expensive step on the PPG path (~1s/window). The overnight sealer recomputes RR
+    once, whole-night, from the aggregated IBI (RSA) and *prefers* that value, so per-window
+    RR is pure waste on the sleep-staging critical path. Set it False there so a full night's
+    windows stage in seconds instead of a minute-plus; leave it True for one-off/spot reads.
     """
     quality_mean = 1.0  # IBI path has no waveform SQI; assume edge already gated.
 
@@ -365,7 +372,7 @@ def process_hrv(
     # 3b. Respiratory rate (PPG path only) — breaths/min from the pulse wave's breathing
     # modulations, Smart-Fusion gated (app/core/respiration.py). A resting/sleep wellness trend.
     resp_rate = None
-    if from_ppg:
+    if from_ppg and want_resp:
         try:
             from .respiration import estimate_respiratory_rate
             rr = estimate_respiratory_rate(ppg, sample_rate_hz)

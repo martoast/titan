@@ -120,6 +120,12 @@ class ProcessWindowJob implements ShouldQueue
         // overnight rest and would clobber the morning's score.
         $isSpot = ($window['purpose'] ?? null) === 'spot';
 
+        // Skip the per-window waveform respiratory-rate estimate on the overnight path — it's the
+        // costliest DSP step (~1s/window) and the sealer recomputes RR once, whole-night, from the
+        // aggregated IBI (which it prefers anyway). Dropping it here is what lets a full night's
+        // windows stage in seconds instead of a minute-plus. Spot reads still want it.
+        $window['want_resp'] = $isSpot;
+
         $result = $biosignal->processHrv($window);
         $metrics = $result['metrics'] ?? [];
         $algoVersion = $result['algo_version'] ?? config('services.biosignal.algo_version', 'v1');

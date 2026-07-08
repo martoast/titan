@@ -58,6 +58,7 @@ services:
         restart: unless-stopped
         environment:
             BIOSIGNAL_TOKEN: '${BIOSIGNAL_TOKEN}'
+            UVICORN_WORKERS: '${UVICORN_WORKERS:-1}'
         expose:
             - '8000'
         networks:

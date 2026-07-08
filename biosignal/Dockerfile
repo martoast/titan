@@ -28,4 +28,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell-form so ${UVICORN_WORKERS} expands at runtime. Overnight sealing fans out ~30
+# per-window DSP calls; a single worker serialises them (~80s for a full night). Set
+# UVICORN_WORKERS to (cores-1) in prod so the windows process concurrently and the sleep
+# summary's stages land in seconds, not a minute-plus. Defaults to 1 (dev / tiny boxes).
+CMD uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}
