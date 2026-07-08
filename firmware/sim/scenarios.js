@@ -376,7 +376,7 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
 
   // Baseline: steps count fine before any workout (the user: "steps worked before I did a workout").
   // With powerSave ON, motion self-corrects the gate — walking counts even after a still spell.
-  for (let i = 0; i < 30; i++) w.walk(1);
+  for (let i = 0; i < 30; i++) { w.walk(1); clock.advance(400); }   // real walking cadence (~400 ms/stride)
   check('step-freeze · steps count before any workout (powerSave still ON)',
     w.osSteps() === 30 && w.powerSaveOn() === true, `os=${w.osSteps()} powerSave=${w.powerSaveOn()}`);
 
@@ -391,7 +391,7 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
 
   // Now WALK. Pre-fix the OS pedometer is frozen (powerSave left off with the timer stuck ≥60s).
   const before = w.osSteps();
-  for (let i = 0; i < 40; i++) w.walk(1);
+  for (let i = 0; i < 40; i++) { w.walk(1); clock.advance(400); }   // walk at cadence — the filter banks these
   const after = w.osSteps();
   check('step-freeze · getHealthStatus().steps keeps climbing after a manual workout start→stop',
     after === before + 40,
@@ -400,6 +400,41 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
     w.powerSaveOn() === true, `powerSave=${w.powerSaveOn()}`);
   check('step-freeze · Steps face reflects the live climb (not frozen)',
     w.sandbox.stepCount() >= 70, `shown=${w.sandbox.stepCount()}`);
+})();
+
+// 16) OVER-COUNT FILTER — the active-window gate. The firmware pedometer over-counts phantom "steps" from
+//     rhythmic arm motion at rest (typing, eating, driving, dishes). Titan banks a step only once it is part
+//     of a SUSTAINED in-cadence run (STEP_ARM strides), so isolated / short phantom bursts are discarded
+//     while a real walk counts every step and tolerates brief pauses. (Sim note: getHealthStatus is faked,
+//     so this validates the JS cadence gate on step EVENTS — real-device phantom generation, which happens
+//     inside the firmware pedometer, still needs an on-wrist check.)
+(() => {
+  const clock = new VirtualClock();
+  const w = buildWatch(clock);
+  const shown = () => w.sandbox.stepCount();
+
+  // (a) Isolated arm-motion phantoms — a "step" every ~2 s. Never a sustained cadence → never banked.
+  for (let i = 0; i < 20; i++) { w.walk(1); clock.advance(2000); }
+  check('over-count · isolated phantoms (a step every ~2s) are rejected', shown() === 0, `shown=${shown()}`);
+
+  // (b) A SHORT burst below the arm threshold, then stop — e.g. reaching for something. Discarded.
+  for (let i = 0; i < 6; i++) { w.walk(1); clock.advance(350); }
+  clock.advance(6000);
+  check('over-count · a short sub-threshold burst (6 strides) is rejected', shown() === 0, `shown=${shown()}`);
+
+  // (c) A REAL walk — a sustained in-cadence run. Arms and counts EVERY step (no arming warmup lost).
+  for (let i = 0; i < 40; i++) { w.walk(1); clock.advance(450); }
+  check('over-count · a real sustained walk (40 strides) is counted in full', shown() === 40, `shown=${shown()}`);
+
+  // (d) A brief mid-walk pause (curb / crossing, ~3 s ≤ reset) must NOT drop the walk.
+  clock.advance(3000);
+  for (let i = 0; i < 15; i++) { w.walk(1); clock.advance(450); }
+  check('over-count · a brief mid-walk pause keeps the walk counting', shown() === 55, `shown=${shown()}`);
+
+  // (e) After a long idle (> reset) the walk ends; a fresh sustained run re-arms and adds on top.
+  clock.advance(8000);
+  for (let i = 0; i < 12; i++) { w.walk(1); clock.advance(450); }
+  check('over-count · a new walk after a long idle re-arms and adds on', shown() === 67, `shown=${shown()}`);
 })();
 
 // The user's real bug shape: a NAP (start + stop on the Sleep face within one afternoon) must SEAL
