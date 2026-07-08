@@ -143,15 +143,19 @@ struct StageBars: View {
                 }
             }
             .frame(height: 12)
-            HStack(spacing: Theme.Space.m) {
+            // Four even columns (dot + label above the value) so it never wraps/clips on narrow phones.
+            HStack(alignment: .top, spacing: Theme.Space.s) {
                 ForEach(stages.indices, id: \.self) { i in
-                    HStack(spacing: 5) {
-                        Circle().fill(stages[i].2).frame(width: 7, height: 7)
-                        Text(stages[i].0).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                        Text(minToHrs(stages[i].1)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.text)
+                    VStack(spacing: 3) {
+                        HStack(spacing: 4) {
+                            Circle().fill(stages[i].2).frame(width: 6, height: 6)
+                            Text(stages[i].0).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                        Text(minToHrs(stages[i].1)).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                     }
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity)
                 }
-                Spacer()
             }
         }
     }

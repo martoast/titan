@@ -26,6 +26,7 @@ final class APIClient {
     private func request(_ path: String, method: String = "GET", json: [String: Any]? = nil) -> URLRequest {
         var req = URLRequest(url: Self.url(baseURL, path))
         req.httpMethod = method
+        req.timeoutInterval = 25   // never hang a screen forever on a stalled request
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let json {

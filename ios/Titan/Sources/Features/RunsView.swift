@@ -41,12 +41,17 @@ struct RunsSection: View {
     @State private var activeDays: [String] = []
     @State private var range: WorkoutRange = .week
     @State private var loading = true
+    @State private var failed = false
     @State private var selected: RunSummary?
 
     private var filtered: [RunSummary] { runs.filter(inRange) }
 
     var body: some View {
         VStack(spacing: Theme.Space.m) {
+            // A failed/stalled load is legible + retryable, not an endless shimmer that dead-ends.
+            if failed && streak == nil && runs.isEmpty {
+                SyncErrorRow(message: "Couldn't load workouts") { await load() }
+            } else {
             // The headline: the consecutive-day streak + calendar strip.
             if loading && streak == nil {
                 Shimmer().frame(height: 210).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
@@ -85,6 +90,7 @@ struct RunsSection: View {
                         }
                     }
                 }
+            }
             }
         }
         .task { await load() }
@@ -126,10 +132,14 @@ struct RunsSection: View {
     }
 
     private func load() async {
-        if let r = try? await model.api.workouts() {
+        failed = false
+        do {
+            let r = try await model.api.workouts()
             runs = r.runs
             streak = r.streak
             activeDays = r.active_days ?? []
+        } catch {
+            failed = true   // timeout/network/decode → show a retryable row, not an endless shimmer
         }
         loading = false
     }
