@@ -88,15 +88,6 @@ class BiosignalClient
     }
 
     /**
-     * @param  array<string,mixed>  $request
-     * @return array<string,mixed>
-     */
-    public function processGym(array $request): array
-    {
-        return $this->client()->post('/process/gym', $request)->throw()->json();
-    }
-
-    /**
      * Workout HR recomputed from raw PPG + accel with motion-artifact suppression — beats the
      * on-chip bpm, which cadence-locks under load. Returns per-window {bpm, confidence, reliable}
      * + a summary {hr_mean, hr_max, coverage}. See biosignal app/core/inmotion_hr.py.

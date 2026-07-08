@@ -9,8 +9,8 @@ lower-body function predicts frailty/falls. Two honest things a wrist can do:
 
   2. A GUIDED 30-second chair-stand test (30CST) — the validated lower-body-strength/frailty screen:
      the app counts you through "stand up and sit down as many times as you can in 30 s" and the wrist
-     accel counts the reps. A sit-to-stand is mechanically a body-weight squat, so this reuses the
-     SAME rep-counter validated on MM-Fit squats (MAE 0.14 reps; see gym.py / validate_gym.py). We
+     accel counts the reps. A sit-to-stand is mechanically a body-weight squat, so this rep-counter was
+     validated on MM-Fit squats (MAE 0.14 reps). We
      score reps against age/sex norms (Rikli & Jones 1999) → a function band, wellness-scope (a screen,
      never a clinical frailty diagnosis).
 

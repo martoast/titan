@@ -74,9 +74,8 @@ outcome data) · ❌/⏸️ tested-and-declined or deferred. Full numbers in doc
 ### Strength (gym)
 | Feature | Lives in | Grade | Surfaced |
 |---|---|---|---|
-| Exercise recognition (10-class) | `core/gym.py` (+`gym_classifier.joblib`) | ✅ 95.4% κ 0.95 (MM-Fit) | Workouts |
-| Rep counting | `core/gym.py` | ✅ MAE 0.14 reps | Workouts |
-| Set segmentation + weight entry + "needs weights" nudge | `Jobs/SealActivityJob` + Workouts UI | end-to-end | Workouts |
+| ~~Exercise recognition (10-class) / rep counting from wrist accel~~ | **REMOVED** (was `core/gym.py` + `gym_classifier.joblib`) | validated 95.4% κ 0.95 in the lab, but in practice INVENTED lifts (jumping jacks/sit-ups) for any low-motion session, so auto-detection was cut (9b9f4d6 seal, then the whole classifier). Git history keeps it. | — |
+| Set segmentation + weight entry + "needs weights" nudge | `Jobs/SealActivityJob` + Workouts UI (sets written only by explicit coach logging) | end-to-end | Workouts |
 | Voice-logged sets / live session / hands-free finish | phone bridge + Workouts | — | Workouts |
 
 ### Longevity & metabolic

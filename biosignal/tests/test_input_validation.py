@@ -11,12 +11,6 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_gym_rejects_nonpositive_sample_rate():
-    # accel_fs=0 → butter(...) divides by fs/2 → ZeroDivisionError → 500. Must be a 422 now.
-    body = {"accel_xyz": {"x": [0, 1, 0], "y": [0, 1, 0], "z": [1, 1, 1]}, "accel_fs": 0}
-    assert client.post("/process/gym", json=body).status_code == 422
-
-
 def test_function_rejects_nonpositive_sample_rate():
     body = {"ax": [0, 1, 0], "ay": [0, 1, 0], "az": [1, 1, 1], "fs": 0}
     assert client.post("/process/function", json=body).status_code == 422
