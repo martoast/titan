@@ -14,6 +14,12 @@ use Tests\TestCase;
  * `ended` strength workout window must flow controller → DeviceIngestionService → ProcessWindowJob →
  * SealActivityJob and produce an activity_sessions row the app's /api/me/runs returns. This is exactly
  * what the watch+phone do when you finish a lift, so it proves the deployed server code saves it.
+ *
+ * It must NOT fabricate exercises/sets from the accelerometer: that auto-gym-detection was removed in
+ * 9b9f4d6 ("stop fabricating lifts on a workout seal") because the ~10-movement classifier invented
+ * lifts (jumping jacks, sit-ups…) for any low-motion session. Real sets are only ever written when the
+ * user explicitly tells the coach (log_set / log_workout). So a sealed lift = a strength session with
+ * its stats, and ZERO auto-created workouts.
  */
 class IngestSealEndToEndTest extends TestCase
 {
@@ -30,9 +36,8 @@ class IngestSealEndToEndTest extends TestCase
             ]], 'session_count' => 1]]),
             '*/process/fitness' => Http::response(['vo2max' => 50.0, 'plusminus' => 5.6,
                 'methods' => ['demographic'], 'fitness_level' => 'high', 'fitness_percentile_band' => 3, 'hrr' => null]),
-            '*/process/gym' => Http::response(['sets' => [
-                ['exercise' => 'squats', 'reps' => 10, 'confidence' => 1.0, 'is_lift' => true],
-            ], 'summary' => ['n_sets' => 1, 'total_reps' => 10, 'exercises' => []]]),
+            // Note: /process/gym is intentionally NOT called on a seal anymore (see class docblock) — if it
+            // ever is again, this catch-all returns an empty set list so nothing gets fabricated silently.
             '*' => Http::response([]),
         ]);
 
@@ -95,6 +100,9 @@ class IngestSealEndToEndTest extends TestCase
         $session = ActivitySession::where('profile_id', $profile->id)->first();
         $this->assertNotNull($session, 'an ended lift window must seal into an activity_sessions row');
         $this->assertSame('strength', $session->activity_type);
-        $this->assertNotNull(\App\Models\Workout::where('profile_id', $profile->id)->first(), 'gym sets logged');
+        // The seal must NOT fabricate a gym workout from the accelerometer — sets are only ever written
+        // when the user explicitly logs them via the coach (removed in 9b9f4d6). See class docblock.
+        $this->assertNull(\App\Models\Workout::where('profile_id', $profile->id)->first(),
+            'a sealed lift must not auto-fabricate a workout/sets');
     }
 }

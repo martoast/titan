@@ -4,11 +4,7 @@ namespace App\Jobs;
 
 use App\Models\ActivitySession;
 use App\Models\DeviceIngestion;
-use App\Models\Exercise;
 use App\Models\Profile;
-use App\Models\Workout;
-use App\Models\WorkoutExercise;
-use App\Models\WorkoutSet;
 use App\Services\Notifications\NotificationService;
 use App\Services\Wearables\BiosignalClient;
 use Carbon\CarbonImmutable;
@@ -763,107 +759,6 @@ class SealActivityJob implements ShouldQueue
         }
 
         return [$span, $path];
-    }
-
-    /** The 10 MM-Fit exercises → catalog metadata (muscle group / category / equipment / label). */
-    private const EXERCISE_META = [
-        'squats' => ['Squats', 'legs', 'compound', 'bodyweight'],
-        'pushups' => ['Push-ups', 'chest', 'compound', 'bodyweight'],
-        'dumbbell_shoulder_press' => ['Dumbbell Shoulder Press', 'shoulders', 'compound', 'dumbbell'],
-        'lunges' => ['Lunges', 'legs', 'compound', 'bodyweight'],
-        'dumbbell_rows' => ['Dumbbell Rows', 'back', 'compound', 'dumbbell'],
-        'situps' => ['Sit-ups', 'core', 'isolation', 'bodyweight'],
-        'tricep_extensions' => ['Tricep Extensions', 'arms', 'isolation', 'dumbbell'],
-        'bicep_curls' => ['Bicep Curls', 'arms', 'isolation', 'dumbbell'],
-        'lateral_shoulder_raises' => ['Lateral Raises', 'shoulders', 'isolation', 'dumbbell'],
-        'jumping_jacks' => ['Jumping Jacks', 'cardio', 'cardio', 'bodyweight'],
-    ];
-
-    /**
-     * Analyse a non-locomotion session as STRENGTH: /process/gym detects sets (exercise + reps),
-     * which we write to the workouts / workout_exercises / workout_sets tables (idempotent on the
-     * session's started_at), and label the ActivitySession 'strength'. Reps are what the wrist
-     * counts; weight is left 0 for the user to fill in (a wrist can't know the load).
-     */
-    private function sealStrength(Profile $profile, BiosignalClient $biosignal, ActivitySession $log,
-        array $ax, array $ay, array $az, int $fs, string $unit, ?string $startIso, ?int $durationMin): void
-    {
-        try {
-            $gym = $biosignal->processGym([
-                'accel_xyz' => ['x' => $ax, 'y' => $ay, 'z' => $az],
-                'accel_fs' => $fs, 'accel_unit' => $unit,
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('[Biosignal] gym analysis failed', ['profile_id' => $profile->id, 'error' => $e->getMessage()]);
-
-            return;
-        }
-
-        $sets = $gym['sets'] ?? [];
-        if (count($sets) === 0) {
-            return; // no sets detected → not a (recognisable) strength session
-        }
-
-        $performedAt = $startIso ? CarbonImmutable::parse($startIso) : now();
-        $workout = Workout::updateOrCreate(
-            ['profile_id' => $profile->id, 'performed_at' => $performedAt],
-            ['name' => 'Gym session', 'duration_min' => $durationMin, 'updated_via' => 'biosignal:sealed'],
-        );
-        // Idempotent re-seal: rebuild this workout's exercises from scratch.
-        $workout->exercises()->delete();
-
-        $order = 0;
-        foreach ($this->groupSets($sets) as $slug => $exerciseSets) {
-            $exercise = $this->resolveExercise($slug);
-            if (! $exercise) {
-                continue;
-            }
-            $we = WorkoutExercise::create([
-                'workout_id' => $workout->id, 'exercise_id' => $exercise->id, 'order' => $order++,
-            ]);
-            foreach ($exerciseSets as $n => $s) {
-                WorkoutSet::create([
-                    'workout_exercise_id' => $we->id,
-                    'set_number' => $n + 1,
-                    'reps' => (int) ($s['reps'] ?? 0),
-                    'weight_kg' => 0,
-                ]);
-            }
-        }
-
-        // Label the activity row so the Fitness page reads it as a lifting session, not "Workout".
-        $log->update(['activity_type' => 'strength']);
-    }
-
-    /**
-     * Group the detected sets by exercise, preserving first-seen order.
-     *
-     * @param  array<int,array<string,mixed>>  $sets
-     * @return array<string,array<int,array<string,mixed>>>
-     */
-    private function groupSets(array $sets): array
-    {
-        $grouped = [];
-        foreach ($sets as $s) {
-            $grouped[$s['exercise'] ?? 'unknown'][] = $s;
-        }
-
-        return $grouped;
-    }
-
-    /** Find-or-create the catalog Exercise for a classifier slug. */
-    private function resolveExercise(string $slug): ?Exercise
-    {
-        $meta = self::EXERCISE_META[$slug] ?? null;
-        if (! $meta) {
-            return null;
-        }
-        [$name, $muscle, $category, $equipment] = $meta;
-
-        return Exercise::firstOrCreate(
-            ['slug' => $slug],
-            ['name' => $name, 'muscle_group' => $muscle, 'category' => $category, 'equipment' => $equipment],
-        );
     }
 
     /**

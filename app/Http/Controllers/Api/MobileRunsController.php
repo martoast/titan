@@ -87,9 +87,10 @@ class MobileRunsController extends Controller
     }
 
     /**
-     * Detected exercises + sets for a lifting session. The strength seal writes a Workout keyed on the
-     * same (profile, started_at) as the ActivitySession (see SealActivityJob::sealStrength), so we look
-     * it up by that. Returns null for a cardio run (no Workout) so the client can branch on its presence.
+     * Exercises + sets for a lifting session. Sets are written only when the user explicitly logs them
+     * via the coach (log_set / log_workout) — the seal no longer auto-detects them — keyed on the same
+     * (profile, started_at) as the ActivitySession, so we look it up by that. Returns null when nothing
+     * was logged (or for a cardio run) so the client can branch on its presence.
      *
      * @return array<string,mixed>|null
      */
