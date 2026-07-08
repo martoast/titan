@@ -1631,25 +1631,30 @@ function drawAction(primary, active, secondary, accent, y) {
 // and then counts every step (tolerating brief pauses at a curb/crossing). Counting events (not the
 // pedometer total) also makes the day count reboot-safe for free: stepRun is boot-relative and we persist
 // earlier boots' committed total (stepCarry) on top, so a reboot never drops or double-counts the day.
+// Params follow the Bangle community's open-source ActivePedom / HughB "X steps in Y seconds" work: a step
+// only ever counts within a real stride tempo (240–1100 ms, ActivePedom's cMinTime/cMaxTime verbatim), and
+// a walk is confirmed only after STEP_ARM consecutive in-cadence strides. STEP_ARM=8 is the MODERATE setting
+// (≈ HughB's proven "9 in 9 s"; ActivePedom's default 30 is the aggressive end that drops short walks).
 var STEP_FILE = "titan.stp4";     // { d:"YYYY-MM-DD", s:total } — v4: filtered count, discards v3 totals
 var STEP_ARM = 8;                 // consecutive in-cadence strides that confirm a real walk (moderate)
-var STEP_GAP_MIN = 0.24;          // < this (s) between steps ⇒ too fast to be a stride (noise) — ignore
-var STEP_GAP_STRIDE = 1.1;        // ≤ this ⇒ a normal walking stride (~55–250 spm) — builds a run
-var STEP_GAP_RESET = 4.0;         // > this ⇒ inactivity — end an armed walk / reset the arming buffer
+var STEP_GAP_MIN = 0.24;          // < this (s) between steps ⇒ too fast to be a stride (noise) — never counts
+var STEP_GAP_MAX = 1.1;           // > this ⇒ not a walking stride; a step only EVER counts within [MIN,MAX]
+var STEP_ACTIVE_HOLD = 8.0;       // s without an in-cadence stride before a walk ends and must re-arm
 
 var stepDay = "";                 // local date the counters belong to
 var stepCarry = 0;                // committed steps from EARLIER boots today (persisted → survives reboot)
 var stepRun = 0;                  // committed steps THIS boot (gated), boot-relative
 var stepProv = 0;                 // consecutive in-cadence strides not yet confirmed (held back, not shown)
-var stepArmed = false;            // inside a confirmed active window (a real walk in progress)?
-var stepLastT = 0;                // getTime() (s) of the previous step event, for the cadence gap
+var stepActive = false;           // inside a confirmed walk (armed)?
+var stepLastT = 0;                // getTime() (s) of the previous step event (any), for the cadence gap
+var stepActiveT = 0;              // getTime() (s) of the last IN-CADENCE stride — drives the active-hold expiry
 
 function stepLocalDate() {
   var d = new Date();
   return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).substr(-2) + "-" + ("0" + d.getDate()).substr(-2);
 }
 function stepLoad() {
-  stepDay = stepLocalDate(); stepCarry = 0; stepRun = 0; stepProv = 0; stepArmed = false;
+  stepDay = stepLocalDate(); stepCarry = 0; stepRun = 0; stepProv = 0; stepActive = false;
   try {
     var s = require("Storage").readJSON(STEP_FILE, true);
     if (s && s.d === stepDay) stepCarry = s.s | 0;   // resume today's committed total across a reboot
@@ -1661,7 +1666,7 @@ function stepSave() {
 // Roll the day over at local midnight (the only reconciliation the event-counted total needs). Cheap.
 function stepTick() {
   var d = stepLocalDate();
-  if (d !== stepDay) { stepDay = d; stepCarry = 0; stepRun = 0; stepProv = 0; stepArmed = false; stepSave(); }
+  if (d !== stepDay) { stepDay = d; stepCarry = 0; stepRun = 0; stepProv = 0; stepActive = false; stepSave(); }
 }
 function stepCount() {
   stepTick();
@@ -1670,20 +1675,23 @@ function stepCount() {
   // The SERVER does the authoritative per-day MAX merge with the phone; the face shows what the band gated.
 }
 
-// The active-window filter — runs on every firmware `step` event. ARMING needs a tight, regular cadence so
-// slow / isolated arm-motion phantoms never confirm a walk; once ARMED we tolerate pauses up to
-// STEP_GAP_RESET so a curb or crossing doesn't drop the walk. Also feeds lastStepAt (run auto-pause).
+// The active-window filter — runs on every firmware `step` event, following the ActivePedom model. A step
+// ONLY EVER counts within a real stride tempo ([MIN,MAX]); this is what rejects the phantom bursts. Arming
+// needs STEP_ARM such strides in a row; once active we stay active across brief out-of-cadence pauses (a
+// curb/crossing) for STEP_ACTIVE_HOLD so we don't have to re-arm — but those slow steps are NOT counted,
+// so fidgeting after a walk can't keep the total climbing. Also feeds lastStepAt (run auto-pause).
 Bangle.on("step", function () {
   var now = getTime(), gap = now - stepLastT;
   stepLastT = now; lastStepAt = now;
   if (gap < STEP_GAP_MIN) return;                       // too fast to be a stride — reject as noise
-  if (stepArmed && gap <= STEP_GAP_RESET) { stepRun++; return; }   // walk in progress — count (tolerate pauses)
-  stepArmed = false;                                    // (re)building an arming run
-  if (gap <= STEP_GAP_STRIDE) {                         // a stride-cadence step extends the candidate run
-    if (++stepProv >= STEP_ARM) { stepRun += stepProv; stepProv = 0; stepArmed = true; }   // walk confirmed
-  } else {
-    stepProv = 1;                                       // too slow for a stride — just seed a fresh run
-  }
+  if (stepActive && (now - stepActiveT) > STEP_ACTIVE_HOLD) { stepActive = false; stepProv = 0; }  // walk ended
+  if (gap <= STEP_GAP_MAX) {                            // a real stride tempo — the only thing that ever counts
+    stepActiveT = now;
+    if (stepActive) stepRun++;                          // confirmed walk — count every stride
+    else if (++stepProv >= STEP_ARM) { stepRun += stepProv; stepProv = 0; stepActive = true; }  // walk confirmed
+  } else if (!stepActive) {
+    stepProv = 1;                                       // slow lone step, not walking — seed a fresh run
+  }                                                     // slow step WHILE active = a pause: uncounted, walk held
 });
 
 // Page 0 — HEART RATE: big BPM inside a color-mapped ring.

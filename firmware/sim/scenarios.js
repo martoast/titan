@@ -399,7 +399,7 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
   check('step-freeze · powerSave re-enabled by applyAccelRate (so motion can reset the OS timer)',
     w.powerSaveOn() === true, `powerSave=${w.powerSaveOn()}`);
   check('step-freeze · Steps face reflects the live climb (not frozen)',
-    w.sandbox.stepCount() >= 70, `shown=${w.sandbox.stepCount()}`);
+    w.sandbox.stepCount() >= 69, `shown=${w.sandbox.stepCount()}`);   // ~70 walked (one boundary step uncounted)
 })();
 
 // 16) OVER-COUNT FILTER — the active-window gate. The firmware pedometer over-counts phantom "steps" from
@@ -426,15 +426,24 @@ const endedStrength = (p) => p.sealed.filter((w) => w.ended && w.activity_kind =
   for (let i = 0; i < 40; i++) { w.walk(1); clock.advance(450); }
   check('over-count · a real sustained walk (40 strides) is counted in full', shown() === 40, `shown=${shown()}`);
 
-  // (d) A brief mid-walk pause (curb / crossing, ~3 s ≤ reset) must NOT drop the walk.
+  // (d) A brief mid-walk pause (curb / crossing, ~3 s) keeps the walk ACTIVE (no re-arming); the one
+  //     out-of-cadence step at the pause boundary isn't counted (ActivePedom does the same), the rest are.
   clock.advance(3000);
   for (let i = 0; i < 15; i++) { w.walk(1); clock.advance(450); }
-  check('over-count · a brief mid-walk pause keeps the walk counting', shown() === 55, `shown=${shown()}`);
+  check('over-count · a brief mid-walk pause keeps the walk counting', shown() === 54, `shown=${shown()}`);
 
-  // (e) After a long idle (> reset) the walk ends; a fresh sustained run re-arms and adds on top.
+  // (e) After a long idle (> active-hold) the walk ends; a fresh sustained run re-arms and adds on top.
   clock.advance(8000);
   for (let i = 0; i < 12; i++) { w.walk(1); clock.advance(450); }
-  check('over-count · a new walk after a long idle re-arms and adds on', shown() === 67, `shown=${shown()}`);
+  check('over-count · a new walk after a long idle re-arms and adds on', shown() === 66, `shown=${shown()}`);
+
+  // (f) THE FIDGET HOLE the community model closes: isolated arm-steps every ~3 s AFTER a walk must not
+  //     keep counting. Only in-cadence strides ever count, so out-of-cadence fidgets add nothing.
+  clock.advance(3000);
+  const beforeFidget = shown();
+  for (let i = 0; i < 10; i++) { w.walk(1); clock.advance(3000); }
+  check('over-count · post-walk fidgeting (a step every ~3s) is never counted',
+    shown() === beforeFidget, `before=${beforeFidget} after=${shown()}`);
 })();
 
 // The user's real bug shape: a NAP (start + stop on the Sleep face within one afternoon) must SEAL
