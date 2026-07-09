@@ -364,15 +364,16 @@ class SleepDutyCycleSealTest extends TestCase
 
     public function test_a_nap_never_surfaces_as_last_night(): void
     {
-        // Finding 4: with a nap and a night sharing a date, the "last night" reader must return the NIGHT.
+        // Finding 4: with a nap and a night sharing a date, the PRODUCTION "last night" reader
+        // (SleepDetail::forProfile — what the app renders) must return the NIGHT, not the later-id nap.
         $profile = User::factory()->create()->ensureProfile();
         $date = Carbon::parse('today', 'UTC')->toDateString();
-        SleepLog::create(['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false, 'duration_min' => 460]);
-        SleepLog::create(['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => true, 'session_start' => Carbon::parse('today 14:00', 'UTC'), 'duration_min' => 25]);   // later id
+        SleepLog::create(['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false, 'duration_min' => 460, 'quality' => 88]);
+        SleepLog::create(['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => true, 'session_start' => Carbon::parse('today 14:00', 'UTC'), 'duration_min' => 25, 'quality' => 30]);   // later id
 
-        $last = SleepLog::where('profile_id', $profile->id)->nights()->orderByDesc('slept_at')->orderByDesc('id')->first();
-        $this->assertFalse((bool) $last->is_nap, 'the night, not the 25-min nap, is "last night"');
-        $this->assertSame(460, (int) $last->duration_min);
+        $detail = \App\Support\SleepDetail::forProfile($profile->fresh());
+        $this->assertNotNull($detail);
+        $this->assertSame(460, (int) $detail['duration_min'], 'the reader surfaces the night, not the 25-min nap');
     }
 
     public function test_absurd_span_is_clamped_not_written_as_a_17_hour_night(): void

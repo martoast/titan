@@ -39,9 +39,6 @@ class SealNightJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** A night is "complete" once no new windows have arrived for this many minutes. */
-    public const QUIET_MINUTES = 45;
-
     /**
      * Minimum duration (minutes) for a user-confirmed sleep session to seal. A sub-20-min button tap
      * is not a nap — don't create sleep noise. A legit 20-90 min nap sails through. This gate lives on
@@ -202,11 +199,16 @@ class SealNightJob implements ShouldQueue
                     continue; // still streaming -- let it finish
                 }
 
-                // Per-session isolation: a poison payload in ONE session must not abort the loop (blocking
-                // every other session) nor re-aggregate forever. The counter releases it after a few tries.
+                // Per-session isolation (AUTO pass only): a poison payload in ONE session must not abort the
+                // loop (blocking every other session) nor re-aggregate forever — the counter releases it
+                // after a few tries. A TARGETED --night reseal instead rethrows to the outer catch, which
+                // gives it the queue's retry/backoff (its own comment) rather than burning seal_attempts.
                 try {
                     $this->sealNight($profile, $biosignal, $date, $tz, $windows);
                 } catch (\Throwable $e) {
+                    if ($this->night !== null) {
+                        throw $e;
+                    }
                     $this->handleSessionFailure($profile, $windows, $e);
                 }
             }
@@ -277,8 +279,8 @@ class SealNightJob implements ShouldQueue
     }
 
     /**
-     * A session is sealable once it is quiescent: its last window ended more than QUIET_MINUTES ago (the
-     * device finished streaming it), OR its date is already in the past. A confirmed marker seals now.
+     * A session is sealable once it is quiescent: its last window ended more than a full SESSION_GAP_S ago
+     * (so no later window could still cluster into it). A confirmed marker seals immediately.
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
      */
@@ -362,8 +364,9 @@ class SealNightJob implements ShouldQueue
             $this->sealRecovery($profile, $biosignal, $date, $ibiWindows);
         }
 
-        // --- Sleep staging → sleep_logs. This THROWS on a transient (biosignal restart) — so we bail
-        //     BEFORE the seal below, leaving the windows unsealed for the cron to retry (no stage loss).
+        // --- Sleep staging → sleep_logs. This THROWS on a transient (biosignal restart) — so we bail BEFORE
+        //     the seal below, leaving the windows unsealed for the cron to retry (bounded by MAX_SEAL_ATTEMPTS,
+        //     after which handleSessionFailure releases them so a deterministic poison can't loop forever).
         if ($sleepWindows->isNotEmpty()) {
             $this->sealSleep($profile, $biosignal, $date, $tz, $sleepWindows);
         } elseif ($ibiWindows->isNotEmpty()) {
@@ -748,7 +751,9 @@ class SealNightJob implements ShouldQueue
     private function upsertSleep(array $key, array $attrs): SleepLog
     {
         $existing = SleepLog::where($key)->first();
-        if ($existing) {
+        // Only guard against clobbering a prior BIOSIGNAL-SEALED row (source-scoped like the recovery guard):
+        // a manual/other-source entry isn't a staged night to compare against, and shouldn't block a seal.
+        if ($existing && str_starts_with((string) $existing->updated_via, 'biosignal:sealed')) {
             $exStaged = is_array($existing->hypnogram) && count($existing->hypnogram) > 0;
             $exDur = (int) $existing->duration_min;
             $newDur = (int) ($attrs['duration_min'] ?? 0);
@@ -788,9 +793,10 @@ class SealNightJob implements ShouldQueue
         $t0 = CarbonImmutable::parse($withStart->sortBy('window_start')->first()->window_start);
         $t1 = CarbonImmutable::parse($withEnd->sortByDesc('window_end')->first()->window_end);
 
-        // NOTE: no try/catch — a transient staging error THROWS up through sealNight so the windows are
-        // left unsealed (the caller seals only after this returns cleanly) and the cron retries. Swallowing
-        // it here would have released the windows with no stages, the permanent-loss bug on the auto path.
+        // NOTE: no try/catch — a transient staging error THROWS up through sealNight so the windows are left
+        // unsealed (the caller seals only after this returns cleanly) and the cron retries, up to
+        // MAX_SEAL_ATTEMPTS. Swallowing it here would have released the windows with no stages on the FIRST
+        // failure — the old permanent-loss bug on the auto path.
         $metrics = $this->stageSparse($biosignal, $ibiWindows, $t0, $t1);
         if ($metrics === null) {
             return; // too thin / mostly holes / all-awake phantom → no automatic row (needs confirmed)
