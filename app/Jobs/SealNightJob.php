@@ -68,9 +68,19 @@ class SealNightJob implements ShouldQueue
      *  flag it rather than writing a 17-hour night into recovery/debt math. */
     private const MAX_SESSION_MIN = 16 * 60;
 
-    /** Local hour from which a window belongs to the NEXT morning's night (so a 23:00 bedtime doesn't
-     *  split across the calendar-date boundary). Evenings from 18:00 map forward to the wake date. */
-    private const NIGHT_CUTOFF_HR = 18;
+    /** A gap (seconds) larger than this SPLITS the unsealed windows into separate SESSIONS. Smaller than
+     *  the daytime between a night and an afternoon nap, but larger than a mid-night charge top-up — so a
+     *  night that paused to charge stays ONE session (its gap becomes a NODATA hole), while an evening
+     *  workout / a daytime nap cluster separately. This gap-clustering REPLACES the old calendar-date
+     *  heuristics (nightOf + span=nap), which mis-split nights and mis-dated evening windows. */
+    private const SESSION_GAP_S = 150 * 60;
+
+    /** A session is a NIGHT (recovery-worthy) if it runs ≥4h OR touches these local overnight hours. The
+     *  sleep-hours test is what keeps an evening post-workout cluster (elevated HR, not resting recovery)
+     *  from writing a readiness row, while still recognising a short pre-dawn fragment as part of a night. */
+    private const CORE_SLEEP_START_HR = 22;
+
+    private const CORE_SLEEP_END_HR = 9;
 
     /**
      * Per-window RMSSD ceiling (ms). A 2-minute window above this is almost certainly a
@@ -159,26 +169,30 @@ class SealNightJob implements ShouldQueue
                 return; // nothing pending
             }
 
-            // Group windows by the NIGHT they belong to — the wake-morning date — not the raw calendar
-            // date. An evening window (local hour ≥ NIGHT_CUTOFF_HR) belongs to the next morning's night,
-            // so a 23:00 bedtime's pre- and post-midnight halves stay ONE group. Grouping by raw date split
-            // them, and the 01:00 cron sealed the pre-midnight half as a whole "night" while the user was
-            // still asleep — starving the morning's confirmed seal of those stages.
-            $byNight = $unsealed->groupBy(fn (DeviceIngestion $i) => $this->nightOf(
-                CarbonImmutable::parse($i->window_end ?? $i->window_start ?? $i->created_at)->setTimezone($tz)
-            ));
+            // Cluster the windows into SESSIONS by time gaps — not calendar dates. Windows within
+            // SESSION_GAP_S of each other are one session (a mid-night charge pause stays inside it, as a
+            // NODATA hole); a larger gap starts a new one. An evening workout, the night, and an afternoon
+            // nap become distinct sessions instead of one calendar bucket — the durable replacement for the
+            // nightOf/span heuristics that mis-split nights, mis-dated evening windows, and mislabelled a
+            // charge-split night half as a nap.
+            $todayLocal = now()->setTimezone($tz)->toDateString();
+            foreach ($this->clusterSessions($unsealed) as $windows) {
+                // The session's date = its WAKE (last window end) local date. No forward-shift, so evening
+                // windows never leak into tomorrow's readiness.
+                $wake = CarbonImmutable::createFromTimestamp($windows->max(fn ($i) => $this->winEnd($i)), 'UTC')->setTimezone($tz);
+                $date = $wake->toDateString();
 
-            foreach ($byNight as $date => $windows) {
-                // If a specific night was requested, only seal that one.
                 if ($this->night !== null && $date !== $this->night) {
-                    continue;
+                    continue; // a --night reseal targets one session
                 }
-
-                if (! $this->nightIsComplete($windows, $date, $tz)) {
+                if ($date > $todayLocal) {
+                    continue; // never seal a FUTURE-dated session (an evening cluster can't be tomorrow's night)
+                }
+                if (! $this->sessionIsComplete($windows, $date, $tz)) {
                     continue; // still streaming -- let it finish
                 }
 
-                $this->sealNight($profile, $biosignal, (string) $date, $tz, $windows);
+                $this->sealNight($profile, $biosignal, $date, $tz, $windows);
             }
         } catch (\Throwable $e) {
             Log::warning('[Biosignal] night seal failed', [
@@ -197,34 +211,72 @@ class SealNightJob implements ShouldQueue
         }
     }
 
+    /** True if a session touches the overnight hours (an endpoint falls in [CORE_SLEEP_START, END) local),
+     *  i.e. it's a real night rather than a daytime/evening cluster. Long sessions are caught by span too. */
+    private function touchesSleepHours(CarbonImmutable $t0, CarbonImmutable $t1): bool
+    {
+        $inCore = fn (int $h) => $h >= self::CORE_SLEEP_START_HR || $h < self::CORE_SLEEP_END_HR;
+
+        return $inCore($t0->hour) || $inCore($t1->hour);
+    }
+
+    /** UTC unix timestamp of a window's start / end (falls back across the columns). */
+    private function winStart(DeviceIngestion $i): int
+    {
+        return CarbonImmutable::parse($i->window_start ?? $i->window_end ?? $i->created_at)->timestamp;
+    }
+
+    private function winEnd(DeviceIngestion $i): int
+    {
+        return CarbonImmutable::parse($i->window_end ?? $i->window_start ?? $i->created_at)->timestamp;
+    }
+
     /**
-     * A night is sealable once it is quiescent: the most recent window ended more than
-     * QUIET_MINUTES ago (the device finished streaming), OR the night is in the past
-     * relative to the device-owner's local "today" (a morning cutoff -- yesterday is done).
+     * Cluster windows into SESSIONS by time gaps: a gap larger than SESSION_GAP_S starts a new session.
+     * This replaces calendar-date grouping — an evening cluster, the night, and an afternoon nap come out
+     * as separate sessions, and a night that paused to charge stays one (the pause is a hole, not a split).
+     *
+     * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
+     * @return array<int,\Illuminate\Support\Collection<int,DeviceIngestion>>
+     */
+    private function clusterSessions(\Illuminate\Support\Collection $windows): array
+    {
+        $sorted = $windows->sortBy(fn (DeviceIngestion $i) => $this->winStart($i))->values();
+        $sessions = [];
+        $cur = [];
+        $lastEnd = null;
+        foreach ($sorted as $i) {
+            if ($lastEnd !== null && ($this->winStart($i) - $lastEnd) > self::SESSION_GAP_S) {
+                $sessions[] = collect($cur);
+                $cur = [];
+            }
+            $cur[] = $i;
+            $lastEnd = max($lastEnd ?? $this->winEnd($i), $this->winEnd($i));
+        }
+        if ($cur) {
+            $sessions[] = collect($cur);
+        }
+
+        return $sessions;
+    }
+
+    /**
+     * A session is sealable once it is quiescent: its last window ended more than QUIET_MINUTES ago (the
+     * device finished streaming it), OR its date is already in the past. A confirmed marker seals now.
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
      */
-    private function nightIsComplete(\Illuminate\Support\Collection $windows, string $date, string $tz): bool
+    private function sessionIsComplete(\Illuminate\Support\Collection $windows, string $date, string $tz): bool
     {
         if ($this->confirmed) {
-            return true; // the user explicitly marked awake on the band — seal now, don't wait for
-            // quiescence. This also keeps the hourly cron (confirmed=false, still gated below) from
-            // sealing the fresh night out from under the user's confirmed summary.
+            return true; // the user marked awake on the band — seal now, don't wait for quiescence.
         }
 
-        if ($date < now($tz)->toDateString()) {
-            return true; // a past night -- morning cutoff
+        if ($date < now()->setTimezone($tz)->toDateString()) {
+            return true; // a past session -- the day is done
         }
 
-        $lastEnd = $windows
-            ->map(fn (DeviceIngestion $i) => $i->window_end ?? $i->window_start ?? $i->created_at)
-            ->filter()
-            ->map(fn ($t) => CarbonImmutable::parse($t))
-            ->max();
-
-        if (! $lastEnd) {
-            return false;
-        }
+        $lastEnd = CarbonImmutable::createFromTimestamp($windows->max(fn (DeviceIngestion $i) => $this->winEnd($i)), 'UTC');
 
         return $lastEnd->lte(now()->subMinutes(self::QUIET_MINUTES));
     }
@@ -239,164 +291,154 @@ class SealNightJob implements ShouldQueue
     {
         $ibiWindows = $windows->whereIn('kind', ['ibi', 'ppg_raw']);
         $sleepWindows = $windows->where('kind', 'sleep');
-
-        $sealedIds = [];
-
-        // --- Whole-night HRV / RHR → recovery_logs ---
-        if ($ibiWindows->isNotEmpty()) {
-            $allIbi = [];
-            $accel = [];
-            $windowStart = null;
-            $windowEnd = null;
-            $windowsUsed = 0;       // windows whose beats fed the whole-night aggregate
-            $windowsDropped = 0;    // windows rejected as artifacts (or with a missing blob)
-
-            foreach ($ibiWindows as $ingestion) {
-                // Prefer the per-window IBI persisted by ProcessWindowJob -- this is what makes
-                // ppg_raw (the Bangle) sealable, since its raw blob holds samples, not IBI. Fall
-                // back to the blob's ibi_ms for Shape-A `ibi` windows (Polar / Apple Health).
-                $persistedIbi = $ingestion->result_refs['ibi_ms'] ?? null;
-                if (is_array($persistedIbi)) {
-                    // Drop artifact windows (implausible per-window RMSSD) from the aggregate;
-                    // they're still sealed below so the night isn't reprocessed.
-                    $winRmssd = $ingestion->result_refs['rmssd'] ?? null;
-                    if (! is_numeric($winRmssd) || $winRmssd <= self::ARTIFACT_RMSSD_CEIL_MS) {
-                        foreach ($persistedIbi as $v) {
-                            if (is_numeric($v)) {
-                                $allIbi[] = (float) $v;
-                            }
-                        }
-                        $windowStart = $windowStart ?? ($ingestion->window_start ?? null);
-                        $windowEnd = $ingestion->window_end ?? $windowEnd;
-                        $windowsUsed++;
-                    } else {
-                        $windowsDropped++;
-                    }
-
-                    continue;
-                }
-
-                $window = $this->loadWindow($ingestion);
-                if ($window === null) {
-                    $windowsDropped++;
-
-                    continue; // raw blob missing -- skip, but still seal so we don't loop forever
-                }
-                foreach ((array) ($window['ibi_ms'] ?? []) as $v) {
-                    if (is_numeric($v)) {
-                        $allIbi[] = (float) $v;
-                    }
-                }
-                foreach ((array) ($window['accel_counts'] ?? []) as $v) {
-                    $accel[] = $v;
-                }
-                $windowStart = $windowStart ?? ($ingestion->window_start ?? null);
-                $windowEnd = $ingestion->window_end ?? $windowEnd;
-                $windowsUsed++;
-            }
-
-            if (count($allIbi) >= 10 && $biosignal->configured()) {
-                $wholeNight = [
-                    'kind' => 'ibi',
-                    'start' => $windowStart ? CarbonImmutable::parse($windowStart)->toIso8601ZuluString() : null,
-                    'end' => $windowEnd ? CarbonImmutable::parse($windowEnd)->toIso8601ZuluString() : null,
-                    'ibi_ms' => $allIbi,
-                    'accel_counts' => $accel,
-                    'whole_night' => true,
-                ];
-
-                $result = $biosignal->processHrv($wholeNight);
-                $metrics = $result['metrics'] ?? [];
-                $algoVersion = $result['algo_version'] ?? config('services.biosignal.algo_version', 'v1');
-
-                // Fail SAFE: only write a recovery read when the service explicitly says the
-                // whole-night signal is valid. A missing flag means an unexpected/erroring
-                // response, not a clean night -- don't present it as a real reading.
-                if (($metrics['valid'] ?? false) === true) {
-                    // Whole-night respiratory rate. PREFER the value the whole-night pass computes from
-                    // the aggregated IBI (RSA) — the band's 30 s bursts are too short for waveform
-                    // respiration, so the per-window PPG estimate is usually absent. Fall back to the
-                    // median of any per-window values (a longer-window device like Polar/Apple provides).
-                    $respRate = $metrics['resp_rate'] ?? null;
-                    if ($respRate === null) {
-                        $respRate = $ibiWindows
-                            ->map(fn (DeviceIngestion $i) => $i->result_refs['resp_rate'] ?? null)
-                            ->filter(fn ($v) => is_numeric($v))
-                            ->median();
-                    }
-
-                    // Idempotent re-seal guard: if a MORE complete sealed read already exists
-                    // (more beats), keep it -- a re-seal triggered by a lone late window must not
-                    // replace a good whole-night aggregate with a worse one.
-                    $prior = RecoveryLog::query()
-                        ->where('profile_id', $profile->id)->whereDate('logged_at', $date)
-                        ->where('updated_via', 'like', 'biosignal:sealed%')->first();
-
-                    if ($prior && (int) ($prior->quality['beats'] ?? 0) >= count($allIbi)) {
-                        $log = $prior;
-                    } else {
-                        $log = RecoveryLog::updateOrCreate(
-                            ['profile_id' => $profile->id, 'logged_at' => $date],
-                            array_filter([
-                                'hrv_ms' => isset($metrics['hrv_ms']) ? (int) round($metrics['hrv_ms']) : null,
-                                'resting_hr' => isset($metrics['resting_hr']) ? (int) round($metrics['resting_hr']) : null,
-                                'resp_rate' => $respRate !== null ? round((float) $respRate, 1) : null,
-                                'updated_via' => 'biosignal:sealed',
-                                // Provenance for RecoveryConfidence: how clean was this night's aggregate.
-                                'quality' => [
-                                    'windows_used' => $windowsUsed,
-                                    'windows_dropped' => $windowsDropped,
-                                    'beats' => count($allIbi),
-                                    'valid' => true,
-                                ],
-                            ], fn ($v) => $v !== null),
-                        );
-                    }
-
-                    $ibiWindows->each(function (DeviceIngestion $i) use ($algoVersion, $log) {
-                        $i->update([
-                            'status' => DeviceIngestion::STATUS_SEALED,
-                            'algo_version' => $algoVersion,
-                            'result_refs' => array_merge((array) $i->result_refs, ['recovery_log_id' => $log->id, 'sealed' => true]),
-                        ]);
-                    });
-
-                    // Recovery is in -- let the COACH react: morning read + a note in the chat,
-                    // deduped to once a day (see ReactToDeviceSync). Best-effort, off the seal path.
-                    \App\Jobs\ReactToDeviceSync::dispatch($profile->id);
-                } else {
-                    // Invalid whole-night signal -- still seal so we don't reprocess endlessly.
-                    $ibiWindows->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
-                }
-            } elseif (! $biosignal->configured()) {
-                // Service UNCONFIGURED (missing/typo'd biosignal url after a deploy) is an ops state,
-                // not a data verdict — leave the windows unsealed so the hourly seal cron reprocesses
-                // them once config returns. Sealing here silently discarded whole nights.
-                Log::warning('[Biosignal] night left unsealed: service not configured', ['profile_id' => $profile->id]);
-            } else {
-                // Genuinely too little data -- seal to release the night.
-                $ibiWindows->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
-            }
-
-            $sealedIds = $ibiWindows->pluck('id')->all();
+        if ($ibiWindows->isEmpty() && $sleepWindows->isEmpty()) {
+            return;
         }
 
-        // --- Whole-night sleep staging → sleep_logs ---
+        // Biosignal down/unconfigured is an OPS state, not a data verdict — leave everything unsealed so
+        // the hourly cron retries once it's back, rather than releasing the windows with no row.
+        if (! $biosignal->configured()) {
+            Log::warning('[Biosignal] session left unsealed: service not configured', ['profile_id' => $profile->id]);
+
+            return;
+        }
+
+        // Is this session a NIGHT (recovery-worthy) or a shorter nap / evening cluster? A night runs ≥4h OR
+        // touches the overnight hours — an evening workout cluster is neither, so it writes no recovery.
+        $t0 = CarbonImmutable::createFromTimestamp($windows->min(fn (DeviceIngestion $i) => $this->winStart($i)), 'UTC')->setTimezone($tz);
+        $t1 = CarbonImmutable::createFromTimestamp($windows->max(fn (DeviceIngestion $i) => $this->winEnd($i)), 'UTC')->setTimezone($tz);
+        $spanMin = (int) round(($t1->timestamp - $t0->timestamp) / 60);
+        $isNight = $spanMin >= self::NAP_MAX_MIN || $this->touchesSleepHours($t0, $t1);
+
+        // --- Whole-night HRV / RHR → recovery_logs. NIGHTS ONLY: a nap or an evening post-workout cluster
+        //     carries exercise-elevated HR, not resting recovery — writing it corrupted the readiness score.
+        if ($isNight && $ibiWindows->isNotEmpty()) {
+            $this->sealRecovery($profile, $biosignal, $date, $ibiWindows);
+        }
+
+        // --- Sleep staging → sleep_logs. This THROWS on a transient (biosignal restart) — so we bail
+        //     BEFORE the seal below, leaving the windows unsealed for the cron to retry (no stage loss).
         if ($sleepWindows->isNotEmpty()) {
-            $this->sealSleep($profile, $biosignal, $date, $sleepWindows);
+            $this->sealSleep($profile, $biosignal, $date, $tz, $sleepWindows);
         } elseif ($ibiWindows->isNotEmpty()) {
-            // The wearable sends raw PPG, not sleep windows -- stage sleep from the per-window
-            // epoch features (HR + motion proxy) the HRV pass persisted.
             $this->sealSleepFromPpg($profile, $biosignal, $date, $tz, $ibiWindows);
         }
 
-        Log::info('[Biosignal] night sealed', [
-            'profile_id' => $profile->id,
-            'night' => $date,
-            'ibi_windows' => $ibiWindows->count(),
-            'sleep_windows' => $sleepWindows->count(),
-            'sealed_ids' => $sealedIds,
+        // Seal the windows only NOW — after recovery + staging both succeeded. (Was: the HRV pass sealed
+        // them first, so a transient sleep-staging failure released the windows and lost the stages forever.)
+        $windows->each(fn (DeviceIngestion $i) => $i->update([
+            'status' => DeviceIngestion::STATUS_SEALED,
+            'result_refs' => array_merge((array) $i->result_refs, ['sealed' => true]),
+        ]));
+
+        Log::info('[Biosignal] session sealed', [
+            'profile_id' => $profile->id, 'date' => $date, 'span_min' => $spanMin, 'is_night' => $isNight,
+            'ibi_windows' => $ibiWindows->count(), 'sleep_windows' => $sleepWindows->count(),
         ]);
+    }
+
+    /**
+     * Whole-night HRV / RHR aggregate → the authoritative recovery_logs row. Does NOT seal the windows
+     * (the caller does, only after staging also succeeds) and only writes when the service flags the
+     * aggregate valid. Throws a transient service error up so the caller can leave the windows for retry.
+     *
+     * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $ibiWindows
+     */
+    private function sealRecovery(Profile $profile, BiosignalClient $biosignal, string $date, \Illuminate\Support\Collection $ibiWindows): void
+    {
+        $allIbi = [];
+        $accel = [];
+        $windowStart = null;
+        $windowEnd = null;
+        $windowsUsed = 0;
+        $windowsDropped = 0;
+
+        foreach ($ibiWindows as $ingestion) {
+            $persistedIbi = $ingestion->result_refs['ibi_ms'] ?? null;
+            if (is_array($persistedIbi)) {
+                $winRmssd = $ingestion->result_refs['rmssd'] ?? null;
+                if (! is_numeric($winRmssd) || $winRmssd <= self::ARTIFACT_RMSSD_CEIL_MS) {
+                    foreach ($persistedIbi as $v) {
+                        if (is_numeric($v)) {
+                            $allIbi[] = (float) $v;
+                        }
+                    }
+                    $windowStart = $windowStart ?? ($ingestion->window_start ?? null);
+                    $windowEnd = $ingestion->window_end ?? $windowEnd;
+                    $windowsUsed++;
+                } else {
+                    $windowsDropped++;
+                }
+
+                continue;
+            }
+
+            $window = $this->loadWindow($ingestion);
+            if ($window === null) {
+                $windowsDropped++;
+
+                continue;
+            }
+            foreach ((array) ($window['ibi_ms'] ?? []) as $v) {
+                if (is_numeric($v)) {
+                    $allIbi[] = (float) $v;
+                }
+            }
+            foreach ((array) ($window['accel_counts'] ?? []) as $v) {
+                $accel[] = $v;
+            }
+            $windowStart = $windowStart ?? ($ingestion->window_start ?? null);
+            $windowEnd = $ingestion->window_end ?? $windowEnd;
+            $windowsUsed++;
+        }
+
+        if (count($allIbi) < 10) {
+            return; // too little to aggregate a stable recovery read
+        }
+
+        $result = $biosignal->processHrv([
+            'kind' => 'ibi',
+            'start' => $windowStart ? CarbonImmutable::parse($windowStart)->toIso8601ZuluString() : null,
+            'end' => $windowEnd ? CarbonImmutable::parse($windowEnd)->toIso8601ZuluString() : null,
+            'ibi_ms' => $allIbi,
+            'accel_counts' => $accel,
+            'whole_night' => true,
+        ]);
+        $metrics = $result['metrics'] ?? [];
+        if (($metrics['valid'] ?? false) !== true) {
+            return; // fail safe: no recovery read unless the service says the aggregate is valid
+        }
+
+        // Whole-night respiratory rate (RSA from the aggregate), else the median per-window value.
+        $respRate = $metrics['resp_rate'] ?? null;
+        if ($respRate === null) {
+            $respRate = $ibiWindows->map(fn (DeviceIngestion $i) => $i->result_refs['resp_rate'] ?? null)
+                ->filter(fn ($v) => is_numeric($v))->median();
+        }
+
+        // Idempotent re-seal guard: a MORE complete sealed read (more beats) already there wins.
+        $prior = RecoveryLog::query()->where('profile_id', $profile->id)->whereDate('logged_at', $date)
+            ->where('updated_via', 'like', 'biosignal:sealed%')->first();
+        if ($prior && (int) ($prior->quality['beats'] ?? 0) >= count($allIbi)) {
+            $log = $prior;
+        } else {
+            $log = RecoveryLog::updateOrCreate(
+                ['profile_id' => $profile->id, 'logged_at' => $date],
+                array_filter([
+                    'hrv_ms' => isset($metrics['hrv_ms']) ? (int) round($metrics['hrv_ms']) : null,
+                    'resting_hr' => isset($metrics['resting_hr']) ? (int) round($metrics['resting_hr']) : null,
+                    'resp_rate' => $respRate !== null ? round((float) $respRate, 1) : null,
+                    'updated_via' => 'biosignal:sealed',
+                    'quality' => ['windows_used' => $windowsUsed, 'windows_dropped' => $windowsDropped, 'beats' => count($allIbi), 'valid' => true],
+                ], fn ($v) => $v !== null),
+            );
+        }
+
+        $ibiWindows->each(fn (DeviceIngestion $i) => $i->update([
+            'result_refs' => array_merge((array) $i->result_refs, ['recovery_log_id' => $log->id]),
+        ]));
+
+        \App\Jobs\ReactToDeviceSync::dispatch($profile->id);
     }
 
     /**
@@ -480,21 +522,30 @@ class SealNightJob implements ShouldQueue
             return;
         }
 
+        // Effective staging end = min(marker wake, LAST sampled). Beyond the last sample is unknown, not
+        // sleep — so if the user forgot to mark awake (marker wake hours after the band stopped), we stage
+        // and presume-sleep only up to where the band was still recording, never fold band-off daytime into
+        // "light sleep" (the 900-minute-night bug). We still trust the marker span for the thin-night
+        // duration-only fallback below (no staging = trust the user's declared bed→wake).
+        $lastSampleTs = (int) $scoped->max(fn (DeviceIngestion $i) => $this->winEnd($i));
+        $stageWakeDt = ($lastSampleTs > $bed && $lastSampleTs < $wake) ? CarbonImmutable::createFromTimestamp($lastSampleTs, 'UTC') : $wakeDt;
+        $stageSpanMin = (int) round(($stageWakeDt->timestamp - $bed) / 60);
+
         // Stage the scoped windows (best-effort). All-awake / no-signal → $metrics stays null and we
         // fall back to a duration-only row (the phantom guard) rather than presenting garbage.
-        $metrics = $this->stageScoped($biosignal, $scoped, $bedDt, $wakeDt);
+        $metrics = $this->stageScoped($biosignal, $scoped, $bedDt, $stageWakeDt);
 
-        // A CONFIRMED session declares [bed,wake], so the epochs the band didn't sample (NODATA holes) are
-        // presumed ASLEEP — not lost. Count them toward sleep so a 40%-covered night doesn't understate to
-        // ~3 h (phantom sleep debt), and so crossing the coverage gate is MONOTONIC (a staged night reports
-        // ≈ span, like the duration-only fallback, never LESS). Holes fold into light sleep; duration =
-        // span − detected wake. The auto path (no declaration) deliberately does NOT do this.
+        // A CONFIRMED session declares [bed,wake], so the epochs the band didn't sample (NODATA holes)
+        // WITHIN the observed span are presumed ASLEEP — not lost. Count them toward sleep so a 40%-covered
+        // night doesn't understate to ~3 h (phantom debt) and crossing the coverage gate is MONOTONIC.
+        // Holes fold into light; duration = observed-span − detected wake. The auto path does NOT do this.
         if ($metrics !== null) {
             $awake = (int) round($metrics['awake_min'] ?? 0);
             $staged = (int) round(($metrics['deep_min'] ?? 0) + ($metrics['rem_min'] ?? 0) + ($metrics['light_min'] ?? 0));
-            $holeMin = max(0, $durMin - $awake - $staged);
+            $holeMin = max(0, $stageSpanMin - $awake - $staged);
             $metrics['light_min'] = (int) round($metrics['light_min'] ?? 0) + $holeMin;
-            $metrics['duration_min'] = max($staged, $durMin - $awake);
+            $metrics['duration_min'] = max($staged, $stageSpanMin - $awake);
+            $metrics['wake_time'] = $metrics['wake_time'] ?? $stageWakeDt->setTimezone($tz)->format('H:i:s');
         }
 
         $key = $isNap
@@ -638,12 +689,6 @@ class SealNightJob implements ShouldQueue
         return $asleep <= 0.0;
     }
 
-    /** The night (wake-morning date, Y-m-d) a local timestamp belongs to: an evening from NIGHT_CUTOFF_HR
-     *  maps forward to the next day, so 23:00 and the 02:00 that follows share one night, not two dates. */
-    private function nightOf(CarbonImmutable $local): string
-    {
-        return ($local->hour >= self::NIGHT_CUTOFF_HR ? $local->addDay() : $local)->toDateString();
-    }
 
     /**
      * Stage sleep from a raw-PPG (wearable) night (the automatic / cron pass). Sends the per-window 30-s
@@ -672,11 +717,13 @@ class SealNightJob implements ShouldQueue
         $t0 = CarbonImmutable::parse($withStart->sortBy('window_start')->first()->window_start);
         $t1 = CarbonImmutable::parse($withEnd->sortByDesc('window_end')->first()->window_end);
 
-        try {
-            $metrics = $this->stageSparse($biosignal, $ibiWindows, $t0, $t1);
-            if ($metrics === null) {
-                return; // too thin / mostly holes / all-awake phantom → no automatic row (needs confirmed)
-            }
+        // NOTE: no try/catch — a transient staging error THROWS up through sealNight so the windows are
+        // left unsealed (the caller seals only after this returns cleanly) and the cron retries. Swallowing
+        // it here would have released the windows with no stages, the permanent-loss bug on the auto path.
+        $metrics = $this->stageSparse($biosignal, $ibiWindows, $t0, $t1);
+        if ($metrics === null) {
+            return; // too thin / mostly holes / all-awake phantom → no automatic row (needs confirmed)
+        }
 
             // A SHORT cluster is a nap — key it by its own start (is_nap), NEVER by the night's date. Without
             // this, the evening cron (which sees only the still-unsealed afternoon-nap windows, the night's
@@ -706,15 +753,10 @@ class SealNightJob implements ShouldQueue
                 ], fn ($v) => $v !== null),
             );
 
-            // The night's data is computed either way; the coach SUMMARY fires only when the user
-            // marked awake on the band (confirmed) — so the morning push is user-controlled, never automatic.
-            if ($this->confirmed) {
-                \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
-            }
-        } catch (\Throwable $e) {
-            Log::warning('[Biosignal] ppg sleep staging failed', [
-                'profile_id' => $profile->id, 'night' => $date, 'error' => $e->getMessage(),
-            ]);
+        // The night's data is computed either way; the coach SUMMARY fires only when the user marked
+        // awake on the band (confirmed) — so the morning push is user-controlled, never automatic.
+        if ($this->confirmed) {
+            \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
         }
     }
 
@@ -724,7 +766,7 @@ class SealNightJob implements ShouldQueue
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $sleepWindows
      */
-    private function sealSleep(Profile $profile, BiosignalClient $biosignal, string $date, \Illuminate\Support\Collection $sleepWindows): void
+    private function sealSleep(Profile $profile, BiosignalClient $biosignal, string $date, string $tz, \Illuminate\Support\Collection $sleepWindows): void
     {
         $hr = [];
         $accel = [];
@@ -771,9 +813,19 @@ class SealNightJob implements ShouldQueue
                 return;
             }
 
+            // A short session is a nap — its own row (is_nap), never the night's (profile, slept_at) key,
+            // so a 25-min nap-window can't stamp itself over an 8-hour night on the same date.
+            $spanMin = ($start && $end)
+                ? (int) round((CarbonImmutable::parse($end)->timestamp - CarbonImmutable::parse($start)->timestamp) / 60) : 0;
+            $isNap = $spanMin > 0 && $spanMin < self::NAP_MAX_MIN;
+            $key = $isNap
+                ? ['profile_id' => $profile->id, 'session_start' => CarbonImmutable::parse($start)->setTimezone($tz)->toDateTimeString(), 'is_nap' => true]
+                : ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false];
+
             $log = SleepLog::updateOrCreate(
-                ['profile_id' => $profile->id, 'slept_at' => $date],
+                $key,
                 array_filter([
+                    'slept_at' => $date,
                     'duration_min' => isset($metrics['duration_min']) ? (int) round($metrics['duration_min']) : null,
                     'deep_min' => isset($metrics['deep_min']) ? (int) round($metrics['deep_min']) : null,
                     'rem_min' => isset($metrics['rem_min']) ? (int) round($metrics['rem_min']) : null,

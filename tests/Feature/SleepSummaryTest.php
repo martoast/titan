@@ -82,7 +82,7 @@ class SleepSummaryTest extends TestCase
         // A confirmed seal fires the instant the user wakes, so the last window ended seconds ago.
         // nightIsComplete must treat the user's explicit "awake" as complete instead of "still streaming".
         $job = new SealNightJob(1, '2026-06-25', confirmed: true);
-        $complete = new \ReflectionMethod($job, 'nightIsComplete');
+        $complete = new \ReflectionMethod($job, 'sessionIsComplete');
         $complete->setAccessible(true);
 
         // Use the date IN THE SAME TZ we pass ('UTC') — mixing now()->toDateString() (the app tz) with a
