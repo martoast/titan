@@ -92,13 +92,14 @@ struct HypnogramChart: View {
     private static let lanes = ["Awake", "REM", "Light", "Deep"]
 
     private func lane(_ s: String) -> Int {
-        switch s { case "wake", "awake": return 0; case "rem": return 1; case "light": return 2; default: return 3 }
+        switch s { case "wake", "awake": return 0; case "rem": return 1; case "light": return 2; case "nodata": return 0; default: return 3 }
     }
     private func color(_ s: String) -> Color {
         switch s {
         case "wake", "awake": return Theme.Palette.pink.opacity(0.85)
         case "rem": return Theme.Palette.violet
         case "light": return Theme.Palette.cyan.opacity(0.7)
+        case "nodata": return Theme.Palette.textFaint.opacity(0.22)   // a coverage hole — a faint gap, never sleep
         default: return Theme.Palette.indigo
         }
     }

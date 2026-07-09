@@ -149,6 +149,70 @@ class SleepDutyCycleSealTest extends TestCase
         $this->assertNotNull($log->hypnogram);
     }
 
+    public function test_partial_coverage_counts_holes_as_sleep_so_debt_math_is_not_starved(): void
+    {
+        // A confirmed 6h50m night the band only half-sampled: staged asleep is small, but the user
+        // DECLARED bed→wake, so the unsampled holes are presumed sleep. Duration must read ≈ the span
+        // (span − detected wake), never the understated ~2.5h that would accrue phantom debt.
+        $this->fakeSleep([
+            'duration_min' => 150, 'deep_min' => 40, 'rem_min' => 30, 'light_min' => 80, 'awake_min' => 20,
+            'bedtime' => '23:06:00', 'wake_time' => '04:44:00', 'quality' => 78, 'coverage' => 0.45,
+            'hypnogram_30s' => array_fill(0, 820, 'light'),
+        ]);
+
+        $profile = User::factory()->create()->ensureProfile();
+        $wake = time();
+        $bed = $wake - 410 * 60;
+        $this->dutyCycleNight($profile->id, $bed, $wake);
+
+        Queue::fake();
+        (new SealNightJob($profile->id, null, true, $bed, $wake, 0))->handle(app(BiosignalClient::class));
+
+        $log = SleepLog::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($log);
+        // span 410 − awake 20 = 390, NOT the staged 150. Holes fold into light (80 + 240 = 320).
+        $this->assertEqualsWithDelta(390, (int) $log->duration_min, 1, 'holes within a declared session count as sleep');
+        $this->assertSame(40, (int) $log->deep_min, 'real staged deep is preserved');
+        $this->assertGreaterThan(80, (int) $log->light_min, 'the unsampled stretch folds into light sleep');
+    }
+
+    public function test_a_transient_staging_failure_retries_instead_of_sealing_a_lossy_row(): void
+    {
+        // biosignal restarts mid-deploy → 500. The confirmed seal must NOT swallow it and write a
+        // duration-only row while marking the windows sealed forever — it must THROW so the queue retries.
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake(['*/process/sleep' => Http::response('service restarting', 500)]);
+
+        $profile = User::factory()->create()->ensureProfile();
+        $wake = time();
+        $bed = $wake - 410 * 60;
+        $this->dutyCycleNight($profile->id, $bed, $wake);
+
+        $threw = false;
+        try {
+            (new SealNightJob($profile->id, null, true, $bed, $wake, 0))->handle(app(BiosignalClient::class));
+        } catch (\Throwable $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'a transient staging error must propagate so the job retries');
+        $this->assertSame(0, SleepLog::where('profile_id', $profile->id)->count(), 'no lossy duration-only row on a transient');
+        $this->assertSame(0, DeviceIngestion::where('profile_id', $profile->id)
+            ->where('status', DeviceIngestion::STATUS_SEALED)->count(), 'windows stay unsealed for the retry');
+    }
+
+    public function test_night_of_grouping_keeps_a_pre_midnight_bedtime_in_one_night(): void
+    {
+        $job = new SealNightJob(1, null, false);
+        $m = new \ReflectionMethod(SealNightJob::class, 'nightOf');
+        $m->setAccessible(true);
+        $evening = \Carbon\CarbonImmutable::parse('2026-07-08 23:30:00', 'UTC');
+        $morning = \Carbon\CarbonImmutable::parse('2026-07-09 03:00:00', 'UTC');
+        $this->assertSame($m->invoke($job, $evening), $m->invoke($job, $morning),
+            '23:30 and the 03:00 that follows belong to the SAME night (the wake-morning date)');
+        $this->assertSame('2026-07-09', $m->invoke($job, $evening), 'evening maps forward to the wake date');
+    }
+
     public function test_absurd_span_is_clamped_not_written_as_a_17_hour_night(): void
     {
         $this->fakeSleep(['coverage' => 0.0, 'hypnogram_30s' => []]);   // no real staging

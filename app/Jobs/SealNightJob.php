@@ -68,6 +68,10 @@ class SealNightJob implements ShouldQueue
      *  flag it rather than writing a 17-hour night into recovery/debt math. */
     private const MAX_SESSION_MIN = 16 * 60;
 
+    /** Local hour from which a window belongs to the NEXT morning's night (so a 23:00 bedtime doesn't
+     *  split across the calendar-date boundary). Evenings from 18:00 map forward to the wake date. */
+    private const NIGHT_CUTOFF_HR = 18;
+
     /**
      * Per-window RMSSD ceiling (ms). A 2-minute window above this is almost certainly a
      * peak-detection artifact (a missed/extra beat creates a huge successive difference),
@@ -155,11 +159,14 @@ class SealNightJob implements ShouldQueue
                 return; // nothing pending
             }
 
-            // Group windows by the local calendar night (resolved from window_end).
-            $byNight = $unsealed->groupBy(
-                fn (DeviceIngestion $i) => CarbonImmutable::parse($i->window_end ?? $i->window_start ?? $i->created_at)
-                    ->setTimezone($tz)->toDateString()
-            );
+            // Group windows by the NIGHT they belong to — the wake-morning date — not the raw calendar
+            // date. An evening window (local hour ≥ NIGHT_CUTOFF_HR) belongs to the next morning's night,
+            // so a 23:00 bedtime's pre- and post-midnight halves stay ONE group. Grouping by raw date split
+            // them, and the 01:00 cron sealed the pre-midnight half as a whole "night" while the user was
+            // still asleep — starving the morning's confirmed seal of those stages.
+            $byNight = $unsealed->groupBy(fn (DeviceIngestion $i) => $this->nightOf(
+                CarbonImmutable::parse($i->window_end ?? $i->window_start ?? $i->created_at)->setTimezone($tz)
+            ));
 
             foreach ($byNight as $date => $windows) {
                 // If a specific night was requested, only seal that one.
@@ -179,10 +186,12 @@ class SealNightJob implements ShouldQueue
                 'night' => $this->night,
                 'error' => $e->getMessage(),
             ]);
-            // Don't rethrow on the auto-scheduled pass (night === null): a single bad night must not
-            // fail the job for every profile the scheduler fans out to. Only a TARGETED reseal
-            // (--night=...) rethrows, so its retry/backoff still applies for transient service errors.
-            if ($this->night !== null) {
+            // Rethrow on a TARGETED job so its retry/backoff applies for a transient service error (e.g.
+            // biosignal restarting mid-deploy): a --night reseal, and — critically — a user-CONFIRMED
+            // session (the watch's "I'm awake"), which is one profile from a T9 marker, NOT the fan-out.
+            // Only the auto-scheduled pass (night === null AND not confirmed) swallows, so one bad night
+            // can't fail the seal for every profile the scheduler loops over.
+            if ($this->night !== null || $this->confirmed) {
                 throw $e;
             }
         }
@@ -378,7 +387,7 @@ class SealNightJob implements ShouldQueue
         } elseif ($ibiWindows->isNotEmpty()) {
             // The wearable sends raw PPG, not sleep windows -- stage sleep from the per-window
             // epoch features (HR + motion proxy) the HRV pass persisted.
-            $this->sealSleepFromPpg($profile, $biosignal, $date, $ibiWindows);
+            $this->sealSleepFromPpg($profile, $biosignal, $date, $tz, $ibiWindows);
         }
 
         Log::info('[Biosignal] night sealed', [
@@ -474,6 +483,19 @@ class SealNightJob implements ShouldQueue
         // Stage the scoped windows (best-effort). All-awake / no-signal → $metrics stays null and we
         // fall back to a duration-only row (the phantom guard) rather than presenting garbage.
         $metrics = $this->stageScoped($biosignal, $scoped, $bedDt, $wakeDt);
+
+        // A CONFIRMED session declares [bed,wake], so the epochs the band didn't sample (NODATA holes) are
+        // presumed ASLEEP — not lost. Count them toward sleep so a 40%-covered night doesn't understate to
+        // ~3 h (phantom sleep debt), and so crossing the coverage gate is MONOTONIC (a staged night reports
+        // ≈ span, like the duration-only fallback, never LESS). Holes fold into light sleep; duration =
+        // span − detected wake. The auto path (no declaration) deliberately does NOT do this.
+        if ($metrics !== null) {
+            $awake = (int) round($metrics['awake_min'] ?? 0);
+            $staged = (int) round(($metrics['deep_min'] ?? 0) + ($metrics['rem_min'] ?? 0) + ($metrics['light_min'] ?? 0));
+            $holeMin = max(0, $durMin - $awake - $staged);
+            $metrics['light_min'] = (int) round($metrics['light_min'] ?? 0) + $holeMin;
+            $metrics['duration_min'] = max($staged, $durMin - $awake);
+        }
 
         $key = $isNap
             ? ['profile_id' => $profile->id, 'session_start' => $bedDt->setTimezone($tz)->toDateTimeString(), 'is_nap' => true]
@@ -574,32 +596,33 @@ class SealNightJob implements ShouldQueue
             // through (the stager bridges their small gaps, so a real nap reads high-coverage, not thin).
         }
 
-        try {
-            $result = $biosignal->processSleep([
-                'kind' => 'sleep',
-                'start' => $t0->toIso8601ZuluString(),
-                'end' => $t1->toIso8601ZuluString(),
-                'accel_counts' => $accel,
-                'hr_bpm' => $hr,
-                'rmssd_ms' => $rmssd,
-                'sample_epochs' => $epochs,
-                'whole_night' => true,
-            ]);
-            $metrics = $result['metrics'] ?? [];
+        // NOTE: a transient failure here (biosignal restarting mid-deploy — which happens on every push)
+        // must NOT be swallowed. If we returned null the caller would seal a duration-only row and mark
+        // the windows sealed for good, losing the stages permanently. So we let it THROW: the job retries
+        // (tries/backoff), and if it truly exhausts, the windows stay unsealed for the hourly cron. Only a
+        // clean staging that's genuinely thin / mostly-hole / all-awake returns null (→ honest duration-only).
+        $result = $biosignal->processSleep([
+            'kind' => 'sleep',
+            'start' => $t0->toIso8601ZuluString(),
+            'end' => $t1->toIso8601ZuluString(),
+            'accel_counts' => $accel,
+            'hr_bpm' => $hr,
+            'rmssd_ms' => $rmssd,
+            'sample_epochs' => $epochs,
+            'whole_night' => true,
+        ]);
+        $metrics = $result['metrics'] ?? [];
 
-            if (($metrics['coverage'] ?? 1.0) < self::MIN_COVERAGE) {
-                return null; // mostly holes — an honest duration-only night beats stages built on nothing
-            }
-            if ($this->stagedAllAwake($metrics)) {
-                return null; // phantom guard: nothing scored asleep → don't present an all-awake block
-            }
-
-            return $metrics;
-        } catch (\Throwable $e) {
-            Log::warning('[Biosignal] scoped session staging failed', ['error' => $e->getMessage()]);
-
-            return null;
+        // Fail the gate CLOSED: a response with no coverage field (an old stager during deploy skew, whose
+        // answer is the smeared pre-fix one) must not sail through. `?? 0.0`, not 1.0.
+        if (($metrics['coverage'] ?? 0.0) < self::MIN_COVERAGE) {
+            return null; // mostly holes / unknown coverage — an honest duration-only night beats fabricated stages
         }
+        if ($this->stagedAllAwake($metrics)) {
+            return null; // phantom guard: nothing scored asleep → don't present an all-awake block
+        }
+
+        return $metrics;
     }
 
     /**
@@ -615,6 +638,13 @@ class SealNightJob implements ShouldQueue
         return $asleep <= 0.0;
     }
 
+    /** The night (wake-morning date, Y-m-d) a local timestamp belongs to: an evening from NIGHT_CUTOFF_HR
+     *  maps forward to the next day, so 23:00 and the 02:00 that follows share one night, not two dates. */
+    private function nightOf(CarbonImmutable $local): string
+    {
+        return ($local->hour >= self::NIGHT_CUTOFF_HR ? $local->addDay() : $local)->toDateString();
+    }
+
     /**
      * Stage sleep from a raw-PPG (wearable) night (the automatic / cron pass). Sends the per-window 30-s
      * epoch features (HR + motion proxy) persisted by ProcessWindowJob to the stager as SPARSE samples at
@@ -625,7 +655,7 @@ class SealNightJob implements ShouldQueue
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $ibiWindows
      */
-    private function sealSleepFromPpg(Profile $profile, BiosignalClient $biosignal, string $date, \Illuminate\Support\Collection $ibiWindows): void
+    private function sealSleepFromPpg(Profile $profile, BiosignalClient $biosignal, string $date, string $tz, \Illuminate\Support\Collection $ibiWindows): void
     {
         if (! $biosignal->configured()) {
             return;
@@ -648,9 +678,20 @@ class SealNightJob implements ShouldQueue
                 return; // too thin / mostly holes / all-awake phantom → no automatic row (needs confirmed)
             }
 
+            // A SHORT cluster is a nap — key it by its own start (is_nap), NEVER by the night's date. Without
+            // this, the evening cron (which sees only the still-unsealed afternoon-nap windows, the night's
+            // having sealed in the morning) would updateOrCreate the (profile, night-date) key and OVERWRITE
+            // an 8-hour night with a 25-minute nap. A night-length cluster keeps the (profile, slept_at) key.
+            $spanMin = (int) round(($t1->timestamp - $t0->timestamp) / 60);
+            $isNap = $spanMin < self::NAP_MAX_MIN;
+            $key = $isNap
+                ? ['profile_id' => $profile->id, 'session_start' => $t0->setTimezone($tz)->toDateTimeString(), 'is_nap' => true]
+                : ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false];
+
             $log = SleepLog::updateOrCreate(
-                ['profile_id' => $profile->id, 'slept_at' => $date],
+                $key,
                 array_filter([
+                    'slept_at' => $date,
                     'duration_min' => isset($metrics['duration_min']) ? (int) round($metrics['duration_min']) : null,
                     'deep_min' => isset($metrics['deep_min']) ? (int) round($metrics['deep_min']) : null,
                     'rem_min' => isset($metrics['rem_min']) ? (int) round($metrics['rem_min']) : null,

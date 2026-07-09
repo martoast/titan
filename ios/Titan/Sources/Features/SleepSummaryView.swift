@@ -250,6 +250,8 @@ struct SleepSummaryView: View {
         case "rem": return (1, Theme.Palette.violet)
         case "light": return (2, Theme.Palette.cyan)
         case "deep": return (3, Theme.Palette.indigo)
+        // A coverage HOLE (band didn't sample) — a faint gap, NEVER painted as sleep.
+        case "nodata": return (0, Theme.Palette.textFaint.opacity(0.22))
         default: return (2, Theme.Palette.cyan)
         }
     }
