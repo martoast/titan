@@ -25,6 +25,7 @@ class SleepWindow(BaseModel):
     rmssd_ms: Optional[List[Optional[float]]] = Field(default=None, description="Per-30s-epoch RMSSD (deep/REM discriminator).")
     start: Optional[str] = Field(default=None, description="Bedtime / window start (ISO-8601 UTC).")
     end: Optional[str] = Field(default=None, description="Window end (ISO-8601 UTC).")
+    sample_epochs: Optional[List[int]] = Field(default=None, description="Parallel to accel_counts: each value's real 30s-epoch index in [start,end]. Set for the duty-cycle band — samples are scattered onto the full-night grid, short gaps bridged, long gaps marked as NODATA coverage holes. Omit for a dense per-epoch series (legacy resample).")
 
 
 class SleepMetrics(BaseModel):
@@ -36,6 +37,7 @@ class SleepMetrics(BaseModel):
     bedtime: str
     wake_time: str
     quality: int
+    coverage: float = 1.0    # fraction of the night actually sampled (rest are NODATA holes)
     hypnogram_30s: List[str]
 
 
@@ -53,6 +55,7 @@ async def process_sleep(window: SleepWindow) -> SleepResponse:
             rmssd_ms=window.rmssd_ms,
             start=window.start,
             end=window.end,
+            sample_epochs=window.sample_epochs,
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Sleep staging failed: {exc}")

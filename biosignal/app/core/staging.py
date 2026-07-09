@@ -37,8 +37,16 @@ EPOCH_SEC = 30
 # must never allocate millions of epochs and spin the Viterbi/rolling loops (memory + CPU DoS).
 MAX_EPOCHS = 2 * 24 * 60 * 60 // EPOCH_SEC
 
-# Stage codes for the 30-s hypnogram.
-WAKE, LIGHT, DEEP, REM = "wake", "light", "deep", "rem"
+# Stage codes for the 30-s hypnogram. NODATA marks an epoch the band never sampled and that is too
+# far from any real sample to infer — a coverage HOLE. It is scored as neither asleep nor awake.
+WAKE, LIGHT, DEEP, REM, NODATA = "wake", "light", "deep", "rem", "nodata"
+
+# The band duty-cycles overnight (~30 s burst every few minutes) to save battery, so the night arrives
+# as SPARSE samples with gaps. We bridge a short gap — a missed burst or two — by holding the neighbouring
+# sample (a quiet gap between asleep samples stays asleep); a gap longer than this is a real coverage hole
+# (band off, a mode change, or a genuinely unsampled stretch) and must NOT be smeared into sleep. 16 epochs
+# = 8 min ≈ 2–3 duty periods.
+FILL_GAP_MAX_EPOCHS = 16
 
 # Trained classifier (HistGradientBoosting on motion + HR features). This is the DEFAULT
 # stager, controlled by SLEEP_MODEL_ENABLED (set it to 0 to force the physiology HMM /
@@ -82,6 +90,66 @@ def _to_epochs(values: np.ndarray, n_epochs: int) -> np.ndarray:
     return np.interp(idx, np.arange(values.size), values)
 
 
+def _reconstruct(values, sample_epochs, n_epochs: int, max_gap: int = FILL_GAP_MAX_EPOCHS):
+    """Scatter SPARSE duty-cycle samples onto the full [start,end] epoch grid at their real index, then
+    hold-fill short gaps and leave long gaps as holes.
+
+    This is the heart of the duty-cycle fix. Each sample is placed at its own epoch (so a night of 30-s
+    bursts lands across the true bed→wake span, not concatenated into a short block), and replayed bursts
+    that share an epoch simply overwrite — they can't inflate coverage. Short gaps between samples are
+    held (a quiet stretch between asleep samples reads asleep); gaps longer than ``max_gap`` stay NaN so
+    the caller can mark them ``NODATA`` instead of fabricating sleep across a wakeful/off-wrist hour.
+
+    Returns ``(filled, covered)``: ``filled`` is the grid with NaN in the holes; ``covered`` is a bool
+    mask of the epochs that are real-or-bridged (everything else is a hole).
+    """
+    grid = np.full(n_epochs, np.nan)
+    for e, v in zip(sample_epochs, np.asarray(values, dtype=float).ravel()):
+        e = int(e)
+        if 0 <= e < n_epochs and np.isfinite(v):
+            grid[e] = v                          # duplicate epochs overwrite → replays don't add coverage
+    real = np.isfinite(grid)
+    filled = grid.copy()
+    covered = real.copy()
+    idxs = np.where(real)[0]
+    for a, b in zip(idxs[:-1], idxs[1:]):         # bridge only the SHORT gaps between consecutive samples
+        if b - a <= max_gap + 1:
+            filled[a + 1:b] = grid[a]             # sample-and-hold across the small gap
+            covered[a + 1:b] = True
+    return filled, covered                        # leading/trailing (pre-first, post-last) stay holes
+
+
+def _zero_to_nan(x: np.ndarray) -> np.ndarray:
+    """HR of exactly 0 is 'no reading', not a real bradycardia to 0 bpm — treat it as missing so an
+    all-zero HR grid can't poison the stager (which trusts HR where present)."""
+    x = np.asarray(x, dtype=float)
+    x[x <= 0] = np.nan
+    return x
+
+
+def _fill_holes(grid: np.ndarray) -> np.ndarray:
+    """Fill NaN holes with the nearest finite value (forward then backward) so the stager sees a
+    contiguous grid; the holes are relabelled NODATA afterwards, so these fills never reach the summary.
+    An all-NaN grid becomes zeros (the 'no signal' the fallbacks already handle)."""
+    g = np.asarray(grid, dtype=float).copy()
+    finite = np.where(np.isfinite(g))[0]
+    if finite.size == 0:
+        return np.zeros_like(g)
+    last = None
+    for i in range(g.size):                       # forward-fill
+        if np.isfinite(g[i]):
+            last = g[i]
+        elif last is not None:
+            g[i] = last
+    nxt = None
+    for i in range(g.size - 1, -1, -1):           # back-fill the leading holes
+        if np.isfinite(g[i]):
+            nxt = g[i]
+        elif nxt is not None:
+            g[i] = nxt
+    return g
+
+
 def _rolling_std(x: np.ndarray, win: int = 5) -> np.ndarray:
     out = np.zeros_like(x, dtype=float)
     half = win // 2
@@ -97,6 +165,7 @@ def stage_night(
     rmssd_ms: Optional[list] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
+    sample_epochs: Optional[list] = None,
 ) -> dict:
     """Produce a 30-s hypnogram + summary from per-epoch accel (+ HR + RMSSD).
 
@@ -104,6 +173,12 @@ def stage_night(
     decoded over physiological transitions) — robust and untrained. The opt-in trained
     model (SLEEP_MODEL_ENABLED) and the simple threshold heuristic remain as alternatives.
     All emit a per-epoch stage list over the SAME epoch grid; we smooth + summarise identically.
+
+    ``sample_epochs`` (parallel to ``accel_counts``) is the duty-cycle path: each value's real epoch
+    index in the [start,end] grid. When given, the samples are SCATTERED onto the full night span and the
+    quiet gaps between them are bridged (short) or marked NODATA holes (long) — so a night of sparse 30-s
+    bursts stages across its true duration instead of collapsing to the sum of the bursts. Without it, the
+    old dense behaviour (linear resample of a contiguous per-epoch series) is unchanged.
     """
     accel = np.asarray(accel_counts, dtype=float).ravel()
     if accel.size == 0:
@@ -119,14 +194,36 @@ def stage_night(
         n_epochs = min(int(accel.size), MAX_EPOCHS)
         t0 = _parse_ts(start) or datetime.now(timezone.utc)
 
-    accel_e = _to_epochs(accel, n_epochs)
-    hr_e = _to_epochs(np.asarray(hr_bpm, dtype=float), n_epochs) if hr_bpm else np.full(n_epochs, np.nan)
-    has_hr = np.isfinite(hr_e).any()
-    # Only treat RMSSD as present if at least one real value exists — an all-missing list
-    # must stay None (the HMM fallback handles None), never become zeros ("no HRV", a signal
-    # the stagers never trained on).
-    rmssd_e = (_to_epochs(_clean_floats(rmssd_ms), n_epochs)
-               if rmssd_ms and any(v is not None for v in rmssd_ms) else None)
+    hole_mask: Optional[np.ndarray] = None
+    if sample_epochs is not None and len(sample_epochs) == accel.size and n_epochs > 1:
+        # Sparse duty-cycle reconstruction: place each burst at its real epoch, hold short gaps, hole long.
+        accel_grid, covered = _reconstruct(accel, sample_epochs, n_epochs)
+        hole_mask = ~covered
+        accel_e = _fill_holes(accel_grid)
+        hr_arr = _zero_to_nan(np.asarray(hr_bpm, dtype=float)) if hr_bpm else None
+        if hr_arr is not None and hr_arr.size == accel.size:
+            hr_grid, _ = _reconstruct(hr_arr, sample_epochs, n_epochs)
+            has_hr = np.isfinite(hr_grid).any()
+            hr_e = _fill_holes(hr_grid)
+        else:
+            has_hr = False
+            hr_e = np.full(n_epochs, np.nan)
+        if rmssd_ms and any(v is not None for v in rmssd_ms):
+            rm = _clean_floats(rmssd_ms)
+            rmssd_grid, _ = _reconstruct(rm, sample_epochs, n_epochs) if rm.size == accel.size else (None, None)
+            rmssd_e = _fill_holes(rmssd_grid) if rmssd_grid is not None else None
+        else:
+            rmssd_e = None
+    else:
+        accel_e = _to_epochs(accel, n_epochs)
+        hr_full = _zero_to_nan(np.asarray(hr_bpm, dtype=float)) if hr_bpm else None
+        hr_e = _to_epochs(hr_full, n_epochs) if hr_full is not None else np.full(n_epochs, np.nan)
+        has_hr = np.isfinite(hr_e).any()
+        # Only treat RMSSD as present if at least one real value exists — an all-missing list
+        # must stay None (the HMM fallback handles None), never become zeros ("no HRV", a signal
+        # the stagers never trained on).
+        rmssd_e = (_to_epochs(_clean_floats(rmssd_ms), n_epochs)
+                   if rmssd_ms and any(v is not None for v in rmssd_ms) else None)
 
     hypnogram: Optional[list[str]] = None
 
@@ -155,6 +252,10 @@ def stage_night(
         hypnogram = _heuristic_stage(accel_e, hr_e, has_hr, n_epochs)
 
     hypnogram = _smooth_hypnogram(hypnogram)
+    if hole_mask is not None:
+        # Overwrite the coverage holes AFTER smoothing so a long unsampled gap reads as NODATA, never as
+        # fabricated sleep or wake. Isolated held-gaps (short) stay their inferred stage.
+        hypnogram = [NODATA if hole_mask[i] else s for i, s in enumerate(hypnogram)]
     return _summarize(hypnogram, t0)
 
 
@@ -231,9 +332,10 @@ def _smooth_hypnogram(hyp: list[str], min_run: int = 4) -> list[str]:
 
 def _summarize(hyp: list[str], t0: datetime) -> dict:
     n = len(hyp)
-    counts = {WAKE: 0, LIGHT: 0, DEEP: 0, REM: 0}
+    counts = {WAKE: 0, LIGHT: 0, DEEP: 0, REM: 0, NODATA: 0}
     for s in hyp:
-        counts[s] = counts.get(s, 0) + 1
+        if s in counts:
+            counts[s] += 1
 
     epoch_min = EPOCH_SEC / 60.0
     deep_min = round(counts[DEEP] * epoch_min, 1)
@@ -242,9 +344,13 @@ def _summarize(hyp: list[str], t0: datetime) -> dict:
     awake_min = round(counts[WAKE] * epoch_min, 1)
     asleep_min = deep_min + rem_min + light_min
     duration_min = round(asleep_min, 1)
+    # Fraction of the night the band actually sampled (the rest are NODATA holes). Lets the caller
+    # distinguish a real thin night ("you barely wore it") from a well-covered one, and refuse to headline
+    # a mostly-hole "night".
+    coverage = round((n - counts[NODATA]) / max(n, 1), 3)
 
-    # bedtime / wake_time from first and last non-wake epoch.
-    sleep_idx = [i for i, s in enumerate(hyp) if s != WAKE]
+    # bedtime / wake_time from first and last ASLEEP epoch (never a hole or a wake epoch).
+    sleep_idx = [i for i, s in enumerate(hyp) if s not in (WAKE, NODATA)]
     if sleep_idx:
         bedtime = t0 + timedelta(seconds=sleep_idx[0] * EPOCH_SEC)
         wake_time = t0 + timedelta(seconds=(sleep_idx[-1] + 1) * EPOCH_SEC)
@@ -274,6 +380,7 @@ def _summarize(hyp: list[str], t0: datetime) -> dict:
         "bedtime": bedtime.isoformat(),
         "wake_time": wake_time.isoformat(),
         "quality": quality,
+        "coverage": coverage,
         "hypnogram_30s": hyp,
     }
 

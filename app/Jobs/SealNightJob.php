@@ -57,6 +57,17 @@ class SealNightJob implements ShouldQueue
     /** Slack (seconds) around a confirmed session's [bedtime, wake] when scoping which windows belong to it. */
     public const SESSION_MARGIN_S = 600;
 
+    /** Staging epoch length (seconds) — the grid the biosignal stager works in. Kept in sync with staging.py. */
+    private const EPOCH_SEC = 30;
+
+    /** Below this fraction of the session actually SAMPLED (the rest are NODATA holes), we don't headline a
+     *  staged night — write the honest duration-only row instead of stages built on mostly-hole coverage. */
+    private const MIN_COVERAGE = 0.30;
+
+    /** A "sleep" longer than this (min) is someone who forgot to end the session on the band — cap it and
+     *  flag it rather than writing a 17-hour night into recovery/debt math. */
+    private const MAX_SESSION_MIN = 16 * 60;
+
     /**
      * Per-window RMSSD ceiling (ms). A 2-minute window above this is almost certainly a
      * peak-detection artifact (a missed/extra beat creates a huge successive difference),
@@ -407,6 +418,17 @@ class SealNightJob implements ShouldQueue
             return;
         }
 
+        // A >16h "session" is someone who forgot to mark awake on the band — the wake marker never fired,
+        // so wake is whenever the NEXT thing happened. Clamp the window to the real slept span (bed +
+        // MAX_SESSION_MIN) so we neither write a 17-hour night into debt math nor vacuum a day of windows.
+        if ($durMin > self::MAX_SESSION_MIN) {
+            Log::warning('[Biosignal] confirmed session exceeds max — clamped (likely forgot to end on band)', [
+                'profile_id' => $profile->id, 'raw_dur_min' => $durMin, 'clamped_to' => self::MAX_SESSION_MIN,
+            ]);
+            $wake = $bed + self::MAX_SESSION_MIN * 60;
+            $durMin = self::MAX_SESSION_MIN;
+        }
+
         $isNap = $durMin < self::NAP_MAX_MIN;
         $date = CarbonImmutable::createFromTimestamp($wake, 'UTC')->setTimezone($tz)->toDateString();
         $bedDt = CarbonImmutable::createFromTimestamp($bed, 'UTC');
@@ -511,38 +533,63 @@ class SealNightJob implements ShouldQueue
             return null;
         }
 
-        $motion = [];
+        return $this->stageSparse($biosignal, $scoped, $bedDt, $wakeDt);
+    }
+
+    /**
+     * Stage a set of duty-cycle windows as SPARSE samples across [t0,t1]. The band streams ~30 s bursts
+     * every few minutes overnight, so we emit each burst's epoch(s) at their REAL index and let the stager
+     * scatter them onto the full-night grid, bridge short gaps, and mark long gaps as NODATA holes — no
+     * PHP-side gridding (that lives once, in staging.py). Refuses a mostly-hole night (low coverage) and
+     * the all-awake phantom, so callers fall back to an honest duration-only row.
+     *
+     * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
+     * @return array<string,mixed>|null
+     */
+    private function stageSparse(BiosignalClient $biosignal, \Illuminate\Support\Collection $windows, CarbonImmutable $t0, CarbonImmutable $t1): ?array
+    {
+        $accel = [];
         $hr = [];
         $rmssd = [];
-        foreach ($scoped->sortBy('window_end') as $ingestion) {
-            $em = $ingestion->result_refs['epoch_motion'] ?? null;
-            if (! is_array($em) || $em === []) {
+        $epochs = [];
+        foreach ($windows->sortBy('window_start') as $ing) {
+            $em = $ing->result_refs['epoch_motion'] ?? null;
+            if (! is_array($em) || $em === [] || ! $ing->window_start) {
                 continue;
             }
-            $eh = (array) ($ingestion->result_refs['epoch_hr'] ?? []);
-            $er = (array) ($ingestion->result_refs['epoch_rmssd'] ?? []);
-            foreach ($em as $k => $v) {
-                $motion[] = is_numeric($v) ? (float) $v : 0.0;
+            $base = (int) floor((CarbonImmutable::parse($ing->window_start)->timestamp - $t0->timestamp) / self::EPOCH_SEC);
+            $eh = array_values((array) ($ing->result_refs['epoch_hr'] ?? []));
+            $er = array_values((array) ($ing->result_refs['epoch_rmssd'] ?? []));
+            foreach (array_values($em) as $k => $v) {
+                $epochs[] = $base + $k;                  // this burst-epoch's REAL slot in the night
+                $accel[] = is_numeric($v) ? (float) $v : 0.0;
                 $hr[] = (isset($eh[$k]) && is_numeric($eh[$k])) ? (float) $eh[$k] : 0.0;
                 $rmssd[] = (isset($er[$k]) && is_numeric($er[$k])) ? (float) $er[$k] : null;
             }
         }
 
-        if (count($motion) < 10) {
-            return null; // too thin to stage → duration-only
+        if (count($accel) < 4) {
+            return null; // a handful of points can't be a session at all; COVERAGE (below) is the real gate —
+            // it's what stops a thin/replayed set from staging, while still letting a short nap's ~6 bursts
+            // through (the stager bridges their small gaps, so a real nap reads high-coverage, not thin).
         }
 
         try {
             $result = $biosignal->processSleep([
                 'kind' => 'sleep',
-                'start' => $bedDt->toIso8601ZuluString(),
-                'end' => $wakeDt->toIso8601ZuluString(),
-                'accel_counts' => $motion,
+                'start' => $t0->toIso8601ZuluString(),
+                'end' => $t1->toIso8601ZuluString(),
+                'accel_counts' => $accel,
                 'hr_bpm' => $hr,
                 'rmssd_ms' => $rmssd,
+                'sample_epochs' => $epochs,
                 'whole_night' => true,
             ]);
             $metrics = $result['metrics'] ?? [];
+
+            if (($metrics['coverage'] ?? 1.0) < self::MIN_COVERAGE) {
+                return null; // mostly holes — an honest duration-only night beats stages built on nothing
+            }
             if ($this->stagedAllAwake($metrics)) {
                 return null; // phantom guard: nothing scored asleep → don't present an all-awake block
             }
@@ -569,11 +616,12 @@ class SealNightJob implements ShouldQueue
     }
 
     /**
-     * Stage sleep from a raw-PPG (wearable) night: concatenate the per-window 30-s epoch
-     * features (HR + motion proxy) persisted by ProcessWindowJob -- across both valid and
-     * motion-rejected windows, in time order -- and run the whole night through the stager
-     * once → one sleep_logs row. This is what gives the Bangle deep/REM/light without an
-     * accelerometer (motion is inferred from PPG signal quality).
+     * Stage sleep from a raw-PPG (wearable) night (the automatic / cron pass). Sends the per-window 30-s
+     * epoch features (HR + motion proxy) persisted by ProcessWindowJob to the stager as SPARSE samples at
+     * their real epoch across [first-window, last-window] (stageSparse) — so the band's duty-cycle bursts
+     * stage across the true night and the gaps between an evening workout, a nap, and the night become
+     * NODATA holes instead of one smeared block. One sleep_logs row; skipped when coverage is too low or
+     * the night stages all-awake (that needs a user-confirmed marker to seal).
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $ibiWindows
      */
@@ -583,49 +631,21 @@ class SealNightJob implements ShouldQueue
             return;
         }
 
-        $motion = [];
-        $hr = [];
-        $rmssd = [];
-        $start = null;
-        $end = null;
-
-        // Windows arrive ordered by window_end → epochs are already chronological.
-        foreach ($ibiWindows->sortBy('window_end') as $ingestion) {
-            $em = $ingestion->result_refs['epoch_motion'] ?? null;
-            if (! is_array($em) || $em === []) {
-                continue;
-            }
-            $eh = (array) ($ingestion->result_refs['epoch_hr'] ?? []);
-            $er = (array) ($ingestion->result_refs['epoch_rmssd'] ?? []);
-            foreach ($em as $k => $v) {
-                $motion[] = is_numeric($v) ? (float) $v : 0.0;
-                $hr[] = (isset($eh[$k]) && is_numeric($eh[$k])) ? (float) $eh[$k] : 0.0;
-                $rmssd[] = (isset($er[$k]) && is_numeric($er[$k])) ? (float) $er[$k] : null;
-            }
-            $start = $start ?? ($ingestion->window_start ?? null);
-            $end = $ingestion->window_end ?? $end;
+        // The night's real span = first window start → last window end. stageSparse places every burst at
+        // its true offset inside it and holes the long gaps, so a workout / nap / night that share a
+        // calendar date can't smear into one fabricated block — the gaps between them become NODATA.
+        $withStart = $ibiWindows->filter(fn ($i) => $i->window_start);
+        $withEnd = $ibiWindows->filter(fn ($i) => $i->window_end);
+        if ($withStart->isEmpty() || $withEnd->isEmpty()) {
+            return;
         }
-
-        if (count($motion) < 10) {
-            return; // not enough of a night to stage
-        }
+        $t0 = CarbonImmutable::parse($withStart->sortBy('window_start')->first()->window_start);
+        $t1 = CarbonImmutable::parse($withEnd->sortByDesc('window_end')->first()->window_end);
 
         try {
-            $result = $biosignal->processSleep([
-                'kind' => 'sleep',
-                'start' => $start ? CarbonImmutable::parse($start)->toIso8601ZuluString() : null,
-                'end' => $end ? CarbonImmutable::parse($end)->toIso8601ZuluString() : null,
-                'accel_counts' => $motion,
-                'hr_bpm' => $hr,
-                'rmssd_ms' => $rmssd,
-                'whole_night' => true,
-            ]);
-            $metrics = $result['metrics'] ?? [];
-
-            // Phantom guard: the automatic (cron) pass must never write an all-awake block — scattered
-            // daytime bursts that stage 100% awake are the "Awake 100% / 8h 15m" phantom. No sleep, no row.
-            if ($this->stagedAllAwake($metrics)) {
-                return;
+            $metrics = $this->stageSparse($biosignal, $ibiWindows, $t0, $t1);
+            if ($metrics === null) {
+                return; // too thin / mostly holes / all-awake phantom → no automatic row (needs confirmed)
             }
 
             $log = SleepLog::updateOrCreate(
