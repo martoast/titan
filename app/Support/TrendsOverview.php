@@ -33,7 +33,7 @@ class TrendsOverview
             ->orderBy('logged_at')->get();
         $recByDay = $recovery->keyBy(fn (RecoveryLog $r) => $r->logged_at->toDateString());
 
-        $sleepByDay = SleepLog::where('profile_id', $profile->id)
+        $sleepByDay = SleepLog::where('profile_id', $profile->id)->nights()
             ->whereDate('slept_at', '>=', $from->copy()->subDays(2))
             ->get()->keyBy(fn (SleepLog $s) => $s->slept_at->toDateString());
 

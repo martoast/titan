@@ -116,7 +116,7 @@ class RecoveryMetrics
         // Baseline performance = median of recent nights' (hours / need) — i.e. how the user usually does.
         $baselinePct = null;
         if ($baselineH && $baselineH > 0) {
-            $recent = SleepLog::where('profile_id', $profile->id)
+            $recent = SleepLog::where('profile_id', $profile->id)->nights()
                 ->whereDate('slept_at', '>=', $day->copy()->subDays(self::BASELINE_DAYS))
                 ->whereDate('slept_at', '<', $day)
                 ->get()

@@ -27,8 +27,8 @@ class MobileDashboardController extends Controller
         $rec = RecoveryLog::where('profile_id', $profile->id)
             ->orderByDesc('logged_at')->orderByDesc('id')->first();
 
-        $sleep = SleepLog::where('profile_id', $profile->id)
-            ->orderByDesc('slept_at')->first();
+        $sleep = SleepLog::where('profile_id', $profile->id)->nights()
+            ->orderByDesc('slept_at')->orderByDesc('id')->first();
 
         $activity = DailyActivity::where('profile_id', $profile->id)
             ->orderByDesc('date')->first();

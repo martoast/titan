@@ -68,6 +68,16 @@ class SealNightJob implements ShouldQueue
      *  flag it rather than writing a 17-hour night into recovery/debt math. */
     private const MAX_SESSION_MIN = 16 * 60;
 
+    /** How long past the LAST sampled window a confirmed marker may still presume sleep. Covers a band that
+     *  DIED mid-night (battery) while the user slept on to an honest wake marker — without presuming the
+     *  hours of band-off daytime a forgot-to-mark marker would otherwise claim. */
+    private const POST_SAMPLE_SLEEP_GRACE_S = 3 * 3600;
+
+    /** How many hourly cron attempts a single session may fail before we release its windows (with an error
+     *  marker, no row) so a DETERMINISTIC poison payload can't re-aggregate every hour and block every later
+     *  session for the profile forever. Transient errors clear well within this. */
+    public const MAX_SEAL_ATTEMPTS = 4;
+
     /** A gap (seconds) larger than this SPLITS the unsealed windows into separate SESSIONS. Smaller than
      *  the daytime between a night and an afternoon nap, but larger than a mid-night charge top-up — so a
      *  night that paused to charge stays ONE session (its gap becomes a NODATA hole), while an evening
@@ -192,7 +202,13 @@ class SealNightJob implements ShouldQueue
                     continue; // still streaming -- let it finish
                 }
 
-                $this->sealNight($profile, $biosignal, $date, $tz, $windows);
+                // Per-session isolation: a poison payload in ONE session must not abort the loop (blocking
+                // every other session) nor re-aggregate forever. The counter releases it after a few tries.
+                try {
+                    $this->sealNight($profile, $biosignal, $date, $tz, $windows);
+                } catch (\Throwable $e) {
+                    $this->handleSessionFailure($profile, $windows, $e);
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('[Biosignal] night seal failed', [
@@ -272,13 +288,43 @@ class SealNightJob implements ShouldQueue
             return true; // the user marked awake on the band — seal now, don't wait for quiescence.
         }
 
-        if ($date < now()->setTimezone($tz)->toDateString()) {
-            return true; // a past session -- the day is done
-        }
-
+        // Done only once NO window has arrived for longer than the clustering gap. The old 45-min gate was
+        // SHORTER than SESSION_GAP_S, so a mid-night charge pause (46–150 min) let the cron seal the first
+        // half as a whole session before the band resumed. Waiting a full gap means any window that WOULD
+        // rejoin this session has already had its chance. (This also subsumes the past-date shortcut, which
+        // sealed a cluster with zero quiescence — a live pre-dawn night at the 00:30 cron.)
         $lastEnd = CarbonImmutable::createFromTimestamp($windows->max(fn (DeviceIngestion $i) => $this->winEnd($i)), 'UTC');
 
-        return $lastEnd->lte(now()->subMinutes(self::QUIET_MINUTES));
+        return $lastEnd->lte(now()->subSeconds(self::SESSION_GAP_S));
+    }
+
+    /**
+     * One session's seal threw. Bound the damage: a transient clears in a retry or two, but a DETERMINISTIC
+     * poison payload would otherwise re-aggregate every hour and (windows never sealing) block every later
+     * session. After MAX_SEAL_ATTEMPTS we release the windows with an error marker — no row written, the
+     * night honestly lost rather than silently looping forever.
+     *
+     * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
+     */
+    private function handleSessionFailure(Profile $profile, \Illuminate\Support\Collection $windows, \Throwable $e): void
+    {
+        $attempt = 1 + (int) $windows->max(fn (DeviceIngestion $i) => $i->result_refs['seal_attempts'] ?? 0);
+        Log::warning('[Biosignal] session seal failed', [
+            'profile_id' => $profile->id, 'attempt' => $attempt, 'windows' => $windows->count(), 'error' => $e->getMessage(),
+        ]);
+
+        if ($attempt >= self::MAX_SEAL_ATTEMPTS) {
+            $windows->each(fn (DeviceIngestion $i) => $i->update([
+                'status' => DeviceIngestion::STATUS_SEALED,
+                'result_refs' => array_merge((array) $i->result_refs, ['sealed' => true, 'seal_error' => substr($e->getMessage(), 0, 200)]),
+            ]));
+
+            return;
+        }
+
+        $windows->each(fn (DeviceIngestion $i) => $i->update([
+            'result_refs' => array_merge((array) $i->result_refs, ['seal_attempts' => $attempt]),
+        ]));
     }
 
     /**
@@ -522,14 +568,15 @@ class SealNightJob implements ShouldQueue
             return;
         }
 
-        // Effective staging end = min(marker wake, LAST sampled). Beyond the last sample is unknown, not
-        // sleep — so if the user forgot to mark awake (marker wake hours after the band stopped), we stage
-        // and presume-sleep only up to where the band was still recording, never fold band-off daytime into
-        // "light sleep" (the 900-minute-night bug). We still trust the marker span for the thin-night
-        // duration-only fallback below (no staging = trust the user's declared bed→wake).
+        // Effective staging end = min(marker wake, last sample + a few hours' grace). This presumes sleep a
+        // little past where the band stopped (so a band that DIED mid-night still reads as a real night to
+        // the honest wake marker), but never the many hours a forgot-to-mark marker would claim as "light
+        // sleep" (the 900-minute-night bug). The thin-night duration-only fallback below still trusts the
+        // full marker span (no staging = trust the user's declared bed→wake).
         $lastSampleTs = (int) $scoped->max(fn (DeviceIngestion $i) => $this->winEnd($i));
-        $stageWakeDt = ($lastSampleTs > $bed && $lastSampleTs < $wake) ? CarbonImmutable::createFromTimestamp($lastSampleTs, 'UTC') : $wakeDt;
-        $stageSpanMin = (int) round(($stageWakeDt->timestamp - $bed) / 60);
+        $stageWakeTs = ($lastSampleTs > $bed) ? min($wake, $lastSampleTs + self::POST_SAMPLE_SLEEP_GRACE_S) : $wake;
+        $stageWakeDt = CarbonImmutable::createFromTimestamp($stageWakeTs, 'UTC');
+        $stageSpanMin = (int) round(($stageWakeTs - $bed) / 60);
 
         // Stage the scoped windows (best-effort). All-awake / no-signal → $metrics stays null and we
         // fall back to a duration-only row (the phantom guard) rather than presenting garbage.
@@ -575,7 +622,7 @@ class SealNightJob implements ShouldQueue
                 'updated_via' => 'biosignal:sealed-session-marker',
             ];
 
-        $log = SleepLog::updateOrCreate($key, $attrs);
+        $log = $this->upsertSleep($key, $attrs);
 
         // Only the scoped windows are consumed by this session — everything else stays for its own seal.
         $scoped->each(fn (DeviceIngestion $i) => $i->update([
@@ -689,6 +736,30 @@ class SealNightJob implements ShouldQueue
         return $asleep <= 0.0;
     }
 
+    /**
+     * Write a sleep row, but NEVER let a thinner seal replace a materially richer existing one on the same
+     * key. Two sessions can legitimately map to the same (profile, slept_at) night — e.g. a real ≥4h night
+     * in the morning and a ≥4h evening doze that ends before midnight — and without this the later, shorter
+     * one would wholesale-replace the real night. Richer = a staged row with ≥30 min more sleep.
+     *
+     * @param  array<string,mixed>  $key
+     * @param  array<string,mixed>  $attrs
+     */
+    private function upsertSleep(array $key, array $attrs): SleepLog
+    {
+        $existing = SleepLog::where($key)->first();
+        if ($existing) {
+            $exStaged = is_array($existing->hypnogram) && count($existing->hypnogram) > 0;
+            $exDur = (int) $existing->duration_min;
+            $newDur = (int) ($attrs['duration_min'] ?? 0);
+            if ($exStaged && $exDur >= $newDur + 30) {
+                return $existing; // the existing night is richer — don't let this shorter seal clobber it
+            }
+        }
+
+        return SleepLog::updateOrCreate($key, $attrs);
+    }
+
 
     /**
      * Stage sleep from a raw-PPG (wearable) night (the automatic / cron pass). Sends the per-window 30-s
@@ -735,7 +806,7 @@ class SealNightJob implements ShouldQueue
                 ? ['profile_id' => $profile->id, 'session_start' => $t0->setTimezone($tz)->toDateTimeString(), 'is_nap' => true]
                 : ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false];
 
-            $log = SleepLog::updateOrCreate(
+            $log = $this->upsertSleep(
                 $key,
                 array_filter([
                     'slept_at' => $date,
@@ -822,7 +893,7 @@ class SealNightJob implements ShouldQueue
                 ? ['profile_id' => $profile->id, 'session_start' => CarbonImmutable::parse($start)->setTimezone($tz)->toDateTimeString(), 'is_nap' => true]
                 : ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false];
 
-            $log = SleepLog::updateOrCreate(
+            $log = $this->upsertSleep(
                 $key,
                 array_filter([
                     'slept_at' => $date,

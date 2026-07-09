@@ -19,7 +19,7 @@ class SleepDetail
     public static function forProfile(Profile $profile, ?Carbon $day = null): ?array
     {
         $day = $day ?? Carbon::today();
-        $last = SleepLog::where('profile_id', $profile->id)
+        $last = SleepLog::where('profile_id', $profile->id)->nights()
             ->whereDate('slept_at', '<=', $day)
             ->orderByDesc('slept_at')->orderByDesc('id')->first();
         if (! $last) {

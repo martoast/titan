@@ -31,6 +31,13 @@ class SleepLog extends Model
         return $this->belongsTo(Profile::class);
     }
 
+    /** Only full nights — excludes naps, which must never surface as "last night", pollute a night
+     *  baseline, or plot on the nightly trend. */
+    public function scopeNights($query)
+    {
+        return $query->where('is_nap', false);
+    }
+
     /** Whole hours of sleep (floor of duration). */
     public function getHoursAttribute(): int
     {

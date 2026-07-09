@@ -247,7 +247,7 @@ class SleepDutyCycleSealTest extends TestCase
         ]);
 
         $profile = User::factory()->create()->ensureProfile();
-        $evening = Carbon::parse('today 19:00', 'UTC')->timestamp;
+        $evening = Carbon::parse('yesterday 19:00', 'UTC')->timestamp;   // past + quiescent so the cron seals it
         for ($t = $evening; $t < $evening + 3600; $t += 180) {   // a 1-hour evening cluster
             DeviceIngestion::create([
                 'batch_uid' => substr(hash('sha256', $t.'-'.mt_rand()), 0, 40),
@@ -259,7 +259,7 @@ class SleepDutyCycleSealTest extends TestCase
             ]);
         }
 
-        dispatch_sync(new SealNightJob($profile->id, Carbon::parse('today', 'UTC')->toDateString()));
+        dispatch_sync(new SealNightJob($profile->id, Carbon::parse('yesterday', 'UTC')->toDateString()));
 
         $this->assertSame(0, \App\Models\RecoveryLog::where('profile_id', $profile->id)->count(),
             'an evening cluster is not a night — no recovery/readiness row');
@@ -269,7 +269,8 @@ class SleepDutyCycleSealTest extends TestCase
     public function test_forgot_to_mark_awake_caps_at_the_last_sample_not_a_15_hour_night(): void
     {
         // Marker says a 15-hour session (forgot to mark awake), but the band only recorded the first ~7h.
-        // The hole-fold must stop at the last sample — never paint 8h of band-off daytime as light sleep.
+        // The hole-fold must stop a few hours past the last sample — never paint the full band-off daytime
+        // as light sleep (a 900-min night). ~7h data + 3h grace ≈ 10h, NOT 15h.
         $this->fakeSleep([
             'duration_min' => 300, 'deep_min' => 60, 'rem_min' => 60, 'light_min' => 180, 'awake_min' => 20,
             'bedtime' => '23:00:00', 'wake_time' => '06:00:00', 'quality' => 80, 'coverage' => 0.9,
@@ -287,7 +288,91 @@ class SleepDutyCycleSealTest extends TestCase
 
         $log = SleepLog::where('profile_id', $profile->id)->first();
         $this->assertNotNull($log);
-        $this->assertLessThanOrEqual(7 * 60 + 10, (int) $log->duration_min, 'capped at the last sample (~7h), not the 15h marker');
+        $this->assertLessThanOrEqual(10 * 60 + 10, (int) $log->duration_min, 'bounded to ~last sample + grace (~10h), NOT the 15h marker');
+        $this->assertGreaterThan(7 * 60, (int) $log->duration_min, 'the ~7h of real data plus a little grace still counts');
+    }
+
+    public function test_a_mid_night_charge_pause_is_not_sealed_as_a_half_night(): void
+    {
+        // Finding 1: the first half of a night with a 90-min charge gap must NOT seal while the band is
+        // paused (it would resume and rejoin the session). sessionIsComplete waits a full cluster gap.
+        $profile = User::factory()->create()->ensureProfile();
+        $firstHalfEnd = time() - 60 * 60;   // last window 60 min ago — inside the charge pause, not quiescent yet
+        for ($t = $firstHalfEnd - 2 * 3600; $t < $firstHalfEnd; $t += 180) {
+            DeviceIngestion::create([
+                'batch_uid' => substr(hash('sha256', $t.'-'.mt_rand()), 0, 40),
+                'profile_id' => $profile->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+                'status' => DeviceIngestion::STATUS_PROCESSED,
+                'window_start' => Carbon::createFromTimestamp($t), 'window_end' => Carbon::createFromTimestamp($t + 30),
+                'result_refs' => ['epoch_motion' => [2.0]],
+            ]);
+        }
+
+        $job = new SealNightJob($profile->id, null, false);
+        $m = new \ReflectionMethod(SealNightJob::class, 'sessionIsComplete');
+        $m->setAccessible(true);
+        $windows = DeviceIngestion::where('profile_id', $profile->id)->get();
+        $this->assertFalse($m->invoke($job, $windows, Carbon::now('UTC')->toDateString(), 'UTC'),
+            'a session quiet for only 60 min (a charge pause) is NOT complete — the band may still resume');
+    }
+
+    public function test_an_evening_doze_does_not_replace_the_mornings_real_night(): void
+    {
+        // Finding 2: a real staged night exists; a thinner seal on the same (profile, slept_at) key must
+        // not clobber it (the richer row wins).
+        $profile = User::factory()->create()->ensureProfile();
+        $date = Carbon::parse('yesterday', 'UTC')->toDateString();
+        $night = SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false,
+            'duration_min' => 470, 'deep_min' => 90, 'rem_min' => 100, 'light_min' => 280,
+            'hypnogram' => array_fill(0, 940, 'light'), 'updated_via' => 'biosignal:sealed-ppg',
+        ]);
+
+        $m = new \ReflectionMethod(SealNightJob::class, 'upsertSleep');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, false);
+        $result = $m->invoke($job, ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false],
+            ['slept_at' => $date, 'duration_min' => 240, 'light_min' => 240, 'hypnogram' => array_fill(0, 480, 'light'), 'updated_via' => 'biosignal:sealed-ppg']);
+
+        $this->assertSame($night->id, $result->id, 'the richer 470-min night is kept, not replaced');
+        $this->assertSame(470, (int) $result->fresh()->duration_min, 'the thinner evening seal did not overwrite it');
+    }
+
+    public function test_a_poison_session_is_released_after_the_attempt_cap(): void
+    {
+        // Finding 3: a deterministic staging failure must not re-aggregate forever. After MAX_SEAL_ATTEMPTS
+        // the windows are released (with an error marker), unblocking the profile's later sessions.
+        $profile = User::factory()->create()->ensureProfile();
+        $win = DeviceIngestion::create([
+            'batch_uid' => substr(hash('sha256', (string) mt_rand()), 0, 40),
+            'profile_id' => $profile->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+            'status' => DeviceIngestion::STATUS_PROCESSED,
+            'window_start' => Carbon::createFromTimestamp(time() - 3600),
+            'window_end' => Carbon::createFromTimestamp(time() - 3570),
+            'result_refs' => ['epoch_motion' => [2.0], 'seal_attempts' => SealNightJob::MAX_SEAL_ATTEMPTS - 1],
+        ]);
+
+        $m = new \ReflectionMethod(SealNightJob::class, 'handleSessionFailure');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, false);
+        $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison payload'));
+
+        $win->refresh();
+        $this->assertSame(DeviceIngestion::STATUS_SEALED, $win->status, 'released at the attempt cap so it stops looping');
+        $this->assertArrayHasKey('seal_error', (array) $win->result_refs);
+    }
+
+    public function test_a_nap_never_surfaces_as_last_night(): void
+    {
+        // Finding 4: with a nap and a night sharing a date, the "last night" reader must return the NIGHT.
+        $profile = User::factory()->create()->ensureProfile();
+        $date = Carbon::parse('today', 'UTC')->toDateString();
+        SleepLog::create(['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false, 'duration_min' => 460]);
+        SleepLog::create(['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => true, 'session_start' => Carbon::parse('today 14:00', 'UTC'), 'duration_min' => 25]);   // later id
+
+        $last = SleepLog::where('profile_id', $profile->id)->nights()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        $this->assertFalse((bool) $last->is_nap, 'the night, not the 25-min nap, is "last night"');
+        $this->assertSame(460, (int) $last->duration_min);
     }
 
     public function test_absurd_span_is_clamped_not_written_as_a_17_hour_night(): void
