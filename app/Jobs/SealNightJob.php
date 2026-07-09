@@ -57,6 +57,12 @@ class SealNightJob implements ShouldQueue
     /** Slack (seconds) around a confirmed session's [bedtime, wake] when scoping which windows belong to it. */
     public const SESSION_MARGIN_S = 600;
 
+    /** Length of one staging epoch (seconds) — the grid the biosignal stager works in. */
+    private const EPOCH_SEC = 30;
+
+    /** Guard: the reconstructed night grid may span at most ~16 h (a corrupt span can't allocate forever). */
+    private const MAX_GRID_EPOCHS = 16 * 60 * 60 / self::EPOCH_SEC;
+
     /**
      * Per-window RMSSD ceiling (ms). A 2-minute window above this is almost certainly a
      * peak-detection artifact (a missed/extra beat creates a huge successive difference),
@@ -511,24 +517,8 @@ class SealNightJob implements ShouldQueue
             return null;
         }
 
-        $motion = [];
-        $hr = [];
-        $rmssd = [];
-        foreach ($scoped->sortBy('window_end') as $ingestion) {
-            $em = $ingestion->result_refs['epoch_motion'] ?? null;
-            if (! is_array($em) || $em === []) {
-                continue;
-            }
-            $eh = (array) ($ingestion->result_refs['epoch_hr'] ?? []);
-            $er = (array) ($ingestion->result_refs['epoch_rmssd'] ?? []);
-            foreach ($em as $k => $v) {
-                $motion[] = is_numeric($v) ? (float) $v : 0.0;
-                $hr[] = (isset($eh[$k]) && is_numeric($eh[$k])) ? (float) $eh[$k] : 0.0;
-                $rmssd[] = (isset($er[$k]) && is_numeric($er[$k])) ? (float) $er[$k] : null;
-            }
-        }
-
-        if (count($motion) < 10) {
+        $grid = $this->buildNightGrid($scoped, $bedDt, $wakeDt);
+        if ($grid === null) {
             return null; // too thin to stage → duration-only
         }
 
@@ -537,9 +527,9 @@ class SealNightJob implements ShouldQueue
                 'kind' => 'sleep',
                 'start' => $bedDt->toIso8601ZuluString(),
                 'end' => $wakeDt->toIso8601ZuluString(),
-                'accel_counts' => $motion,
-                'hr_bpm' => $hr,
-                'rmssd_ms' => $rmssd,
+                'accel_counts' => $grid['motion'],
+                'hr_bpm' => $grid['hr'],
+                'rmssd_ms' => $grid['rmssd'],
                 'whole_night' => true,
             ]);
             $metrics = $result['metrics'] ?? [];
@@ -553,6 +543,100 @@ class SealNightJob implements ShouldQueue
 
             return null;
         }
+    }
+
+    /**
+     * Reconstruct a FULL bed→wake 30-s epoch grid from the night's sparse duty-cycle bursts.
+     *
+     * The band streams ~30 s HRV/PPG bursts every few minutes overnight (firmware SLEEP_DUTY) to survive
+     * the night on one charge, so a night is 30–100 SHORT windows separated by quiet gaps — NOT continuous
+     * coverage. Concatenating each burst's one-or-two epochs made a 6-hour night look like ~18 minutes
+     * ("36 windows × 30 s"), which is where the absurd `duration_min: 17` rows came from. Instead we place
+     * every burst's epochs at their REAL offset inside [t0,t1] and hold the nearest sample across the gaps
+     * (a gap bracketed by quiescent bursts reads asleep; by restless bursts, awake). Duration then equals
+     * the true span and the stages land where they actually happened.
+     *
+     * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
+     * @return array{motion:array<int,float>,hr:array<int,float>,rmssd:array<int,?float>}|null
+     */
+    private function buildNightGrid(\Illuminate\Support\Collection $windows, CarbonImmutable $t0, CarbonImmutable $t1): ?array
+    {
+        $n = (int) floor(($t1->timestamp - $t0->timestamp) / self::EPOCH_SEC);
+        if ($n < 10 || $n > self::MAX_GRID_EPOCHS) {
+            return null; // too short to be a night, or a corrupt/huge span
+        }
+
+        $motion = array_fill(0, $n, null);
+        $hr = array_fill(0, $n, null);
+        $rmssd = array_fill(0, $n, null);
+        $placed = 0;
+
+        foreach ($windows as $ing) {
+            $em = $ing->result_refs['epoch_motion'] ?? null;
+            if (! is_array($em) || $em === [] || ! $ing->window_start) {
+                continue;
+            }
+            $base = (int) floor((CarbonImmutable::parse($ing->window_start)->timestamp - $t0->timestamp) / self::EPOCH_SEC);
+            $eh = array_values((array) ($ing->result_refs['epoch_hr'] ?? []));
+            $er = array_values((array) ($ing->result_refs['epoch_rmssd'] ?? []));
+            foreach (array_values($em) as $k => $v) {
+                $idx = $base + $k;                       // this epoch's real slot in the night
+                if ($idx < 0 || $idx >= $n) {
+                    continue;
+                }
+                $motion[$idx] = is_numeric($v) ? (float) $v : 0.0;
+                if (isset($eh[$k]) && is_numeric($eh[$k])) {
+                    $hr[$idx] = (float) $eh[$k];
+                }
+                if (isset($er[$k]) && is_numeric($er[$k])) {
+                    $rmssd[$idx] = (float) $er[$k];
+                }
+                $placed++;
+            }
+        }
+
+        if ($placed < 10) {
+            return null; // too few real samples across the night to trust a staging
+        }
+
+        return [
+            'motion' => $this->holdFill($motion, 0.0),
+            'hr' => $this->holdFill($hr, 0.0),
+            'rmssd' => $this->holdFill($rmssd, null),
+        ];
+    }
+
+    /**
+     * Sample-and-hold gap fill: each empty epoch inherits the last real reading (then the next, for a
+     * leading gap), so the quiet stretches between duty-cycle bursts take on the state that brackets them.
+     *
+     * @param  array<int,float|null>  $a
+     * @param  float|null  $empty  value for epochs with no neighbouring sample at all
+     * @return array<int,float|null>
+     */
+    private function holdFill(array $a, $empty): array
+    {
+        $n = count($a);
+        $last = null;
+        for ($i = 0; $i < $n; $i++) {                    // carry the last real reading forward across gaps
+            if ($a[$i] !== null) {
+                $last = $a[$i];
+            } elseif ($last !== null) {
+                $a[$i] = $last;
+            }
+        }
+        $next = null;
+        for ($i = $n - 1; $i >= 0; $i--) {               // fill a leading gap from the first real reading
+            if ($a[$i] !== null) {
+                $next = $a[$i];
+            } elseif ($next !== null) {
+                $a[$i] = $next;
+            } elseif ($a[$i] === null) {
+                $a[$i] = $empty;
+            }
+        }
+
+        return $a;
     }
 
     /**
@@ -583,41 +667,31 @@ class SealNightJob implements ShouldQueue
             return;
         }
 
-        $motion = [];
-        $hr = [];
-        $rmssd = [];
-        $start = null;
-        $end = null;
-
-        // Windows arrive ordered by window_end → epochs are already chronological.
-        foreach ($ibiWindows->sortBy('window_end') as $ingestion) {
-            $em = $ingestion->result_refs['epoch_motion'] ?? null;
-            if (! is_array($em) || $em === []) {
-                continue;
-            }
-            $eh = (array) ($ingestion->result_refs['epoch_hr'] ?? []);
-            $er = (array) ($ingestion->result_refs['epoch_rmssd'] ?? []);
-            foreach ($em as $k => $v) {
-                $motion[] = is_numeric($v) ? (float) $v : 0.0;
-                $hr[] = (isset($eh[$k]) && is_numeric($eh[$k])) ? (float) $eh[$k] : 0.0;
-                $rmssd[] = (isset($er[$k]) && is_numeric($er[$k])) ? (float) $er[$k] : null;
-            }
-            $start = $start ?? ($ingestion->window_start ?? null);
-            $end = $ingestion->window_end ?? $end;
+        // The night's real span = first window's start → last window's end. The bursts are placed at their
+        // true offsets inside it (buildNightGrid), so the gaps between duty-cycle bursts count as sleep,
+        // not as if the night were only the sum of the bursts.
+        $ordered = $ibiWindows->filter(fn ($i) => $i->window_start)->sortBy('window_start')->values();
+        $first = $ordered->first();
+        $last = $ibiWindows->filter(fn ($i) => $i->window_end)->sortByDesc('window_end')->first();
+        if (! $first || ! $last) {
+            return; // no timestamps to place a grid on
         }
+        $t0 = CarbonImmutable::parse($first->window_start);
+        $t1 = CarbonImmutable::parse($last->window_end);
 
-        if (count($motion) < 10) {
+        $grid = $this->buildNightGrid($ibiWindows, $t0, $t1);
+        if ($grid === null) {
             return; // not enough of a night to stage
         }
 
         try {
             $result = $biosignal->processSleep([
                 'kind' => 'sleep',
-                'start' => $start ? CarbonImmutable::parse($start)->toIso8601ZuluString() : null,
-                'end' => $end ? CarbonImmutable::parse($end)->toIso8601ZuluString() : null,
-                'accel_counts' => $motion,
-                'hr_bpm' => $hr,
-                'rmssd_ms' => $rmssd,
+                'start' => $t0->toIso8601ZuluString(),
+                'end' => $t1->toIso8601ZuluString(),
+                'accel_counts' => $grid['motion'],
+                'hr_bpm' => $grid['hr'],
+                'rmssd_ms' => $grid['rmssd'],
                 'whole_night' => true,
             ]);
             $metrics = $result['metrics'] ?? [];
