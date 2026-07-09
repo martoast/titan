@@ -26,7 +26,7 @@ class StrainDetail
         [$dayStart, $startUtc, $endUtc] = Strain::dayBounds($day, $tz);
         $base = Strain::assess($profile, $day, $tz);   // strain, load, target, status, advice, readiness, band
 
-        $sessions = ActivitySession::where('profile_id', $profile->id)
+        $sessions = ActivitySession::where('profile_id', $profile->id)->training()
             ->where('started_at', '>=', $startUtc)
             ->where('started_at', '<', $endUtc)
             ->orderBy('started_at')

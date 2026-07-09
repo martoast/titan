@@ -41,7 +41,7 @@ class TrendsOverview
             ->whereDate('date', '>=', $from)->get()
             ->keyBy(fn (DailyActivity $a) => Carbon::parse($a->date)->toDateString());
 
-        $sessByDay = ActivitySession::where('profile_id', $profile->id)
+        $sessByDay = ActivitySession::where('profile_id', $profile->id)->training()
             ->whereDate('started_at', '>=', $from)->get()
             ->groupBy(fn (ActivitySession $s) => Carbon::parse($s->started_at)->toDateString());
 

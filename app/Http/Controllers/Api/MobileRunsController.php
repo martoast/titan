@@ -100,8 +100,15 @@ class MobileRunsController extends Controller
             return null;
         }
 
+        // Sets are logged to the coach DURING the lift (performed_at = the moment the user speaks), while the
+        // band keys started_at to the first accel window — two independent clocks that never match to the
+        // second. Match any Workout that falls WITHIN the session's span (± a clock-skew margin), closest first,
+        // so the logged sets actually attach instead of silently vanishing.
+        $from = $session->started_at->copy()->subMinutes(20);
+        $to = ($session->ended_at ?? $session->started_at->copy()->addHours(4))->copy()->addMinutes(20);
         $workout = $profile->workouts()
-            ->where('performed_at', $session->started_at)
+            ->whereBetween('performed_at', [$from, $to])
+            ->orderByRaw('ABS(TIMESTAMPDIFF(SECOND, performed_at, ?))', [$session->started_at])
             ->with(['exercises.exercise', 'exercises.sets'])
             ->first();
         if (! $workout) {

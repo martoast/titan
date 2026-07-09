@@ -34,7 +34,7 @@ class WorkoutStreak
 
         // Distinct local workout-days ('Y-m-d'), oldest→newest. A year of history is plenty to find
         // any real streak while staying a single cheap query.
-        $days = ActivitySession::query()
+        $days = ActivitySession::query()->training()
             ->where('profile_id', $profile->id)
             ->whereNotNull('started_at')
             ->where('started_at', '>=', CarbonImmutable::now($tz)->subYear()->utc())

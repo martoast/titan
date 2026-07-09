@@ -181,7 +181,10 @@ class SealActivityJob implements ShouldQueue
         return $sessions;
     }
 
-    /** Complete once quiescent (>QUIET_MINUTES since the last window) or it ended in the past. */
+    /** Complete once quiescent for a FULL SESSION_GAP_MINUTES since the last window (so no later window
+     *  could still cluster into it), or on an explicit end. The old gate was QUIET_MINUTES(10) — SHORTER
+     *  than the 20-min cluster gap, so a mid-workout pause (e.g. a BLE drop) got the first half sealed as a
+     *  whole workout before the stream resumed, splitting one run into two rows. */
     private function sessionIsComplete(\Illuminate\Support\Collection $session, bool $force = false): bool
     {
         if ($force) {
@@ -192,7 +195,7 @@ class SealActivityJob implements ShouldQueue
             ->map(fn (DeviceIngestion $i) => $i->window_end ?? $i->window_start ?? $i->created_at)
             ->filter()->map(fn ($t) => CarbonImmutable::parse($t))->max();
 
-        return $lastEnd && $lastEnd->lte(now()->subMinutes(self::QUIET_MINUTES));
+        return $lastEnd && $lastEnd->lte(now()->subMinutes(self::SESSION_GAP_MINUTES));
     }
 
     /**
@@ -466,24 +469,29 @@ class SealActivityJob implements ShouldQueue
             array_filter([
                 'source' => $session->first()->source ?? 'titan_band',
                 'ended_at' => $end ? CarbonImmutable::parse($end) : null,
-                'duration_min' => isset($sess['duration_min']) ? (int) round($sess['duration_min']) : $durationMin,
+                // The full elapsed workout, not the first detected sub-session (a run with a >1-min pause
+                // splits into several — sessions[0] is only its first leg).
+                'duration_min' => $durationMin ?? (isset($sess['duration_min']) ? (int) round($sess['duration_min']) : null),
                 'activity_type' => $activityType,
                 // The watch chose the type → full confidence; otherwise the classifier's own score.
                 'activity_confidence' => ($liftHint || $runHint) ? 1.0 : ($sess['activity_confidence'] ?? null),
                 'distance_km' => $distance,
                 'distance_source' => $distanceSource,
-                // Prefer the activity pass's mean, then the in-motion estimator's RELIABLE-window mean,
-                // and only fall back to averaging the mixed (held-included) series.
-                'avg_hr' => isset($sess['mean_hr']) ? (int) round($sess['mean_hr'])
-                    : ($imReliableMean !== null ? (int) round($imReliableMean)
-                    : ($hr1 ? (int) round(array_sum($hr1) / count($hr1)) : null)),
+                // WHOLE-workout mean HR: the in-motion estimator's reliable-window mean, else the full series
+                // — never sessions[0]'s first-leg mean (wrong for a multi-segment run).
+                'avg_hr' => $imReliableMean !== null ? (int) round($imReliableMean)
+                    : ($hr1 ? (int) round(array_sum($hr1) / count($hr1))
+                    : (isset($sess['mean_hr']) ? (int) round($sess['mean_hr']) : null)),
                 'max_hr' => $maxHr,
                 'hr_source' => $hrSource,
                 'hr_quality' => $hrQuality,
                 'workout_hrv_ms' => $workoutHrv,
                 'hr_zones' => $hrZones,
-                'trimp' => $sess['trimp'] ?? null,
-                'calories_kcal' => isset($sess['calories_kcal']) ? (int) round($sess['calories_kcal']) : null,
+                // TRIMP + calories summed across ALL detected sub-sessions (biosignal's total_*), so a run
+                // with a mid-run stop isn't ~50% undercounted by reading only its first leg.
+                'trimp' => $activity['total_trimp'] ?? ($sess['trimp'] ?? null),
+                'calories_kcal' => isset($activity['total_calories_kcal']) ? (int) round($activity['total_calories_kcal'])
+                    : (isset($sess['calories_kcal']) ? (int) round($sess['calories_kcal']) : null),
                 'vo2max' => $fitness['vo2max'] ?? null,
                 'fitness_level' => $fitness['fitness_level'] ?? null,
                 'hrr_bpm' => $fitness['hrr']['hrr_bpm'] ?? null,

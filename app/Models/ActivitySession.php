@@ -118,6 +118,15 @@ class ActivitySession extends Model
      * Effective visibility is `COALESCE(activity_sessions.visibility, profiles.default_…)`, so the
      * gate is expressed in SQL against a join on the owning profile.
      */
+    /** Sessions that count as real TRAINING for streaks/strain/trends — excludes an unclassified 'other'
+     *  blob and a sub-5-min bout, so a passively-imported 2-minute walk can't light a streak or add strain. */
+    public function scopeTraining(Builder $query): Builder
+    {
+        return $query
+            ->where('duration_min', '>=', 5)
+            ->where(fn ($q) => $q->whereNull('activity_type')->orWhere('activity_type', '!=', 'other'));
+    }
+
     public function scopeVisibleTo(Builder $query, Profile $viewer): Builder
     {
         $followingIds = Follow::query()

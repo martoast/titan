@@ -25,8 +25,10 @@ EPOCH_SEC = 30
 # so we keep the accel/MET calorie proxy rather than mis-apply Minetti.
 _FOOT_SPEED_CEIL_KMH = 18.0
 
-# A session is a run of epochs above the activity threshold lasting >= MIN_SESSION_MIN.
-MIN_SESSION_MIN = 10
+# A session is a run of epochs above the activity threshold lasting >= MIN_SESSION_MIN. Kept in sync with
+# the seal's floor (SealActivityJob::MIN_SESSION_MIN) — when this was higher, a real 5–10 min run sealed
+# with distance/pace but got NO calories/TRIMP because it produced zero qualifying sub-sessions.
+MIN_SESSION_MIN = 5
 ACTIVE_COUNT_THRESHOLD = 5  # accel counts/epoch above which the epoch is "active"
 
 

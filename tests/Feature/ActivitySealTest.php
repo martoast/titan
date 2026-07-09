@@ -72,6 +72,37 @@ class ActivitySealTest extends TestCase
         Http::assertSent(fn ($r) => str_contains($r->url(), '/process/fitness') && ($r['resting_hr'] ?? null) == 52);
     }
 
+    public function test_calories_and_trimp_aggregate_across_sub_sessions(): void
+    {
+        // A run with a >1-min stop splits into sub-sessions in biosignal; the seal must use the SUMMED
+        // total_* — not sessions[0] — or a paused run reports only its first leg's calories/TRIMP (~50% low).
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => [
+                'sessions' => [
+                    ['duration_min' => 15.0, 'mean_hr' => 150.0, 'trimp' => 30.0, 'calories_kcal' => 190, 'activity_type' => 'run', 'activity_confidence' => 0.95],
+                    ['duration_min' => 15.0, 'mean_hr' => 155.0, 'trimp' => 32.0, 'calories_kcal' => 200, 'activity_type' => 'run', 'activity_confidence' => 0.9],
+                ],
+                'session_count' => 2, 'total_active_min' => 30.0, 'total_trimp' => 62.0, 'total_calories_kcal' => 390,
+            ]]),
+            '*/process/fitness' => Http::response(['vo2max' => 50.0, 'fitness_level' => 'high']),
+            '*' => Http::response([]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        $this->storeWorkoutWindow($profile->id);
+
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $s = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($s);
+        $this->assertSame(390, (int) $s->calories_kcal, 'calories are the SUM across legs (390), not sessions[0] (190)');
+        $this->assertEqualsWithDelta(62.0, (float) $s->trimp, 0.1, 'TRIMP is the summed total, not the first leg');
+    }
+
     public function test_seals_a_run_with_a_gps_route(): void
     {
         Storage::fake('raw');

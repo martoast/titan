@@ -331,8 +331,10 @@ def grade_adjusted_pace_s_per_km(track: Sequence[dict], cum: Sequence[float], mo
 
 # ----- relative effort (HR-zone-weighted load) ------------------------------------------
 
-# Zone upper bounds as a fraction of HRmax, and the per-zone weight (intensity ≫ duration).
-_ZONES = [(0.60, 0.0), (0.70, 1.0), (0.80, 2.0), (0.90, 4.0), (1.01, 6.0)]
+# Zone upper bounds as a fraction of HRmax, and the per-zone weight (intensity ≫ duration). The top bound
+# is +inf (a catch-all): a max-effort interval above the conservative HRmax estimate must still score the
+# highest weight, not fall through the loop and score 0 (which let a sprint total LESS than an easy run).
+_ZONES = [(0.60, 0.0), (0.70, 1.0), (0.80, 2.0), (0.90, 4.0), (float("inf"), 6.0)]
 
 def relative_effort(hr1: Optional[Sequence[float]], hr_max: Optional[float]) -> Optional[int]:
     """Strava-style Relative Effort: minutes in each HR zone × a progressively higher weight, summed.
