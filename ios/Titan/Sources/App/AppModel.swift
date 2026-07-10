@@ -378,8 +378,10 @@ final class AppModel: ObservableObject {
                 guard let resp = try? await self.api.sleepDetail(), let d = resp.detail,
                       (d.duration_min ?? 0) > 0, let bedEpoch = d.epoch_sec, bedEpoch > 0 else { continue }
                 // A night NEWER than the last one we surfaced — OR the very night we already popped this run
-                // (so we can follow it computing→final without the "already seen" guard bailing).
-                guard bedEpoch > self.lastSeenSleepEpoch || bedEpoch == poppedEpoch else { return }
+                // (so we can follow it computing→final without the "already seen" guard bailing). CONTINUE
+                // (don't return) when it isn't yet: poll #1 serves last night's row because tonight's seal
+                // queues behind the window jobs — returning here killed the whole 50-poll budget ~2s in.
+                guard bedEpoch > self.lastSeenSleepEpoch || bedEpoch == poppedEpoch else { continue }
                 let wakeApprox = bedEpoch + (d.duration_min ?? 0) * 60
                 guard Date().timeIntervalSince1970 - Double(wakeApprox) < 18 * 3600 else { self.lastSeenSleepEpoch = bedEpoch; return }
                 // Surface the night the moment it appears — a LOADING card if it's still computing (open-early),

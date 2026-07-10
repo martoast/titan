@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from .. import ALGO_VERSION
 from ..core import gait as gait_core
+from ..core.errors import DataFaultError
 
 router = APIRouter(prefix="/process", tags=["function"])
 
@@ -52,6 +53,8 @@ async def process_function(req: FunctionRequest) -> FunctionResponse:
                 sts["score"] = gait_core.chair_stand_score(sts["reps"], req.age, female)
         else:
             cadence = gait_core.cadence_spm(req.ax, req.ay, req.az, fs=req.fs, unit=req.unit)
+    except DataFaultError as exc:
+        raise HTTPException(status_code=422, detail=f"Function processing rejected the payload: {exc}")
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Function processing failed: {exc}")
     return FunctionResponse(algo_version=ALGO_VERSION, cadence=cadence, sit_to_stand=sts)

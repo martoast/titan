@@ -82,6 +82,30 @@ class RecoveryCascadeTest extends TestCase
             'once per day');
     }
 
+    public function test_the_greeting_hold_works_under_a_non_utc_app_timezone(): void
+    {
+        // Finding 1: Eloquent stores updated_at as a NAIVE app-tz string, so the still-staging hold must
+        // compare with Carbon::now() (app tz), NOT now('UTC') — the latter read every fresh row as 6h stale
+        // under a non-UTC app tz and silently disabled the hold in prod. CI missed it because setUp pins UTC.
+        config(['app.timezone' => 'America/Mexico_City']);
+        date_default_timezone_set('America/Mexico_City');
+
+        $profile = User::factory()->create()->ensureProfile();
+        SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => Carbon::today()->subDay()->toDateString(),
+            'is_nap' => false, 'duration_min' => 420, 'quality' => 80, 'stage_status' => 'final',
+        ]);
+        SleepLog::create([   // tonight, freshly written, still staging
+            'profile_id' => $profile->id, 'slept_at' => Carbon::today()->toDateString(),
+            'is_nap' => false, 'duration_min' => 300, 'stage_status' => 'computing',
+        ]);
+
+        (new ReactToDeviceSync($profile->id))->handle(app(NotificationService::class));
+
+        $this->assertSame(0, Notification::where('profile_id', $profile->id)->where('type', 'sync')->count(),
+            'the greeting holds while computing even under a non-UTC app timezone');
+    }
+
     public function test_a_computing_nap_does_not_suppress_the_morning_greeting(): void
     {
         // Audit F3: the still-staging hold is NIGHTS only. A mid-staging afternoon nap must not block the

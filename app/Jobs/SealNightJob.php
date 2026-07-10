@@ -93,6 +93,10 @@ class SealNightJob implements ShouldQueue
      *  within the last INGEST_QUIET_S. Once the drain has been quiet this long it's settled and we seal. */
     private const INGEST_QUIET_S = 5 * 60;
 
+    /** A confirmed marker whose [bed,wake] lands within this of an existing staged night's reconstructed span
+     *  is the SAME session replayed (store-and-forward), not a correction — so we don't re-stage over it. */
+    private const REPLAY_MATCH_TOL_S = 10 * 60;
+
     /** A session is a NIGHT (recovery-worthy) if it runs ≥4h OR touches these local overnight hours. The
      *  sleep-hours test is what keeps an evening post-workout cluster (elevated HR, not resting recovery)
      *  from writing a readiness row, while still recognising a short pre-dawn fragment as part of a night. */
@@ -220,7 +224,7 @@ class SealNightJob implements ShouldQueue
                     if ($this->night !== null) {
                         throw $e;
                     }
-                    $this->handleSessionFailure($profile, $windows, $e, $tz);
+                    $this->handleSessionFailure($profile, $windows, $e);
                 }
             }
         } catch (\Throwable $e) {
@@ -338,7 +342,7 @@ class SealNightJob implements ShouldQueue
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
      */
-    private function handleSessionFailure(Profile $profile, \Illuminate\Support\Collection $windows, \Throwable $e, string $tz): void
+    private function handleSessionFailure(Profile $profile, \Illuminate\Support\Collection $windows, \Throwable $e): void
     {
         // A biosignal OPS failure (service down / restarting / 5xx) is transient, not a data verdict — never
         // burn an attempt or seal the night away for it, or a multi-hour outage (a bad overnight deploy)
@@ -367,7 +371,7 @@ class SealNightJob implements ShouldQueue
             // are known). Rather than strand the iOS loading card forever and exclude a night whose duration
             // we DO know from readiness, settle it to an honest duration-only FINAL — the guarantee the old
             // no-computing-row cap used to give, now with a resolved card instead of an eternal spinner.
-            $this->settleComputingPlaceholder($profile, $windows, $tz);
+            $this->settleComputingPlaceholder($profile);
 
             return;
         }
@@ -377,20 +381,17 @@ class SealNightJob implements ShouldQueue
         ]));
     }
 
-    /** Flip a stranded confirmed COMPUTING placeholder for this session's night to a duration-only FINAL, so a
-     *  capped/failed finalize doesn't leave an eternal loading card or drop the night from readiness. Its
-     *  envelope duration/bed/wake are already on the row; we just settle the status (stages stay null). */
-    private function settleComputingPlaceholder(Profile $profile, \Illuminate\Support\Collection $windows, string $tz): void
+    /** Flip a stranded confirmed COMPUTING placeholder to a duration-only FINAL, so a capped/failed finalize
+     *  doesn't leave an eternal loading card or drop the night from readiness. Its envelope duration/bed/wake
+     *  are already on the row; we just settle the status (stages stay null). Match by RECENCY, not date: the
+     *  writer keys the row by MARKER-wake date, which can differ from this failed session's last-window date
+     *  (a pre-midnight band death), and this also covers a stranded NAP placeholder. A capped seal means the
+     *  relevant placeholder is fresh; a second, unrelated night staging concurrently isn't a real scenario. */
+    private function settleComputingPlaceholder(Profile $profile): void
     {
-        $wakeTs = (int) $windows->max(fn (DeviceIngestion $i) => $this->winEnd($i));
-        if ($wakeTs <= 0) {
-            return;
-        }
-        $date = CarbonImmutable::createFromTimestamp($wakeTs, 'UTC')->setTimezone($tz)->toDateString();
         SleepLog::where('profile_id', $profile->id)
-            ->where('slept_at', $date)
-            ->where('is_nap', false)
             ->where('stage_status', 'computing')
+            ->where('updated_at', '>=', now()->subMinutes(30))   // app-tz now(): matches the naive stored updated_at
             ->update(['stage_status' => 'final', 'finalized_at' => now()]);
     }
 
@@ -668,21 +669,26 @@ class SealNightJob implements ShouldQueue
                 return ($we ?? $ws) >= $loEpoch && ($ws ?? $we) <= $hiEpoch;
             });
 
-        // A REPLAYED wake marker (store-and-forward re-sends it) re-runs this after the night's windows are
-        // already SEALED, so $scoped is empty — there's nothing new to compute. If a STAGED night already
-        // exists for this session, a windowless re-seal must not clobber it: the duration-only fallback below
-        // would otherwise force-null its hypnogram/quality (STAGE_COLUMNS). Bail. (No existing staged row → we
-        // fall through, so a genuine offline night whose windows never arrived still writes its guaranteed row.)
-        if ($scoped->isEmpty()) {
-            $existing = SleepLog::where($key)->first();
-            if ($existing && $existing->stage_status === 'final'
-                && is_array($existing->hypnogram) && count($existing->hypnogram) > 0) {
-                Log::info('[Biosignal] confirmed replay on an already-staged night — no-op', [
-                    'profile_id' => $profile->id, 'date' => $date, 'is_nap' => $isNap,
-                ]);
+        // A REPLAYED wake marker (store-and-forward re-sends it — sometimes with a few stray tail windows)
+        // must not re-stage over the real night: a full replay (empty scope) would force a duration-only
+        // nulling of the hypnogram, and a partial replay (a few tail windows) would clobber the full staged
+        // night with fragment-derived stages. Detect a replay by SPAN — a staged night already exists whose
+        // reconstructed [bed,wake] MATCHES this marker's, so it's the same session again: consume any stray
+        // windows (so they don't re-trigger the cron) and no-op. A genuine correction (a DIFFERENT span, e.g.
+        // an inflated 900-min-bug row the honest marker shortens) has a different span and falls through.
+        $existingRow = SleepLog::where($key)->first();
+        if ($existingRow && $existingRow->stage_status === SleepLog::STATUS_FINAL
+            && is_array($existingRow->hypnogram) && count($existingRow->hypnogram) > 0
+            && $this->markerMatchesSpan($existingRow, $bed, $wake, $tz)) {
+            $scoped->each(fn (DeviceIngestion $i) => $i->update([
+                'status' => DeviceIngestion::STATUS_SEALED,
+                'result_refs' => array_merge((array) $i->result_refs, ['sleep_log_id' => $existingRow->id, 'sealed' => true]),
+            ]));
+            Log::info('[Biosignal] confirmed replay of an already-staged night — consumed, no re-stage', [
+                'profile_id' => $profile->id, 'date' => $date, 'is_nap' => $isNap, 'stray_windows' => $scoped->count(),
+            ]);
 
-                return;
-            }
+            return;
         }
 
         // Don't stage before this session's own raw windows have been processed into epoch features:
@@ -960,6 +966,19 @@ class SealNightJob implements ShouldQueue
         return $bed < $exWake && $wake > $exBed;   // half-open overlap → same sleep, a correction
     }
 
+    /** True when the marker's [bed,wake] lands within REPLAY_MATCH_TOL_S of the existing row's reconstructed
+     *  span — i.e. the SAME session replayed (store-and-forward), not a correction. Unreconstructable span →
+     *  false (treat as a correction, don't suppress it). */
+    private function markerMatchesSpan(SleepLog $existing, int $bed, int $wake, string $tz): bool
+    {
+        [$exBed, $exWake] = $this->reconstructSpan($existing, $tz);
+        if ($exBed === null || $exWake === null) {
+            return false;
+        }
+
+        return abs($bed - $exBed) <= self::REPLAY_MATCH_TOL_S && abs($wake - $exWake) <= self::REPLAY_MATCH_TOL_S;
+    }
+
     /**
      * Reconstruct a sealed row's absolute [bed,wake] UTC-epoch span. A nap carries an unambiguous
      * session_start; a night stores only slept_at (morning date) + bedtime/wake_time as bare H:i:s, so the
@@ -1008,8 +1027,12 @@ class SealNightJob implements ShouldQueue
      *  finalize, stage_status/coverage), so a genuine no-op reseal of an already-final row does NOT re-narrate. */
     private function sleepRowWritten(SleepLog $log): bool
     {
+        // stage_status IS included: a thin-staging (duration-only) finalize writes attrs byte-identical to the
+        // computing placeholder EXCEPT the status, so without it `computing→final` reads as a no-op and drops
+        // BOTH the coach summary and the recovery-greeting re-dispatch. finalized_at is still excluded (it's a
+        // fresh now() on every finalize, which would defeat the true no-op-reseal guard).
         return $log->wasRecentlyCreated
-            || $log->wasChanged(['duration_min', 'deep_min', 'rem_min', 'light_min', 'awake_min', 'quality', 'hypnogram']);
+            || $log->wasChanged(['duration_min', 'deep_min', 'rem_min', 'light_min', 'awake_min', 'quality', 'hypnogram', 'stage_status']);
     }
 
     /** Coverage is a fraction; clamp to [0,1] before it hits the decimal(4,3) column so a stager glitch can't

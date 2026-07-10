@@ -79,8 +79,8 @@ class SleepCoach
         $day = $day ?? Carbon::today();
 
         $nights = $profile->sleepLogs()
-            ->where('is_nap', false)                                     // naps are bounded sessions, not "last night"
-            ->where('stage_status', \App\Models\SleepLog::STATUS_FINAL)  // never the computing envelope (in-bed, not asleep)
+            ->nights()   // full nights, not naps
+            ->final()    // never the computing envelope (in-bed, not measured asleep)
             ->where('slept_at', '>=', $day->copy()->subDays(self::DEBT_NIGHTS))
             ->orderByDesc('slept_at')->orderByDesc('id')->get();
         if ($nights->isEmpty()) {

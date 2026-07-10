@@ -94,6 +94,8 @@ async def process_step_distance(req: StepDistanceRequest) -> StepDistanceRespons
             fs=req.accel_fs, duration_s=req.duration_s, height_cm=req.height_cm,
             activity_type=req.activity_type, unit=req.accel_unit,
         )
+    except DataFaultError as exc:
+        raise HTTPException(status_code=422, detail=f"Step-distance rejected the payload: {exc}")
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Step-distance failed: {exc}")
 

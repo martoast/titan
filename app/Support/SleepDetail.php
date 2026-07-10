@@ -80,9 +80,14 @@ class SleepDetail
                 return $bt->timestamp;
             })();
 
+        // A `computing` row is still being staged: its stages/quality are NULL and `$assess` reflects the last
+        // FINAL night — so don't pair yesterday's performance ring with tonight's placeholder card (it would
+        // visibly jump on finalize). The app renders the loading state off `stage_status` instead.
+        $computing = $last->stage_status === \App\Models\SleepLog::STATUS_COMPUTING;
+
         return [
             'date' => $last->slept_at?->toDateString(),
-            'performance_pct' => $assess['performance_pct'] ?? $last->quality,
+            'performance_pct' => $computing ? null : ($assess['performance_pct'] ?? $last->quality),
             'duration_min' => $duration,
             'need_h' => $assess['need_h'] ?? null,
             'debt_h' => $assess['debt_h'] ?? null,

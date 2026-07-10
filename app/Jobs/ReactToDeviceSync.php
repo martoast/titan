@@ -50,12 +50,14 @@ class ReactToDeviceSync implements ShouldQueue
         // not the duration-only placeholder. Nights only — a mid-staging NAP must not suppress the morning read
         // (the finalize re-dispatch is night-only). Bounded to a fresh row (30 min ≫ the ~2 min stage defer, so
         // it never truncates a legitimately slow finalize) so a hard-crashed finalize can't wedge the greeting
-        // forever — and a capped finalize settles the placeholder anyway (settleComputingPlaceholder). UTC to
-        // match the DB-stored updated_at regardless of app.timezone.
+        // forever — and a capped finalize settles the placeholder anyway (settleComputingPlaceholder). Compare
+        // with Carbon::now() (the APP default tz) because Eloquent stores updated_at as a NAIVE app-tz
+        // wall-clock string — comparing to now('UTC') read every fresh row as 6h stale under a non-UTC app tz,
+        // silently disabling the hold.
         $stillStaging = SleepLog::where('profile_id', $profile->id)
             ->where('is_nap', false)
             ->where('stage_status', 'computing')
-            ->where('updated_at', '>=', Carbon::now('UTC')->subMinutes(30))
+            ->where('updated_at', '>=', Carbon::now()->subMinutes(30))
             ->exists();
         if ($stillStaging) {
             return;   // not marked greeted → the finalize (or a later sync) fires it with the settled night
@@ -76,23 +78,31 @@ class ReactToDeviceSync implements ShouldQueue
         // Atomic claim: two workers (a sync-triggered job and the finalize re-dispatch) can both pass the
         // persistent `device_greeted` check in the race window before it's written. Cache::add is atomic, so
         // only one wins and greets; the loser bails. (The persistent flag below still guards across restarts.)
-        if (! Cache::add("device_greeted:{$profile->id}:{$today}", true, Carbon::now()->addDay())) {
+        $claim = "device_greeted:{$profile->id}:{$today}";
+        if (! Cache::add($claim, true, Carbon::now()->addDay())) {
             return;
         }
 
-        $body = "Your overnight data just synced -- readiness {$score}".($label ? " ({$label})" : '').'.'.($focus ? " Today's focus: {$focus}." : '');
+        // If the notify/write throws (a DB hiccup, etc.), RELEASE the claim so a later dispatch can re-greet —
+        // otherwise a single failure loses the whole day's greeting until the 24h cache key expires.
+        try {
+            $body = "Your overnight data just synced -- readiness {$score}".($label ? " ({$label})" : '').'.'.($focus ? " Today's focus: {$focus}." : '');
 
-        $notifications->notify($profile, '🌅 Your recovery is in', $body, '/coach', 'sync');
+            $notifications->notify($profile, '🌅 Your recovery is in', $body, '/coach', 'sync');
 
-        // Drop it into the Daily Briefings thread so it's waiting in the coach UI.
-        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
-        $convo->messages()->create([
-            'role' => 'assistant',
-            'content' => "🌅 **Your band just synced your overnight data.**\n\n{$body}\n\nAsk me how to make the most of today.",
-        ]);
+            // Drop it into the Daily Briefings thread so it's waiting in the coach UI.
+            $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
+            $convo->messages()->create([
+                'role' => 'assistant',
+                'content' => "🌅 **Your band just synced your overnight data.**\n\n{$body}\n\nAsk me how to make the most of today.",
+            ]);
 
-        $settings = $profile->settings ?? [];
-        $settings['device_greeted'] = $today;
-        $profile->update(['settings' => $settings]);
+            $settings = $profile->settings ?? [];
+            $settings['device_greeted'] = $today;
+            $profile->update(['settings' => $settings]);
+        } catch (\Throwable $e) {
+            Cache::forget($claim);
+            throw $e;
+        }
     }
 }

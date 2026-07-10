@@ -435,7 +435,7 @@ class SleepDutyCycleSealTest extends TestCase
         $m = new \ReflectionMethod(SealNightJob::class, 'handleSessionFailure');
         $m->setAccessible(true);
         $job = new SealNightJob($profile->id, null, false);
-        $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison payload'), 'UTC');
+        $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison payload'));
 
         $win->refresh();
         $this->assertSame(DeviceIngestion::STATUS_SEALED, $win->status, 'released at the attempt cap so it stops looping');
@@ -562,6 +562,47 @@ class SleepDutyCycleSealTest extends TestCase
         $this->assertSame('biosignal:sealed-session', $log->updated_via, 'no windowless re-seal overwrote it');
     }
 
+    public function test_replay_is_detected_by_span_match_not_empty_scope(): void
+    {
+        // Finding 4: a replay is the SAME session's span again; a genuine correction has a DIFFERENT span and
+        // must NOT be suppressed. markerMatchesSpan distinguishes them (so a partial replay with tail windows
+        // is caught, and an inflated-row correction still flows through).
+        $profile = User::factory()->create()->ensureProfile();
+        $existing = SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => '2026-07-08', 'is_nap' => false,
+            'duration_min' => 470, 'bedtime' => '23:00:00', 'wake_time' => '07:00:00',
+            'hypnogram' => array_fill(0, 940, 'light'), 'stage_status' => 'final',
+        ]);
+        $m = new \ReflectionMethod(SealNightJob::class, 'markerMatchesSpan');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, true);
+
+        $this->assertTrue($m->invoke($job, $existing,
+            Carbon::parse('2026-07-07 23:03', 'UTC')->timestamp,   // within tolerance of 23:00 → replay
+            Carbon::parse('2026-07-08 07:00', 'UTC')->timestamp, 'UTC'), 'same span (±tol) is a replay');
+        $this->assertFalse($m->invoke($job, $existing,
+            Carbon::parse('2026-07-08 20:00', 'UTC')->timestamp,   // a distinct evening doze → correction
+            Carbon::parse('2026-07-08 23:00', 'UTC')->timestamp, 'UTC'), 'a different span is not a replay');
+    }
+
+    public function test_sleep_row_written_counts_the_computing_to_final_transition(): void
+    {
+        // Finding 2: a thin-staging finalize writes duration-only attrs byte-identical to the placeholder
+        // except the status — so the computing→final flip must count as "written" or the coach summary +
+        // recovery greeting are both dropped on that path.
+        $profile = User::factory()->create()->ensureProfile();
+        $log = SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => Carbon::today()->toDateString(), 'is_nap' => false,
+            'duration_min' => 430, 'bedtime' => '23:00:00', 'wake_time' => '06:10:00', 'stage_status' => 'computing',
+        ]);
+        $log->update(['stage_status' => 'final', 'finalized_at' => now()]);   // the thin-night finalize (no stages)
+
+        $m = new \ReflectionMethod(SealNightJob::class, 'sleepRowWritten');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, true);
+        $this->assertTrue($m->invoke($job, $log), 'computing→final is a write, so the notifications fire');
+    }
+
     public function test_a_capped_seal_settles_a_stranded_computing_placeholder(): void
     {
         // Finding 3: a confirmed COMPUTING placeholder exists; the auto seal of the same windows caps
@@ -587,7 +628,7 @@ class SleepDutyCycleSealTest extends TestCase
         $m = new \ReflectionMethod(SealNightJob::class, 'handleSessionFailure');
         $m->setAccessible(true);
         $job = new SealNightJob($profile->id, null, false);
-        $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison'), 'UTC');
+        $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison'));
 
         $log = SleepLog::where('profile_id', $profile->id)->first();
         $this->assertSame('final', $log->stage_status, 'the stranded computing placeholder is settled');
@@ -641,7 +682,7 @@ class SleepDutyCycleSealTest extends TestCase
         $m->setAccessible(true);
         $job = new SealNightJob($profile->id, null, false);
         // At the cap-minus-one: a DETERMINISTIC error would seal here. A transient one must not.
-        $m->invoke($job, $profile, collect([$win]), new ConnectionException('biosignal unreachable'), 'UTC');
+        $m->invoke($job, $profile, collect([$win]), new ConnectionException('biosignal unreachable'));
 
         $win->refresh();
         $this->assertNotSame(DeviceIngestion::STATUS_SEALED, $win->status, 'a transient outage never seals the night away');
