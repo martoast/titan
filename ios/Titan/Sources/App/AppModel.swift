@@ -393,6 +393,7 @@ final class AppModel: ObservableObject {
                 if !resp.isComputing {
                     self.sleepDetail = resp            // only a FINAL night feeds Daily/Recovery — no partial cards
                     self.lastSeenSleepEpoch = bedEpoch
+                    await self.refresh()               // cascade: recovery + strain-target reflect the settled night
                     return
                 }
             }
@@ -1377,6 +1378,7 @@ final class AppModel: ObservableObject {
                 if bedtimeEpoch > 0, let e = d.epoch_sec, abs(e - bedtimeEpoch) > 6 * 3600 { continue }
                 self.sleepDetail = resp   // refresh Daily/Recovery so they reflect the new night too
                 if var s = self.sleepSummary { s.detail = d; s.assess = resp.assess; s.loading = false; self.sleepSummary = s }
+                await self.refresh()      // cascade: recovery + strain-target now reflect the finalized night
                 return
             }
             if var s = self?.sleepSummary { s.loading = false; s.failed = true; self?.sleepSummary = s }

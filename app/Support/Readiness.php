@@ -56,7 +56,12 @@ class Readiness
         $today = $history->firstWhere(fn (RecoveryLog $r) => $r->logged_at->toDateString() === $date)
             ?? $history->last();
 
+        // A FINAL night only — never the in-flight `computing` placeholder (duration but no stages/quality),
+        // or readiness would be computed from an incomplete night for the ~2 min it's being staged. Until
+        // tonight finalizes we use the last complete night; the finalize re-fires the morning read. Progressive
+        // summary: see docs/PROGRESSIVE_SUMMARY.md.
         $sleep = $profile->sleepLogs()->nights()
+            ->where('stage_status', 'final')
             ->whereDate('slept_at', '<=', $date)
             ->orderByDesc('slept_at')
             ->orderByDesc('id')

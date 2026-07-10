@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Profile;
+use App\Models\SleepLog;
 use App\Services\Notifications\NotificationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -41,6 +42,17 @@ class ReactToDeviceSync implements ShouldQueue
         }
         if (class_exists(\App\Support\Reminders::class) && ! \App\Support\Reminders::enabled($profile, 'briefing')) {
             return;
+        }
+
+        // Progressive summary: if tonight's confirmed night is still being STAGED, hold the greeting until it
+        // FINALIZES (the seal re-dispatches us then) so the readiness we announce reflects the complete night,
+        // not the duration-only placeholder. Bounded to a fresh row so a crashed finalize can't wedge it.
+        $stillStaging = SleepLog::where('profile_id', $profile->id)
+            ->where('stage_status', 'computing')
+            ->where('updated_at', '>=', Carbon::now()->subMinutes(15))
+            ->exists();
+        if ($stillStaging) {
+            return;   // not marked greeted → the finalize (or a later sync) fires it with the settled night
         }
 
         // Wait for the read to be computable -- if recovery isn't ready yet, a later sync will fire this.

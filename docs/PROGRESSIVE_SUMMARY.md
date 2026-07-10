@@ -206,9 +206,16 @@ provisional state is exactly the "not sealed shut yet" window S-3 needs.
    refines it in place on finalize; `sleepDetail` (Daily/Recovery) only ever takes a FINAL night, so no
    half-empty cards. `SleepSummaryView` already renders the loading state (hero "SEALING", "Staging your
    night…", watch-marker fallback tiles). Xcode build: SUCCEEDED.
-2. **Phase 2 — notify + downstream cascade.** Push on finalize; move readiness/strain-target to trigger off
-   the finalize event (so recovery cascades the moment sleep settles), and self-refresh a card left open on
-   the loading state.
+2. **Phase 2 — notify + downstream cascade. ✅ BUILT (server + iOS).** Recovery now reflects the FINAL night
+   and cascades the moment sleep settles. Server: `Readiness::compute` reads a `stage_status = final` night
+   only (never the incomplete `computing` placeholder — until tonight finalizes it uses the last complete
+   night); `ReactToDeviceSync` (the "🌅 your recovery is in" greeting) defers while tonight is still
+   `computing` (reusing its "a later trigger fires this" pattern, bounded to a fresh row); the confirmed-seal
+   FINALIZE re-dispatches `ReactToDeviceSync` (once-per-day, so idempotent) so the greeting goes out with the
+   complete night's readiness. iOS: both sleep pollers `await self.refresh()` on finalize, so the recovery +
+   strain-target cards update in place the instant sleep settles. (`ReactToSleepConfirmed` already pushed the
+   sleep summary on finalize — Phase 1.) Tests: `RecoveryCascadeTest` (readiness ignores computing; greeting
+   waits for finalize then fires once). Strain-target follows for free (it derives its band from readiness).
 3. **Phase 3 — partial stages while computing (optional nicety).** Stage the already-processed epochs onto the
    computing row so the loading card shows approximate stages instead of just a progress spinner. Only if we
    decide the "numbers that move a little" tradeoff is worth it.

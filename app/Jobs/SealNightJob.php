@@ -702,6 +702,13 @@ class SealNightJob implements ShouldQueue
         // only when this seal actually wrote the row, never re-narrating an unchanged no-op reseal.
         if ($this->sleepRowWritten($log)) {
             \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
+            // Re-fire the morning recovery greeting on a real night's FINALIZE: a sync that landed before
+            // staging finished held off (the night was still `computing`), so the finalize is what lets "your
+            // recovery is in" go out with the complete night's readiness. ReactToDeviceSync is once-per-day,
+            // so a re-dispatch is a safe no-op if it already greeted. Naps don't drive the morning read.
+            if (! $isNap) {
+                \App\Jobs\ReactToDeviceSync::dispatch($profile->id)->afterCommit();
+            }
         }
 
         Log::info('[Biosignal] confirmed session sealed', [
