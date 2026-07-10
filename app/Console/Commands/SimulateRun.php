@@ -6,6 +6,7 @@ use App\Jobs\SealActivityJob;
 use App\Models\ActivitySession;
 use App\Models\DeviceIngestion;
 use App\Models\User;
+use App\Services\Lab\VirtualAthlete;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -56,7 +57,12 @@ class SimulateRun extends Command
 
         $this->info("Simulating a {$km} km run @ {$paceMin} min/km (".gmdate('i:s', $durSec).") for {$user->email}…");
 
-        $window = $this->buildWindow($lat0, $lon0, $km, $durSec, $startMs, $startAt, $endAt, $outBack);
+        // The workout-window builder lives once, in the WORKOUT LAB's VirtualAthlete (the single wire
+        // renderer both simulate commands + the lab go through), instead of an inline copy here.
+        $window = VirtualAthlete::simulateRunWindow(
+            $lat0, $lon0, $km, $durSec, $startMs,
+            $startAt->toIso8601ZuluString(), $endAt->toIso8601ZuluString(), $outBack,
+        );
 
         // Store the raw window where the seal job reads it (gzipped NDJSON on the `raw` disk), then a
         // QUEUED workout ingestion — exactly what DeviceIngestionService writes for a real band batch.
@@ -108,68 +114,5 @@ class SimulateRun extends Command
         $this->line('  Map:   '.($map ? $map : '(no MAPBOX_API_TOKEN set)'));
 
         return self::SUCCESS;
-    }
-
-    /** Build the kind=workout window (the band+bridge's post-decode output) for a synthetic run. */
-    private function buildWindow(float $lat0, float $lon0, float $km, int $durSec, int $startMs, Carbon $startAt, Carbon $endAt, bool $outBack): array
-    {
-        $Dm = $km * 1000;
-        $r = $Dm / (2 * M_PI);
-        $mLat = 111320.0;
-        $mLon = 111320.0 * cos(deg2rad($lat0));
-
-        $track = $speed = $grade = $hr = [];
-        $prevAlt = null;
-        for ($i = 0; $i < $durSec; $i++) {
-            $f = $i / $durSec;                                   // 0..1 over the run
-            if ($outBack) {                                     // straight out then back, with a slight bow
-                $prog = $f < 0.5 ? $f * 2 : (1 - $f) * 2;        // 0→1→0
-                $x = $prog * $Dm / 2;
-                $y = 90 * sin($f * M_PI * 6);
-            } else {                                            // a loop back to the start
-                $th = 2 * M_PI * $f;
-                $x = $r * sin($th) + 22 * sin($th * 6);
-                $y = $r * (cos($th) - 1) + 22 * cos($th * 5);
-            }
-            $lat = $lat0 + $y / $mLat;
-            $lon = $lon0 + $x / $mLon;
-            $alt = 40 + 18 * sin($f * M_PI * 4);                // a couple of rolling hills
-            $track[] = ['t' => $startMs + $i * 1000, 'lat' => round($lat, 6), 'lon' => round($lon, 6), 'alt' => round($alt, 1)];
-
-            $speed[] = round(($Dm / $durSec) * 3.6 * (0.9 + 0.2 * sin($f * M_PI * 8)), 2);   // km/h, gently varying
-            $dDist = $Dm / $durSec;
-            $g = ($prevAlt !== null && $dDist > 0.5) ? max(-0.3, min(0.3, ($alt - $prevAlt) / $dDist)) : 0.0;
-            $grade[] = round($g, 4);
-            $prevAlt = $alt;
-            $hr[] = (int) round(120 + 40 * $f + 6 * sin($f * M_PI * 20));                    // ramps 120→160 + drift
-        }
-
-        // 25 Hz running accel (milli-g): a ~2.7 Hz (162 spm) cadence with layered foot-strike harmonics
-        // (→ real 3-8 Hz band energy + jerk), arm swing at half-cadence, and broadband noise — the
-        // signature the trained classifier learned for "run" (vs a clean sine, which reads as "other").
-        $fs = 25;
-        $ax = $ay = $az = [];
-        for ($i = 0, $n = $durSec * $fs; $i < $n; $i++) {
-            $t = $i / $fs;
-            $ph = 2 * M_PI * 2.9 * $t;                                   // ~174 spm — a clear run cadence
-            $impact = 520 * sin($ph) + 120 * sin(2 * $ph) + 45 * sin(3 * $ph);   // dominant fundamental, light harmonics
-            $az[] = (int) round(1000 + $impact + mt_rand(-70, 70));      // vertical foot-strike + gravity
-            $ax[] = (int) round(160 * sin($ph + 0.4) + mt_rand(-60, 60));
-            $ay[] = (int) round(120 * sin(2 * M_PI * 1.45 * $t + 1.0) + mt_rand(-60, 60));   // arm swing at half-cadence
-        }
-        $counts = array_fill(0, max(1, (int) ceil($durSec / 30)), 70);   // per-30s activity (vigorous)
-
-        return [
-            'kind' => 'workout',
-            'start' => $startAt->toIso8601ZuluString(),
-            'end' => $endAt->toIso8601ZuluString(),
-            'accel_xyz' => ['x' => $ax, 'y' => $ay, 'z' => $az],
-            'accel_fs' => $fs,
-            'accel_unit' => 'mg',
-            'accel_counts' => $counts,
-            'hr_bpm' => $hr,
-            'gps' => ['speed_kmh' => $speed, 'grade' => $grade, 'track' => $track],
-            'src' => 'simulator',
-        ];
     }
 }

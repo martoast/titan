@@ -5,11 +5,11 @@ namespace App\Console\Commands;
 use App\Jobs\SealActivityJob;
 use App\Models\Profile;
 use App\Models\WearableConnection;
+use App\Services\Lab\VirtualAthlete;
 use App\Services\Simulator\BiosignalSimulator;
 use App\Services\Wearables\BiosignalClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 /**
@@ -135,21 +135,15 @@ class SimulateWorkout extends Command
         [$device, $secret] = $this->resolveDevice($profile);
         $end = Carbon::parse($start)->addMinutes($minutes);
 
-        $payload = [
-            'batch_uid' => (string) Str::ulid(),
-            'device_id' => $device->device_id,
-            'timezone' => $device->effectiveTimezone(),
-            'windows' => [[
-                'kind' => 'workout',
-                'start' => $start,
-                'end' => $end->toIso8601ZuluString(),
-                'hr_bpm' => $w['run']['hr'],
-                'accel_counts' => $w['accel_counts'],
-                'gps' => ['speed_kmh' => $w['run']['speed_kmh'], 'grade' => $w['run']['grade']],
-            ]],
-        ];
-
-        if (! $this->postSigned($device->device_id, $secret, $payload)) {
+        // Wire rendering + HMAC signing live once, in the WORKOUT LAB's VirtualAthlete (the single wire
+        // contract for workouts), instead of an inline copy here. The PHP twin streams the counts-based
+        // window (HR + accel counts + GPS pace/grade); the accel signature is the Python twin's job.
+        $window = VirtualAthlete::countsWindow(
+            $start, $end->toIso8601ZuluString(),
+            $w['run']['hr'], $w['accel_counts'], $w['run']['speed_kmh'], $w['run']['grade'],
+        );
+        $url = rtrim(config('app.url', 'http://localhost'), '/').'/api/devices/ingest';
+        if (! VirtualAthlete::signAndPost($url, $device->device_id, $secret, $device->effectiveTimezone(), ['windows' => [$window]])) {
             $this->warn('Ingestion API unreachable -- workout not stored. (Is the app serving at '.config('app.url').'?)');
 
             return self::SUCCESS;
@@ -181,19 +175,5 @@ class SimulateWorkout extends Command
         }
 
         return [$device, $secret];
-    }
-
-    private function postSigned(string $deviceId, string $secret, array $payload): bool
-    {
-        $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
-        $ts = (string) time();
-        $sig = 't='.$ts.',v1='.hash_hmac('sha256', $ts.'.'.$body, hash('sha256', $secret));
-        $url = rtrim(config('app.url', 'http://localhost'), '/').'/api/devices/ingest';
-        try {
-            return Http::withHeaders(['X-Device-Id' => $deviceId, 'X-Titan-Signature' => $sig, 'Content-Type' => 'application/json'])
-                ->timeout(20)->withBody($body, 'application/json')->post($url)->successful();
-        } catch (\Throwable) {
-            return false;
-        }
     }
 }

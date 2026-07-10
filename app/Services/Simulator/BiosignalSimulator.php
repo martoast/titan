@@ -63,6 +63,16 @@ class BiosignalSimulator
     }
 
     /**
+     * A single seeded standard-normal draw — the public seam the WORKOUT LAB's {@see \App\Services\Lab\VirtualAthlete}
+     * uses to add physiologically-plausible noise to a rendered workout while staying deterministic per seed
+     * (so there is still ONE signal engine, not two). Same generator {@see generateWindowFromCfg} uses internally.
+     */
+    public function gaussPublic(): float
+    {
+        return $this->gauss();
+    }
+
+    /**
      * Generate an IBI (inter-beat interval) series, in ms, for a span of `$seconds`
      * spent in a given activity `$state`. Models a mean HR with natural beat-to-beat
      * variation plus respiratory sinus arrhythmia (the ~0.25 Hz oscillation that *is*
