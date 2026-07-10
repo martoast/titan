@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from .. import ALGO_VERSION
 from ..core import hrv as hrv_core
+from ..core.errors import DataFaultError
 
 router = APIRouter(prefix="/process", tags=["hrv"])
 
@@ -69,7 +70,7 @@ async def process_hrv(window: HrvWindow) -> HrvResponse:
             accel=window.accel_counts,
             want_resp=window.want_resp,
         )
-    except ValueError as exc:
+    except DataFaultError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"HRV processing failed: {exc}")

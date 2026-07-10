@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from .. import ALGO_VERSION
 from ..core import activity as activity_core
 from ..core import gait as gait_core
+from ..core.errors import DataFaultError
 
 router = APIRouter(prefix="/process", tags=["activity"])
 
@@ -118,7 +119,7 @@ async def process_activity(window: ActivityWindow) -> ActivityResponse:
             speed_kmh=window.speed_kmh,
             grade=window.grade,
         )
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
+    except DataFaultError as exc:
         # Deterministic data fault (e.g. an unknown accel unit) → 422, not a retry-forever 5xx.
         raise HTTPException(status_code=422, detail=f"Activity processing rejected the payload: {exc}")
     except Exception as exc:  # pragma: no cover

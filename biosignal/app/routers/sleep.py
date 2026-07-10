@@ -1,11 +1,12 @@
 """POST /process/sleep — Walch-style actigraphy + HR sleep staging (v1 baseline)."""
-
 from __future__ import annotations
 
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+from ..core.errors import DataFaultError
 
 from .. import ALGO_VERSION
 from ..core import staging as staging_core
@@ -57,9 +58,10 @@ async def process_sleep(window: SleepWindow) -> SleepResponse:
             end=window.end,
             sample_epochs=window.sample_epochs,
         )
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
-        # A DATA fault (bad payload shape / unit / ragged series) is deterministic — 422 so the caller counts
-        # it toward its attempt cap and stops retrying a poison payload, rather than looping it forever as 5xx.
+    except DataFaultError as exc:
+        # A DELIBERATELY-REJECTED bad payload is deterministic — 422 so the caller counts it toward its attempt
+        # cap and stops retrying poison data. A bare ValueError/KeyError/etc. from a code bug is NOT caught here:
+        # it falls through to 500 (transient), so a bad deploy retries until rollback instead of destroying nights.
         raise HTTPException(status_code=422, detail=f"Sleep staging rejected the payload: {exc}")
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Sleep staging failed: {exc}")

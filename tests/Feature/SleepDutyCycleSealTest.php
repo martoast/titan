@@ -435,7 +435,7 @@ class SleepDutyCycleSealTest extends TestCase
         $m = new \ReflectionMethod(SealNightJob::class, 'handleSessionFailure');
         $m->setAccessible(true);
         $job = new SealNightJob($profile->id, null, false);
-        $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison payload'));
+        $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison payload'), 'UTC');
 
         $win->refresh();
         $this->assertSame(DeviceIngestion::STATUS_SEALED, $win->status, 'released at the attempt cap so it stops looping');
@@ -498,6 +498,104 @@ class SleepDutyCycleSealTest extends TestCase
             Carbon::parse('2026-07-08 23:00', 'UTC')->timestamp, 'UTC'), 'a distinct evening doze is refused');
     }
 
+    public function test_time_only_stores_the_profile_local_clock(): void
+    {
+        // Finding 1: the stager returns bedtime/wake_time as UTC ISO; timeOnly must convert to the profile's
+        // LOCAL wall clock so every seal path stores one convention and reconstructSpan (which assumes local)
+        // is correct. Storing the raw Zulu clock silently broke the overlap check for every non-UTC user.
+        $m = new \ReflectionMethod(SealNightJob::class, 'timeOnly');
+        $m->setAccessible(true);
+        $job = new SealNightJob(1, null, false);
+        $this->assertSame('07:00:00', $m->invoke($job, '2026-07-08T13:00:00Z', 'America/Mexico_City'), '13:00Z = 07:00 in UTC-6');
+        $this->assertSame('13:00:00', $m->invoke($job, '2026-07-08T13:00:00Z', 'UTC'));
+    }
+
+    public function test_confirmed_overlap_check_is_correct_for_a_non_utc_profile(): void
+    {
+        // Finding 1: with bedtime/wake_time now stored profile-local, the same-night-vs-doze overlap must hold
+        // for a UTC-6 user (it silently inverted before — refusing real repairs and merging distinct dozes).
+        $tz = 'America/Mexico_City';
+        $profile = User::factory()->create()->ensureProfile();
+        $date = '2026-07-08';
+        SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false,
+            'duration_min' => 470, 'bedtime' => '23:00:00', 'wake_time' => '07:00:00',   // profile-local clock
+            'hypnogram' => array_fill(0, 940, 'light'), 'updated_via' => 'biosignal:sealed-session',
+        ]);
+        $key = ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false];
+        $m = new \ReflectionMethod(SealNightJob::class, 'confirmedOverwriteAllowed');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, true);
+
+        $this->assertTrue($m->invoke($job, $key,
+            Carbon::parse('2026-07-07 23:00', $tz)->timestamp,
+            Carbon::parse('2026-07-08 07:00', $tz)->timestamp, $tz), 'same-night correction allowed (UTC-6)');
+        $this->assertFalse($m->invoke($job, $key,
+            Carbon::parse('2026-07-08 20:00', $tz)->timestamp,
+            Carbon::parse('2026-07-08 23:00', $tz)->timestamp, $tz), 'a distinct evening doze is refused (UTC-6)');
+    }
+
+    public function test_a_replayed_wake_marker_does_not_erase_a_staged_night(): void
+    {
+        // Finding 2: store-and-forward re-sends the wake marker after the night already sealed. Its windows are
+        // SEALED (empty scope), so a windowless re-seal must NOT force a duration-only write that nulls the stages.
+        $profile = User::factory()->create()->ensureProfile();
+        $wake = time();
+        $bed = $wake - 420 * 60;
+        $date = Carbon::createFromTimestamp($wake, 'UTC')->toDateString();
+        SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false,
+            'duration_min' => 400, 'deep_min' => 80, 'rem_min' => 90, 'light_min' => 230, 'quality' => 85,
+            'hypnogram' => array_fill(0, 800, 'light'), 'coverage' => 0.95, 'stage_status' => 'final',
+            'finalized_at' => now(), 'updated_via' => 'biosignal:sealed-session',
+        ]);
+        foreach ($this->dutyCycleNight($profile->id, $bed, $wake) as $w) {
+            $w->update(['status' => DeviceIngestion::STATUS_SEALED]);   // already sealed → the replay finds nothing
+        }
+
+        Queue::fake();
+        (new SealNightJob($profile->id, null, true, $bed, $wake, 0))->handle(app(BiosignalClient::class));
+
+        $log = SleepLog::where('profile_id', $profile->id)->first();
+        $this->assertSame(80, (int) $log->deep_min, 'the staged night is intact after a replayed marker');
+        $this->assertNotNull($log->hypnogram, 'the hypnogram was not erased');
+        $this->assertSame('biosignal:sealed-session', $log->updated_via, 'no windowless re-seal overwrote it');
+    }
+
+    public function test_a_capped_seal_settles_a_stranded_computing_placeholder(): void
+    {
+        // Finding 3: a confirmed COMPUTING placeholder exists; the auto seal of the same windows caps
+        // (deterministic) → settle the placeholder to a duration-only FINAL instead of stranding the loading
+        // card forever and dropping a night whose envelope duration is known.
+        $profile = User::factory()->create()->ensureProfile();
+        $now = time();
+        $date = Carbon::createFromTimestamp($now, 'UTC')->toDateString();
+        SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false,
+            'duration_min' => 430, 'bedtime' => '23:00:00', 'wake_time' => '06:10:00',
+            'stage_status' => 'computing', 'updated_via' => 'biosignal:computing',
+        ]);
+        $win = DeviceIngestion::create([
+            'batch_uid' => substr(hash('sha256', (string) mt_rand()), 0, 40),
+            'profile_id' => $profile->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+            'status' => DeviceIngestion::STATUS_PROCESSED,
+            'window_start' => Carbon::createFromTimestamp($now - 60),
+            'window_end' => Carbon::createFromTimestamp($now - 30),
+            'result_refs' => ['epoch_motion' => [2.0], 'seal_attempts' => SealNightJob::MAX_SEAL_ATTEMPTS - 1],
+        ]);
+
+        $m = new \ReflectionMethod(SealNightJob::class, 'handleSessionFailure');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, false);
+        $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison'), 'UTC');
+
+        $log = SleepLog::where('profile_id', $profile->id)->first();
+        $this->assertSame('final', $log->stage_status, 'the stranded computing placeholder is settled');
+        $this->assertNotNull($log->finalized_at);
+        $this->assertSame(430, (int) $log->duration_min, 'the envelope duration is preserved');
+        $this->assertNull($log->deep_min, 'settled as honest duration-only, no fabricated stages');
+    }
+
     public function test_a_force_duration_only_reseal_clears_stale_stages(): void
     {
         // A-3: a forced duration-only correction must not leave the old row's stages under the new duration
@@ -543,7 +641,7 @@ class SleepDutyCycleSealTest extends TestCase
         $m->setAccessible(true);
         $job = new SealNightJob($profile->id, null, false);
         // At the cap-minus-one: a DETERMINISTIC error would seal here. A transient one must not.
-        $m->invoke($job, $profile, collect([$win]), new ConnectionException('biosignal unreachable'));
+        $m->invoke($job, $profile, collect([$win]), new ConnectionException('biosignal unreachable'), 'UTC');
 
         $win->refresh();
         $this->assertNotSame(DeviceIngestion::STATUS_SEALED, $win->status, 'a transient outage never seals the night away');

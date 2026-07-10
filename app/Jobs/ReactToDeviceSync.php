@@ -48,12 +48,14 @@ class ReactToDeviceSync implements ShouldQueue
         // Progressive summary: if tonight's confirmed NIGHT is still being STAGED, hold the greeting until it
         // FINALIZES (the seal re-dispatches us then) so the readiness we announce reflects the complete night,
         // not the duration-only placeholder. Nights only — a mid-staging NAP must not suppress the morning read
-        // (the finalize re-dispatch is night-only). Bounded to a fresh row so a crashed finalize can't wedge it;
-        // UTC to match the DB-stored updated_at regardless of app.timezone.
+        // (the finalize re-dispatch is night-only). Bounded to a fresh row (30 min ≫ the ~2 min stage defer, so
+        // it never truncates a legitimately slow finalize) so a hard-crashed finalize can't wedge the greeting
+        // forever — and a capped finalize settles the placeholder anyway (settleComputingPlaceholder). UTC to
+        // match the DB-stored updated_at regardless of app.timezone.
         $stillStaging = SleepLog::where('profile_id', $profile->id)
             ->where('is_nap', false)
             ->where('stage_status', 'computing')
-            ->where('updated_at', '>=', Carbon::now('UTC')->subMinutes(15))
+            ->where('updated_at', '>=', Carbon::now('UTC')->subMinutes(30))
             ->exists();
         if ($stillStaging) {
             return;   // not marked greeted → the finalize (or a later sync) fires it with the settled night

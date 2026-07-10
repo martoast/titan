@@ -220,7 +220,7 @@ class SealNightJob implements ShouldQueue
                     if ($this->night !== null) {
                         throw $e;
                     }
-                    $this->handleSessionFailure($profile, $windows, $e);
+                    $this->handleSessionFailure($profile, $windows, $e, $tz);
                 }
             }
         } catch (\Throwable $e) {
@@ -338,7 +338,7 @@ class SealNightJob implements ShouldQueue
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
      */
-    private function handleSessionFailure(Profile $profile, \Illuminate\Support\Collection $windows, \Throwable $e): void
+    private function handleSessionFailure(Profile $profile, \Illuminate\Support\Collection $windows, \Throwable $e, string $tz): void
     {
         // A biosignal OPS failure (service down / restarting / 5xx) is transient, not a data verdict — never
         // burn an attempt or seal the night away for it, or a multi-hour outage (a bad overnight deploy)
@@ -363,6 +363,11 @@ class SealNightJob implements ShouldQueue
                 'status' => DeviceIngestion::STATUS_SEALED,
                 'result_refs' => array_merge((array) $i->result_refs, ['sealed' => true, 'seal_error' => substr($e->getMessage(), 0, 200)]),
             ]));
+            // A confirmed COMPUTING placeholder may exist for this same night (its envelope duration/bed/wake
+            // are known). Rather than strand the iOS loading card forever and exclude a night whose duration
+            // we DO know from readiness, settle it to an honest duration-only FINAL — the guarantee the old
+            // no-computing-row cap used to give, now with a resolved card instead of an eternal spinner.
+            $this->settleComputingPlaceholder($profile, $windows, $tz);
 
             return;
         }
@@ -370,6 +375,23 @@ class SealNightJob implements ShouldQueue
         $windows->each(fn (DeviceIngestion $i) => $i->update([
             'result_refs' => array_merge((array) $i->result_refs, ['seal_attempts' => $attempt]),
         ]));
+    }
+
+    /** Flip a stranded confirmed COMPUTING placeholder for this session's night to a duration-only FINAL, so a
+     *  capped/failed finalize doesn't leave an eternal loading card or drop the night from readiness. Its
+     *  envelope duration/bed/wake are already on the row; we just settle the status (stages stay null). */
+    private function settleComputingPlaceholder(Profile $profile, \Illuminate\Support\Collection $windows, string $tz): void
+    {
+        $wakeTs = (int) $windows->max(fn (DeviceIngestion $i) => $this->winEnd($i));
+        if ($wakeTs <= 0) {
+            return;
+        }
+        $date = CarbonImmutable::createFromTimestamp($wakeTs, 'UTC')->setTimezone($tz)->toDateString();
+        SleepLog::where('profile_id', $profile->id)
+            ->where('slept_at', $date)
+            ->where('is_nap', false)
+            ->where('stage_status', 'computing')
+            ->update(['stage_status' => 'final', 'finalized_at' => now()]);
     }
 
     /**
@@ -380,8 +402,17 @@ class SealNightJob implements ShouldQueue
      */
     private function isTransientFailure(\Throwable $e): bool
     {
-        if ($e instanceof ConnectionException || $e instanceof QueryException) {
-            return true;                                    // service/DB unreachable — an ops state
+        if ($e instanceof ConnectionException) {
+            return true;                                    // service unreachable — an ops state
+        }
+        if ($e instanceof QueryException) {
+            // Classify by SQLSTATE: a DATA/constraint fault (value too long for the column, e.g. a hypnogram
+            // JSON over the limit = 22001; a constraint = 23xxx) is DETERMINISTIC — it fails identically every
+            // retry, so it must count toward the cap, not livelock. Connection (08xxx) / deadlock (40001) /
+            // lock-timeout are transient ops states.
+            $sqlState = (string) $e->getCode();
+
+            return ! (str_starts_with($sqlState, '22') || str_starts_with($sqlState, '23'));
         }
         // MinIO / S3 / any filesystem read-back failure (the raw blob store) is infra, not a data verdict.
         if ($e instanceof \League\Flysystem\FilesystemException || is_a($e, 'Aws\\Exception\\AwsException')) {
@@ -637,6 +668,23 @@ class SealNightJob implements ShouldQueue
                 return ($we ?? $ws) >= $loEpoch && ($ws ?? $we) <= $hiEpoch;
             });
 
+        // A REPLAYED wake marker (store-and-forward re-sends it) re-runs this after the night's windows are
+        // already SEALED, so $scoped is empty — there's nothing new to compute. If a STAGED night already
+        // exists for this session, a windowless re-seal must not clobber it: the duration-only fallback below
+        // would otherwise force-null its hypnogram/quality (STAGE_COLUMNS). Bail. (No existing staged row → we
+        // fall through, so a genuine offline night whose windows never arrived still writes its guaranteed row.)
+        if ($scoped->isEmpty()) {
+            $existing = SleepLog::where($key)->first();
+            if ($existing && $existing->stage_status === 'final'
+                && is_array($existing->hypnogram) && count($existing->hypnogram) > 0) {
+                Log::info('[Biosignal] confirmed replay on an already-staged night — no-op', [
+                    'profile_id' => $profile->id, 'date' => $date, 'is_nap' => $isNap,
+                ]);
+
+                return;
+            }
+        }
+
         // Don't stage before this session's own raw windows have been processed into epoch features:
         // if any scoped window is still in flight (received/queued/processing) and staging is even
         // possible (biosignal up), requeue and try again shortly. Otherwise the seal would stage on
@@ -692,8 +740,8 @@ class SealNightJob implements ShouldQueue
                 'rem_min' => isset($metrics['rem_min']) ? (int) round($metrics['rem_min']) : null,
                 'light_min' => isset($metrics['light_min']) ? (int) round($metrics['light_min']) : null,
                 'awake_min' => isset($metrics['awake_min']) ? (int) round($metrics['awake_min']) : null,
-                'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null) ?? $bedDt->setTimezone($tz)->format('H:i:s'),
-                'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null) ?? $wakeDt->setTimezone($tz)->format('H:i:s'),
+                'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null, $tz) ?? $bedDt->setTimezone($tz)->format('H:i:s'),
+                'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null, $tz) ?? $wakeDt->setTimezone($tz)->format('H:i:s'),
                 'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                 'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
                 'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
@@ -716,7 +764,9 @@ class SealNightJob implements ShouldQueue
         // replaces a stale/inflated row (and the coach narrates the real night). But scope the force to a
         // same-night correction: a distinct ≥4h evening doze that happens to share this wake-date key must
         // NOT clobber the real morning night, so there it falls back to the richer-row guard.
-        $forceWrite = $this->confirmedOverwriteAllowed($key, $bed, $wake, $tz);
+        // Force only when there's actually new signal to justify overwriting (windows to seal) — never on a
+        // windowless replay (belt-and-suspenders with the early bail above).
+        $forceWrite = $scoped->isNotEmpty() && $this->confirmedOverwriteAllowed($key, $bed, $wake, $tz);
         $log = $this->upsertSleep($key, $attrs, $forceWrite);
 
         // Only the scoped windows are consumed by this session — everything else stays for its own seal.
@@ -860,10 +910,14 @@ class SealNightJob implements ShouldQueue
         // row. Source-scoped like the recovery guard: a manual/other-source entry never blocks a seal.
         if (! $force && $existing && str_starts_with((string) $existing->updated_via, 'biosignal:sealed')) {
             $exStaged = is_array($existing->hypnogram) && count($existing->hypnogram) > 0;
+            $newStaged = isset($attrs['hypnogram']) && is_array($attrs['hypnogram']) && count($attrs['hypnogram']) > 0;
             $exDur = (int) $existing->duration_min;
             $newDur = (int) ($attrs['duration_min'] ?? 0);
-            if ($exStaged && $exDur >= $newDur + 30) {
-                return $existing; // the existing night is richer — don't let this shorter auto-seal clobber it
+            // A STAGED night is never replaced by a STAGELESS (duration-only) write, regardless of duration —
+            // a near-equal-length evening doze with no stages must not wipe a real staged night's hypnogram
+            // (the +30 margin alone let it through). Otherwise, richer = staged + ≥30 min more sleep.
+            if ($exStaged && (! $newStaged || $exDur >= $newDur + 30)) {
+                return $existing; // the existing night is richer — don't let this thinner seal clobber it
             }
         }
 
@@ -1043,8 +1097,8 @@ class SealNightJob implements ShouldQueue
                     'rem_min' => isset($metrics['rem_min']) ? (int) round($metrics['rem_min']) : null,
                     'light_min' => isset($metrics['light_min']) ? (int) round($metrics['light_min']) : null,
                     'awake_min' => isset($metrics['awake_min']) ? (int) round($metrics['awake_min']) : null,
-                    'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null),
-                    'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null),
+                    'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null, $tz),
+                    'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null, $tz),
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     // The per-30s hypnogram (the stager already computes it) → the Whoop stage timeline.
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
@@ -1134,8 +1188,8 @@ class SealNightJob implements ShouldQueue
                     'rem_min' => isset($metrics['rem_min']) ? (int) round($metrics['rem_min']) : null,
                     'light_min' => isset($metrics['light_min']) ? (int) round($metrics['light_min']) : null,
                     'awake_min' => isset($metrics['awake_min']) ? (int) round($metrics['awake_min']) : null,
-                    'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null),
-                    'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null),
+                    'bedtime' => $this->timeOnly($metrics['bedtime'] ?? null, $tz),
+                    'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null, $tz),
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
@@ -1199,13 +1253,19 @@ class SealNightJob implements ShouldQueue
 
 
     /** The stager returns bedtime/wake_time as ISO-8601 datetimes, but the columns are TIME. */
-    private function timeOnly(?string $iso): ?string
+    /**
+     * The stager returns bedtime/wake_time as UTC ISO. Format it as the PROFILE-LOCAL wall clock so
+     * bedtime/wake_time follow ONE convention across every seal path (staged AND duration-only fallback) —
+     * both are local. reconstructSpan (the confirmed-overwrite overlap check) and the app's clock display
+     * both assume local; storing the raw Zulu clock here silently broke them for every non-UTC user.
+     */
+    private function timeOnly(?string $iso, string $tz): ?string
     {
         if (! $iso) {
             return null;
         }
         try {
-            return CarbonImmutable::parse($iso)->format('H:i:s');
+            return CarbonImmutable::parse($iso)->setTimezone($tz)->format('H:i:s');
         } catch (\Throwable) {
             return null;
         }

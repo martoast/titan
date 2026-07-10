@@ -1,6 +1,9 @@
 # Design: the two-tier "provisional → final" sleep summary (Whoop parity)
 
-> **Status: PROPOSAL / design doc — not yet built.** This describes a target architecture, not current
+> **Status: Phases 1–2 BUILT & shipped (server + iOS); Phases 3–5 are proposals.** The row states are
+> `computing` (loading placeholder) and `final` (settled) — an earlier draft of this doc called them
+> "provisional"/"finalizing"; the shipped column is `stage_status ∈ {computing, final}`. The mobile payload
+> exposes `stage_status` + `finalized_at` (via `SleepDetail::forProfile` and the nights list). Below describes
 > behavior. Read [SEAL_ARCHITECTURE.md](SEAL_ARCHITECTURE.md) first; this builds directly on it and must not
 > violate its invariants (I1–I8).
 >

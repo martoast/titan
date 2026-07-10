@@ -39,7 +39,10 @@ def _to_ms2(a, unit: str) -> np.ndarray:
     try:
         k = _UNIT_TO_MS2[unit]
     except KeyError:
-        raise ValueError(f"unknown accel unit {unit!r}; expected one of {list(_UNIT_TO_MS2)}")
+        # A genuine bad payload (the client sent an unknown unit) → deterministic 422, not a retry-forever 5xx.
+        from .errors import DataFaultError
+
+        raise DataFaultError(f"unknown accel unit {unit!r}; expected one of {list(_UNIT_TO_MS2)}")
     return np.asarray(a, dtype=float) * k
 
 

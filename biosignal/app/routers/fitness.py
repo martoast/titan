@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from .. import ALGO_VERSION
 from ..core import fitness as fitness_core
+from ..core.errors import DataFaultError
 
 router = APIRouter(prefix="/process", tags=["fitness"])
 
@@ -75,7 +76,7 @@ async def process_fitness(req: FitnessRequest) -> FitnessResponse:
             run=req.run.model_dump() if req.run else None,
         )
         hrr = fitness_core.heart_rate_recovery(req.workout_hr_bpm, fs=req.hr_fs) if req.workout_hr_bpm else None
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
+    except DataFaultError as exc:
         # Deterministic data fault → 422, not a retry-forever 5xx.
         raise HTTPException(status_code=422, detail=f"Fitness estimation rejected the payload: {exc}")
     except Exception as exc:  # pragma: no cover

@@ -142,7 +142,7 @@ class AssistantTools
     private function getToday(): array
     {
         $rec = $this->profile->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
-        $sleep = $this->profile->sleepLogs()->nights()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        $sleep = $this->profile->sleepLogs()->nights()->final()->orderByDesc('slept_at')->orderByDesc('id')->first();
         $steps = (int) ($this->profile->dailyActivity()->whereDate('date', Carbon::today())->value('steps') ?? 0);
         $goal = StepGoal::assess($steps, StepGoal::targetFor($this->profile));
 
@@ -178,8 +178,8 @@ class AssistantTools
     private function getSleep(int $days): array
     {
         $days = max(1, min(60, $days));
-        $logs = $this->profile->sleepLogs()->nights()->where('slept_at', '>=', Carbon::today()->subDays($days - 1))->orderByDesc('slept_at')->get();
-        $month = $this->profile->sleepLogs()->nights()->where('slept_at', '>=', Carbon::today()->subDays(27))->get();
+        $logs = $this->profile->sleepLogs()->nights()->final()->where('slept_at', '>=', Carbon::today()->subDays($days - 1))->orderByDesc('slept_at')->get();
+        $month = $this->profile->sleepLogs()->nights()->final()->where('slept_at', '>=', Carbon::today()->subDays(27))->get();
         $activity = $this->profile->dailyActivity()->where('date', '>=', Carbon::today()->subDays(13))->get();
 
         return [
@@ -418,8 +418,8 @@ class AssistantTools
     {
         $p = $this->profile;
         $rec = $p->recoveryLogs()->orderByDesc('logged_at')->orderByDesc('id')->first();
-        $sleep = $p->sleepLogs()->nights()->orderByDesc('slept_at')->orderByDesc('id')->first();
-        $month = $p->sleepLogs()->nights()->where('slept_at', '>=', Carbon::today()->subDays(27))->get();
+        $sleep = $p->sleepLogs()->nights()->final()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        $month = $p->sleepLogs()->nights()->final()->where('slept_at', '>=', Carbon::today()->subDays(27))->get();
         $steps = (int) ($p->dailyActivity()->whereDate('date', Carbon::today())->value('steps') ?? 0);
         $stepGoal = StepGoal::assess($steps, StepGoal::targetFor($p));
         $vo2 = $p->activitySessions()->whereNotNull('vo2max')->orderByDesc('started_at')->value('vo2max');
@@ -458,7 +458,7 @@ class AssistantTools
 
         return [
             'biological_age' => BiologicalAge::assess($p),
-            'sleep_regularity' => SleepRegularity::compute($p->sleepLogs()->nights()->where('slept_at', '>=', Carbon::today()->subDays(27))->get()),
+            'sleep_regularity' => SleepRegularity::compute($p->sleepLogs()->nights()->final()->where('slept_at', '>=', Carbon::today()->subDays(27))->get()),
             'circadian_rhythm' => CircadianRhythm::compute($p->dailyActivity()->where('date', '>=', Carbon::today()->subDays(13))->get()),
             'metabolic_health' => MetabolicHealth::assess($p),
             'vo2max' => $p->activitySessions()->whereNotNull('vo2max')->orderByDesc('started_at')->value('vo2max'),
@@ -476,7 +476,7 @@ class AssistantTools
 
         $recovery = $this->profile->recoveryLogs()->where('logged_at', '>=', $since)->orderBy('logged_at')->get()
             ->map(fn (RecoveryLog $r) => ['date' => $r->logged_at->toDateString(), 'hrv_ms' => $r->hrv_ms, 'resting_hr' => $r->resting_hr])->values();
-        $sleep = $this->profile->sleepLogs()->nights()->where('slept_at', '>=', $since)->orderBy('slept_at')->get()
+        $sleep = $this->profile->sleepLogs()->nights()->final()->where('slept_at', '>=', $since)->orderBy('slept_at')->get()
             ->map(fn (SleepLog $s) => ['date' => $s->slept_at->toDateString(), 'hours' => round($s->duration_min / 60, 1)])->values();
         $weight = $this->profile->bodyMetrics()->where('taken_at', '>=', $since)->orderBy('taken_at')->get()
             ->map(fn ($b) => ['date' => optional($b->taken_at)->toDateString(), 'weight_kg' => (float) $b->weight_kg])->values();
