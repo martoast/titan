@@ -366,36 +366,45 @@ final class AppModel: ObservableObject {
         checkingSyncedSleep = true
         Task { @MainActor [weak self] in
             defer { self?.checkingSyncedSleep = false }
-            var popped = false   // have we surfaced THIS night's card yet (as a loading card while computing)?
-            // ~12 slow polls (~45s): catch the bulk-synced night, and if it's still computing keep polling to
-            // flip the loading card to the full stats when it finalizes.
-            for attempt in 0..<12 {
+            var poppedEpoch = 0   // the night we've surfaced this run (0 = none) — lets us keep polling IT to final
+            // ~50 slow polls (~200s): catch the bulk-synced night AND cover the confirmed seal's worst case —
+            // it can defer up to ~120s waiting for windows to process, then stage — so we keep the loading card
+            // up and keep polling until the night FINALIZES.
+            for attempt in 0..<50 {
                 try? await Task.sleep(nanoseconds: attempt == 0 ? 2_000_000_000 : 4_000_000_000)
                 guard let self, !self.sleeping else { return }
-                if popped { if self.sleepSummary == nil { return } }   // user dismissed the loading card → stop
-                else if self.sleepSummary != nil { return }            // another summary already open → don't double-pop
+                if poppedEpoch > 0 { if self.sleepSummary == nil { return } }   // user dismissed → stop
+                else if self.sleepSummary != nil { return }                    // another summary already open
                 guard let resp = try? await self.api.sleepDetail(), let d = resp.detail,
                       (d.duration_min ?? 0) > 0, let bedEpoch = d.epoch_sec, bedEpoch > 0 else { continue }
-                // Only a night NEWER than the last one we surfaced (the live path stamps this too, so the
-                // one just shown at wake never re-pops), and recent enough that a morning summary makes sense.
-                guard bedEpoch > self.lastSeenSleepEpoch else { return }
+                // A night NEWER than the last one we surfaced — OR the very night we already popped this run
+                // (so we can follow it computing→final without the "already seen" guard bailing).
+                guard bedEpoch > self.lastSeenSleepEpoch || bedEpoch == poppedEpoch else { return }
                 let wakeApprox = bedEpoch + (d.duration_min ?? 0) * 60
                 guard Date().timeIntervalSince1970 - Double(wakeApprox) < 18 * 3600 else { self.lastSeenSleepEpoch = bedEpoch; return }
                 // Surface the night the moment it appears — a LOADING card if it's still computing (open-early),
-                // then refined to the full stats in place when it finalizes.
+                // then refined to the full stats in place when it finalizes. Stamp lastSeenSleepEpoch on the POP
+                // (not just finalize) so a card the user dismisses mid-compute stays dismissed and can't re-pop.
                 var s = self.sleepSummary ?? SleepSummaryState(
                     bedtime: Date(timeIntervalSince1970: Double(bedEpoch)),
                     wake: Date(timeIntervalSince1970: Double(wakeApprox)),
                     inBedSec: (d.in_bed_min ?? d.duration_min ?? 0) * 60)
                 s.detail = d; s.assess = resp.assess; s.loading = resp.isComputing
                 self.sleepSummary = s
-                popped = true
+                self.lastSeenSleepEpoch = bedEpoch
+                poppedEpoch = bedEpoch
                 if !resp.isComputing {
                     self.sleepDetail = resp            // only a FINAL night feeds Daily/Recovery — no partial cards
-                    self.lastSeenSleepEpoch = bedEpoch
                     await self.refresh()               // cascade: recovery + strain-target reflect the settled night
                     return
                 }
+            }
+            // Exhausted while still computing — don't strand the spinner: mark it saved-but-pending (the final
+            // night shows on the next foreground refresh / in Daily).
+            if poppedEpoch > 0, var s = self?.sleepSummary, s.loading {
+                s.loading = false
+                s.failed = true
+                self?.sleepSummary = s
             }
         }
     }
@@ -1363,10 +1372,11 @@ final class AppModel: ObservableObject {
     /// returns yesterday's, so we only accept a detail whose start is near the bedtime we just ended.
     private func fetchSealedSleep(bedtimeEpoch: Int) {
         Task { @MainActor [weak self] in
-            // Check quickly (the night may already be sealed) then every ~3s for ~135s — long enough to catch
-            // the confirmed seal's stage pass (it can defer up to ~2 min while raw windows finish processing),
-            // short cadence so the metrics fill in near-immediately. The loading card shows the whole time.
-            for attempt in 0..<45 {
+            // Check quickly (the night may already be sealed) then every ~3s for ~195s — long enough to cover
+            // the confirmed seal's WORST case: it can defer up to ~120s while raw windows finish processing,
+            // THEN run whole-night staging. Short cadence so the metrics fill in near-immediately; the loading
+            // card shows the whole time, and a timeout falls back to "saved — see Daily" rather than stranding.
+            for attempt in 0..<65 {
                 try? await Task.sleep(nanoseconds: attempt == 0 ? 1_500_000_000 : 3_000_000_000)
                 guard let self, self.sleepSummary != nil else { return }   // dismissed
                 // Progressive summary: the COMPUTING row already has a duration (from the watch envelope) but

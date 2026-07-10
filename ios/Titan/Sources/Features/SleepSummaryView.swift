@@ -165,6 +165,9 @@ struct SleepSummaryView: View {
     }
 
     private var verdict: (icon: String, text: String) {
+        // While staging, don't declare a quantity verdict off the in-bed envelope — it would flip when the
+        // real asleep time / performance lands on finalize.
+        if summary.loading { return ("moon.stars.fill", "Calculating your sleep — hang tight.") }
         let p = detail?.performance_pct
         if let p {
             if p >= 90 { return ("crown.fill", "Peak recovery night — you're fully charged.") }
@@ -388,10 +391,16 @@ struct SleepSummaryView: View {
             .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.Palette.card))
     }
 
-    // The asleep total: prefer the server's duration; fall back to the watch's in-bed markers.
-    private var asleepSec: Int { (detail?.duration_min ?? detail?.asleep_min).map { $0 * 60 } ?? summary.inBedSec }
+    // The asleep total: prefer the server's duration; fall back to the watch's in-bed markers. While the
+    // night is still computing, the server's `duration_min` is the ENVELOPE (bed→wake = time in bed), not
+    // measured asleep time — so show it as "in bed" and don't let the headline shrink/relabel when the real
+    // asleep duration lands on finalize.
+    private var asleepSec: Int {
+        if summary.loading { return summary.inBedSec }
+        return (detail?.duration_min ?? detail?.asleep_min).map { $0 * 60 } ?? summary.inBedSec
+    }
     private var asleepText: String { hm(asleepSec / 60) }
-    private var asleepLabel: String { detail?.duration_min != nil ? "asleep" : "in bed" }
+    private var asleepLabel: String { (summary.loading || detail?.duration_min == nil) ? "in bed" : "asleep" }
     private var performanceFraction: Double { detail?.performance_pct.map { min(1, Double($0) / 100) } ?? 0 }
 
     private func hm(_ minutes: Int) -> String {

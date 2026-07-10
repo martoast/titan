@@ -298,7 +298,7 @@ class CoachBriefingService
             return null;
         }
         try {
-            $s = \App\Models\SleepLog::query()->nights()
+            $s = \App\Models\SleepLog::query()->nights()->final()
                 ->where('profile_id', $profile->id)
                 ->orderByDesc('slept_at')->orderByDesc('id')->first();
         } catch (\Throwable) {

@@ -81,4 +81,25 @@ class RecoveryCascadeTest extends TestCase
         $this->assertSame(1, Notification::where('profile_id', $profile->id)->where('type', 'sync')->count(),
             'once per day');
     }
+
+    public function test_a_computing_nap_does_not_suppress_the_morning_greeting(): void
+    {
+        // Audit F3: the still-staging hold is NIGHTS only. A mid-staging afternoon nap must not block the
+        // morning recovery greeting — the nap finalize (night-only re-dispatch) would never re-fire it.
+        $profile = User::factory()->create()->ensureProfile();
+        SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => Carbon::today()->subDay()->toDateString(),
+            'is_nap' => false, 'duration_min' => 430, 'quality' => 78, 'stage_status' => 'final',
+        ]);
+        SleepLog::create([   // a nap still being staged right now
+            'profile_id' => $profile->id, 'slept_at' => Carbon::today()->toDateString(),
+            'session_start' => Carbon::today()->setTime(14, 0), 'is_nap' => true,
+            'duration_min' => 25, 'stage_status' => 'computing',
+        ]);
+
+        (new ReactToDeviceSync($profile->id))->handle(app(NotificationService::class));
+
+        $this->assertSame(1, Notification::where('profile_id', $profile->id)->where('type', 'sync')->count(),
+            'a computing nap does not hold the morning greeting');
+    }
 }

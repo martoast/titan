@@ -11,6 +11,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The "your band just synced" moment -- the magic that makes Titan feel alive. When fresh overnight
@@ -44,12 +45,15 @@ class ReactToDeviceSync implements ShouldQueue
             return;
         }
 
-        // Progressive summary: if tonight's confirmed night is still being STAGED, hold the greeting until it
+        // Progressive summary: if tonight's confirmed NIGHT is still being STAGED, hold the greeting until it
         // FINALIZES (the seal re-dispatches us then) so the readiness we announce reflects the complete night,
-        // not the duration-only placeholder. Bounded to a fresh row so a crashed finalize can't wedge it.
+        // not the duration-only placeholder. Nights only — a mid-staging NAP must not suppress the morning read
+        // (the finalize re-dispatch is night-only). Bounded to a fresh row so a crashed finalize can't wedge it;
+        // UTC to match the DB-stored updated_at regardless of app.timezone.
         $stillStaging = SleepLog::where('profile_id', $profile->id)
+            ->where('is_nap', false)
             ->where('stage_status', 'computing')
-            ->where('updated_at', '>=', Carbon::now()->subMinutes(15))
+            ->where('updated_at', '>=', Carbon::now('UTC')->subMinutes(15))
             ->exists();
         if ($stillStaging) {
             return;   // not marked greeted → the finalize (or a later sync) fires it with the settled night
@@ -66,6 +70,13 @@ class ReactToDeviceSync implements ShouldQueue
         $focus = class_exists(\App\Support\DailyFocus::class)
             ? rescue(fn () => \App\Support\DailyFocus::compute($profile)['headline'] ?? null, null, false)
             : null;
+
+        // Atomic claim: two workers (a sync-triggered job and the finalize re-dispatch) can both pass the
+        // persistent `device_greeted` check in the race window before it's written. Cache::add is atomic, so
+        // only one wins and greets; the loser bails. (The persistent flag below still guards across restarts.)
+        if (! Cache::add("device_greeted:{$profile->id}:{$today}", true, Carbon::now()->addDay())) {
+            return;
+        }
 
         $body = "Your overnight data just synced -- readiness {$score}".($label ? " ({$label})" : '').'.'.($focus ? " Today's focus: {$focus}." : '');
 

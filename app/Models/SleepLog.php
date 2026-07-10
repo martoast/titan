@@ -42,6 +42,16 @@ class SleepLog extends Model
         return $query->where('is_nap', false);
     }
 
+    /** Only FINALIZED nights — excludes the in-flight `computing` placeholder (progressive summary), whose
+     *  stages/quality are still NULL. Any reader that renders a completed-night card (stages, quality,
+     *  performance) must use this so it never shows a half-computed night as if it were done. The one place
+     *  that WANTS the computing row is the loading-card feed (MobileSleepController's nights list). Rows
+     *  predating the feature default to 'final', so this is a no-op for them. */
+    public function scopeFinal($query)
+    {
+        return $query->where('stage_status', 'final');
+    }
+
     /** Whole hours of sleep (floor of duration). */
     public function getHoursAttribute(): int
     {

@@ -100,6 +100,10 @@ class SleepDetail
             'wake_time' => $last->wake_time ? Carbon::parse($last->wake_time)->format('H:i') : null,
             'hypnogram' => is_array($last->hypnogram) && count($last->hypnogram) ? $last->hypnogram : null,
             'epoch_sec' => $startEpoch,
+            // Progressive summary: expose the compute state so any consumer can tell a still-`computing`
+            // placeholder (real duration/times, but stages/quality NULL → 0% here) from a settled `final` night.
+            'stage_status' => $last->stage_status,
+            'finalized_at' => $last->finalized_at?->toIso8601String(),
         ];
     }
 

@@ -85,6 +85,14 @@ class SealNightJob implements ShouldQueue
      *  heuristics (nightOf + span=nap), which mis-split nights and mis-dated evening windows. */
     private const SESSION_GAP_S = 150 * 60;
 
+    /** Store-and-forward (S-3): a window whose SAMPLE is more than this older than its INGEST time is a
+     *  buffered REPLAY (the band held it offline and dumped it later), not a live sample. */
+    private const BACKLOG_SKEW_S = 30 * 60;
+
+    /** ...and the auto-seal HOLDS a night while such replayed windows are still ARRIVING — i.e. one landed
+     *  within the last INGEST_QUIET_S. Once the drain has been quiet this long it's settled and we seal. */
+    private const INGEST_QUIET_S = 5 * 60;
+
     /** A session is a NIGHT (recovery-worthy) if it runs ≥4h OR touches these local overnight hours. The
      *  sleep-hours test is what keeps an evening post-workout cluster (elevated HR, not resting recovery)
      *  from writing a readiness row, while still recognising a short pre-dawn fragment as part of a night. */
@@ -291,6 +299,25 @@ class SealNightJob implements ShouldQueue
     {
         if ($this->confirmed) {
             return true; // the user marked awake on the band — seal now, don't wait for quiescence.
+        }
+
+        // Backlog-drain guard (S-3): a store-and-forward night replays buffered windows whose SAMPLES are old
+        // (past the gap below, so sample-time alone reads "complete") but whose INGEST is recent. Sealing then
+        // would cut the night off while its still-buffered remainder is mid-drain, and those late windows land
+        // on a sealed span and are lost. So while any replayed window is still ARRIVING, hold. A live night
+        // (created_at ≈ window_end) is unaffected; an explicit --night reseal (operator intent) skips this.
+        if ($this->night === null) {
+            $now = now()->timestamp;
+            $stillDraining = $windows->contains(function (DeviceIngestion $i) use ($now) {
+                $ingest = $i->created_at?->timestamp;
+
+                return $ingest !== null
+                    && ($ingest - $this->winEnd($i)) > self::BACKLOG_SKEW_S   // a buffered replay, not live
+                    && ($now - $ingest) < self::INGEST_QUIET_S;               // ...still arriving
+            });
+            if ($stillDraining) {
+                return false; // let the drain finish; a later cron seals the whole night
+            }
         }
 
         // Done only once NO window has arrived for longer than the clustering gap. The old 45-min gate was
@@ -669,7 +696,7 @@ class SealNightJob implements ShouldQueue
                 'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null) ?? $wakeDt->setTimezone($tz)->format('H:i:s'),
                 'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                 'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
-                'coverage' => $metrics['coverage'] ?? null,
+                'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                 'stage_status' => 'final',
                 'finalized_at' => now(),
                 'updated_via' => 'biosignal:sealed-session',
@@ -854,8 +881,9 @@ class SealNightJob implements ShouldQueue
     }
 
     /** Stage columns cleared on an authoritative force reseal so a duration-only correction can't inherit
-     *  a stale row's stages. */
-    private const STAGE_COLUMNS = ['deep_min', 'rem_min', 'light_min', 'awake_min', 'quality', 'hypnogram'];
+     *  a stale row's stages. `coverage` is staging-derived, so it's nulled too (else a duration-only
+     *  correction keeps a stale coverage over a now-null hypnogram — a chimera). */
+    private const STAGE_COLUMNS = ['deep_min', 'rem_min', 'light_min', 'awake_min', 'quality', 'hypnogram', 'coverage'];
 
     /**
      * May a CONFIRMED seal overwrite the existing same-key row? Yes when there's nothing (or no
@@ -921,10 +949,20 @@ class SealNightJob implements ShouldQueue
         return $this->confirmed;
     }
 
-    /** Did this upsert actually write (insert or change) the row, vs. discard to a richer existing one? */
+    /** Did this seal actually write NARRATIVE content (insert, or a change to the numbers the coach speaks) —
+     *  vs. a no-op reseal? Deliberately ignores bookkeeping columns (finalized_at is a fresh now() on every
+     *  finalize, stage_status/coverage), so a genuine no-op reseal of an already-final row does NOT re-narrate. */
     private function sleepRowWritten(SleepLog $log): bool
     {
-        return $log->wasRecentlyCreated || $log->wasChanged();
+        return $log->wasRecentlyCreated
+            || $log->wasChanged(['duration_min', 'deep_min', 'rem_min', 'light_min', 'awake_min', 'quality', 'hypnogram']);
+    }
+
+    /** Coverage is a fraction; clamp to [0,1] before it hits the decimal(4,3) column so a stager glitch can't
+     *  error under MySQL strict mode or store a nonsensical value. */
+    private function clampCoverage(mixed $v): ?float
+    {
+        return $v === null ? null : max(0.0, min(1.0, (float) $v));
     }
 
     /**
@@ -1010,7 +1048,7 @@ class SealNightJob implements ShouldQueue
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     // The per-30s hypnogram (the stager already computes it) → the Whoop stage timeline.
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
-                    'coverage' => $metrics['coverage'] ?? null,
+                    'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed-ppg',
@@ -1100,7 +1138,7 @@ class SealNightJob implements ShouldQueue
                     'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null),
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
-                    'coverage' => $metrics['coverage'] ?? null,
+                    'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed',

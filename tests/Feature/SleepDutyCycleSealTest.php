@@ -340,13 +340,16 @@ class SleepDutyCycleSealTest extends TestCase
         $profile = User::factory()->create()->ensureProfile();
         $firstHalfEnd = time() - 60 * 60;   // last window 60 min ago — inside the charge pause, not quiescent yet
         for ($t = $firstHalfEnd - 2 * 3600; $t < $firstHalfEnd; $t += 180) {
-            DeviceIngestion::create([
+            $w = DeviceIngestion::create([
                 'batch_uid' => substr(hash('sha256', $t.'-'.mt_rand()), 0, 40),
                 'profile_id' => $profile->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
                 'status' => DeviceIngestion::STATUS_PROCESSED,
                 'window_start' => Carbon::createFromTimestamp($t), 'window_end' => Carbon::createFromTimestamp($t + 30),
                 'result_refs' => ['epoch_motion' => [2.0]],
             ]);
+            // Live ingestion: the window arrived when its sample was taken (no store-and-forward skew), so the
+            // NOT-complete verdict here is the sample-time gap (60 min < gap), not the backlog-drain hold.
+            $w->forceFill(['created_at' => Carbon::createFromTimestamp($t + 30)])->saveQuietly();
         }
 
         $job = new SealNightJob($profile->id, null, false);
@@ -355,6 +358,42 @@ class SleepDutyCycleSealTest extends TestCase
         $windows = DeviceIngestion::where('profile_id', $profile->id)->get();
         $this->assertFalse($m->invoke($job, $windows, Carbon::now('UTC')->toDateString(), 'UTC'),
             'a session quiet for only 60 min (a charge pause) is NOT complete — the band may still resume');
+    }
+
+    public function test_a_draining_backlog_is_held_until_it_settles(): void
+    {
+        // S-3: a store-and-forward night replays buffered windows whose SAMPLES are old (well past the gap, so
+        // sample-time alone reads "complete") but whose INGEST is recent. The auto-seal must HOLD while the
+        // drain is still arriving — else it cuts the night off and the still-buffered remainder lands on a
+        // sealed span and is lost. Once the drain settles (no new arrivals), the whole night seals.
+        $profile = User::factory()->create()->ensureProfile();
+        $sampleEnd = time() - 5 * 3600;   // samples from ~5h ago — well beyond SESSION_GAP_S
+        for ($t = $sampleEnd - 3600; $t < $sampleEnd; $t += 180) {
+            $w = DeviceIngestion::create([
+                'batch_uid' => substr(hash('sha256', $t.'-'.mt_rand()), 0, 40),
+                'profile_id' => $profile->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+                'status' => DeviceIngestion::STATUS_PROCESSED,
+                'window_start' => Carbon::createFromTimestamp($t), 'window_end' => Carbon::createFromTimestamp($t + 30),
+                'result_refs' => ['epoch_motion' => [2.0]],
+            ]);
+            $w->forceFill(['created_at' => now()])->saveQuietly();   // just arrived → a replay mid-drain
+        }
+
+        $job = new SealNightJob($profile->id, null, false);
+        $m = new \ReflectionMethod(SealNightJob::class, 'sessionIsComplete');
+        $m->setAccessible(true);
+        $date = Carbon::now('UTC')->toDateString();
+
+        $windows = DeviceIngestion::where('profile_id', $profile->id)->get();
+        $this->assertFalse($m->invoke($job, $windows, $date, 'UTC'),
+            'a still-draining backlog is held, even though its samples are hours old');
+
+        // The drain has been quiet for 10 min (no new arrivals) → settled → sealable.
+        DeviceIngestion::where('profile_id', $profile->id)->get()
+            ->each(fn ($w) => $w->forceFill(['created_at' => now()->subMinutes(10)])->saveQuietly());
+        $windows = DeviceIngestion::where('profile_id', $profile->id)->get();
+        $this->assertTrue($m->invoke($job, $windows, $date, 'UTC'),
+            'once the drain settles, the whole night seals');
     }
 
     public function test_an_evening_doze_does_not_replace_the_mornings_real_night(): void
