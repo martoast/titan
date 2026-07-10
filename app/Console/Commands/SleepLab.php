@@ -15,6 +15,7 @@ use App\Services\Lab\VirtualBand;
 use App\Services\Simulator\BiosignalSimulator;
 use Illuminate\Console\Command;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 /**
@@ -83,9 +84,18 @@ class SleepLab extends Command
 
         $expected = $script->expected();
         $this->line('Streaming the scripted night → real ingest API…');
-        $stream = $band->streamNight($script);
-        $band->replayBuffered($stream['buffered']);   // no-op for perfect-night (nothing buffered)
-        $markerFired = $band->emitMarker($script);
+        try {
+            $stream = $band->streamNight($script);
+            $band->replayBuffered($stream['buffered']);   // no-op for perfect-night (nothing buffered)
+            $markerFired = $band->emitMarker($script);
+        } catch (\RuntimeException $e) {
+            $this->newLine();
+            $this->error('LAB ABORTED — ingest unreachable, no data landed: '.$e->getMessage());
+            $this->line('  The LAB streams through the REAL ingest API. It auto-probes :8080/:80; pass');
+            $this->line('  --ingest-url=http://HOST:PORT/api/devices/ingest if the app serves elsewhere.');
+
+            return self::FAILURE;
+        }
 
         $this->line(sprintf(
             '  %d windows in %d batches (%d delivered) · marker: %s',
@@ -149,11 +159,36 @@ class SleepLab extends Command
         $seed = $this->option('seed') !== null ? (int) $this->option('seed') : 424242;
 
         // The lab calls the ingest API over HTTP (the REAL controller → service → queue path), so it needs a
-        // URL reachable from THIS process. config('app.url') is the PUBLIC url (host port 8088); inside the
-        // app container the server listens on :80. Default to that; --ingest-url overrides for other setups.
-        $ingestUrl = $this->option('ingest-url') ?: 'http://localhost/api/devices/ingest';
+        // URL reachable from THIS process. The in-container port differs by image — Sail (laravel.test) serves
+        // on :80, the serversideup prod image on :8080 — so PROBE for the one that answers rather than hardcode
+        // a default that only works on one stack. --ingest-url overrides for anything exotic (Caddy, prod host).
+        $ingestUrl = $this->resolveIngestUrl();
 
         return new VirtualBand(new BiosignalSimulator($seed), $device, $secret, SleepCalibration::load(), $ingestUrl);
+    }
+
+    /**
+     * Find the ingest URL reachable from this process. --ingest-url wins; otherwise probe the ports the app
+     * might be serving on (serversideup :8080, then Sail :80) and pick the first that ANSWERS (any HTTP status
+     * means the server is there; only a refused connection throws). Falls back to :8080 so postSigned then
+     * fails loud instead of hanging.
+     */
+    private function resolveIngestUrl(): string
+    {
+        if ($override = $this->option('ingest-url')) {
+            return (string) $override;
+        }
+        foreach ([8080, 80] as $port) {
+            try {
+                Http::connectTimeout(2)->timeout(3)->get("http://localhost:{$port}/up");
+
+                return "http://localhost:{$port}/api/devices/ingest";
+            } catch (\Throwable $e) {
+                continue; // connection refused on this port — try the next
+            }
+        }
+
+        return 'http://localhost:8080/api/devices/ingest';
     }
 
     /** Wipe the lab profile's ingestion + sleep/recovery rows so every run starts clean (isolation). */
@@ -166,27 +201,45 @@ class SleepLab extends Command
 
     // ---------------------------------------------------------------- await the async seal
 
-    /** Poll for the night's SleepLog to reach `final` (the real redis queue seals it out-of-process). */
+    /**
+     * Poll for the night's SleepLog to reach `final` (the real redis queue seals it out-of-process).
+     *
+     * The \r progress bar is TTY-only: piped/CI output gets plain heartbeat lines instead, so the scorecard
+     * that follows survives the pipe intact (the spec's ten-second-readability rule) rather than being eaten
+     * by carriage returns.
+     */
     private function awaitSeal(int $profileId, string $date, int $timeoutSec): ?SleepLog
     {
         $deadline = microtime(true) + $timeoutSec;
-        $bar = $this->output->createProgressBar($timeoutSec);
-        $bar->setFormat(' waiting for seal [%bar%] %elapsed%');
-        $bar->start();
+        $tty = $this->output->isDecorated();
+        $bar = null;
+        if ($tty) {
+            $bar = $this->output->createProgressBar($timeoutSec);
+            $bar->setFormat(' waiting for seal [%bar%] %elapsed%');
+            $bar->start();
+        } else {
+            $this->line("waiting for seal (up to {$timeoutSec}s)…");
+        }
         $last = null;
+        $elapsed = 0;
         while (microtime(true) < $deadline) {
             $last = SleepLog::where('profile_id', $profileId)->orderByDesc('id')->first();
             if ($last && $last->stage_status === SleepLog::STATUS_FINAL) {
-                $bar->finish();
-                $this->newLine(2);
+                $bar?->finish();
+                $tty ? $this->newLine(2) : $this->line("  sealed after ~{$elapsed}s");
 
                 return $last;
             }
             usleep(2_000_000);
-            $bar->advance(2);
+            $elapsed += 2;
+            if ($bar) {
+                $bar->advance(2);
+            } elseif ($elapsed % 30 === 0) {
+                $this->line("  …still sealing ({$elapsed}s)");
+            }
         }
-        $bar->finish();
-        $this->newLine(2);
+        $bar?->finish();
+        $tty ? $this->newLine(2) : $this->line("  gave up after {$timeoutSec}s (no final row)");
 
         return $last; // may be null or a stuck `computing` row — the promises will mark it FAIL
     }
@@ -384,8 +437,14 @@ class SleepLab extends Command
         $this->resetLabData($band->profileId());
         $script = NightScript::perfectNight($tz, $cal);
         $exp = $script->expected();
-        $band->streamNight($script);
-        $band->emitMarker($script);
+        try {
+            $band->streamNight($script);
+            $band->emitMarker($script);
+        } catch (\RuntimeException $e) {
+            $this->error('Acceptance ABORTED — ingest unreachable: '.$e->getMessage());
+
+            return self::FAILURE;
+        }
         $row = $this->awaitSeal($band->profileId(), $exp['date'], (int) $this->option('timeout'));
         // §3's acceptance is about the STAGE ARCHITECTURE — that the generator and stager speak the same
         // statistical language. Judge on the stage proportions (±8pt); report duration/efficiency as a note,

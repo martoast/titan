@@ -145,9 +145,8 @@ class VirtualBand
         $delivered = 0;
         foreach (array_chunk($live, $batchSize) as $chunk) {
             $batches++;
-            if ($this->postSigned(['windows' => array_values($chunk)])) {
-                $delivered++;
-            }
+            $this->postSigned(['windows' => array_values($chunk)], throwOnFailure: true);
+            $delivered++;
         }
 
         return [
@@ -237,9 +236,8 @@ class VirtualBand
         $windows = array_map(fn ($b) => $b['window'], $buffered);
         $delivered = 0;
         foreach (array_chunk($windows, $batchSize) as $chunk) {
-            if ($this->postSigned(['windows' => array_values($chunk)])) {
-                $delivered++;
-            }
+            $this->postSigned(['windows' => array_values($chunk)], throwOnFailure: true);
+            $delivered++;
         }
 
         return $delivered;
@@ -263,7 +261,7 @@ class VirtualBand
             'confirmed' => true,
             'bedtime' => $bed,
             'wake' => $wake,
-        ]]]);
+        ]]], throwOnFailure: true);
     }
 
     /**
@@ -271,9 +269,18 @@ class VirtualBand
      * TerraClient::verifyDeviceSignature / the firmware bridge: the HMAC key is sha256(secret) (== the stored
      * device_token_hash), over "<ts>.<rawBody>". Adds batch_uid + device_id + timezone.
      *
+     * Returns whether the batch was accepted (2xx). Callers that tolerate an unreachable API (SimulateNight's
+     * "not delivered" line, the /simulator/night route's delivery bools) get the plain bool.
+     *
+     * With $throwOnFailure=true (the LAB night-streaming path) a transport error or non-2xx THROWS immediately
+     * WITH THE STATUS, so a LAB that can't reach the ingest API dies in seconds instead of the runner spending
+     * minutes "waiting for seal" on data that never landed.
+     *
      * @param  array<string,mixed>  $payload  {windows?, summaries?}
+     *
+     * @throws \RuntimeException when $throwOnFailure and the POST fails to connect or returns non-2xx
      */
-    public function postSigned(array $payload): bool
+    public function postSigned(array $payload, bool $throwOnFailure = false): bool
     {
         $payload = array_merge([
             'batch_uid' => (string) Str::ulid(),
@@ -291,11 +298,24 @@ class VirtualBand
                 'X-Titan-Signature' => $sig,
                 'Content-Type' => 'application/json',
             ])->timeout(30)->withBody($body, 'application/json')->post($this->ingestUrl);
-
-            return $res->successful();
         } catch (\Throwable $e) {
+            if ($throwOnFailure) {
+                throw new \RuntimeException("ingest POST to {$this->ingestUrl} failed to connect: {$e->getMessage()}", 0, $e);
+            }
+
             return false;
         }
+
+        if (! $res->successful()) {
+            if ($throwOnFailure) {
+                throw new \RuntimeException(sprintf('ingest POST to %s rejected: HTTP %d %s',
+                    $this->ingestUrl, $res->status(), Str::limit($res->body(), 160)));
+            }
+
+            return false;
+        }
+
+        return true;
     }
 
     private function inAnyGap(int $ts, array $gaps): bool

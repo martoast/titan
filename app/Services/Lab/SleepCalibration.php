@@ -4,6 +4,7 @@ namespace App\Services\Lab;
 
 use App\Models\DeviceIngestion;
 use App\Models\SleepLog;
+use App\Models\WearableConnection;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
 
@@ -22,6 +23,18 @@ use Illuminate\Support\Facades\File;
 class SleepCalibration
 {
     public const VERSION = 1;
+
+    /** Night-selection quality floor — calibrate only from HONEST nights, never a degenerate/doze row. */
+    private const MIN_ASLEEP_MIN = 90;      // a real night, not a 7-minute smear
+
+    private const MIN_EFFICIENCY = 0.50;    // drops the "7min sleep / 1280min awake" pollution
+
+    private const MIN_COVERAGE = 0.30;      // enough real signal to trust the stages
+
+    /** Per-stage sample floor to accept a REAL distribution over the baked default. Duty-cycled real nights
+     *  are SPARSE (a 400-minute night may carry only tens of epoch samples), so this is deliberately low and
+     *  leans on aggregating across nights via the robust (tag OR time-overlap) window join. */
+    private const MIN_STAGE_SAMPLES = 12;
 
     /** Where the versioned artifact lives (runtime-writable; committed defaults live in this class). */
     public static function path(): string
@@ -141,52 +154,102 @@ class SleepCalibration
     public static function extract(int $profileId): array
     {
         $defaults = self::defaults();
+
+        // Quality floor: only calibrate from HONEST nights. A degenerate row (e.g. 7min asleep / 1280min
+        // awake) would otherwise poison the proportions and drag efficiency down to nonsense.
         $nights = SleepLog::query()
             ->where('profile_id', $profileId)
+            ->where('is_nap', false)
             ->where('stage_status', SleepLog::STATUS_FINAL)
             ->whereNotNull('hypnogram')
             ->get()
-            ->filter(fn (SleepLog $s) => is_array($s->hypnogram) && count($s->hypnogram) > 0);
+            ->filter(function (SleepLog $s) {
+                if (! is_array($s->hypnogram) || count($s->hypnogram) === 0) {
+                    return false;
+                }
+                $asleep = (int) $s->deep_min + (int) $s->rem_min + (int) $s->light_min;
+                $tib = $asleep + (int) $s->awake_min;
+                $eff = $tib > 0 ? $asleep / $tib : 0.0;
+                // coverage was added later and is NULL on many real/older nights — only gate on it when it's
+                // actually present, or every pre-coverage night is silently excluded (→ "0 nights used").
+                $covOk = $s->coverage === null || (float) $s->coverage >= self::MIN_COVERAGE;
+
+                return $asleep >= self::MIN_ASLEEP_MIN && $eff >= self::MIN_EFFICIENCY && $covOk;
+            })
+            ->values();
 
         // Per-stage feature accumulators.
         $acc = ['deep' => [], 'light' => [], 'rem' => [], 'wake' => []];
         $stageMin = ['deep' => 0.0, 'rem' => 0.0, 'light' => 0.0, 'wake' => 0.0];
         $nightsUsed = 0;
+        $nightsWithSignal = 0;
+
+        // The seal writes bedtime/wake in the PROFILE/device timezone (SealNightJob::timezoneFor →
+        // WearableConnection.timezone), NOT app-tz. Resolve that same tz so the clock-time window join lines up;
+        // a UTC misread shifts the overlap window hours off and matches nothing (silent no-op extraction).
+        $tz = WearableConnection::where('profile_id', $profileId)
+            ->whereNotNull('timezone')->value('timezone') ?: config('app.timezone', 'UTC');
 
         foreach ($nights as $night) {
+            // Proportions come from EVERY quality night's sealed stage minutes (authoritative even when the raw
+            // epoch features are sparse); the signal distributions only from nights that actually carry epochs.
             $stageMin['deep'] += (float) $night->deep_min;
             $stageMin['rem'] += (float) $night->rem_min;
             $stageMin['light'] += (float) $night->light_min;
             $stageMin['wake'] += (float) $night->awake_min;
+            $nightsUsed++;
 
-            // Reconstruct the epoch grid the seal used: t0 = earliest contributing window_start.
+            [$start, $end] = self::nightBounds($night, $tz);
+            if ($start === null) {
+                continue; // no clock bounds → can't time-join windows for signal (proportions already counted)
+            }
+
+            // Robust window join: the sleep_log_id TAG *or* clock-time OVERLAP, unioned. Real nights are sparse
+            // and the seal doesn't tag every epoch-bearing window (some carry only recovery refs), so a
+            // tag-only join under-collects — or misses a whole night — and drops the stage samples to zero.
             $windows = DeviceIngestion::query()
                 ->where('profile_id', $profileId)
                 ->whereIn('kind', ['ibi', 'ppg_raw'])
                 ->where('status', DeviceIngestion::STATUS_SEALED)
-                ->where('result_refs->sleep_log_id', $night->id)
+                ->where(function ($q) use ($night, $start, $end) {
+                    // Bounds are absolute epochs; force UTC so the serialized datetime matches the UTC-stored
+                    // window_start column (a local-tz Carbon would compare a shifted wall-clock and miss).
+                    $q->where('result_refs->sleep_log_id', $night->id)
+                        ->orWhereBetween('window_start', [
+                            CarbonImmutable::createFromTimestamp($start - 300, 'UTC'),
+                            CarbonImmutable::createFromTimestamp($end + 300, 'UTC'),
+                        ]);
+                })
                 ->get();
-            if ($windows->isEmpty()) {
-                continue;
+
+            $motionWindows = $windows->filter(fn (DeviceIngestion $w) => $w->window_start !== null
+                && is_array($w->result_refs['epoch_motion'] ?? null));
+            if ($motionWindows->isEmpty()) {
+                continue; // proportions counted; no epoch features to sample this night
             }
-            $t0 = $windows->min(fn (DeviceIngestion $i) => $i->window_start ? CarbonImmutable::parse($i->window_start)->timestamp : PHP_INT_MAX);
-            if (! is_int($t0) || $t0 === PHP_INT_MAX) {
-                continue;
-            }
+
+            // Anchor the epoch index EXACTLY as the seal did — t0 = earliest contributing window_start, NOT
+            // bedtime (SealNightJob::stageSparse builds the grid as base = floor((window_start − t0)/30), with
+            // t0 = the min window_start of the sealed session). Prefer the tagged (sleep_log_id) windows so the
+            // anchor equals the seal's; only a fully-untagged night falls back to the overlap set.
+            $tagged = $motionWindows->filter(fn (DeviceIngestion $w) => ($w->result_refs['sleep_log_id'] ?? null) == $night->id);
+            $anchorSet = $tagged->isNotEmpty() ? $tagged : $motionWindows;
+            $t0 = (int) $anchorSet->min(fn (DeviceIngestion $w) => $w->window_start->timestamp);
             $hyp = $night->hypnogram;
-            foreach ($windows as $w) {
-                $ws = $w->window_start ? CarbonImmutable::parse($w->window_start)->timestamp : null;
-                $em = $w->result_refs['epoch_motion'] ?? null;
-                $eh = array_values((array) ($w->result_refs['epoch_hr'] ?? []));
-                $er = array_values((array) ($w->result_refs['epoch_rmssd'] ?? []));
-                if ($ws === null || ! is_array($em)) {
-                    continue;
-                }
+            $gotSignal = false;
+            foreach ($motionWindows as $w) {
+                $ws = (int) $w->window_start->timestamp;
+                $rr = (array) $w->result_refs;
+                $em = $rr['epoch_motion'];
+                $eh = array_values((array) ($rr['epoch_hr'] ?? []));
+                $er = array_values((array) ($rr['epoch_rmssd'] ?? []));
                 $base = intdiv($ws - $t0, 30);
                 foreach (array_values($em) as $k => $motion) {
                     $idx = $base + $k;
-                    $stage = $hyp[$idx] ?? null;
-                    $lab = match ($stage) {
+                    if ($idx < 0 || $idx >= count($hyp)) {
+                        continue;
+                    }
+                    $lab = match ($hyp[$idx] ?? null) {
                         'deep' => 'deep', 'rem' => 'rem', 'light' => 'light', 'wake' => 'wake', default => null,
                     };
                     if ($lab === null) {
@@ -197,15 +260,18 @@ class SleepCalibration
                         'hr' => (isset($eh[$k]) && is_numeric($eh[$k])) ? (float) $eh[$k] : null,
                         'rmssd' => (isset($er[$k]) && is_numeric($er[$k])) ? (float) $er[$k] : null,
                     ];
+                    $gotSignal = true;
                 }
             }
-            $nightsUsed++;
+            if ($gotSignal) {
+                $nightsWithSignal++;
+            }
         }
 
         // Build per-stage cfg: use real distribution where we have enough samples, else the baked default.
         $stages = [];
         $stageSource = [];
-        $minSamples = 20;
+        $minSamples = self::MIN_STAGE_SAMPLES;
         foreach (['deep', 'light', 'rem', 'wake'] as $lab) {
             $rows = $acc[$lab];
             if (count($rows) >= $minSamples) {
@@ -242,6 +308,7 @@ class SleepCalibration
                 'kind' => $nightsUsed > 0 ? 'extracted' : 'baked-default',
                 'profile_id' => $profileId,
                 'nights' => $nightsUsed,
+                'nights_with_signal' => $nightsWithSignal,
                 'stage_source' => $stageSource,
             ],
             'architecture' => $architecture,
@@ -254,6 +321,30 @@ class SleepCalibration
         File::put(self::path(), json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         return ['calibration' => new self($data), 'report' => $data['source']];
+    }
+
+    /**
+     * A night's absolute [start, end] epoch bounds from its stored clock times. bedtime/wake_time are
+     * "H:i(:s)" strings in the PROFILE/device timezone ($tz, resolved by the caller to match the seal), on the
+     * slept_at date; a bedtime clock AFTER the wake clock means bed was the prior day.
+     *
+     * @return array{0:?int,1:?int}
+     */
+    private static function nightBounds(SleepLog $n, string $tz): array
+    {
+        $bed = $n->bedtime;
+        $wake = $n->wake_time;
+        $date = $n->slept_at?->toDateString();
+        if (! $bed || ! $wake || ! $date) {
+            return [null, null];
+        }
+        $wakeAt = CarbonImmutable::parse($date.' '.$wake, $tz);
+        $bedAt = CarbonImmutable::parse($date.' '.$bed, $tz);
+        if ($bedAt->greaterThan($wakeAt)) {
+            $bedAt = $bedAt->subDay();
+        }
+
+        return [$bedAt->timestamp, $wakeAt->timestamp];
     }
 
     private static function mean(array $xs): float
