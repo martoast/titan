@@ -99,3 +99,33 @@ The reorder itself was justified (`sessions[0].mean_hr` was first-leg-only), but
 3. **S-3** (offline-buffer split) — designed usage mode, needs the backlog-skew signal.
 4. **S-4** sweep + **W-3** null→0 — mechanical, low risk.
 5. S-5/S-6 trade-off tuning + the carried altitude items (verdict threading, ProcessWindowJob date, clustering unification — now needed in BOTH seal jobs).
+
+---
+
+## Part 4 — Sixth-pass audit of `ac206d8` (response to this review)
+
+**Scorecard:** S-4 ✅ (listed readers) · S-5/S-6 accepted · W-3 ✅ · W-6 ✅ (avg_hr) · W-7 ⚠️ half · W-4 ⚠️ minor sub-item only (deferred in commit msg — note deferrals HERE next time) · S-1 ⚠️ fixed one direction, broke the other · S-2 ⚠️ inverted · W-1/W-2 ⚠️ partial · S-3 ❌ silently dropped.
+
+### The big four (all CONFIRMED, quoted code)
+
+**A-1 · The transient classifier inverts the poison cap.** The biosignal routers wrap EVERY code fault in `HTTPException(500)` (sleep.py:61) — so real poison payloads are classified "transient", never burn attempts, and the livelock the cap fixed is back for exactly its target class. Only pydantic 422s cap. The poison test uses `RuntimeException`, so CI is green. → Make the routers emit 422 for data faults (or bound 5xx retries at ~24); test with `RequestException(500)`.
+
+**A-2 · Confirmed evening doze clobbers the night again.** `upsertSleep($key, $attrs, true)` is unconditional in sealConfirmedSession: a confirmed ≥240-min evening doze (same wake-date key) now bypasses the guard built to stop precisely this, replaces the real night, and the coach narrates it. → Force only when the marker's [bed,wake] overlaps the existing row's span; otherwise second row.
+
+**A-3 · Force-repair writes chimera rows.** The duration-only fallback attrs omit stage fields; `updateOrCreate` partial-updates → a repaired 900-min row keeps 900 min of stale stages + the 15h hypnogram under the new 430-min duration. (And this is the MAIN repair path, since the bad row's windows are SEALED → nothing scopes → duration-only.) → Null stage columns on unstaged force-writes.
+
+**A-4 · `--night` is a fleet-wide force-clobber.** `isAuthoritative()` is job-scoped: `--night` (all profiles when `--profile` omitted) forces EVERY same-date session — straggler fragments overwrite rich sealed nights, and a repair run can undo itself via a later evening cluster. Meanwhile the repair intent is inert (sealed windows invisible to the reseal). → Session-scoped force + an explicit unseal tool for repairs.
+
+### Also confirmed
+- **A-5** isTransientFailure misses MinIO/Flysystem, QueryException, 429, and 401 (token rotation) → terminal destruction persists for those ops states; quarantine status still absent (half the fix shape, no deferral note).
+- **A-6** W-5 clamp ineffective: 220/1.15 ≈ 191 → the artifact in the clamp's own comment passes for hr_max > 191. Use an absolute ceiling shared with the 215/222 bounds.
+- **A-7** scopeTraining: NULL-duration now counts → `startActivity` chat placeholders and durationless imports light streaks; force-sealed 1–4min real workouts STILL excluded; ≥5min 'other' stray-motion blobs re-admitted. The real fix is a persisted seal-time flag.
+- **A-8** hrEpoch (line 327) still consumes unfiltered $hr1 → the zero-window dilution fixed for avg_hr persists inside TRIMP/calories.
+- **A-9** Sweep leftovers: CoachTools:1921 showTrend, BiologicalAge:91 (live SRI divergence vs getLongevity), RecoveryController:39, MetabolicHealth:58, InsightFeed:129, BehaviorCorrelations:58, FitnessController:45 weekTrimp. Sweep by class, not by list.
+- **A-10** W-7 half: activity_confidence (and duration fallback) still from sessions[0] while type is from the longest bout.
+
+### Cleanup (non-blocking)
+isAuthoritative() unused at its own twins (handle():228, the literal `true` at 663); phantom indentation in sealSleepFromPpg survives its 6th commit (861-888); orphaned docblocks (sealConfirmedSession's in SealActivityJob, scopeVisibleTo's); avg_hr comments contradict the $sess fallbacks; 5 reflection tests pinning privates; efficiency: dead pre-select in upsertSleep on force, unconditional hr filter, strengthDetail hydrating all candidates, DuoService full-history fetches, the long-standing double-sorts.
+
+### Process note
+Deferrals (W-4 FK, S-3) were stated only in the commit message. Put them in this file next time so they're tracked — S-3 (offline-buffer split) is now dropped twice without a note and remains a CONFIRMED open data-loss bug.
