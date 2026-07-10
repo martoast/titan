@@ -15,7 +15,7 @@ class ActivitySession extends Model
 {
     protected $fillable = [
         'profile_id', 'source', 'visibility', 'started_at', 'ended_at', 'duration_min',
-        'activity_type', 'activity_confidence',
+        'activity_type', 'activity_confidence', 'is_training',
         'distance_km', 'distance_source', 'avg_hr', 'max_hr', 'hr_source', 'hr_quality', 'workout_hrv_ms', 'hr_zones', 'trimp', 'calories_kcal',
         'vo2max', 'fitness_level', 'hrr_bpm', 'updated_via',
         // Run route + analytics (biosignal /process/route).
@@ -29,6 +29,7 @@ class ActivitySession extends Model
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
             'activity_confidence' => 'float',
+            'is_training' => 'boolean',
             'distance_km' => 'float',
             'hr_quality' => 'float',
             'workout_hrv_ms' => 'float',
@@ -122,16 +123,21 @@ class ActivitySession extends Model
      *  2-minute walk that would otherwise light a streak or add strain. */
     public const MIN_TRAINING_MIN = 5;
 
-    /** Sessions that count as real TRAINING for streaks/strain/trends. Length-only: we do NOT filter on
-     *  activity_type (a genuine watch-confirmed or HealthKit-imported workout legitimately carries 'other',
-     *  so excluding it dropped real training). A NULL duration is EXCLUDED — the coach's startActivity leaves
-     *  an in-progress, unfinished placeholder at NULL duration, and it must not light a streak before it's
-     *  sealed. Known trade-offs pending a proper fix: a force-sealed 1–4min real workout is excluded, and a
-     *  >=5min stray-motion 'other' blob is admitted. The durable fix is a persisted seal-time is_training
-     *  flag written when a session is actually completed — see the review-file deferral. */
+    /** Sessions that count as real TRAINING for streaks/strain/trends. Prefers the PERSISTED seal-time
+     *  is_training flag (the honest-finisher fix): a force-sealed 1–4min real workout has is_training=true
+     *  and counts; a >=5min stray-motion low-confidence 'other' blob has is_training=false and counts
+     *  nowhere. Old rows predating the column (is_training NULL) fall back to the length-only rule — still
+     *  no activity_type filter there (a genuine watch-confirmed / HealthKit 'other' workout must count), and
+     *  a NULL duration is excluded (an in-progress, unsealed placeholder must not light a streak). */
     public function scopeTraining(Builder $query): Builder
     {
-        return $query->where('duration_min', '>=', self::MIN_TRAINING_MIN);
+        return $query->where(function (Builder $q) {
+            $q->where('is_training', true)
+                ->orWhere(function (Builder $legacy) {
+                    $legacy->whereNull('is_training')
+                        ->where('duration_min', '>=', self::MIN_TRAINING_MIN);
+                });
+        });
     }
 
     public function scopeVisibleTo(Builder $query, Profile $viewer): Builder

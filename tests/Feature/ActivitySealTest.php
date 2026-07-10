@@ -608,6 +608,186 @@ class ActivitySealTest extends TestCase
             'the late window seal must merge onto the guaranteed-write row, not create a second');
     }
 
+    // ── (b) strap-dropout / hrEpoch zero-dilution ──────────────────────────────────────────────
+    public function test_hr_epochs_average_positive_samples_only(): void
+    {
+        // A 30-sample epoch that's half real HR (148) and half strap-dropout (0) must average to 148, not a
+        // deflated 74 — the deflated value used to slip past the downstream `hr > 0` gate as a real reading,
+        // understating TRIMP/calories/zones for a low-motion lift with a mid-set blackout.
+        $job = new SealActivityJob(1);
+        $down = new \ReflectionMethod($job, 'downsample');
+        $down->setAccessible(true);
+
+        $mixed = array_merge(array_fill(0, 15, 148.0), array_fill(0, 15, 0.0));
+        $this->assertSame([148.0], $down->invoke($job, $mixed, 30), 'partial-dropout epoch = mean of POSITIVE samples');
+        // A fully-zero epoch → 0.0 (a gap the activity pass skips), so epoch count / alignment is preserved.
+        $this->assertSame([0.0], $down->invoke($job, array_fill(0, 30, 0.0), 30));
+        // A clean epoch is unchanged.
+        $this->assertSame([150.0], $down->invoke($job, array_fill(0, 30, 150.0), 30));
+    }
+
+    // ── (c) backlog-flush / max-frontier ───────────────────────────────────────────────────────
+    public function test_out_of_order_overlapping_windows_stay_one_session(): void
+    {
+        $job = new SealActivityJob(1);
+        $group = new \ReflectionMethod($job, 'groupIntoSessions');
+        $group->setAccessible(true);
+
+        $mk = function (string $start, string $end): DeviceIngestion {
+            $i = new DeviceIngestion;
+            $i->window_start = CarbonImmutable::parse($start);
+            $i->window_end = CarbonImmutable::parse($end);
+
+            return $i;
+        };
+
+        // One run: a 30-min window A and a short window B fully INSIDE it. B ends BEFORE A ends, which under
+        // the old (current-window-end + abs) frontier read as a 25-min gap and false-split one run into two.
+        $overlap = collect([
+            $mk('2026-06-15T07:00:00Z', '2026-06-15T07:30:00Z'),
+            $mk('2026-06-15T07:05:00Z', '2026-06-15T07:10:00Z'),
+        ]);
+        $this->assertCount(1, $group->invoke($job, $overlap), 'a window inside a longer one must not split the run');
+
+        // Same windows replayed OUT OF ORDER (offline backlog flush) → still one session (internal sort).
+        $jumbled = collect([
+            $mk('2026-06-15T07:05:00Z', '2026-06-15T07:10:00Z'),
+            $mk('2026-06-15T07:00:00Z', '2026-06-15T07:30:00Z'),
+        ]);
+        $this->assertCount(1, $group->invoke($job, $jumbled), 'out-of-order replay of one run clusters into one session');
+    }
+
+    // ── (d) deploy-mid-seal / transient survival + quarantine ─────────────────────────────────────
+    public function test_transient_failure_leaves_windows_open_for_retry(): void
+    {
+        // biosignal restarts mid-seal → 500. The seal must NOT seal-anyway (discarding the run) nor
+        // quarantine it: it rethrows so the queue retries, and the windows stay OPEN.
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake(['*/process/activity' => Http::response('service restarting', 500), '*' => Http::response([])]);
+
+        $profile = User::factory()->create()->ensureProfile();
+        $this->storeIndoorWorkoutWindow($profile->id);
+
+        $threw = false;
+        try {
+            dispatch_sync(new SealActivityJob($profile->id));
+        } catch (\Throwable $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'a transient failure must propagate so the queue retries');
+        $win = DeviceIngestion::where('profile_id', $profile->id)->first();
+        $this->assertNotSame(DeviceIngestion::STATUS_SEALED, $win->status, 'never sealed away on a transient');
+        $this->assertNotSame(DeviceIngestion::STATUS_QUARANTINE, $win->status, 'never quarantined on a transient');
+        $this->assertSame(0, (int) ($win->result_refs['seal_attempts'] ?? 0), 'a transient burns no attempt');
+        $this->assertSame(0, ActivitySession::count());
+    }
+
+    public function test_deterministic_failure_quarantines_at_the_cap_and_is_recoverable(): void
+    {
+        // A poison payload (422) fails identically every retry. At the attempt cap the windows are PARKED in
+        // quarantine (not sealed away) — the routine seal then skips them, and a reopen re-seals once fixed.
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        // `$poison` makes /process/activity 422 (deterministic) until the "cause is fixed", then it succeeds.
+        $poison = true;
+        Http::fake([
+            '*/process/activity' => function () use (&$poison) {
+                return $poison
+                    ? Http::response('bad payload', 422)
+                    : Http::response(['metrics' => ['sessions' => [[
+                        'duration_min' => 30.0, 'mean_hr' => 150.0, 'trimp' => 55.0, 'calories_kcal' => 360,
+                        'activity_type' => 'run', 'activity_confidence' => 0.9,
+                    ]], 'session_count' => 1]]);
+            },
+            '*/process/fitness' => Http::response(['vo2max' => 48.0, 'fitness_level' => 'good']),
+            '*/process/step-distance' => Http::response(['estimated' => true, 'distance_km' => 5.29]),
+            '*' => Http::response([]),
+        ]);
+
+        $profile = User::factory()->create()->ensureProfile();
+        $this->storeIndoorWorkoutWindow($profile->id);
+        // Seed at cap-minus-one so a single deterministic failure hits the cap.
+        $win = DeviceIngestion::where('profile_id', $profile->id)->first();
+        $win->update(['result_refs' => ['seal_attempts' => SealActivityJob::MAX_SEAL_ATTEMPTS - 1]]);
+
+        dispatch_sync(new SealActivityJob($profile->id));   // deterministic path returns (no throw)
+
+        $win->refresh();
+        $this->assertSame(DeviceIngestion::STATUS_QUARANTINE, $win->status, 'parked, not destroyed, at the cap');
+        $this->assertTrue((bool) ($win->result_refs['quarantined'] ?? false));
+        $this->assertNotEmpty($win->result_refs['seal_error'] ?? null);
+        $this->assertSame(0, ActivitySession::count());
+
+        // The routine seal SKIPS quarantine — no livelock, no new row.
+        dispatch_sync(new SealActivityJob($profile->id));
+        $this->assertSame(DeviceIngestion::STATUS_QUARANTINE, $win->refresh()->status);
+        $this->assertSame(0, ActivitySession::count());
+
+        // Reopen (cause fixed → biosignal now healthy) re-seals it.
+        $poison = false;
+        dispatch_sync(new SealActivityJob($profile->id, reopenQuarantine: true));
+        $this->assertSame(DeviceIngestion::STATUS_SEALED, $win->refresh()->status, 'reopen re-seals the parked windows');
+        $this->assertSame(1, ActivitySession::count());
+    }
+
+    // ── (f) honest-finisher / persisted is_training ───────────────────────────────────────────────
+    public function test_force_sealed_short_workout_counts_as_training(): void
+    {
+        // An explicit End on a short max-effort finisher must count in streak + strain: is_training=true.
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 4.0, 'mean_hr' => 165.0, 'trimp' => 20.0, 'calories_kcal' => 60,
+                'activity_type' => 'run', 'activity_confidence' => 0.9,
+            ]], 'session_count' => 1, 'total_trimp' => 20.0]]),
+            '*/process/fitness' => Http::response(['vo2max' => 50.0, 'fitness_level' => 'high']),
+            '*' => Http::response([]),
+        ]);
+
+        $profile = User::factory()->create()->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        $this->storeShortWorkoutWindow($profile->id);   // ~2 min, below MIN_SESSION_MIN
+
+        dispatch_sync(new SealActivityJob($profile->id, force: true));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($session);
+        $this->assertTrue($session->is_training, 'a user-ended workout always counts as training');
+        $this->assertSame(1, ActivitySession::query()->where('profile_id', $profile->id)->training()->count(),
+            'the short forced workout is in the training scope (streak + strain read this)');
+    }
+
+    public function test_auto_detected_low_confidence_other_blob_counts_nowhere(): void
+    {
+        // A >=5-min stray-motion 'other' blob (auto-detected, low confidence, no explicit End) must count
+        // NOWHERE: is_training=false, excluded from the training scope.
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 6.0, 'mean_hr' => 95.0, 'trimp' => 8.0, 'calories_kcal' => 40,
+                'activity_type' => 'other', 'activity_confidence' => 0.3,   // stray motion, unsure
+            ]], 'session_count' => 1, 'total_trimp' => 8.0]]),
+            '*/process/fitness' => Http::response(['vo2max' => 45.0, 'fitness_level' => 'good']),
+            '*' => Http::response([]),
+        ]);
+
+        $profile = User::factory()->create()->ensureProfile();
+        $profile->update(['birthdate' => '1991-01-01', 'sex' => 'M', 'height_cm' => 180]);
+        $this->storeIndoorWorkoutWindow($profile->id);   // auto seal, no explicit End, no kind hint
+
+        dispatch_sync(new SealActivityJob($profile->id));
+
+        $session = ActivitySession::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($session);
+        $this->assertFalse($session->is_training, 'a low-confidence stray-motion other blob is not training');
+        $this->assertSame(0, ActivitySession::query()->where('profile_id', $profile->id)->training()->count(),
+            'excluded from streak + strain');
+    }
+
     private function fakeBiosignal(): void
     {
         Storage::fake('raw');

@@ -10,7 +10,10 @@ use App\Services\Wearables\BiosignalClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
@@ -41,6 +44,11 @@ class SealActivityJob implements ShouldQueue
     /** Shortest run we bother sealing (filters stray motion blips). */
     public const MIN_SESSION_MIN = 5;
 
+    /** An AUTO-detected 'other' session below this classifier confidence is stray motion, not training —
+     *  it counts nowhere (streak/strain) even past the length floor. A user-ended/manual session bypasses
+     *  this entirely (it always counts). */
+    public const LOW_CONF_OTHER = 0.5;
+
     /** Below this bounding-box span (metres) a GPS "run" never really left one spot — a drift candidate. */
     public const MIN_RUN_SPAN_M = 150;
 
@@ -61,6 +69,13 @@ class SealActivityJob implements ShouldQueue
 
     /** Slack (seconds) around a confirmed session's [start,end] when scoping which workout windows belong to it. */
     public const SESSION_MARGIN_S = 300;
+
+    /** How many times a session's seal may fail on a DETERMINISTIC (poison-payload / code-fault) error before
+     *  its windows are PARKED in quarantine — recoverable via `activity:reopen-quarantine`, never destroyed.
+     *  A transient service error (biosignal restart / 5xx) never counts toward this. Capped at the queue retry
+     *  budget ($tries) so the final deterministic attempt PARKS in quarantine rather than dead-lettering — the
+     *  same park-don't-destroy pattern as {@see SealNightJob::handleSessionFailure}. */
+    public const MAX_SEAL_ATTEMPTS = 2;
 
     public int $tries = 2;
 
@@ -83,6 +98,7 @@ class SealActivityJob implements ShouldQueue
         public ?int $sessionEndEpoch = null,
         public ?string $sessionKind = null,
         public bool $sessionManual = false,
+        public bool $reopenQuarantine = false,
     ) {
         $this->onQueue('biosignal');
     }
@@ -109,10 +125,16 @@ class SealActivityJob implements ShouldQueue
             return;
         }
 
+        // The routine seal SKIPS quarantined windows (a deterministic-failure park) so a poison workout can't
+        // livelock; only an explicit `activity:reopen-quarantine` ($reopenQuarantine) re-includes them to
+        // retry a repair once the cause is resolved. Mirrors SealNightJob's quarantine handling.
+        $excluded = $this->reopenQuarantine
+            ? [DeviceIngestion::STATUS_SEALED]
+            : [DeviceIngestion::STATUS_SEALED, DeviceIngestion::STATUS_QUARANTINE];
         $windows = DeviceIngestion::query()
             ->where('profile_id', $profile->id)
             ->where('kind', 'workout')
-            ->where('status', '!=', DeviceIngestion::STATUS_SEALED)
+            ->whereNotIn('status', $excluded)
             ->orderBy('window_start')
             ->get();
 
@@ -132,18 +154,83 @@ class SealActivityJob implements ShouldQueue
             try {
                 $this->sealSession($profile, $biosignal, $session, $forceThis);
             } catch (\Throwable $e) {
-                Log::warning('[Biosignal] activity seal failed', [
-                    'profile_id' => $profile->id, 'attempt' => $this->attempts(), 'error' => $e->getMessage(),
-                ]);
-                // A transient failure (biosignal restarting mid-deploy) must NOT discard the workout:
-                // rethrow so the queue retries. Only the FINAL attempt seals-anyway, so a persistently
-                // bad session can't wedge the queue — but a one-off hiccup no longer eats the run.
-                if ($this->attempts() < $this->tries) {
-                    throw $e;
-                }
-                $session->each(fn (DeviceIngestion $i) => $i->update(['status' => DeviceIngestion::STATUS_SEALED]));
+                $this->handleSessionFailure($profile, $session, $e);
             }
         }
+    }
+
+    /**
+     * One session's seal threw. Bound the damage the way {@see SealNightJob::handleSessionFailure} does:
+     *  - A TRANSIENT failure (biosignal restarting mid-deploy, a 5xx, a DB deadlock, a blob-store hiccup) is
+     *    an OPS state, not a data verdict — rethrow so the queue retries with backoff and NEVER burn an
+     *    attempt or park/seal the workout away (a bad overnight deploy would otherwise silently destroy runs).
+     *    The windows stay OPEN for the retry.
+     *  - A DETERMINISTIC failure (a poison payload / code fault) fails identically on retry: count it, and at
+     *    MAX_SEAL_ATTEMPTS PARK the windows in quarantine (recoverable via `activity:reopen-quarantine`)
+     *    rather than seal-anyway, which DISCARDED the workout — the old "seal on the final attempt" bug that
+     *    ate a run whenever a transient 5xx merely looked persistent after the retries ran out.
+     *
+     * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $session
+     */
+    private function handleSessionFailure(Profile $profile, \Illuminate\Support\Collection $session, \Throwable $e): void
+    {
+        if ($this->isTransientFailure($e)) {
+            Log::warning('[Biosignal] activity seal deferred — transient service failure, will retry', [
+                'profile_id' => $profile->id, 'windows' => $session->count(), 'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+
+        $attempt = 1 + (int) $session->max(fn (DeviceIngestion $i) => $i->result_refs['seal_attempts'] ?? 0);
+        Log::warning('[Biosignal] activity seal failed', [
+            'profile_id' => $profile->id, 'attempt' => $attempt, 'windows' => $session->count(), 'error' => $e->getMessage(),
+        ]);
+
+        if ($attempt >= self::MAX_SEAL_ATTEMPTS) {
+            $session->each(fn (DeviceIngestion $i) => $i->update([
+                'status' => DeviceIngestion::STATUS_QUARANTINE,
+                'result_refs' => array_merge((array) $i->result_refs, [
+                    'quarantined' => true, 'seal_attempts' => $attempt,
+                    'seal_error' => substr($e->getMessage(), 0, 200),
+                ]),
+            ]));
+
+            return;
+        }
+
+        $session->each(fn (DeviceIngestion $i) => $i->update([
+            'result_refs' => array_merge((array) $i->result_refs, ['seal_attempts' => $attempt]),
+        ]));
+    }
+
+    /**
+     * Is this an OPS/transient failure (retry later) rather than a data-verdict one (count toward the cap)?
+     * Ported from {@see SealNightJob::isTransientFailure}: ConnectionException / 5xx (+ auth-rotation /
+     * rate-limit / timeout) / a QueryException that is NOT a data-or-constraint fault (SQLSTATE 22xxx/23xxx)
+     * / a filesystem/S3 read-back failure are transient; a 4xx (notably a 422 poison payload) and any
+     * unexpected fault are deterministic.
+     */
+    private function isTransientFailure(\Throwable $e): bool
+    {
+        if ($e instanceof ConnectionException) {
+            return true;
+        }
+        if ($e instanceof QueryException) {
+            $sqlState = (string) $e->getCode();
+
+            return ! (str_starts_with($sqlState, '22') || str_starts_with($sqlState, '23'));
+        }
+        if ($e instanceof \League\Flysystem\FilesystemException || is_a($e, 'Aws\\Exception\\AwsException')) {
+            return true;
+        }
+        if ($e instanceof RequestException) {
+            $status = $e->response?->status() ?? 0;
+
+            return $status >= 500 || in_array($status, [401, 403, 408, 425, 429], true);
+        }
+
+        return false;
     }
 
     /**
@@ -155,22 +242,31 @@ class SealActivityJob implements ShouldQueue
      */
     private function groupIntoSessions(\Illuminate\Support\Collection $windows): array
     {
+        // Sort by window_start first: a backlog flush (an offline run whose windows replay out of order)
+        // must cluster by real chronology, not arrival order. Then advance $lastEnd as a running MAX
+        // frontier and test the gap as a SIGNED forward difference (start after the frontier) in SECONDS —
+        // never abs(). The old code set $lastEnd = the CURRENT window's end and used abs($start − $lastEnd):
+        // a window whose end preceded a prior window's end dragged the frontier BACKWARD, and an
+        // overlapping/earlier window read as a huge gap, false-splitting one run into two rows. This mirrors
+        // SealNightJob::clusterSessions (which is left untouched) — max frontier + signed forward gap.
+        $sorted = $windows
+            ->sortBy(fn (DeviceIngestion $w) => CarbonImmutable::parse($w->window_start ?? $w->window_end ?? $w->created_at)->timestamp)
+            ->values();
+
         $sessions = [];
         $current = collect();
-        $lastEnd = null;
+        $lastEnd = null;   // UTC unix seconds — a running MAX of every window's end so far
 
-        foreach ($windows as $w) {
-            $start = CarbonImmutable::parse($w->window_start ?? $w->created_at);
-            // Carbon 3 diffInMinutes is SIGNED — windows are ordered ascending so a real forward gap
-            // yields a negative value; take the magnitude or the gap rule never fires (every workout
-            // would merge into one session).
-            $newSession = $lastEnd !== null && abs($start->diffInMinutes($lastEnd)) > self::SESSION_GAP_MINUTES;
+        foreach ($sorted as $w) {
+            $startTs = CarbonImmutable::parse($w->window_start ?? $w->window_end ?? $w->created_at)->timestamp;
+            $endTs = CarbonImmutable::parse($w->window_end ?? $w->window_start ?? $w->created_at)->timestamp;
+            $newSession = $lastEnd !== null && ($startTs - $lastEnd) > self::SESSION_GAP_MINUTES * 60;
             if ($newSession && $current->isNotEmpty()) {
                 $sessions[] = $current;
                 $current = collect();
             }
             $current->push($w);
-            $lastEnd = CarbonImmutable::parse($w->window_end ?? $w->window_start ?? $w->created_at);
+            $lastEnd = max($lastEnd ?? $endTs, $endTs);
         }
         if ($current->isNotEmpty()) {
             $sessions[] = $current;
@@ -478,6 +574,24 @@ class SealActivityJob implements ShouldQueue
         $hr1Positive = $hr1 ? array_values(array_filter($hr1, fn ($v) => $v > 0)) : [];
         $hr1Mean = $hr1Positive !== [] ? array_sum($hr1Positive) / count($hr1Positive) : null;
 
+        // The watch chose the type → full confidence; otherwise the classifier's own score FOR THE BOUT WE
+        // LABELLED (the longest one), so the confidence matches the type, not sessions[0].
+        $confidence = ($liftHint || $runHint) ? 1.0 : ($typeSess['activity_confidence'] ?? null);
+
+        // Honest-finisher: PERSIST whether this session "counts as training" instead of guessing from length
+        // alone at read time. A user-ended / manual / watch-confirmed session ALWAYS counts (even a 4-min
+        // max-effort finisher force-sealed on End); an AUTO-detected one counts only when it clears the
+        // length floor AND isn't a low-confidence 'other' stray-motion blob. scopeTraining reads this and
+        // falls back to the length rule for old rows (is_training null).
+        // The duration that lands on the row (window span, else the biosignal pass's total). is_training must
+        // gate on the SAME value — otherwise a windowless-but-real session gets duration_min≥5 yet is_training
+        // is an explicit false, which scopeTraining excludes with no length fallback → a genuine workout drops.
+        $rowDurationMin = $durationMin ?? (isset($sess['duration_min']) ? (int) round($sess['duration_min']) : null);
+        $userEnded = $force || $this->sessionManual || $confirmed;
+        $isTraining = $userEnded
+            || ($rowDurationMin !== null && $rowDurationMin >= self::MIN_SESSION_MIN
+                && ! ($activityType === 'other' && $confidence !== null && $confidence < self::LOW_CONF_OTHER));
+
         $log = ActivitySession::updateOrCreate(
             $mergeId ? ['id' => $mergeId] : ['profile_id' => $profile->id, 'started_at' => $startCarbon],
             array_filter([
@@ -485,11 +599,10 @@ class SealActivityJob implements ShouldQueue
                 'ended_at' => $end ? CarbonImmutable::parse($end) : null,
                 // The full elapsed workout, not the first detected sub-session (a run with a >1-min pause
                 // splits into several — sessions[0] is only its first leg).
-                'duration_min' => $durationMin ?? (isset($sess['duration_min']) ? (int) round($sess['duration_min']) : null),
+                'duration_min' => $rowDurationMin,
                 'activity_type' => $activityType,
-                // The watch chose the type → full confidence; otherwise the classifier's own score FOR THE
-                // BOUT WE LABELLED (the longest one), so the confidence matches the type, not sessions[0].
-                'activity_confidence' => ($liftHint || $runHint) ? 1.0 : ($typeSess['activity_confidence'] ?? null),
+                'activity_confidence' => $confidence,
+                'is_training' => $isTraining,
                 'distance_km' => $distance,
                 'distance_source' => $distanceSource,
                 // WHOLE-workout mean HR: the in-motion estimator's reliable-window mean, else the full series
@@ -527,6 +640,11 @@ class SealActivityJob implements ShouldQueue
                 'relative_effort' => $route['relative_effort'] ?? null,
             ], fn ($v) => $v !== null),
         );
+
+        // Sets-belong: link any strength Workouts logged inside this session's span to it, deterministically,
+        // so strengthDetail reads them by FK instead of a ±20-min proximity guess (which mis-attached sets
+        // when two lifts sat close together).
+        $this->linkWorkoutsToSession($profile, $log);
 
         // NOTE: we deliberately do NOT auto-detect exercises/sets from the accelerometer anymore. The gym
         // classifier only knew ~10 canned movements and would INVENT lifts (jumping jacks, sit-ups, bicep
@@ -591,6 +709,28 @@ class SealActivityJob implements ShouldQueue
         return $id !== null ? (int) $id : null;
     }
 
+    /**
+     * Sets-belong (W-4): attach this profile's logged strength Workouts to the ActivitySession they were
+     * performed in — DETERMINISTICALLY by containment, the one seal-time backfill. A workout whose
+     * performed_at falls inside the sealed session's [start,end] (± a small clock-skew margin, well under
+     * the 20-min gap between distinct sessions) is linked, and only if not already claimed by another
+     * session (whereNull), so a set never doubles onto two lifts. strengthDetail then reads by this FK
+     * instead of the old ±20-min proximity guess.
+     */
+    private function linkWorkoutsToSession(Profile $profile, ActivitySession $log): void
+    {
+        if ($log->started_at === null) {
+            return;
+        }
+        $from = $log->started_at->copy()->subSeconds(self::SESSION_MARGIN_S);
+        $to = ($log->ended_at ?? $log->started_at->copy()->addHours(4))->copy()->addSeconds(self::SESSION_MARGIN_S);
+
+        $profile->workouts()
+            ->whereNull('activity_session_id')
+            ->whereBetween('performed_at', [$from, $to])
+            ->update(['activity_session_id' => $log->id]);
+    }
+
     private function sealConfirmedSession(Profile $profile, BiosignalClient $biosignal): void
     {
         $startEpoch = (int) $this->sessionStartEpoch;
@@ -639,8 +779,10 @@ class SealActivityJob implements ShouldQueue
                 'duration_min' => $durMin,
                 'activity_type' => $this->confirmedActivityType($kind),
                 'activity_confidence' => $kind ? 1.0 : null,
+                'is_training' => true,   // a user-confirmed session always counts as training
                 'updated_via' => 'biosignal:sealed-session',
             ], fn ($v) => $v !== null));
+            $this->linkWorkoutsToSession($profile, $log);
             Log::info('[Biosignal] confirmed workout reconciled onto existing row', [
                 'profile_id' => $profile->id, 'activity_session_id' => $log->id, 'dur_min' => $durMin,
             ]);
@@ -669,9 +811,11 @@ class SealActivityJob implements ShouldQueue
                 'duration_min' => $durMin,
                 'activity_type' => $this->confirmedActivityType($kind),
                 'activity_confidence' => $kind ? 1.0 : null,
+                'is_training' => true,   // a user-confirmed session always counts as training
                 'updated_via' => 'biosignal:sealed-session-marker',
             ], fn ($v) => $v !== null),
         );
+        $this->linkWorkoutsToSession($profile, $log);
 
         // Mark any scoped-but-sealed-without-a-row windows onto this row (edge: sealed by a min-floor drop).
         $scoped->each(fn (DeviceIngestion $i) => $i->update([
@@ -864,7 +1008,16 @@ class SealActivityJob implements ShouldQueue
         return $counts;
     }
 
-    /** Median-downsample a 1 Hz series to one value per `$stride` samples (≈ per epoch). */
+    /**
+     * Downsample a 1 Hz series to one value per `$stride` samples (≈ per epoch), averaging the POSITIVE
+     * samples in each epoch only. The per-second HR builders emit zeros where HR loses lock (firmware
+     * publishes only at confidence ≥ 90); averaging those zeros IN deflates the epoch — 15 real 148-bpm
+     * samples + 15 zeros collapse to a false 74, a positive-but-halved value that then slips PAST the
+     * downstream `hr > 0` gate (activity.py) as if it were a genuine 74-bpm reading, deflating TRIMP /
+     * calories / zones for a low-motion, strap-dropping lift. Filtering at the SOURCE keeps every consumer
+     * on positive samples only (matching $hr1Positive, zonesFromHr, activity.py). A fully-zero epoch → 0.0,
+     * i.e. a gap the activity pass skips — the epoch count (and thus accel/speed/grade alignment) is kept.
+     */
     private function downsample(array $series, int $stride): array
     {
         if ($series === [] || $stride < 1) {
@@ -872,8 +1025,8 @@ class SealActivityJob implements ShouldQueue
         }
         $out = [];
         for ($i = 0; $i < count($series); $i += $stride) {
-            $slice = array_slice($series, $i, $stride);
-            $out[] = round(array_sum($slice) / max(count($slice), 1), 1);
+            $positive = array_filter(array_slice($series, $i, $stride), fn ($v) => is_numeric($v) && $v > 0);
+            $out[] = $positive !== [] ? round(array_sum($positive) / count($positive), 1) : 0.0;
         }
 
         return $out;

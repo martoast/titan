@@ -15,7 +15,7 @@ class Workout extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['profile_id', 'performed_at', 'name', 'notes', 'duration_min', 'updated_via'];
+    protected $fillable = ['profile_id', 'activity_session_id', 'performed_at', 'name', 'notes', 'duration_min', 'updated_via'];
 
     protected function casts(): array
     {
@@ -25,6 +25,13 @@ class Workout extends Model
     public function profile(): BelongsTo
     {
         return $this->belongsTo(Profile::class);
+    }
+
+    /** The sealed cardio/strength session this workout was logged in — set deterministically at seal/log
+     *  time so sets attach to the right lift instead of a read-time proximity guess. Null for imports. */
+    public function activitySession(): BelongsTo
+    {
+        return $this->belongsTo(ActivitySession::class);
     }
 
     public function exercises(): HasMany

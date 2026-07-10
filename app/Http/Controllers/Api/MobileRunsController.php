@@ -100,19 +100,15 @@ class MobileRunsController extends Controller
             return null;
         }
 
-        // Sets are logged to the coach DURING the lift (performed_at = the moment the user speaks), while the
-        // band keys started_at to the first accel window — two independent clocks that never match to the
-        // second. Match any Workout that falls WITHIN the session's span (± a clock-skew margin), closest first,
-        // so the logged sets actually attach instead of silently vanishing.
-        $from = $session->started_at->copy()->subMinutes(20);
-        $to = ($session->ended_at ?? $session->started_at->copy()->addHours(4))->copy()->addMinutes(20);
-        // Closest-first by |performed_at − started_at|, ranked in PHP rather than an ORDER BY TIMESTAMPDIFF
-        // (which is MySQL-only and blows up on sqlite CI). Small candidate set — a single lift's worth.
+        // Sets attach DETERMINISTICALLY by FK now: SealActivityJob links each logged Workout to the
+        // ActivitySession it was performed inside (workouts.activity_session_id), and the coach's log_workout
+        // does the same at log time. So a direct lookup — no more read-time ±20-min proximity guessing, which
+        // mis-attached (or doubled/dropped) sets when two lifts sat close together. Most recent first covers a
+        // session with more than one logged block.
         $workout = $profile->workouts()
-            ->whereBetween('performed_at', [$from, $to])
+            ->where('activity_session_id', $session->id)
             ->with(['exercises.exercise', 'exercises.sets'])
-            ->get()
-            ->sortBy(fn ($w) => abs($w->performed_at->diffInSeconds($session->started_at)))
+            ->orderByDesc('performed_at')
             ->first();
         if (! $workout) {
             return null;

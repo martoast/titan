@@ -94,6 +94,25 @@ def test_relative_effort_drops_cadence_lock_artifacts():
     assert route.relative_effort(real, hr_max=195) > 0
 
 
+def test_relative_effort_cadence_lock_leaves_re_unmoved():
+    # WORKOUT_LAB §4 `cadence-lock`: a 10-min 220 bpm PPG cadence-lock artifact on a runner with HRmax 200
+    # must leave Relative Effort UNMOVED vs the same run WITHOUT the artifact (delta ≈ 0). A clamped sample
+    # must contribute NOTHING — dropping it cannot dilute or shift the aggregate, because RE is a plain
+    # per-sample sum with no denominator and no per-minute bin.
+    hr_max = 200
+    # A physiologically coherent run: 5 min warmup → 15 min tempo → 5 min cooldown, all plausible.
+    clean = ([130.0] * 300) + ([170.0] * 900) + ([120.0] * 300)
+    # The same run with a 10-min (600 s) cadence-lock block spliced into the middle.
+    artifact = clean[:750] + ([220.0] * 600) + clean[750:]
+    re_clean = route.relative_effort(clean, hr_max=hr_max)
+    re_artifact = route.relative_effort(artifact, hr_max=hr_max)
+    assert re_clean > 0
+    assert re_artifact == re_clean          # the artifact block scores 0 → RE is exactly unmoved (delta = 0)
+    # …and the clamp must never suppress REAL effort: a 4-min 195 bpm max-effort finisher MOVES RE.
+    with_finisher = clean + ([195.0] * 240)
+    assert route.relative_effort(with_finisher, hr_max=hr_max) > re_clean
+
+
 def test_too_short_track_is_invalid():
     assert route.analyze([{"t": 1, "lat": 1.0, "lon": 2.0, "alt": 0.0}])["valid"] is False
     assert route.analyze([])["valid"] is False

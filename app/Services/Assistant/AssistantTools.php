@@ -342,9 +342,15 @@ class AssistantTools
         if (! is_array($exercises) || $exercises === []) {
             return ['error' => 'exercises is required: [{name, sets:[{reps, weight_kg, rpe?}]}]'];
         }
+        $performedAt = isset($a['performed_at']) ? Carbon::parse($a['performed_at']) : now();
         $workout = $this->profile->workouts()->create([
             'name' => $a['name'] ?? 'Workout',
-            'performed_at' => isset($a['performed_at']) ? Carbon::parse($a['performed_at']) : now(),
+            'performed_at' => $performedAt,
+            // Sets-belong: link to the ActivitySession this was performed in at LOG time (covers logging a
+            // set into an already-sealed/open session); the seal also backfills this by containment. Match a
+            // session whose span contains performed_at, most recent first. Null when no session is open yet —
+            // the seal will attach it later.
+            'activity_session_id' => $this->sessionIdFor($performedAt),
             'updated_via' => 'assistant',
         ]);
         $order = 0;
@@ -372,6 +378,26 @@ class AssistantTools
         }
 
         return ['ok' => true, 'workout_id' => $workout->id, 'exercises' => $workout->exercises()->count(), 'sets' => $sets];
+    }
+
+    /** The id of the profile's ActivitySession whose span contains $when (± a 5-min clock-skew margin), most
+     *  recent first — where a logged workout belongs. Null when none is open/nearby (the seal links later).
+     *  An OPEN (never-ended) session only reaches 4h past its start — mirrors the seal's linkWorkoutsToSession
+     *  and strengthDetail windows — so an abandoned "start a run" placeholder can't sticky-claim a later lift. */
+    private function sessionIdFor(Carbon $when): ?int
+    {
+        $margin = 300;
+        $id = $this->profile->activitySessions()
+            ->where('started_at', '<=', $when->copy()->addSeconds($margin))
+            ->where(function ($q) use ($when, $margin) {
+                $q->where(fn ($q2) => $q2->whereNull('ended_at')
+                    ->where('started_at', '>=', $when->copy()->subSeconds($margin)->subHours(4)))
+                    ->orWhere('ended_at', '>=', $when->copy()->subSeconds($margin));
+            })
+            ->orderByDesc('started_at')
+            ->value('id');
+
+        return $id !== null ? (int) $id : null;
     }
 
     private function setGoal(array $a): array
