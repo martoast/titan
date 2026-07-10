@@ -25,7 +25,7 @@ class SleepSealStagingDeferTest extends TestCase
 
     private function window(int $profileId, int $start, int $end, string $status): DeviceIngestion
     {
-        return DeviceIngestion::create([
+        $w = DeviceIngestion::create([
             'batch_uid' => substr(hash('sha256', $start.'-'.$end.'-'.$status.'-'.mt_rand()), 0, 40),
             'profile_id' => $profileId,
             'source' => 'titan_band',
@@ -34,6 +34,11 @@ class SleepSealStagingDeferTest extends TestCase
             'window_start' => Carbon::createFromTimestamp($start, 'UTC'),
             'window_end' => Carbon::createFromTimestamp($end, 'UTC'),
         ]);
+        // Live ingestion (arrived at sample time) so the confirmed drain-hold isn't tripped by the test's
+        // now()-defaulted created_at against an old window_end.
+        $w->forceFill(['created_at' => Carbon::createFromTimestamp($end, 'UTC')])->saveQuietly();
+
+        return $w;
     }
 
     public function test_confirmed_seal_defers_while_its_windows_are_still_processing(): void

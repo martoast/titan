@@ -30,6 +30,14 @@ class DeviceIngestion extends Model
      */
     public const STATUS_SEALED = 'sealed';
 
+    /**
+     * A window whose night hit the deterministic seal-attempt cap (a genuine unstageable payload). PARKED,
+     * not destroyed: the routine auto-cron skips it (so it can't livelock), but an explicit reopen — a
+     * `--night` reseal, a confirmed marker, or `sleep:reopen-quarantine` — re-processes it. This is the
+     * "park, don't destroy" backstop so a mis-classified failure never silently loses a night forever.
+     */
+    public const STATUS_QUARANTINE = 'quarantine';
+
     protected $fillable = [
         'batch_uid', 'profile_id', 'source', 'kind', 'object_key',
         'window_start', 'window_end', 'status', 'algo_version',

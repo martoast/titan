@@ -45,7 +45,7 @@ class SleepDutyCycleSealTest extends TestCase
     {
         $w = [];
         for ($t = $bed + 60; $t < $wake - 60; $t += 180) {
-            $w[] = DeviceIngestion::create([
+            $win = DeviceIngestion::create([
                 'batch_uid' => substr(hash('sha256', $t.'-'.mt_rand()), 0, 40),
                 'profile_id' => $profileId, 'source' => 'titan_band', 'kind' => 'ppg_raw',
                 'status' => DeviceIngestion::STATUS_PROCESSED,
@@ -53,6 +53,10 @@ class SleepDutyCycleSealTest extends TestCase
                 'window_end' => Carbon::createFromTimestamp($t + 30),
                 'result_refs' => ['epoch_motion' => [2.0], 'epoch_hr' => [56.0], 'epoch_rmssd' => [45.0]],
             ]);
+            // Live ingestion: the window arrived when its sample was taken (no store-and-forward skew), so the
+            // confirmed drain-hold doesn't mistake a settled night for a still-arriving backlog.
+            $win->forceFill(['created_at' => Carbon::createFromTimestamp($t + 30)])->saveQuietly();
+            $w[] = $win;
         }
 
         return $w;
@@ -418,10 +422,11 @@ class SleepDutyCycleSealTest extends TestCase
         $this->assertSame(470, (int) $result->fresh()->duration_min, 'the thinner evening seal did not overwrite it');
     }
 
-    public function test_a_poison_session_is_released_after_the_attempt_cap(): void
+    public function test_a_poison_session_is_quarantined_not_destroyed_at_the_attempt_cap(): void
     {
-        // Finding 3: a deterministic staging failure must not re-aggregate forever. After MAX_SEAL_ATTEMPTS
-        // the windows are released (with an error marker), unblocking the profile's later sessions.
+        // A deterministic staging failure must not re-aggregate forever — but instead of terminal-sealing the
+        // night away (unrecoverable), the cap PARKS the windows in QUARANTINE. The routine cron then skips
+        // them (no livelock), but they're re-openable.
         $profile = User::factory()->create()->ensureProfile();
         $win = DeviceIngestion::create([
             'batch_uid' => substr(hash('sha256', (string) mt_rand()), 0, 40),
@@ -438,8 +443,13 @@ class SleepDutyCycleSealTest extends TestCase
         $m->invoke($job, $profile, collect([$win]), new \RuntimeException('poison payload'));
 
         $win->refresh();
-        $this->assertSame(DeviceIngestion::STATUS_SEALED, $win->status, 'released at the attempt cap so it stops looping');
+        $this->assertSame(DeviceIngestion::STATUS_QUARANTINE, $win->status, 'parked (not destroyed) at the cap');
         $this->assertArrayHasKey('seal_error', (array) $win->result_refs);
+
+        // The routine auto cron SKIPS quarantined windows (no livelock)…
+        Queue::fake();
+        (new SealNightJob($profile->id, null, false))->handle(app(BiosignalClient::class));
+        $this->assertSame(DeviceIngestion::STATUS_QUARANTINE, $win->refresh()->status, 'the cron does not re-touch quarantine');
     }
 
     public function test_an_authoritative_reseal_overrides_a_stale_richer_row(): void
@@ -688,6 +698,33 @@ class SleepDutyCycleSealTest extends TestCase
         $this->assertNotSame(DeviceIngestion::STATUS_SEALED, $win->status, 'a transient outage never seals the night away');
         $this->assertArrayNotHasKey('seal_error', (array) $win->result_refs);
         $this->assertSame(SealNightJob::MAX_SEAL_ATTEMPTS - 1, (int) ($win->result_refs['seal_attempts'] ?? 0), 'no attempt was burned');
+    }
+
+    public function test_confirmed_seal_holds_while_a_backlog_is_still_draining(): void
+    {
+        // Drain-guard for the confirmed path (S-3): a wake marker that arrives while the store-and-forward
+        // bulk sync is still draining must DEFER, not seal a partial night whose buffered tail then lands on a
+        // sealed span. A scoped window with an OLD sample but a just-now INGEST (a replay still arriving) holds it.
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        $profile = User::factory()->create()->ensureProfile();
+        $wake = time();
+        $bed = $wake - 420 * 60;
+        $w = DeviceIngestion::create([
+            'batch_uid' => substr(hash('sha256', (string) mt_rand()), 0, 40),
+            'profile_id' => $profile->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+            'status' => DeviceIngestion::STATUS_PROCESSED,
+            'window_start' => Carbon::createFromTimestamp($bed + 120),
+            'window_end' => Carbon::createFromTimestamp($bed + 150),   // sample from ~7h ago
+            'result_refs' => ['epoch_motion' => [2.0]],
+        ]);
+        $w->forceFill(['created_at' => now()])->saveQuietly();          // ingested NOW → a replay still arriving
+
+        Queue::fake();
+        (new SealNightJob($profile->id, null, true, $bed, $wake, 0))->handle(app(BiosignalClient::class));
+
+        Queue::assertPushed(SealNightJob::class, fn (SealNightJob $j) => $j->confirmed && $j->stagingDefers === 1);
+        $this->assertSame(0, SleepLog::where('profile_id', $profile->id)->where('stage_status', 'final')->count(),
+            'not finalized while the backlog is still draining');
     }
 
     public function test_a_nap_never_surfaces_as_last_night(): void

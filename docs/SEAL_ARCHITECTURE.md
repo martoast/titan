@@ -187,19 +187,24 @@ The strain **ring** and its per-session **breakdown** must apply the *same* filt
 ```
 biosignal call fails
       │
-      ├─ transient?  (ConnectionException, QueryException, Flysystem/AWS,
-      │               RequestException 5xx / 401 / 403 / 408 / 425 / 429)
+      ├─ transient?  (ConnectionException, Flysystem/AWS, RequestException 5xx / 401 / 403 / 408 / 425 / 429,
+      │               and QueryException by SQLSTATE — connection/deadlock/timeout, but NOT 22xxx/23xxx)
       │        └─▶ do NOT burn an attempt, do NOT seal. Leave windows open; next cron retries.
-      │            A genuine outage recovers naturally with no data loss.
+      │            A genuine outage — or a rolled-back-soon code deploy — recovers with no data loss.
       │
-      └─ deterministic? (HTTP 422 — a data fault the payload will always trigger; unknown throwables)
-               └─▶ count toward MAX_SEAL_ATTEMPTS (4). At the cap, release the windows with a
-                   seal_error so poison data can't re-aggregate every hour forever.
+      └─ deterministic? (HTTP 422 — a data fault the payload will always trigger; a 22xxx/23xxx DB fault)
+               └─▶ count toward MAX_SEAL_ATTEMPTS (4). At the cap, PARK the windows in STATUS_QUARANTINE
+                   (not terminal sealed) so poison can't re-aggregate hourly, but the night stays recoverable.
 ```
-`SealNightJob::isTransientFailure` implements the split. **This only works if the biosignal routers emit 422
-for data faults** (they do: `sleep.py`/`activity.py`/`fitness.py`/`hrv.py` catch `ValueError`/`KeyError`/
-`IndexError`/`TypeError` → 422, and reserve 500 for infra). If you add a router, mirror that pattern or a
-poison payload will be mislabeled transient and livelock.
+`SealNightJob::isTransientFailure` implements the split. **A code bug must be TRANSIENT, not deterministic** —
+a bad deploy raising `KeyError`/`TypeError`/a bare `ValueError` from numpy is a 5xx (retry until rollback),
+NOT a 422 (which would burn the cap and destroy nights fleet-wide in ~4h). So the biosignal routers map ONLY a
+typed **`DataFaultError`** (raised at explicit validation sites, e.g. `activity_classify` unknown unit) → 422;
+everything else → 500. `QueryException` is classified by SQLSTATE (22xxx/23xxx data/constraint = deterministic;
+else transient). **Quarantine is the backstop:** at the cap the windows are PARKED, not destroyed — the routine
+cron skips `STATUS_QUARANTINE`, but a `--night` reseal, a confirmed marker, or `sleep:reopen-quarantine`
+re-opens them (and `sleep:recover-stages` re-processes the raw blobs when the epoch FEATURES themselves are the
+fault). A confirmed placeholder is still settled to a duration-only `final` so the loading card resolves.
 
 ## 6. Idempotency, re-seal, and repair
 

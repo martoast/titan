@@ -34,15 +34,22 @@ Fixed the bugs the reviewer found *inside* the seventh-pass fixes, plus the shar
    `CoachTools::showTrend/dailySummary/sleepRecoverySummary`; `Readiness` and `SleepCoach` converted from raw
    `where('stage_status',…)` predicates to the `->final()` scope.
 
-## Deferred — honestly, with the reviewer's point acknowledged
-- **6 / quarantine status (flagged 3×)** — the reviewer is right that my prior "bugs are transient so
-  quarantine is obviated" premise was shaky: a pydantic **schema-skew 422** (the common cross-service deploy
-  bug) still burns the cap, and the **sleep** path has no reachable `DataFaultError` so a schema-valid poison
-  → 500 → transient → *never* caps (a one-sided livelock). The robust fix is the re-openable **quarantine
-  status** at the cap (park, don't destroy) + raising typed faults inside `staging_core` at real validation
-  sites + classifying pydantic-validation 422s as ops. **This is the next seal item after the live
-  stage-less-nights production bug** (unnormalized epoch features — being worked now), which is the more urgent
-  "sleep logged but no data" pain.
+## Later shipped (post-eighth-pass, on the user's go-ahead)
+- **Quarantine status — SHIPPED.** `DeviceIngestion::STATUS_QUARANTINE`; the seal-attempt cap now PARKS windows
+  there instead of terminal-sealing them. The routine cron (`night === null`) skips quarantine (no livelock); a
+  `--night` reseal / confirmed marker / new `sleep:reopen-quarantine` command re-opens them; a confirmed
+  computing placeholder is still settled to duration-only `final`. Tests: poison-cap-quarantines +
+  cron-skips-quarantine.
+- **Drain-guard on the confirmed path — SHIPPED.** `sealConfirmedSession` now also DEFERS while a
+  store-and-forward backlog is still ARRIVING (a scoped window with an old sample but a just-now ingest —
+  `created_at − window_end > BACKLOG_SKEW_S`, arrived within `INGEST_QUIET_S`), not only while windows are
+  processing — so a wake marker inside a bulk drain no longer seals a partial night. The fresh marker itself
+  has ~no skew, so it doesn't self-trip. Test: `test_confirmed_seal_holds_while_a_backlog_is_still_draining`.
+
+## Still deferred
+- The reviewer's residual quarantine sub-asks — raising typed `DataFaultError` inside `staging_core` (sleep has
+  no in-body validation site) and classifying pydantic schema-skew 422s as ops — are now moot for data-loss:
+  the quarantine backstop means a mis-classified failure PARKS (recoverable) rather than destroying a night.
 - **5 / tz backfill** — historical rows keep the old UTC clock (bedtime display +6h, overlap inversion) until
   they age out. A one-time backfill needs the per-row profile-tz join and careful once-only guarding; deferred
   as a data migration (old nights rarely re-seal; the forward fix is correct).

@@ -180,10 +180,15 @@ class SealNightJob implements ShouldQueue
             // All unsealed raw windows that still need whole-night aggregation. A window is
             // "unsealed" when its status is not yet 'sealed'. We accept processed/queued/
             // received/failed per-window rows -- the night seal supersedes them either way.
+            // The routine cron (night === null) SKIPS quarantined windows so a capped/poison night can't
+            // livelock; an explicit `--night` reseal REOPENS them (includes quarantine) to retry a repair.
+            $excluded = $this->night === null
+                ? [DeviceIngestion::STATUS_SEALED, DeviceIngestion::STATUS_QUARANTINE]
+                : [DeviceIngestion::STATUS_SEALED];
             $unsealed = DeviceIngestion::query()
                 ->where('profile_id', $profile->id)
                 ->whereIn('kind', ['ibi', 'ppg_raw', 'sleep'])
-                ->where('status', '!=', DeviceIngestion::STATUS_SEALED)
+                ->whereNotIn('status', $excluded)
                 ->orderBy('window_end')
                 ->get();
 
@@ -363,9 +368,14 @@ class SealNightJob implements ShouldQueue
         ]);
 
         if ($attempt >= self::MAX_SEAL_ATTEMPTS) {
+            // PARK, don't destroy: a deterministic failure caps here, but instead of terminal-sealing the
+            // windows away (an unrecoverable night), quarantine them. The routine cron then skips them (no
+            // livelock), while a `--night` reseal or `sleep:reopen-quarantine` can still recover the night —
+            // e.g. after a bad biosignal deploy is rolled back. (With the router's DataFaultError narrowing,
+            // code bugs are 5xx/transient and never reach this cap; only genuinely unstageable data does.)
             $windows->each(fn (DeviceIngestion $i) => $i->update([
-                'status' => DeviceIngestion::STATUS_SEALED,
-                'result_refs' => array_merge((array) $i->result_refs, ['sealed' => true, 'seal_error' => substr($e->getMessage(), 0, 200)]),
+                'status' => DeviceIngestion::STATUS_QUARANTINE,
+                'result_refs' => array_merge((array) $i->result_refs, ['quarantined' => true, 'seal_error' => substr($e->getMessage(), 0, 200)]),
             ]));
             // A confirmed COMPUTING placeholder may exist for this same night (its envelope duration/bed/wake
             // are known). Rather than strand the iOS loading card forever and exclude a night whose duration
@@ -699,9 +709,22 @@ class SealNightJob implements ShouldQueue
         $pending = $scoped->whereIn('status', [
             DeviceIngestion::STATUS_RECEIVED, DeviceIngestion::STATUS_QUEUED, DeviceIngestion::STATUS_PROCESSING,
         ]);
-        if ($pending->isNotEmpty() && $biosignal->configured() && $this->stagingDefers < self::MAX_STAGING_DEFERS) {
-            Log::info('[Biosignal] confirmed session staging deferred — raw windows still processing', [
-                'profile_id' => $profile->id, 'pending' => $pending->count(),
+        // ...and hold likewise while the store-and-forward backlog is still ARRIVING (S-3): a wake marker
+        // inside a bulk drain would otherwise seal a PARTIAL night, and the still-buffered tail then lands on
+        // a sealed span and is lost. A replayed window has an old sample but a just-now ingest (large
+        // created_at − window_end skew, arrived within INGEST_QUIET_S); the fresh marker itself has ~no skew,
+        // so it doesn't trip this. Same bound as the processing defer, so a truly-settled night still seals.
+        $now = now()->timestamp;
+        $stillDraining = $scoped->contains(function (DeviceIngestion $i) use ($now) {
+            $ingest = $i->created_at?->timestamp;
+
+            return $ingest !== null
+                && ($ingest - $this->winEnd($i)) > self::BACKLOG_SKEW_S
+                && ($now - $ingest) < self::INGEST_QUIET_S;
+        });
+        if (($pending->isNotEmpty() || $stillDraining) && $biosignal->configured() && $this->stagingDefers < self::MAX_STAGING_DEFERS) {
+            Log::info('[Biosignal] confirmed session seal deferred — raw windows still processing or a backlog is draining', [
+                'profile_id' => $profile->id, 'pending' => $pending->count(), 'draining' => $stillDraining,
                 'scoped' => $scoped->count(), 'defer' => $this->stagingDefers + 1,
             ]);
             self::dispatch($profile->id, $this->night, true, $bed, $wake, $this->stagingDefers + 1)
