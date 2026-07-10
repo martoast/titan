@@ -183,6 +183,7 @@ class SleepCalibration
         $stageMin = ['deep' => 0.0, 'rem' => 0.0, 'light' => 0.0, 'wake' => 0.0];
         $nightsUsed = 0;
         $nightsWithSignal = 0;
+        $nightsDetail = [];
 
         // The seal writes bedtime/wake in the PROFILE/device timezone (SealNightJob::timezoneFor →
         // WearableConnection.timezone), NOT app-tz. Resolve that same tz so the clock-time window join lines up;
@@ -237,6 +238,9 @@ class SleepCalibration
             $t0 = (int) $anchorSet->min(fn (DeviceIngestion $w) => $w->window_start->timestamp);
             $hyp = $night->hypnogram;
             $gotSignal = false;
+            $nc = ['deep' => 0, 'light' => 0, 'rem' => 0, 'wake' => 0];
+            $oob = 0;       // epoch samples whose mapped index fell outside the hypnogram (anchor/length skew)
+            $nodata = 0;    // mapped onto a NODATA / non-stage hypnogram epoch
             foreach ($motionWindows as $w) {
                 $ws = (int) $w->window_start->timestamp;
                 $rr = (array) $w->result_refs;
@@ -247,12 +251,14 @@ class SleepCalibration
                 foreach (array_values($em) as $k => $motion) {
                     $idx = $base + $k;
                     if ($idx < 0 || $idx >= count($hyp)) {
+                        $oob++;
                         continue;
                     }
                     $lab = match ($hyp[$idx] ?? null) {
                         'deep' => 'deep', 'rem' => 'rem', 'light' => 'light', 'wake' => 'wake', default => null,
                     };
                     if ($lab === null) {
+                        $nodata++;
                         continue;
                     }
                     $acc[$lab][] = [
@@ -260,12 +266,31 @@ class SleepCalibration
                         'hr' => (isset($eh[$k]) && is_numeric($eh[$k])) ? (float) $eh[$k] : null,
                         'rmssd' => (isset($er[$k]) && is_numeric($er[$k])) ? (float) $er[$k] : null,
                     ];
+                    $nc[$lab]++;
                     $gotSignal = true;
                 }
             }
             if ($gotSignal) {
                 $nightsWithSignal++;
             }
+            // Per-night diagnostic — surfaces WHY a stage under-samples (sparsity vs misalignment): the epochs
+            // each stage HAS in the hypnogram vs how many got a real motion sample, plus out-of-bounds/nodata
+            // mapping counts and whether the anchor came from the sleep_log_id tag.
+            $hypCounts = array_count_values(array_map('strval', $hyp));
+            $nightsDetail[] = [
+                'date' => $night->slept_at?->toDateString(),
+                'tagged' => $tagged->isNotEmpty(),
+                'motion_windows' => $motionWindows->count(),
+                'oob' => $oob,
+                'nodata' => $nodata,
+                'sampled' => $nc,
+                'hyp_epochs' => [
+                    'deep' => (int) ($hypCounts['deep'] ?? 0),
+                    'light' => (int) ($hypCounts['light'] ?? 0),
+                    'rem' => (int) ($hypCounts['rem'] ?? 0),
+                    'wake' => (int) ($hypCounts['wake'] ?? 0),
+                ],
+            ];
         }
 
         // Build per-stage cfg: use real distribution where we have enough samples, else the baked default.
@@ -320,7 +345,7 @@ class SleepCalibration
         File::ensureDirectoryExists(dirname(self::path()));
         File::put(self::path(), json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-        return ['calibration' => new self($data), 'report' => $data['source']];
+        return ['calibration' => new self($data), 'report' => $data['source'], 'diagnostics' => $nightsDetail];
     }
 
     /**

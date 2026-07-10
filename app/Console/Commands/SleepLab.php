@@ -418,7 +418,7 @@ class SleepLab extends Command
             return self::FAILURE;
         }
 
-        ['calibration' => $cal, 'report' => $report] = SleepCalibration::extract($profileId);
+        ['calibration' => $cal, 'report' => $report, 'diagnostics' => $diagnostics] = SleepCalibration::extract($profileId);
         $this->newLine();
         $this->line('Wrote <comment>'.SleepCalibration::path().'</comment>');
         $this->table(['Field', 'Value'], [
@@ -427,6 +427,27 @@ class SleepLab extends Command
             ['stage source', json_encode($report['stage_source'] ?? [])],
             ['architecture', json_encode($cal->architecture())],
         ]);
+
+        // Per-night diagnostic: sampled-vs-available epochs per stage — pinpoints a stage that under-samples
+        // (deep default(1) despite real deep minutes = a pairing/sparsity problem, visible here per night).
+        if ($diagnostics !== []) {
+            $this->newLine();
+            $this->line('<options=bold>Per-night pairing</> (sampled / hypnogram-epochs · oob=out-of-bounds):');
+            $rows = [];
+            foreach ($diagnostics as $d) {
+                $s = $d['sampled'];
+                $h = $d['hyp_epochs'];
+                $cell = fn ($k) => sprintf('%d/%d', $s[$k], $h[$k]);
+                $rows[] = [
+                    $d['date'],
+                    $d['tagged'] ? 'tag' : 'overlap',
+                    $d['motion_windows'],
+                    $cell('deep'), $cell('light'), $cell('rem'), $cell('wake'),
+                    $d['oob'], $d['nodata'],
+                ];
+            }
+            $this->table(['night', 'anchor', 'win', 'deep', 'light', 'rem', 'wake', 'oob', 'nodata'], $rows);
+        }
 
         // Acceptance (spec §3): a calibrated synthetic night, run through the stager, must land within
         // tolerance of its scripted architecture. Run a perfect-night with the fresh calibration.
