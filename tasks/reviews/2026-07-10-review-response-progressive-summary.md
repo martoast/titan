@@ -32,6 +32,10 @@ ONLY `DataFaultError → 422`; every other exception → 500 (transient, retry-u
 validators still 422 independently (they're genuine data faults). Laravel `isTransientFailure` now classifies
 `QueryException` by SQLSTATE (22xxx/23xxx data/constraint = deterministic; 08xxx/40001/timeout = transient),
 so DB-side poison (e.g. hypnogram over the column limit = 22001) caps instead of livelocking.
+*Runtime-verified* (docker-cp into the running container): a core code-bug (raw KeyError) → 500 (transient);
+pydantic validators still 422; the one in-body `DataFaultError` site (unknown accel unit) is gracefully
+swallowed by the classifier (→200), so genuine faults are pydantic-422 and `DataFaultError` is a future-proof
+hook. Test: `test_a_core_code_bug_surfaces_as_500_not_422`.
 *Deferred:* the re-openable quarantine status at the cap — with the DataFaultError narrowing, only genuinely
 unstageable data reaches the cap now (bugs are transient), so terminal-sealing there is correct; quarantine
 remains a nice-to-have for the pure-auto no-envelope case (finding 3 already covers the confirmed case).

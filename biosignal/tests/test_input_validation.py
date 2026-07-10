@@ -39,3 +39,19 @@ def test_sleep_staging_clamps_a_runaway_span():
         start="2020-01-01T00:00:00Z", end="2026-01-01T00:00:00Z",
     )
     assert len(out["hypnogram_30s"]) <= staging.MAX_EPOCHS
+
+
+def test_a_core_code_bug_surfaces_as_500_not_422(monkeypatch):
+    """Finding 4: a raw KeyError/ValueError from a CORE regression (a bad deploy) must surface as 500 —
+    TRANSIENT, so the Laravel caller retries until the deploy is rolled back — and NEVER 422, which it treats
+    as a deterministic data verdict and would use to cap and destroy nights fleet-wide. Only an explicit
+    DataFaultError (deliberately-rejected bad payload) is 422."""
+    from app.core import activity as activity_core
+
+    def boom(**_):
+        raise KeyError("simulated core regression")
+
+    monkeypatch.setattr(activity_core, "detect_sessions", boom)
+    c = TestClient(app, raise_server_exceptions=False)
+    r = c.post("/process/activity", json={"accel_counts": [10.0, 12.0, 8.0, 15.0]})
+    assert r.status_code == 500, r.text
