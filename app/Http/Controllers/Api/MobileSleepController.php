@@ -17,7 +17,7 @@ class MobileSleepController extends Controller
     {
         $profile = $request->user()->profile ?? $request->user()->ensureProfile();
 
-        $nights = $profile->sleepLogs()->nights()->orderByDesc('slept_at')->limit(14)->get()
+        $nights = $profile->sleepLogs()->nights()->orderByDesc('slept_at')->orderByDesc('id')->limit(14)->get()
             ->map(fn ($s) => [
                 'date' => $s->slept_at?->toDateString(),
                 'duration_min' => $s->duration_min,
@@ -26,6 +26,12 @@ class MobileSleepController extends Controller
                 'rem_min' => $s->rem_min,
                 'light_min' => $s->light_min,
                 'awake_min' => $s->awake_min,
+                // Progressive summary: 'computing' ⇒ render the loading card (duration/bed/wake are already
+                // real; stages fill in when it flips to 'final'). coverage = how complete the sampling was.
+                'stage_status' => $s->stage_status,
+                'coverage' => $s->coverage,
+                'bedtime' => $s->bedtime,
+                'wake_time' => $s->wake_time,
             ])->values();
 
         return response()->json([
@@ -33,6 +39,9 @@ class MobileSleepController extends Controller
             // The Whoop-style breakdown: performance %, hours vs need, stages (min + %), efficiency,
             // restorative (deep+REM), debt, respiratory rate, consistency.
             'detail' => \App\Support\SleepDetail::forProfile($profile),
+            // The most recent night's compute state — the app shows a loading card while this is 'computing'
+            // and swaps to the full stats in place when it becomes 'final'.
+            'last_status' => $nights->first()['stage_status'] ?? null,
             'nights' => $nights,
         ]);
     }

@@ -50,7 +50,14 @@ class SleepSealStagingDeferTest extends TestCase
         Queue::fake();
         (new SealNightJob($profile->id, null, true, $bed, $wake, 0))->handle(app(BiosignalClient::class));
 
-        $this->assertSame(0, SleepLog::where('profile_id', $profile->id)->count(), 'must not seal before the staging inputs are ready');
+        // Phase 1: a COMPUTING placeholder (envelope only) IS written for the loading card — but the night
+        // must not be FINALIZED (no stages sealed) nor its windows sealed away before the inputs are ready.
+        $this->assertSame(0, SleepLog::where('profile_id', $profile->id)->where('stage_status', 'final')->count(),
+            'must not finalize before the staging inputs are ready');
+        $placeholder = SleepLog::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($placeholder);
+        $this->assertSame('computing', $placeholder->stage_status);
+        $this->assertNull($placeholder->hypnogram, 'placeholder carries no stages yet');
         $this->assertSame(DeviceIngestion::STATUS_QUEUED, $w1->refresh()->status, 'pending windows must not be sealed away un-staged');
         Queue::assertPushed(SealNightJob::class, fn (SealNightJob $j) => $j->confirmed && $j->stagingDefers === 1);
     }

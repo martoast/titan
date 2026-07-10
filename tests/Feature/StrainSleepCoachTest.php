@@ -13,6 +13,15 @@ class StrainSleepCoachTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Prod runs UTC; pin it so a session created at `now()` and the strain "day" window agree even when
+        // the run happens near a day boundary (dev tz otherwise flips the window and drops the session).
+        config(['app.timezone' => 'UTC']);
+        date_default_timezone_set('UTC');
+    }
+
     public function test_strain_target_tracks_recovery(): void
     {
         $this->assertSame('push', Strain::targetFor(80)['mode']);      // well recovered → push

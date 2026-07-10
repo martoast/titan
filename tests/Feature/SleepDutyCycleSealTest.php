@@ -91,6 +91,38 @@ class SleepDutyCycleSealTest extends TestCase
         $this->assertSame(350, (int) $log->duration_min, 'stages across the full span, not ~17 min');
         $this->assertSame(70, (int) $log->deep_min);
         $this->assertNotNull($log->hypnogram);
+        // Progressive summary: a fully-staged seal finalizes the row.
+        $this->assertSame('final', $log->stage_status);
+        $this->assertNotNull($log->finalized_at);
+        $this->assertEqualsWithDelta(0.99, (float) $log->coverage, 0.001);
+    }
+
+    public function test_confirmed_seal_writes_a_computing_placeholder_before_staging_finishes(): void
+    {
+        // Phase 1: open the app right after ending on the watch, before staging finishes. A COMPUTING row
+        // must already exist (duration/bed/wake real, stages null) so the app shows a loading card — and the
+        // seal defers (doesn't finalize) while the raw windows are still processing.
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        $profile = User::factory()->create()->ensureProfile();
+        $wake = time();
+        $bed = $wake - 420 * 60;
+        foreach ($this->dutyCycleNight($profile->id, $bed, $wake) as $w) {
+            $w->update(['status' => DeviceIngestion::STATUS_PROCESSING]);   // still in flight → the seal defers
+        }
+
+        Queue::fake();   // capture the deferred re-dispatch instead of running it
+        (new SealNightJob($profile->id, null, true, $bed, $wake, 0))->handle(app(BiosignalClient::class));
+
+        $log = SleepLog::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($log, 'a placeholder row exists immediately for the loading card');
+        $this->assertSame('computing', $log->stage_status);
+        $this->assertGreaterThan(0, (int) $log->duration_min, 'duration is real, from the envelope');
+        $this->assertNull($log->deep_min, 'no fabricated stages while computing');
+        $this->assertNull($log->hypnogram);
+        $this->assertNull($log->finalized_at);
+        Queue::assertPushed(SealNightJob::class);   // it deferred to finish staging
+        $this->assertSame(0, DeviceIngestion::where('profile_id', $profile->id)
+            ->where('status', DeviceIngestion::STATUS_SEALED)->count(), 'nothing sealed yet');
     }
 
     public function test_mostly_hole_coverage_falls_back_to_honest_duration_only(): void
@@ -199,7 +231,15 @@ class SleepDutyCycleSealTest extends TestCase
         }
 
         $this->assertTrue($threw, 'a transient staging error must propagate so the job retries');
-        $this->assertSame(0, SleepLog::where('profile_id', $profile->id)->count(), 'no lossy duration-only row on a transient');
+        // Phase 1: a COMPUTING placeholder (envelope only, stages null) is expected — the app shows a loading
+        // card during the outage and the retry finalizes it. What must NOT happen is a lossy FINAL row that
+        // hides the real stages, nor sealing the windows away.
+        $this->assertSame(0, SleepLog::where('profile_id', $profile->id)->where('stage_status', 'final')->count(),
+            'no lossy FINAL row on a transient');
+        $placeholder = SleepLog::where('profile_id', $profile->id)->first();
+        $this->assertNotNull($placeholder, 'a computing placeholder exists for the loading card');
+        $this->assertSame('computing', $placeholder->stage_status);
+        $this->assertNull($placeholder->deep_min, 'the placeholder carries no fabricated stages');
         $this->assertSame(0, DeviceIngestion::where('profile_id', $profile->id)
             ->where('status', DeviceIngestion::STATUS_SEALED)->count(), 'windows stay unsealed for the retry');
     }

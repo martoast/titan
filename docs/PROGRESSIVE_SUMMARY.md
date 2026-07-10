@@ -191,12 +191,16 @@ provisional state is exactly the "not sealed shut yet" window S-3 needs.
 
 ## 5. Rollout (incremental, each phase shippable)
 
-1. **Phase 1 — the computing row + loading card (this request; biggest win, lowest risk).** Add
-   `stage_status`/`coverage`/`finalized_at`. In `sealConfirmedSession`: write a **duration-only computing row
-   before** the defer loop (envelope only — no staging), then keep the existing defer→stage as the
-   **finalize** that refines the same row in place and sets `stage_status = final`. Return `stage_status` from
-   `MobileSleepController::show` and render the loading card. This alone gives: full stats after the gap, a
-   loading state if you open early, and a persisted row either way.
+1. **Phase 1 — the computing row + loading card (this request; biggest win, lowest risk). ✅ BUILT (server).**
+   Added `stage_status`/`coverage`/`finalized_at` to `sleep_logs`. `sealConfirmedSession` writes a
+   **duration-only computing row before** the defer loop (`writeComputingRow`, envelope only — no staging,
+   `updated_via = biosignal:computing`, only on first entry, never downgrades a `final` row), and the existing
+   defer→stage block is the **finalize** that refines the same row in place and sets `stage_status = final`
+   (+ `finalized_at`, `coverage`). `MobileSleepController::show` returns `stage_status`/`coverage`/`bedtime`/
+   `wake_time` per night plus a top-level `last_status`. Tested: `SleepDutyCycleSealTest` (computing→final
+   progression, placeholder-during-defer) + updated `SleepSealStagingDeferTest` / transient test. **Remaining:
+   the iOS loading card** (client repo) — read `last_status`/`nights[0].stage_status`; when `computing`, show
+   the known duration + a "calculating stages…" state; swap to full stats in place when it flips to `final`.
 2. **Phase 2 — notify + downstream cascade.** Push on finalize; move readiness/strain-target to trigger off
    the finalize event (so recovery cascades the moment sleep settles), and self-refresh a card left open on
    the loading state.

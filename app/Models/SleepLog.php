@@ -19,11 +19,15 @@ class SleepLog extends Model
         'profile_id', 'slept_at', 'is_nap', 'session_start', 'duration_min', 'quality',
         'deep_min', 'rem_min', 'light_min', 'awake_min',
         'bedtime', 'wake_time', 'notes', 'updated_via', 'hypnogram',
+        'stage_status', 'coverage', 'finalized_at',
     ];
 
     protected function casts(): array
     {
-        return ['slept_at' => 'date', 'session_start' => 'datetime', 'is_nap' => 'boolean', 'hypnogram' => 'array'];
+        return [
+            'slept_at' => 'date', 'session_start' => 'datetime', 'is_nap' => 'boolean',
+            'hypnogram' => 'array', 'finalized_at' => 'datetime', 'coverage' => 'float',
+        ];
     }
 
     public function profile(): BelongsTo

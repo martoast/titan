@@ -576,6 +576,22 @@ class SealNightJob implements ShouldQueue
         $bedDt = CarbonImmutable::createFromTimestamp($bed, 'UTC');
         $wakeDt = CarbonImmutable::createFromTimestamp($wake, 'UTC');
 
+        // The session key (one row per night; naps key on their start). Computed up front so we can write a
+        // lightweight COMPUTING placeholder BEFORE staging — the app has a row to render a loading card the
+        // instant you end on the watch, instead of a blank screen until the (deferred) stage pass finishes.
+        // See docs/PROGRESSIVE_SUMMARY.md (Phase 1).
+        $key = $isNap
+            ? ['profile_id' => $profile->id, 'session_start' => $bedDt->setTimezone($tz)->toDateTimeString(), 'is_nap' => true]
+            : ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false];
+        if ($this->stagingDefers === 0) {
+            $this->writeComputingRow($key, [
+                'slept_at' => $date,
+                'duration_min' => $durMin,
+                'bedtime' => $bedDt->setTimezone($tz)->format('H:i:s'),
+                'wake_time' => $wakeDt->setTimezone($tz)->format('H:i:s'),
+            ]);
+        }
+
         // Windows whose span overlaps the session (± margin). Scoping is the anti-vacuum guarantee.
         $loEpoch = $bed - self::SESSION_MARGIN_S;
         $hiEpoch = $wake + self::SESSION_MARGIN_S;
@@ -640,10 +656,7 @@ class SealNightJob implements ShouldQueue
             $metrics['wake_time'] = $metrics['wake_time'] ?? $stageWakeDt->setTimezone($tz)->format('H:i:s');
         }
 
-        $key = $isNap
-            ? ['profile_id' => $profile->id, 'session_start' => $bedDt->setTimezone($tz)->toDateTimeString(), 'is_nap' => true]
-            : ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false];
-
+        // This is the FINALIZE write: it refines the computing placeholder in place and flips it to `final`.
         $attrs = $metrics !== null
             ? array_filter([
                 'slept_at' => $date,
@@ -656,6 +669,9 @@ class SealNightJob implements ShouldQueue
                 'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null) ?? $wakeDt->setTimezone($tz)->format('H:i:s'),
                 'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                 'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
+                'coverage' => $metrics['coverage'] ?? null,
+                'stage_status' => 'final',
+                'finalized_at' => now(),
                 'updated_via' => 'biosignal:sealed-session',
             ], fn ($v) => $v !== null)
             // Duration-only fallback: honest "you slept ~45 min", no fabricated stages, never 100% awake.
@@ -664,6 +680,8 @@ class SealNightJob implements ShouldQueue
                 'duration_min' => $durMin,
                 'bedtime' => $bedDt->setTimezone($tz)->format('H:i:s'),
                 'wake_time' => $wakeDt->setTimezone($tz)->format('H:i:s'),
+                'stage_status' => 'final',
+                'finalized_at' => now(),
                 'updated_via' => 'biosignal:sealed-session-marker',
             ];
 
@@ -902,6 +920,28 @@ class SealNightJob implements ShouldQueue
         return $log->wasRecentlyCreated || $log->wasChanged();
     }
 
+    /**
+     * Write the instant COMPUTING placeholder for a confirmed session (Phase 1, docs/PROGRESSIVE_SUMMARY.md):
+     * the envelope's duration/bed/wake with stages still null, so the app can render a loading card the moment
+     * you end on the watch — before the (deferred) stage pass finishes. Never downgrades an already-FINAL row
+     * (a prior seal beat us to it), and uses a non-'sealed' updated_via so this placeholder can't block a real
+     * seal via the richer-row guard. The finalize (upsertSleep) later refines this same row to `final`.
+     *
+     * @param  array<string,mixed>  $key
+     * @param  array<string,mixed>  $envelope
+     */
+    private function writeComputingRow(array $key, array $envelope): void
+    {
+        $existing = SleepLog::where($key)->first();
+        if ($existing && $existing->stage_status === 'final') {
+            return; // already finalized by an earlier seal — nothing to show as "computing"
+        }
+        SleepLog::updateOrCreate($key, array_merge($envelope, [
+            'stage_status' => 'computing',
+            'updated_via' => 'biosignal:computing',
+        ]));
+    }
+
 
     /**
      * Stage sleep from a raw-PPG (wearable) night (the automatic / cron pass). Sends the per-window 30-s
@@ -963,6 +1003,9 @@ class SealNightJob implements ShouldQueue
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     // The per-30s hypnogram (the stager already computes it) → the Whoop stage timeline.
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
+                    'coverage' => $metrics['coverage'] ?? null,
+                    'stage_status' => 'final',
+                    'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed-ppg',
                 ], fn ($v) => $v !== null),
                 $this->isAuthoritative(),
@@ -1050,6 +1093,9 @@ class SealNightJob implements ShouldQueue
                     'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null),
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
+                    'coverage' => $metrics['coverage'] ?? null,
+                    'stage_status' => 'final',
+                    'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed',
                 ], fn ($v) => $v !== null),
                 $this->isAuthoritative(),
