@@ -20,6 +20,7 @@ These functions are deliberately stateless and DB-free.
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import numpy as np
@@ -339,13 +340,25 @@ def process_hrv(
     else:
         raise ValueError("Provide either ibi_ms or (ppg + sample_rate_hz).")
 
-    # Real actigraphy beats the PPG-quality motion proxy for sleep/wake — if the device
-    # sent per-sample activity, override each epoch's motion with its accel sum.
+    # Real actigraphy beats the PPG-quality motion proxy for sleep/wake — if the device sent per-sample
+    # activity, override each epoch's motion with its per-epoch MOVEMENT. Use the accel STANDARD DEVIATION,
+    # NOT sum(|accel|): the wrist stream is magnitude in centi-g (~100/sample at 1g), so the raw sum was
+    # gravity-dominated (~tens of thousands per 30 s epoch) — a thousandfold off the stager's ~0-50 scale —
+    # which floored its percentile motion threshold and classified every sampled epoch as WAKE, producing
+    # all-awake / stage-less nights. std removes the constant gravity DC and lands in ~0-50, isolating the
+    # actual movement (a still wrist ≈ 0-5, restlessness ≈ 20-40).
     if epochs and accel:
         a = _to_array(accel)
         if a.size and len(epochs["motion"]):
-            parts = np.array_split(np.abs(a), len(epochs["motion"]))
-            epochs["motion"] = [round(float(np.sum(p)), 2) for p in parts]
+            parts = np.array_split(a, len(epochs["motion"]))
+            epochs["motion"] = [round(float(np.std(p)) if p.size else 0.0, 2) for p in parts]
+            # Unit-scale sanity assertion: after normalization the proxy is ~0-50. A value in the thousands
+            # means the accel arrived on the wrong scale (a firmware/unit regression) — log LOUDLY so this
+            # whole class of "sleep logged but no stages" can't silently degrade again.
+            _mx = max(epochs["motion"], default=0.0)
+            if _mx > 1000:
+                logging.getLogger(__name__).warning(
+                    "epoch motion proxy implausibly large (max=%.0f) — unnormalized accel? staging will degrade", _mx)
 
     n_raw = int(ibi_arr.size)
 
