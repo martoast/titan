@@ -191,16 +191,21 @@ provisional state is exactly the "not sealed shut yet" window S-3 needs.
 
 ## 5. Rollout (incremental, each phase shippable)
 
-1. **Phase 1 — the computing row + loading card (this request; biggest win, lowest risk). ✅ BUILT (server).**
+1. **Phase 1 — the computing row + loading card (this request; biggest win, lowest risk). ✅ BUILT (server + iOS).**
    Added `stage_status`/`coverage`/`finalized_at` to `sleep_logs`. `sealConfirmedSession` writes a
    **duration-only computing row before** the defer loop (`writeComputingRow`, envelope only — no staging,
    `updated_via = biosignal:computing`, only on first entry, never downgrades a `final` row), and the existing
    defer→stage block is the **finalize** that refines the same row in place and sets `stage_status = final`
    (+ `finalized_at`, `coverage`). `MobileSleepController::show` returns `stage_status`/`coverage`/`bedtime`/
    `wake_time` per night plus a top-level `last_status`. Tested: `SleepDutyCycleSealTest` (computing→final
-   progression, placeholder-during-defer) + updated `SleepSealStagingDeferTest` / transient test. **Remaining:
-   the iOS loading card** (client repo) — read `last_status`/`nights[0].stage_status`; when `computing`, show
-   the known duration + a "calculating stages…" state; swap to full stats in place when it flips to `final`.
+   progression, placeholder-during-defer) + updated `SleepSealStagingDeferTest` / transient test.
+   **iOS (built):** `SleepResponse` decodes `last_status` + per-night `stage_status`/`coverage` with an
+   `isComputing` helper. The two pollers (`fetchSealedSleep` live path, `checkForSyncedSleep` sync/open-early
+   path) keep the existing loading card up until the night FINALIZES (`!isComputing`) instead of stopping on
+   the placeholder's non-zero duration; the sync path pops the loading card the instant the night appears and
+   refines it in place on finalize; `sleepDetail` (Daily/Recovery) only ever takes a FINAL night, so no
+   half-empty cards. `SleepSummaryView` already renders the loading state (hero "SEALING", "Staging your
+   night…", watch-marker fallback tiles). Xcode build: SUCCEEDED.
 2. **Phase 2 — notify + downstream cascade.** Push on finalize; move readiness/strain-target to trigger off
    the finalize event (so recovery cascades the moment sleep settles), and self-refresh a card left open on
    the loading state.

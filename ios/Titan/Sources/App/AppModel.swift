@@ -366,9 +366,14 @@ final class AppModel: ObservableObject {
         checkingSyncedSleep = true
         Task { @MainActor [weak self] in
             defer { self?.checkingSyncedSleep = false }
-            for attempt in 0..<6 {
+            var popped = false   // have we surfaced THIS night's card yet (as a loading card while computing)?
+            // ~12 slow polls (~45s): catch the bulk-synced night, and if it's still computing keep polling to
+            // flip the loading card to the full stats when it finalizes.
+            for attempt in 0..<12 {
                 try? await Task.sleep(nanoseconds: attempt == 0 ? 2_000_000_000 : 4_000_000_000)
-                guard let self, !self.sleeping, self.sleepSummary == nil else { return }
+                guard let self, !self.sleeping else { return }
+                if popped { if self.sleepSummary == nil { return } }   // user dismissed the loading card → stop
+                else if self.sleepSummary != nil { return }            // another summary already open → don't double-pop
                 guard let resp = try? await self.api.sleepDetail(), let d = resp.detail,
                       (d.duration_min ?? 0) > 0, let bedEpoch = d.epoch_sec, bedEpoch > 0 else { continue }
                 // Only a night NEWER than the last one we surfaced (the live path stamps this too, so the
@@ -376,15 +381,20 @@ final class AppModel: ObservableObject {
                 guard bedEpoch > self.lastSeenSleepEpoch else { return }
                 let wakeApprox = bedEpoch + (d.duration_min ?? 0) * 60
                 guard Date().timeIntervalSince1970 - Double(wakeApprox) < 18 * 3600 else { self.lastSeenSleepEpoch = bedEpoch; return }
-                self.lastSeenSleepEpoch = bedEpoch
-                self.sleepDetail = resp   // refresh Daily/Recovery too
-                var s = SleepSummaryState(
+                // Surface the night the moment it appears — a LOADING card if it's still computing (open-early),
+                // then refined to the full stats in place when it finalizes.
+                var s = self.sleepSummary ?? SleepSummaryState(
                     bedtime: Date(timeIntervalSince1970: Double(bedEpoch)),
                     wake: Date(timeIntervalSince1970: Double(wakeApprox)),
                     inBedSec: (d.in_bed_min ?? d.duration_min ?? 0) * 60)
-                s.detail = d; s.assess = resp.assess; s.loading = false
+                s.detail = d; s.assess = resp.assess; s.loading = resp.isComputing
                 self.sleepSummary = s
-                return
+                popped = true
+                if !resp.isComputing {
+                    self.sleepDetail = resp            // only a FINAL night feeds Daily/Recovery — no partial cards
+                    self.lastSeenSleepEpoch = bedEpoch
+                    return
+                }
             }
         }
     }
@@ -1352,13 +1362,16 @@ final class AppModel: ObservableObject {
     /// returns yesterday's, so we only accept a detail whose start is near the bedtime we just ended.
     private func fetchSealedSleep(bedtimeEpoch: Int) {
         Task { @MainActor [weak self] in
-            // Check quickly (the night may already be sealed) then every ~3s for ~65s — long enough to
-            // catch server staging, short cadence so the metrics fill in near-immediately.
-            for attempt in 0..<22 {
+            // Check quickly (the night may already be sealed) then every ~3s for ~135s — long enough to catch
+            // the confirmed seal's stage pass (it can defer up to ~2 min while raw windows finish processing),
+            // short cadence so the metrics fill in near-immediately. The loading card shows the whole time.
+            for attempt in 0..<45 {
                 try? await Task.sleep(nanoseconds: attempt == 0 ? 1_500_000_000 : 3_000_000_000)
                 guard let self, self.sleepSummary != nil else { return }   // dismissed
+                // Progressive summary: the COMPUTING row already has a duration (from the watch envelope) but
+                // no stages yet — keep the loading card until the night FINALIZES, don't stop on the placeholder.
                 guard let resp = try? await self.api.sleepDetail(), let d = resp.detail,
-                      (d.duration_min ?? 0) > 0 else { continue }
+                      (d.duration_min ?? 0) > 0, !resp.isComputing else { continue }
                 // Is this the night we just ended? If the server stamps an epoch, require it within ~6h of
                 // our bedtime; otherwise accept (best-effort). Keeps a stale prior night from masquerading.
                 if bedtimeEpoch > 0, let e = d.epoch_sec, abs(e - bedtimeEpoch) > 6 * 3600 { continue }

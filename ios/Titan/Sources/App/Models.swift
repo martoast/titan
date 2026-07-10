@@ -155,6 +155,9 @@ struct SleepResponse: Codable {
     let assess: Assess?
     let detail: Detail?
     let nights: [Night]
+    /// The most recent night's compute state: "computing" while it's still being staged (show the loading
+    /// card), "final" once settled. nil on an older server → treat as final. See docs/PROGRESSIVE_SUMMARY.md.
+    let last_status: String?
     struct Assess: Codable {
         let need_h: Double?; let debt_h: Double?; let last_h: Double?
         let performance_pct: Int?; let band: String?; let label: String?; let advice: String?
@@ -184,7 +187,10 @@ struct SleepResponse: Codable {
         var id: String { date ?? "" }
         let date: String?; let duration_min: Int?; let quality: Int?
         let deep_min: Int?; let rem_min: Int?; let light_min: Int?; let awake_min: Int?
+        let stage_status: String?; let coverage: Double?
     }
+    /// The latest night is still being calculated — render the loading card, not a half-empty "done" one.
+    var isComputing: Bool { last_status == "computing" }
 }
 
 /// The Whoop-style Overview history: a daily series of the three rings + HRV/RHR/sleep, with averages.
