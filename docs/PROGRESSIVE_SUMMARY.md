@@ -4,9 +4,31 @@
 > behavior. Read [SEAL_ARCHITECTURE.md](SEAL_ARCHITECTURE.md) first; this builds directly on it and must not
 > violate its invariants (I1–I8).
 >
-> **Goal:** the instant you end sleep on the band, you see a summary — duration, bed/wake, and a first read of
-> stages — with the rich numbers (REM, deep, wake events, efficiency, quality) settling within seconds
-> instead of after a wait. Exactly the Whoop feel: a card that's *there immediately* and then *sharpens*.
+> **Goal:** the calculation runs in the natural gap between ending sleep on the watch and opening the app, so
+> by the time you look, the full stats are there. If you open *before* it finishes, you get a real **loading
+> state** (not a blank screen) that fills in *in place* when ready. Either way the night is **saved to the
+> server**, so if you never open the summary you still see it later in your sleep history. Exactly the Whoop
+> feel: it's just *ready*, and when it isn't yet, it's visibly *working*.
+
+## 0. The user's actual flow (what we're optimizing for)
+
+> "I end sleep on the watch, then ~2–5 minutes later I grab my phone and check. Do the calculation in that
+> interval. If I open sooner, show a nice loading state so I can see it's working, then the full stats when
+> they come in — right there if I'm watching, or already saved to my sleep stats if I've closed it."
+
+Three cases to serve:
+
+| When you open the app | What you should see |
+|---|---|
+| **After the gap** (the common case, ~2–5 min later) | the **full** stats, already done — no wait |
+| **Before it finishes** (you opened fast) | a **loading** card (duration/bed/wake already shown, "calculating stages…") that **fills in place** when the finalize lands |
+| **Never / you closed it** | nothing to do — the final row is **persisted**, waiting in your sleep history |
+
+**Good news: the "compute in the gap" half already exists.** The moment the watch's wake marker is ingested,
+`DeviceIngestionService` dispatches the confirmed `SealNightJob` immediately (`::dispatch(..., confirmed:true,
+bed, wake)->afterCommit()`) — so the calculation already starts when you tap "end" (assuming the phone is
+connected to sync the marker). What's missing is only the **front half of the UX**: a row exists *only after*
+staging finishes, so opening early shows nothing instead of a loading state. This design adds that.
 
 ---
 
@@ -51,30 +73,36 @@ useful row before it and refine in place after it.**
 
 ### 3.1 Two writes, not one
 
-Split the single terminal write into a **provisional** write and a **final** write against the same
-`SleepLog` row (same `(profile, slept_at, is_nap)` key — no new rows, so I2/I7 hold).
+Split the single terminal write into a **computing** write (instant) and a **final** write, against the same
+`SleepLog` row (same `(profile, slept_at, is_nap)` key — no new rows, so I2/I7 hold). The first write exists
+purely so the app has something to show — the loading card — the moment you open it.
 
 ```
-end sleep (confirmed [bed,wake])
-      │
+end sleep (confirmed [bed,wake] marker ingested)
+      │  ← SealNightJob already dispatches here today (DeviceIngestionService)
       ▼
- ┌─────────────────────────────┐   instant (no defer, no staging)
- │  PROVISIONAL write          │   duration/bed/wake from the envelope +
- │  stage_status = provisional │   a first-pass hypnogram from whatever epochs
- └─────────────────────────────┘   are ALREADY processed (may be partial)
-      │  push "sleep ready (finalizing)" → app shows the card now
+ ┌─────────────────────────────┐   instant — NO defer, NO staging
+ │  COMPUTING write            │   duration + bed + wake from the envelope (all
+ │  stage_status = computing   │   free & correct); stage columns left NULL.
+ └─────────────────────────────┘   Optional: a first-pass hypnogram from epochs
+      │                             already processed (§3.3) — nice, not required.
+      │  the row now EXISTS → open the app early and you get the loading card
       ▼
- process any remaining windows (parallel) ─┐
-      │                                     │  ProcessWindowJob backlog drains
-      ▼                                     │
- ┌─────────────────────────────┐   seconds later
+ process remaining windows (parallel), then stage the full span ─┐
+      │                                                            │  runs in your 2–5 min gap
+      ▼                                                            │
+ ┌─────────────────────────────┐   when the gap is up (or you open, whichever)
  │  FINAL write (refine in      │   full-span stage_night: real REM/deep/wake,
  │  place) stage_status = final │   holes folded, coverage, quality
  └─────────────────────────────┘
-      │  push "sleep finalized" → app refreshes card in place;
-      ▼  readiness/strain/coach now run off the FINAL row
+      │  push "sleep finalized" → card fills in place if you're watching;
+      ▼  else it's just saved. readiness/strain/coach run off the FINAL row.
  downstream (ReactToSleepConfirmed / readiness / strain target)
 ```
+
+The **computing** write is the whole point of this design: it turns "open early → blank screen" into "open
+early → a card that shows your duration and says it's calculating." It is cheap (no staging), so it can happen
+the instant the marker lands.
 
 ### 3.2 Data-model changes (`sleep_logs`)
 
@@ -82,24 +110,25 @@ Add:
 
 | Column | Type | Meaning |
 |---|---|---|
-| `stage_status` | enum(`provisional`,`final`) default `final` | is this the fast first read or the settled one? |
-| `coverage` | decimal(4,3) null | fraction of the span actually sampled (already computed by `stage_night`; surface it so the app can caveat) |
-| `finalized_at` | timestamp null | when the final pass wrote (null while provisional) |
+| `stage_status` | enum(`computing`,`final`) default `final` | is this the loading placeholder or the settled read? |
+| `coverage` | decimal(4,3) null | fraction of the span actually sampled (already computed by `stage_night`; surface it so the app can caveat a low-coverage night) |
+| `finalized_at` | timestamp null | when the final pass wrote (null while computing) |
 
 `stage_status` defaults to `final` so every existing path and reader keeps working unchanged; only the new
-provisional write sets `provisional`. Readers that must not show half-baked numbers can filter
-`where('stage_status','final')` where appropriate (e.g. long-term baselines); the "last night" card
-deliberately shows the provisional row *with a finalizing badge*.
+computing write sets `computing`. Readers that must not show a half-written row filter
+`where('stage_status','final')` where appropriate (long-term baselines, regularity, trends); the "last night"
+card deliberately shows the `computing` row so it can render the **loading** state.
 
-### 3.3 Where provisional stages come from
+### 3.3 The computing row, and (optionally) partial stages
 
-- **Duration / bed / wake / time-in-bed:** free from the confirmed envelope — always instant, always correct.
-- **Stages (provisional):** run `stage_night` over **only the epochs already processed at end-of-sleep**
-  (skip the 2-minute defer). Whatever's staged, stage; the rest are holes. This yields a real-but-partial
-  hypnogram. `coverage` tells the app how partial.
-- If *nothing* is processed yet (pure bulk-sync, windows still landing), the provisional row is
-  **duration-only** (exactly today's honest fallback) with `stage_status = provisional` — the card still
-  appears instantly, stages fill in on finalize.
+- **Duration / bed / wake / time-in-bed:** free from the confirmed envelope — written instantly on the
+  computing row, always correct. This is enough to render a real loading card ("7h 32m — calculating stages…").
+- **Stages while computing (OPTIONAL, a later nicety):** if we want the loading card to show *approximate*
+  stages instead of just a spinner, run `stage_night` over **only the epochs already processed** and write a
+  partial hypnogram; `coverage` says how partial. Not required for the core experience — a clean spinner over
+  the known duration is perfectly good, and avoids showing numbers that then move. Defer this to Phase 3.
+- If nothing is processed yet (pure bulk-sync), the computing row is simply **duration-only** — the card still
+  appears instantly, stages arrive on finalize.
 
 ### 3.4 The live path (phone present, BLE up) — rolling staging
 
@@ -131,13 +160,19 @@ provisional state is exactly the "not sealed shut yet" window S-3 needs.
 ### 3.6 App / UX contract
 
 - **Fetch:** `MobileSleepController::show` already returns `detail` + `assess`. Add `stage_status`,
-  `coverage`, and `finalized_at` to the payload so the card can render a **"finalizing…"** badge when
-  provisional and a subtle refresh when it flips to final.
-- **Notify, don't poll blind:** push a lightweight signal on both writes (provisional → "sleep ready",
-  final → "sleep updated"). The app already has the poll/reconcile-on-reopen pattern from the coach work
-  (`titan-coach-background`); reuse it so a suspended phone still catches the finalize.
+  `coverage`, and `finalized_at` to the payload.
+- **The loading state (the core of this request):** when the latest night is `computing`, the Sleep card
+  renders a **loading** treatment — show the known duration + bed/wake, and a "calculating your stages…"
+  progress state where the stage breakdown will go. Ideally the progress reflects reality (e.g. windows
+  processed vs total, or coverage climbing) rather than an indeterminate spinner, so it visibly *works*.
+- **Fills in place:** when the row flips to `final`, the same card swaps the loading block for the real
+  REM/deep/light/awake/quality — no navigation, no reload. If the app is closed, nothing to do: the final
+  row is saved and shows normally next time.
+- **Notify, don't poll blind:** push a lightweight signal on finalize ("sleep updated"). The app already has
+  the poll/reconcile-on-reopen pattern from the coach work (`titan-coach-background`); reuse it so a suspended
+  phone still catches the finalize, and so a card left open on the loading state updates itself.
 - **Coach summary fires once, on FINAL** (keep `sleepRowWritten` gating from I6/I4) — never narrate a
-  provisional night, or the coach will "correct itself." Recovery/strain-target read the **final** row.
+  `computing` night. Recovery/strain-target read the **final** row.
 
 ---
 
@@ -145,43 +180,54 @@ provisional state is exactly the "not sealed shut yet" window S-3 needs.
 
 | Invariant | How the design holds it |
 |---|---|
-| I1 no concatenation | provisional & final both stage sparse across the true span; provisional just has more holes |
+| I1 no concatenation | the final pass stages sparse across the true span exactly as today; the computing row carries no fabricated stages |
 | I2 gap-based / I7 nap≠night | same `(profile, slept_at, is_nap)` key for both writes — one row, refined |
-| I4 confirmed authority | only the confirmed path writes provisional; auto path unchanged |
-| I5 failure classes | a transient failure during finalize leaves the **provisional** row in place (no data loss) and retries — strictly better than today |
-| I6 no clobber / no chimera | final overwrites its own provisional row; `STAGE_COLUMNS` null-on-write already prevents chimera |
-| I8 completed-only | provisional sleep is still a completed night (user ended it); unaffected |
+| I4 confirmed authority | only the confirmed path writes the computing row; auto path unchanged |
+| I5 failure classes | a transient failure during finalize leaves the **computing** row in place (no data loss) and retries — strictly better than today's "no row until it works" |
+| I6 no clobber / no chimera | final overwrites its own computing row; `STAGE_COLUMNS` null-on-write already prevents chimera |
+| I8 completed-only | a computing night is still a completed night (user ended it); unaffected |
 
 ---
 
 ## 5. Rollout (incremental, each phase shippable)
 
-1. **Phase 1 — provisional-at-end (biggest win, lowest risk).** Add `stage_status`/`coverage`/`finalized_at`.
-   In `sealConfirmedSession`: write the provisional row **before** the defer loop (envelope + already-processed
-   epochs), then keep the existing defer→stage as the **finalize** that refines in place. Surface the badge in
-   the app. This alone removes the ~2-minute wait for the common case.
-2. **Phase 2 — notify + downstream cascade.** Push on provisional and final; move readiness/strain-target to
-   trigger off the finalize event.
-3. **Phase 3 — rolling live staging.** Incremental hypnogram in `ProcessWindowJob` on the always-on path, so
-   the provisional card is already rich at wake.
-4. **Phase 4 — fold in S-3.** Let a still-provisional/recently-final night accept late bulk-synced windows and
+1. **Phase 1 — the computing row + loading card (this request; biggest win, lowest risk).** Add
+   `stage_status`/`coverage`/`finalized_at`. In `sealConfirmedSession`: write a **duration-only computing row
+   before** the defer loop (envelope only — no staging), then keep the existing defer→stage as the
+   **finalize** that refines the same row in place and sets `stage_status = final`. Return `stage_status` from
+   `MobileSleepController::show` and render the loading card. This alone gives: full stats after the gap, a
+   loading state if you open early, and a persisted row either way.
+2. **Phase 2 — notify + downstream cascade.** Push on finalize; move readiness/strain-target to trigger off
+   the finalize event (so recovery cascades the moment sleep settles), and self-refresh a card left open on
+   the loading state.
+3. **Phase 3 — partial stages while computing (optional nicety).** Stage the already-processed epochs onto the
+   computing row so the loading card shows approximate stages instead of just a progress spinner. Only if we
+   decide the "numbers that move a little" tradeoff is worth it.
+4. **Phase 4 — rolling live staging.** Incremental hypnogram in `ProcessWindowJob` on the always-on-BLE path,
+   so on a live-streamed night the finalize is near-instant at wake.
+5. **Phase 5 — fold in S-3.** Let a still-computing / recently-final night accept late bulk-synced windows and
    re-finalize (closes the store-and-forward data loss).
-5. **(Later) workouts.** The identical pattern applies to `SealActivityJob` — instant provisional run/lift
-   from the confirmed envelope, refine with route/splits/HR when windows drain. Out of scope here; note it.
+6. **(Later) workouts.** The identical pattern applies to `SealActivityJob` — instant computing run/lift from
+   the confirmed envelope, refine with route/splits/HR when windows drain. Out of scope here; note it.
 
 ---
 
 ## 6. Open questions / tradeoffs
 
-- **How much can provisional numbers move?** Set a norm (e.g. show provisional stages only above a coverage
-  floor, else duration-only-provisional) so the settle is small and never embarrassing. Whoop tolerates this;
-  we should pick the coverage threshold deliberately (`MIN_COVERAGE = 0.30` is the current honest floor).
-- **Do we badge "finalizing" or hide stages until final?** Recommend badge — a present-but-settling card beats
-  a blank one (that's the whole point).
-- **Battery/data cost of live streaming** is the real gate on Phase 3 — it only pays off once always-on BLE is
-  solid. Phases 1–2 do **not** depend on it and deliver the instant card regardless.
-- **Provisional rows in long-term stats:** decide per-reader whether baselines exclude `provisional`
-  (probably yes for regularity/trends, no for "last night").
+- **Core flow shows no moving numbers.** Phase 1 shows a duration + a loading state, then the *final* stages —
+  the stage numbers never change under the user, because they only appear once (on finalize). The "numbers can
+  move a little" tradeoff only exists if we opt into partial stages (Phase 3); if we do, gate them on a
+  coverage floor (`MIN_COVERAGE = 0.30`) so the settle is small.
+- **Loading progress fidelity.** Prefer a real progress read (windows processed / coverage climbing) over an
+  indeterminate spinner so it visibly *works* — needs `MobileSleepController::show` (or a light status
+  endpoint) to expose processed-vs-total.
+- **What if the phone never synced the marker?** Then compute can't start (nothing arrived) — the auto cron
+  path eventually seals it. The computing row + loading state only exist once the marker/windows land; that's
+  correct (we can't show a loading card for data we don't have).
+- **`computing` rows in long-term stats:** baselines/regularity/trends should filter `stage_status = final`;
+  only the "last night" card shows the `computing` row (to render the loader).
+- **Battery/data cost of live streaming** gates Phase 4 only. Phases 1–2 — the whole of this request — do
+  **not** depend on always-on BLE and deliver the instant/loading card regardless.
 
 ---
 
