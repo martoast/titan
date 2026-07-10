@@ -110,6 +110,28 @@ class MobileRunsController extends Controller
             ->with(['exercises.exercise', 'exercises.sets'])
             ->orderByDesc('performed_at')
             ->first();
+
+        // Legacy fallback: workouts logged BEFORE the FK existed (and any the seal hasn't linked yet) carry a
+        // NULL activity_session_id — a bare FK lookup would show them as strength:null (e.g. the App Store
+        // demo account's seeded lifts). Match those by containment to THIS session's span, scoped to
+        // whereNull so an already-FK-linked workout is never re-stolen (no cross-session mis-attribution).
+        // started_at/ended_at are UTC wall-clock (the seal's convention); the Eloquent cast would mislabel
+        // them as app-tz, so read raw as UTC and convert to app tz before comparing to performed_at (written
+        // app-tz by the coach) — identical to SealActivityJob::linkWorkoutsToSession.
+        if (! $workout) {
+            $tz = config('app.timezone');
+            $startLocal = \Illuminate\Support\Carbon::parse($session->getRawOriginal('started_at'), 'UTC')->setTimezone($tz);
+            $endRaw = $session->getRawOriginal('ended_at');
+            $endLocal = $endRaw
+                ? \Illuminate\Support\Carbon::parse($endRaw, 'UTC')->setTimezone($tz)
+                : $startLocal->copy()->addHours(4);
+            $workout = $profile->workouts()
+                ->whereNull('activity_session_id')
+                ->whereBetween('performed_at', [$startLocal->copy()->subMinutes(20), $endLocal->copy()->addMinutes(20)])
+                ->with(['exercises.exercise', 'exercises.sets'])
+                ->orderByDesc('performed_at')
+                ->first();
+        }
         if (! $workout) {
             return null;
         }

@@ -98,6 +98,32 @@ class MobileRunsTest extends TestCase
             ->assertJsonPath('strength.exercises.0.sets.0.reps', 10);
     }
 
+    public function test_legacy_null_fk_workout_still_shows_via_containment_fallback(): void
+    {
+        // A workout logged before the sets-FK existed (activity_session_id NULL) — e.g. the App Store demo
+        // account's seeded lifts — must still surface its sets via the read-time containment fallback, else
+        // the lift detail returns strength:null. Scoped to whereNull so FK-linked sets are never re-stolen.
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+        [, $token] = ApiToken::mint($user, 'ios', ['*']);
+
+        $start = now()->subHours(2);
+        $session = ActivitySession::create([
+            'profile_id' => $profile->id, 'source' => 'titan_band',
+            // Seal convention: started_at/ended_at are UTC wall-clock; performed_at is app-tz (coach).
+            'started_at' => $start->copy()->utc(), 'ended_at' => $start->copy()->addMinutes(30)->utc(), 'duration_min' => 30,
+            'activity_type' => 'strength', 'updated_via' => 'biosignal:sealed',
+        ]);
+        $squat = \App\Models\Exercise::firstOrCreate(['slug' => 'squats'], ['name' => 'Squats', 'muscle_group' => 'legs', 'category' => 'compound']);
+        $w = \App\Models\Workout::create(['profile_id' => $profile->id, 'performed_at' => $start->copy()->addMinutes(5), 'name' => 'Legacy', 'activity_session_id' => null]);
+        $we = \App\Models\WorkoutExercise::create(['workout_id' => $w->id, 'exercise_id' => $squat->id, 'order' => 0]);
+        \App\Models\WorkoutSet::create(['workout_exercise_id' => $we->id, 'set_number' => 1, 'reps' => 5, 'weight_kg' => 100]);
+
+        $this->withHeader('Authorization', "Bearer {$token}")->getJson("/api/me/runs/{$session->id}")->assertOk()
+            ->assertJsonPath('strength.total_sets', 1)
+            ->assertJsonPath('strength.exercises.0.name', 'Squats');
+    }
+
     public function test_a_stale_open_session_does_not_sticky_claim_a_much_later_logged_workout(): void
     {
         // Regression (audit F1): an abandoned "start a run" placeholder (open, never ended) 6h ago must NOT
@@ -146,13 +172,13 @@ class MobileRunsTest extends TestCase
         $aStart = now()->subHours(3);
         $sessionA = ActivitySession::create([
             'profile_id' => $profile->id, 'source' => 'titan_band',
-            'started_at' => $aStart, 'ended_at' => $aStart->copy()->addMinutes(15), 'duration_min' => 15,
+            'started_at' => $aStart->copy()->utc(), 'ended_at' => $aStart->copy()->addMinutes(15)->utc(), 'duration_min' => 15,
             'activity_type' => 'strength', 'updated_via' => 'biosignal:sealed',
         ]);
         $bStart = $aStart->copy()->addMinutes(55);   // ~40 min gap between A's end and B's start
         $sessionB = ActivitySession::create([
             'profile_id' => $profile->id, 'source' => 'titan_band',
-            'started_at' => $bStart, 'ended_at' => $bStart->copy()->addMinutes(15), 'duration_min' => 15,
+            'started_at' => $bStart->copy()->utc(), 'ended_at' => $bStart->copy()->addMinutes(15)->utc(), 'duration_min' => 15,
             'activity_type' => 'strength', 'updated_via' => 'biosignal:sealed',
         ]);
 
