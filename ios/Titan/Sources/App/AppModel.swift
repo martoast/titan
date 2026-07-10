@@ -1129,16 +1129,19 @@ final class AppModel: ObservableObject {
         return f.string(from: Date())
     }
 
-    /// Is the band's T8 date string within ±1 day of the phone's local date? An EXACT match silently
-    /// dropped every step frame whenever the watch's clock was a timezone/midnight off the phone (e.g. a
-    /// UTC-set band while the phone is in UTC-7) — steps froze at 0 while HR streamed fine. ±1 tolerates
-    /// that skew but still rejects a genuinely stale day flushed on reconnect.
+    /// May this T8 frame drive the LIVE "steps today" readout? DIRECTIONAL, not ±1: a timezone-skewed
+    /// watch (a UTC-set band while the phone is in UTC-7 — the case a strict match broke, freezing steps
+    /// at 0) runs AHEAD of the phone (diff -1), so ahead-of-today is tolerated. A frame dated BEHIND today
+    /// (diff ≥ 1) is yesterday's data — a buffered total flushed on morning reconnect, or the band's banked
+    /// end-of-day final. The old ±1 accepted those as "today": the app then showed (and MAX-pinned upstream
+    /// consumers on) yesterday's 9,000 steps all morning while the watch honestly showed 200 — the classic
+    /// watch-vs-app step desync. Uploads are unaffected either way: FrameRouter posts the frame's OWN date.
     static func bandDateIsCurrent(_ ymd: String) -> Bool {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = .current; f.timeZone = .current
         guard let d = f.date(from: ymd) else { return false }
         let cal = Calendar.current
         let diff = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day ?? 99
-        return abs(diff) <= 1
+        return diff <= 0 && diff >= -1                 // today or ahead-by-skew: live; behind: stale, upload-only
     }
 
     /// A live GPS fix during a run → accumulate distance (haversine) + extend the trace.
