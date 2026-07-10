@@ -73,8 +73,23 @@ class BiosignalSimulator
      */
     public function generateWindow(string $state, int $seconds): array
     {
-        $cfg = self::STATES[$state] ?? self::STATES['rest'];
-        $meanIbi = 60000.0 / $cfg['hr'];
+        return $this->generateWindowFromCfg(self::STATES[$state] ?? self::STATES['rest'], $seconds);
+    }
+
+    /**
+     * Same physiology engine as {@see generateWindow()} but driven by an EXPLICIT per-state config
+     * (`hr`, `hr_sd`, `rmssd`, `motion`) instead of a fixed STATES preset. This is the single seam the
+     * SLEEP LAB's VirtualBand uses to render a stage from a *calibrated* distribution (per-stage HR / HRV /
+     * motion extracted from real sealed nights) rather than the hard-coded presets — so there is still ONE
+     * signal engine, not two. `generateWindow()` is just this with a STATES lookup.
+     *
+     * @param  array{hr:float|int,hr_sd?:float|int,rmssd:float|int,motion:float|int}  $cfg
+     * @return array{ibi_ms: array<int,int>, accel_counts: array<int,int>}
+     */
+    public function generateWindowFromCfg(array $cfg, int $seconds): array
+    {
+        $cfg += ['hr_sd' => 2.6, 'motion' => 0.6, 'rmssd' => 70];
+        $meanIbi = 60000.0 / max(20, (float) $cfg['hr']);
         // RMSSD target → per-beat sd of successive differences. RMSSD ≈ sd * sqrt(2),
         // so sd ≈ rmssd / sqrt(2). Keep it bounded relative to the mean.
         $sd = min($cfg['rmssd'] / 1.4142, $meanIbi * 0.18);

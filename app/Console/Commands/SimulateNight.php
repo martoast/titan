@@ -4,10 +4,10 @@ namespace App\Console\Commands;
 
 use App\Models\Profile;
 use App\Models\WearableConnection;
+use App\Services\Lab\VirtualBand;
 use App\Services\Simulator\BiosignalSimulator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 /**
@@ -55,6 +55,12 @@ class SimulateNight extends Command
         [$device, $secret] = $this->resolveDevice($profile);
         $tz = $device->effectiveTimezone();
 
+        // ONE wire renderer + signer: the VirtualBand (SLEEP LAB) owns the window formatting and the
+        // HMAC-signed POST that this command used to inline. We generate the signal here (we need the raw IBI
+        // for the whole-night HRV summary) and hand it to $band->wireWindow(); delivery goes through
+        // $band->postSigned(). Renders to the app's own ingest URL, exactly as before.
+        $band = new VirtualBand($sim, $device, $secret);
+
         $this->line("<info>Titan virtual band</info> -- profile #{$profile->id}, device <comment>{$device->device_id}</comment>, seed {$sim->seed()}");
         $this->newLine();
 
@@ -80,26 +86,16 @@ class SimulateNight extends Command
             $start = $cursor->copy();
             $end = $cursor->copy()->addMinutes($seg['minutes']);
 
-            $windows[] = $rawPpg
-                // The REAL Titan-band overnight shape: raw PPG, server peak-detects → IBI → stages.
-                // Accel is OMITTED (like the offline T2 log) so the server uses its PPG-quality motion
-                // proxy — matching PpgWindow (ios/TitanCore Windowing.swift).
-                ? [
-                    'kind' => 'ppg_raw',
-                    'start' => $start->toIso8601ZuluString(),
-                    'end' => $end->toIso8601ZuluString(),
-                    'sample_rate_hz' => $ppgHz,
-                    'ppg' => BiosignalSimulator::ppgFromIbi($w['ibi_ms'], $ppgHz),
-                    'src' => 'banglejs2',
-                ]
-                : [
-                    'kind' => 'ibi',
-                    'start' => $start->toIso8601ZuluString(),
-                    'end' => $end->toIso8601ZuluString(),
-                    'ibi_ms' => $w['ibi_ms'],
-                    'accel_counts' => $w['accel_counts'],
-                    'confidence' => $seg['state'] === 'rest' ? 0.7 : 0.95,
-                ];
+            // Wire formatting lives once, in the VirtualBand (raw PPG omits accel like the offline T2 log;
+            // ibi carries IBI + accel + confidence). This replaces the inline copy this command used to hold.
+            $windows[] = $band->wireWindow(
+                $w,
+                \Carbon\CarbonImmutable::parse($start),
+                $seg['minutes'] * 60,
+                $rawPpg ? 'ppg_raw' : 'ibi',
+                $seg['state'],
+                $ppgHz,
+            );
             $allIbi = array_merge($allIbi, $w['ibi_ms']);
             if ($seg['state'] !== 'rest' && count($w['ibi_ms']) > 5) {
                 // 5-min median HR proxy → RHR is the min of these (§4).
@@ -175,8 +171,8 @@ class SimulateNight extends Command
             ],
         ];
 
-        $okA = $this->postSigned($device->device_id, $secret, $payloadA, 'Shape-A IBI windows');
-        $okC = $this->postSigned($device->device_id, $secret, $payloadC, 'Shape-C nightly summary');
+        $okA = $this->deliver($band, $payloadA, 'Shape-A IBI windows');
+        $okC = $this->deliver($band, $payloadC, 'Shape-C nightly summary');
 
         if ($okA || $okC) {
             $this->newLine();
@@ -254,33 +250,20 @@ class SimulateNight extends Command
     }
 
     /**
-     * POST a signed batch to /api/devices/ingest. Signature scheme is identical to
-     * TerraClient::verifySignature(): X-Titan-Signature: t=<ts>,v1=HMAC_SHA256("<ts>.<body>", secret).
+     * Deliver a signed batch through the VirtualBand (the one signer/POST) and report the outcome. The
+     * signature scheme (X-Titan-Signature: t=<ts>,v1=HMAC_SHA256("<ts>.<body>", sha256(secret))) now lives
+     * once, in {@see VirtualBand::postSigned()}.
+     *
+     * @param  array<string,mixed>  $payload
      */
-    private function postSigned(string $deviceId, string $secret, array $payload, string $label): bool
+    private function deliver(VirtualBand $band, array $payload, string $label): bool
     {
-        $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
-        $ts = (string) time();
-        // Server verifies with device_token_hash = sha256(secret) as the HMAC key.
-        $sig = 't='.$ts.',v1='.hash_hmac('sha256', $ts.'.'.$body, hash('sha256', $secret));
-        $url = rtrim(config('app.url', 'http://localhost'), '/').'/api/devices/ingest';
+        if ($band->postSigned($payload)) {
+            $this->line("  <info>✓</info> {$label} → delivered");
 
-        try {
-            $res = Http::withHeaders([
-                'X-Device-Id' => $deviceId,
-                'X-Titan-Signature' => $sig,
-                'Content-Type' => 'application/json',
-            ])->timeout(20)->withBody($body, 'application/json')->post($url);
-
-            if ($res->successful()) {
-                $this->line("  <info>✓</info> {$label} → {$res->status()} ".trim($res->body()));
-
-                return true;
-            }
-            $this->line("  <fg=red>✗</> {$label} → {$res->status()} ".Str::limit($res->body(), 120));
-        } catch (\Throwable $e) {
-            $this->line("  <fg=yellow>…</> {$label} → not delivered ({$e->getMessage()})");
+            return true;
         }
+        $this->line("  <fg=yellow>…</> {$label} → not delivered (ingestion API unreachable)");
 
         return false;
     }

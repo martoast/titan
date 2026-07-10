@@ -12,6 +12,7 @@
  */
 
 use App\Models\WearableConnection;
+use App\Services\Lab\VirtualBand;
 use App\Services\Simulator\BiosignalSimulator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -48,6 +49,11 @@ Route::post('/simulator/night', function (Request $request) {
     $minutes = max(120, min(720, $minutes));
     $sim = new BiosignalSimulator($request->filled('seed') ? (int) $request->input('seed') : null);
 
+    // ONE wire renderer + signer (the SLEEP LAB VirtualBand): this route used to inline its own window dict
+    // and HMAC signing. It now generates the signal and hands it to $band->wireWindow(); delivery below goes
+    // through $band->postSigned() — the same renderer SimulateNight and the LAB use.
+    $band = new VirtualBand($sim, $device, $secret);
+
     $tz = $device->effectiveTimezone();
     $wake = Carbon::now($tz)->startOfDay()->addHours(7);
     $bedtime = $wake->copy()->subMinutes($minutes);
@@ -61,21 +67,13 @@ Route::post('/simulator/night', function (Request $request) {
     $rhrMedians = [];
     foreach ($segments as $seg) {
         $w = $sim->generateWindow($seg['state'], $seg['minutes'] * 60);
-        $start = $cursor->copy();
-        $end = $cursor->copy()->addMinutes($seg['minutes']);
-        $windows[] = [
-            'kind' => 'ibi',
-            'start' => $start->toIso8601ZuluString(),
-            'end' => $end->toIso8601ZuluString(),
-            'ibi_ms' => $w['ibi_ms'],
-            'accel_counts' => $w['accel_counts'],
-            'confidence' => $seg['state'] === 'rest' ? 0.7 : 0.95,
-        ];
+        $start = \Carbon\CarbonImmutable::parse($cursor);
+        $windows[] = $band->wireWindow($w, $start, $seg['minutes'] * 60, 'ibi', $seg['state']);
         $allIbi = array_merge($allIbi, $w['ibi_ms']);
         if ($seg['state'] !== 'rest' && count($w['ibi_ms']) > 5) {
             $rhrMedians[] = BiosignalSimulator::meanHr($w['ibi_ms']);
         }
-        $cursor = $end;
+        $cursor = $cursor->copy()->addMinutes($seg['minutes']);
     }
 
     $rmssd = BiosignalSimulator::rmssd($allIbi);
@@ -105,13 +103,13 @@ Route::post('/simulator/night', function (Request $request) {
     ];
 
     $delivery = [
-        simulatorPost($device->device_id, $secret, $payloadA),
-        simulatorPost($device->device_id, $secret, $payloadC),
+        'shape_a' => $band->postSigned($payloadA),
+        'shape_c' => $band->postSigned($payloadC),
     ];
 
     return response()->json([
         'ok' => true,
-        'delivered' => collect($delivery)->contains('ok', true),
+        'delivered' => in_array(true, $delivery, true),
         'summary' => [
             'bedtime' => $bedtime->format('H:i'),
             'wake_time' => $wake->format('H:i'),
@@ -168,25 +166,3 @@ if (! function_exists('simulatorDevice')) {
     }
 }
 
-if (! function_exists('simulatorPost')) {
-    /** Signed POST to the ingestion API; never throws (degrades gracefully). */
-    function simulatorPost(string $deviceId, string $secret, array $payload): array
-    {
-        $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
-        $ts = (string) time();
-        $sig = 't='.$ts.',v1='.hash_hmac('sha256', $ts.'.'.$body, $secret);
-        $url = rtrim(config('app.url', url('/')), '/').'/api/devices/ingest';
-
-        try {
-            $res = \Illuminate\Support\Facades\Http::withHeaders([
-                'X-Device-Id' => $deviceId,
-                'X-Titan-Signature' => $sig,
-                'Content-Type' => 'application/json',
-            ])->timeout(20)->withBody($body, 'application/json')->post($url);
-
-            return ['ok' => $res->successful(), 'status' => $res->status(), 'body' => Str::limit($res->body(), 200)];
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'status' => 0, 'body' => $e->getMessage()];
-        }
-    }
-}
