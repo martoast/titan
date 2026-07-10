@@ -567,6 +567,16 @@ class SealActivityJob implements ShouldQueue
         $startCarbon = $startIso ? CarbonImmutable::parse($startIso) : now();
         $mergeId = $this->overlappingSessionId($profile, $startCarbon);
 
+        // CHUNK DEFENSE: a watch bug (or any over-eager auto-end) can split ONE workout into back-to-back
+        // confirmed envelopes minutes apart. Those are the same session: if a just-ended row sits within
+        // SESSION_GAP_MINUTES before this start, merge onto it instead of writing a sibling chunk. GPS
+        // cardio is excluded — chunking is a lifting phenomenon, and route/splits must never be spliced.
+        $adjacent = null;
+        if ($mergeId === null && empty($track)) {
+            $adjacent = $this->adjacentChunk($profile, $startCarbon);
+            $mergeId = $adjacent?->id;
+        }
+
         // WHOLE-workout mean HR from the raw series, but only over POSITIVE samples: the per-second builders
         // emit all-zero windows when HR loses lock (firmware publishes only at confidence ≥ 90), and averaging
         // those zeros deflates avg_hr (a single dropped ~10-min window drags 148→111). Same $v>0 guard
@@ -592,11 +602,44 @@ class SealActivityJob implements ShouldQueue
             || ($rowDurationMin !== null && $rowDurationMin >= self::MIN_SESSION_MIN
                 && ! ($activityType === 'other' && $confidence !== null && $confidence < self::LOW_CONF_OTHER));
 
+        // This seal's own numbers (before any chunk folding).
+        $newAvgHr = $imReliableMean !== null ? (int) round($imReliableMean)
+            : ($hr1Mean !== null ? (int) round($hr1Mean)
+            : (isset($sess['mean_hr']) ? (int) round($sess['mean_hr']) : null));
+        $newTrimp = ($activity['total_trimp'] ?? 0) > 0 ? (float) $activity['total_trimp']
+            : (isset($sess['trimp']) && $sess['trimp'] > 0 ? (float) $sess['trimp'] : null);
+        $newKcal = ($activity['total_calories_kcal'] ?? 0) > 0 ? (int) round($activity['total_calories_kcal'])
+            : (isset($sess['calories_kcal']) && $sess['calories_kcal'] > 0 ? (int) round($sess['calories_kcal']) : null);
+
+        // Folding a chunk onto its adjacent predecessor: the row must describe the WHOLE workout, so
+        // additive metrics sum, avg_hr weights by duration, max_hr maxes, and the span extends from the
+        // prior row's start to this chunk's end. (Same-start merges keep replace semantics — they ARE
+        // re-seals of the same window set, not a continuation.)
+        if ($adjacent !== null) {
+            $priorDur = max(0, (int) $adjacent->duration_min);
+            $newDur = max(0, (int) ($rowDurationMin ?? 0));
+            if ($newAvgHr !== null && $adjacent->avg_hr !== null && ($priorDur + $newDur) > 0) {
+                $newAvgHr = (int) round(($adjacent->avg_hr * $priorDur + $newAvgHr * $newDur) / ($priorDur + $newDur));
+            }
+            $newAvgHr = $newAvgHr ?? $adjacent->avg_hr;
+            $newTrimp = ($newTrimp ?? 0) + (float) ($adjacent->trimp ?? 0) ?: null;
+            $newKcal = ($newKcal ?? 0) + (int) ($adjacent->calories_kcal ?? 0) ?: null;
+            $rowDurationMin = $priorDur + $newDur;
+            $maxHr = max((int) ($maxHr ?? 0), (int) ($adjacent->max_hr ?? 0)) ?: null;
+            Log::info('[Seal] folded workout chunk onto adjacent session', [
+                'profile_id' => $profile->id, 'into' => $adjacent->id, 'combined_min' => $rowDurationMin,
+            ]);
+        }
+
         $log = ActivitySession::updateOrCreate(
             $mergeId ? ['id' => $mergeId] : ['profile_id' => $profile->id, 'started_at' => $startCarbon],
             array_filter([
                 'source' => $session->first()->source ?? 'titan_band',
-                'ended_at' => $end ? CarbonImmutable::parse($end) : null,
+                // Stored as UTC wall-clock — the activity_sessions convention (started_at is written from a
+                // Zulu ISO; Strain/readers query with UTC bounds). $end here can be a naive app-tz window
+                // string OR a UTC Carbon from a confirmed envelope; setTimezone normalizes both to the same
+                // instant in UTC. Mixing conventions put ended_at 6h from started_at on one row (2026-07-10).
+                'ended_at' => $end ? CarbonImmutable::parse($end)->setTimezone('UTC') : null,
                 // The full elapsed workout, not the first detected sub-session (a run with a >1-min pause
                 // splits into several — sessions[0] is only its first leg).
                 'duration_min' => $rowDurationMin,
@@ -607,21 +650,18 @@ class SealActivityJob implements ShouldQueue
                 'distance_source' => $distanceSource,
                 // WHOLE-workout mean HR: the in-motion estimator's reliable-window mean, else the full series
                 // — never sessions[0]'s first-leg mean (wrong for a multi-segment run).
-                'avg_hr' => $imReliableMean !== null ? (int) round($imReliableMean)
-                    : ($hr1Mean !== null ? (int) round($hr1Mean)
-                    : (isset($sess['mean_hr']) ? (int) round($sess['mean_hr']) : null)),
+                'avg_hr' => $newAvgHr,
                 'max_hr' => $maxHr,
                 'hr_source' => $hrSource,
                 'hr_quality' => $hrQuality,
                 'workout_hrv_ms' => $workoutHrv,
                 'hr_zones' => $hrZones,
                 // TRIMP + calories summed across ALL detected sub-sessions (biosignal's total_*), so a run
-                // with a mid-run stop isn't ~50% undercounted by reading only its first leg. detect_sessions
-                // ALWAYS returns total_* (sum([]) = 0), so treat a 0 total as "couldn't estimate" (→ null,
-                // array_filter drops it, preserving any prior real value) rather than stamping a hard 0.
-                'trimp' => ($activity['total_trimp'] ?? 0) > 0 ? $activity['total_trimp'] : ($sess['trimp'] ?? null),
-                'calories_kcal' => ($activity['total_calories_kcal'] ?? 0) > 0 ? (int) round($activity['total_calories_kcal'])
-                    : (isset($sess['calories_kcal']) && $sess['calories_kcal'] > 0 ? (int) round($sess['calories_kcal']) : null),
+                // with a mid-run stop isn't ~50% undercounted by reading only its first leg. 0 totals stay
+                // "couldn't estimate" (null → array_filter preserves prior values); chunk folds add the
+                // adjacent row's load in (computed above).
+                'trimp' => $newTrimp,
+                'calories_kcal' => $newKcal,
                 'vo2max' => $fitness['vo2max'] ?? null,
                 'fitness_level' => $fitness['fitness_level'] ?? null,
                 'hrr_bpm' => $fitness['hrr']['hrr_bpm'] ?? null,
@@ -710,6 +750,22 @@ class SealActivityJob implements ShouldQueue
     }
 
     /**
+     * A session that ENDED within SESSION_GAP_MINUTES before this start is the same workout split into
+     * chunks (an over-eager watch auto-end — every ~2-min lifting rest, 2026-07-10), not a new one: real
+     * distinct workouts are separated by more than the gap by definition (it's the clustering constant).
+     * Routeless only — callers exclude GPS cardio so routes/splits are never spliced across chunks.
+     * ended_at is UTC-naive (table convention), matching $start's UTC clock.
+     */
+    private function adjacentChunk(Profile $profile, CarbonImmutable $start): ?ActivitySession
+    {
+        return ActivitySession::where('profile_id', $profile->id)
+            ->whereNull('route_polyline')
+            ->whereBetween('ended_at', [$start->subMinutes(self::SESSION_GAP_MINUTES), $start])
+            ->orderByDesc('ended_at')
+            ->first();
+    }
+
+    /**
      * Sets-belong (W-4): attach this profile's logged strength Workouts to the ActivitySession they were
      * performed in — DETERMINISTICALLY by containment, the one seal-time backfill. A workout whose
      * performed_at falls inside the sealed session's [start,end] (± a small clock-skew margin, well under
@@ -722,8 +778,17 @@ class SealActivityJob implements ShouldQueue
         if ($log->started_at === null) {
             return;
         }
-        $from = $log->started_at->copy()->subSeconds(self::SESSION_MARGIN_S);
-        $to = ($log->ended_at ?? $log->started_at->copy()->addHours(4))->copy()->addSeconds(self::SESSION_MARGIN_S);
+        // activity_sessions timestamps are UTC wall-clock (naive), but workouts.performed_at is written in
+        // APP-TZ wall-clock (CoachTools::logSet uses now()); the Eloquent cast mislabels the UTC-stored
+        // values as app-tz, so comparing casts directly aims the containment window ~tz-offset hours off.
+        // Re-read the raw values as UTC and convert to app tz so both sides speak the same clock.
+        $tz = config('app.timezone');
+        $startLocal = CarbonImmutable::parse($log->getRawOriginal('started_at'), 'UTC')->setTimezone($tz);
+        $endLocal = $log->getRawOriginal('ended_at')
+            ? CarbonImmutable::parse($log->getRawOriginal('ended_at'), 'UTC')->setTimezone($tz)
+            : null;
+        $from = $startLocal->subSeconds(self::SESSION_MARGIN_S);
+        $to = ($endLocal ?? $startLocal->addHours(4))->addSeconds(self::SESSION_MARGIN_S);
 
         $profile->workouts()
             ->whereNull('activity_session_id')

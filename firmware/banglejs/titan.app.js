@@ -772,7 +772,12 @@ function updateGpsGate() {
 
 // Maintain a personal resting-HR baseline from LOW-MOTION windows only (the documented method — a
 // resting HR measured while you're actually moving is meaningless). Drives the HR gates below.
+// NEVER while a workout is open: an inter-set rest is low-motion with HR ~90-105 (≤120), so learning
+// from it drags the baseline UP toward between-sets HR — which flips hrRecovered TRUE during rests and
+// hrElevated FALSE during sets, collapsing the very conjunction that keeps a lifting session open.
+// (Observed in prod 2026-07-10: a 40-min lift auto-ended into three chunks at every ~2-min rest.)
 function updateRestHr() {
+  if (state.workout) return;                                   // don't learn "resting" HR mid-workout
   if (motionEMA < CFG.AUTO_MOTION_LO && state.bpm >= 40 && state.bpm <= 120) {
     state.restHr = (state.restHr === null) ? state.bpm
                  : state.restHr * (1 - CFG.REST_HR_ALPHA) + state.bpm * CFG.REST_HR_ALPHA;

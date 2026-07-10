@@ -291,6 +291,52 @@ class ActivitySealTest extends TestCase
         $this->assertSame(DeviceIngestion::STATUS_SEALED, DeviceIngestion::first()->status);
     }
 
+    public function test_back_to_back_chunks_fold_into_one_session(): void
+    {
+        // CHUNK DEFENSE (2026-07-10): an over-eager watch auto-end split one 40-min lift into chunks
+        // minutes apart. A new seal whose start lands within SESSION_GAP_MINUTES of a just-ended routeless
+        // session must FOLD onto it — one row, summed load, weighted HR, extended span — never a sibling.
+        Storage::fake('raw');
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake([
+            '*/process/activity' => Http::response(['metrics' => ['sessions' => [[
+                'duration_min' => 10.0, 'mean_hr' => 104.0, 'trimp' => 46.0, 'calories_kcal' => 120,
+                'activity_type' => 'strength', 'activity_confidence' => 0.9,
+            ]], 'session_count' => 1, 'total_trimp' => 46.0, 'total_calories_kcal' => 120]]),
+            '*/process/fitness' => Http::response(['vo2max' => null, 'plusminus' => null,
+                'methods' => [], 'fitness_level' => null, 'fitness_percentile_band' => null, 'hrr' => null]),
+        ]);
+
+        $user = User::factory()->create();
+        $profile = $user->ensureProfile();
+
+        // The first chunk, already sealed: a routeless strength row that ended ~3 min before the new
+        // chunk's windows begin. Timestamps in UTC wall-clock — the activity_sessions convention.
+        $prior = ActivitySession::create([
+            'profile_id' => $profile->id, 'source' => 'titan_band', 'activity_type' => 'strength',
+            'started_at' => CarbonImmutable::now('UTC')->subMinutes(45),
+            'ended_at' => CarbonImmutable::now('UTC')->subMinutes(34),
+            'duration_min' => 11, 'avg_hr' => 92, 'max_hr' => 110, 'trimp' => 30.0,
+            'calories_kcal' => 90, 'is_training' => true, 'updated_via' => 'biosignal:sealed',
+        ]);
+
+        // The next chunk's window: spans the last ~31 min (starting ~3 min after the prior chunk ended —
+        // far inside SESSION_GAP_MINUTES), tagged with an explicit End.
+        $this->storeWorkoutWindow($profile->id, endsAgoMin: 1);
+
+        dispatch_sync(new SealActivityJob($profile->id, force: true));
+
+        $sessions = ActivitySession::where('profile_id', $profile->id)->get();
+        $this->assertCount(1, $sessions, 'the chunk folds onto the adjacent session — never a sibling row');
+        $merged = $sessions->first();
+        $this->assertSame($prior->id, $merged->id, 'folded onto the PRIOR row (its id survives)');
+        $this->assertSame(41, (int) $merged->duration_min, '11 + 30 combined minutes');
+        $this->assertEqualsWithDelta(76.0, (float) $merged->trimp, 0.1, '30 + 46 summed load');
+        $this->assertSame(210, (int) $merged->calories_kcal, '90 + 120 summed calories');
+        $this->assertGreaterThanOrEqual(110, (int) $merged->max_hr, 'at least the prior chunk\'s max survives');
+        $this->assertNotNull($merged->ended_at);
+    }
+
     public function test_explicit_end_still_seals_a_short_run(): void
     {
         // A deliberately-ended run shorter than MIN_SESSION_MIN must still be saved — the floor only
