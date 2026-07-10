@@ -441,11 +441,12 @@ class SleepLab extends Command
                 $rows[] = [
                     $d['date'],
                     $d['tagged'] ? 'tag' : 'overlap',
-                    $d['motion_windows'],
+                    sprintf('%d/%d', $d['motion_windows'], $d['scope_windows']),
                     $cell('deep'), $cell('light'), $cell('rem'), $cell('wake'),
                     $d['oob'], $d['nodata'],
                 ];
             }
+            $this->line('  win = motion-bearing / total joined windows (ppg_raw carries no motion → excluded)');
             $this->table(['night', 'anchor', 'win', 'deep', 'light', 'rem', 'wake', 'oob', 'nodata'], $rows);
         }
 

@@ -280,7 +280,8 @@ class SleepCalibration
             $nightsDetail[] = [
                 'date' => $night->slept_at?->toDateString(),
                 'tagged' => $tagged->isNotEmpty(),
-                'motion_windows' => $motionWindows->count(),
+                'scope_windows' => $windows->count(),         // ibi+ppg_raw sealed windows joined for this night
+                'motion_windows' => $motionWindows->count(),  // …of those, the ones carrying epoch_motion (accel)
                 'oob' => $oob,
                 'nodata' => $nodata,
                 'sampled' => $nc,
@@ -314,6 +315,20 @@ class SleepCalibration
                 $stages[$lab] = $defaults['stages'][$lab];
                 $stageSource[$lab] = 'default('.count($rows).')';
             }
+        }
+
+        // Motion is the DOMINANT signal the stager keys on, and deep is physiologically the STILLEST stage.
+        // Deep is also the hardest to sample: epoch_motion needs accel, which only the sparse ibi windows
+        // carry (the overnight is mostly ppg_raw), and those movement-bearing windows bias AWAY from deep — so
+        // deep routinely falls back to the flat baked default. Real light/REM wrist motion can sit BELOW that
+        // default, inverting the order so the generator renders light/REM stiller than deep and the stager
+        // mislabels them deep (the field report's rendered deep 46% vs 12% scripted). When deep is defaulted
+        // but light/REM are real, clamp deep's motion CLEARLY below the lightest sampled sleep stage so the
+        // separation the stager needs always holds. Never raises deep; a real deep distribution is untouched.
+        $sampledSleep = array_values(array_filter(['light', 'rem'], fn ($s) => str_starts_with($stageSource[$s], 'real')));
+        if (! str_starts_with($stageSource['deep'], 'real') && $sampledSleep !== []) {
+            $lightestSampled = min(array_map(fn ($s) => $stages[$s]['motion'], $sampledSleep));
+            $stages['deep']['motion'] = round(min($stages['deep']['motion'], $lightestSampled * 0.5), 2);
         }
 
         // Proportions from summed real minutes; fall back to defaults if there were no nights.
