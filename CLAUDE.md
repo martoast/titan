@@ -111,3 +111,12 @@ docker compose -f docker-compose.prod.yml exec mysql sh -c 'mysqldump -u titan -
 - **Caddy needs ports 80 + 443 free** and (for HTTPS) the domain's `A` record pointing here.
 - **Raw storage** can move to any S3 (DigitalOcean Spaces, etc.): point the `MINIO_*` vars at it and remove the `minio`/`minio-init` services.
 - The biosignal `app/models/*.joblib` files are committed and baked into its image at build — no separate model download needed.
+
+## Before touching the seal — read the architecture doc
+
+The band **duty-cycles** (samples in short bursts to save battery), so a night/workout arrives as dozens of
+sparse windows that a **seal** job stitches together. Almost every serious data bug has been a seal bug, not
+a math bug. **[docs/SEAL_ARCHITECTURE.md](docs/SEAL_ARCHITECTURE.md)** is required reading before changing
+`SealNightJob`, `SealActivityJob`, `ProcessWindowJob`, the biosignal `staging.py`/`activity.py`, or any
+"last night"/streak/strain reader — it has the invariants and a pre-change checklist that prevent the
+"17-minute night" class of bug.
