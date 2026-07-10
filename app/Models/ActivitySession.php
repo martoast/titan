@@ -122,16 +122,16 @@ class ActivitySession extends Model
      *  2-minute walk that would otherwise light a streak or add strain. */
     public const MIN_TRAINING_MIN = 5;
 
-    /** Sessions that count as real TRAINING for streaks/strain/trends. The length floor alone screens the
-     *  ambient micro-walk; we deliberately do NOT filter on activity_type — a genuine watch-confirmed or
-     *  HealthKit-imported workout legitimately carries 'other' (no kind), so excluding 'other' silently
-     *  dropped real training. A NULL duration is an unknown-length real workout (a confirmed envelope always
-     *  seals a duration), so it's kept — only a KNOWN sub-floor bout is excluded. */
+    /** Sessions that count as real TRAINING for streaks/strain/trends. Length-only: we do NOT filter on
+     *  activity_type (a genuine watch-confirmed or HealthKit-imported workout legitimately carries 'other',
+     *  so excluding it dropped real training). A NULL duration is EXCLUDED — the coach's startActivity leaves
+     *  an in-progress, unfinished placeholder at NULL duration, and it must not light a streak before it's
+     *  sealed. Known trade-offs pending a proper fix: a force-sealed 1–4min real workout is excluded, and a
+     *  >=5min stray-motion 'other' blob is admitted. The durable fix is a persisted seal-time is_training
+     *  flag written when a session is actually completed — see the review-file deferral. */
     public function scopeTraining(Builder $query): Builder
     {
-        return $query->where(
-            fn ($q) => $q->whereNull('duration_min')->orWhere('duration_min', '>=', self::MIN_TRAINING_MIN)
-        );
+        return $query->where('duration_min', '>=', self::MIN_TRAINING_MIN);
     }
 
     public function scopeVisibleTo(Builder $query, Profile $viewer): Builder

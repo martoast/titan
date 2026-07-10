@@ -57,6 +57,10 @@ async def process_sleep(window: SleepWindow) -> SleepResponse:
             end=window.end,
             sample_epochs=window.sample_epochs,
         )
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        # A DATA fault (bad payload shape / unit / ragged series) is deterministic — 422 so the caller counts
+        # it toward its attempt cap and stops retrying a poison payload, rather than looping it forever as 5xx.
+        raise HTTPException(status_code=422, detail=f"Sleep staging rejected the payload: {exc}")
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Sleep staging failed: {exc}")
 

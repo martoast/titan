@@ -55,7 +55,7 @@ class MetabolicHealth
             $sub['fitness'] = self::clamp(((float) $vo2 - 30) / (55 - 30) * 100);
         }
 
-        $nights = $profile->sleepLogs()->where('slept_at', '>=', Carbon::today()->subDays(6))->get();
+        $nights = $profile->sleepLogs()->nights()->where('slept_at', '>=', Carbon::today()->subDays(6))->get();
         if ($nights->count()) {
             $hours = $nights->avg('duration_min') / 60;
             $sub['sleep'] = self::clamp(100 - abs($hours - 7.5) * 30);   // U-shaped, optimum 7.5 h

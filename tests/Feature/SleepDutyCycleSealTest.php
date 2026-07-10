@@ -391,6 +391,60 @@ class SleepDutyCycleSealTest extends TestCase
         $this->assertTrue($written->invoke($job, $result), 'a real correction signals a write, so the coach summary fires');
     }
 
+    public function test_confirmed_force_is_scoped_to_the_same_night_not_an_evening_doze(): void
+    {
+        // A-2: a confirmed marker forces the write only when it OVERLAPS the existing night's span (a
+        // correction). A distinct >=4h evening doze sharing the wake-date key must NOT clobber the real night.
+        $profile = User::factory()->create()->ensureProfile();
+        $date = Carbon::parse('2026-07-08', 'UTC');
+        SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => $date->toDateString(), 'is_nap' => false,
+            'duration_min' => 470, 'bedtime' => '23:00:00', 'wake_time' => '07:00:00',
+            'hypnogram' => array_fill(0, 940, 'light'), 'updated_via' => 'biosignal:sealed-ppg',
+        ]);
+        $key = ['profile_id' => $profile->id, 'slept_at' => $date->toDateString(), 'is_nap' => false];
+
+        $m = new \ReflectionMethod(SealNightJob::class, 'confirmedOverwriteAllowed');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, true);
+
+        // Re-confirming the SAME night (prev-evening 23:00 -> 07:00) overlaps → allowed to correct it.
+        $this->assertTrue($m->invoke($job, $key,
+            Carbon::parse('2026-07-07 23:00', 'UTC')->timestamp,
+            Carbon::parse('2026-07-08 07:00', 'UTC')->timestamp, 'UTC'), 'same-night correction is allowed');
+
+        // A distinct evening doze (20:00 -> 23:00 same day) does NOT overlap → must not clobber the night.
+        $this->assertFalse($m->invoke($job, $key,
+            Carbon::parse('2026-07-08 20:00', 'UTC')->timestamp,
+            Carbon::parse('2026-07-08 23:00', 'UTC')->timestamp, 'UTC'), 'a distinct evening doze is refused');
+    }
+
+    public function test_a_force_duration_only_reseal_clears_stale_stages(): void
+    {
+        // A-3: a forced duration-only correction must not leave the old row's stages under the new duration
+        // (a 430-min duration over a 15h hypnogram is a chimera). upsertSleep nulls the omitted stage columns.
+        $profile = User::factory()->create()->ensureProfile();
+        $date = Carbon::parse('yesterday', 'UTC')->toDateString();
+        SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false,
+            'duration_min' => 900, 'deep_min' => 120, 'rem_min' => 150, 'light_min' => 630, 'awake_min' => 0,
+            'quality' => 80, 'hypnogram' => array_fill(0, 1800, 'light'), 'updated_via' => 'biosignal:sealed-ppg',
+        ]);
+
+        $m = new \ReflectionMethod(SealNightJob::class, 'upsertSleep');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, true);
+        $result = $m->invoke($job, ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false],
+            ['slept_at' => $date, 'duration_min' => 430, 'updated_via' => 'biosignal:sealed-session-marker'], true);
+
+        $fresh = $result->fresh();
+        $this->assertSame(430, (int) $fresh->duration_min, 'the honest duration is written');
+        $this->assertNull($fresh->deep_min, 'stale deep stage cleared');
+        $this->assertNull($fresh->rem_min, 'stale rem stage cleared');
+        $this->assertNull($fresh->quality, 'stale quality cleared');
+        $this->assertNull($fresh->hypnogram, 'stale 15h hypnogram cleared — no chimera');
+    }
+
     public function test_a_transient_outage_does_not_burn_an_attempt_or_seal_the_night(): void
     {
         // S-2: a biosignal ops failure (service unreachable / 5xx) is transient, not a data verdict. It must

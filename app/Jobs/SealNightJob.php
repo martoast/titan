@@ -9,6 +9,7 @@ use App\Models\SleepLog;
 use App\Services\Wearables\BiosignalClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
+use Illuminate\Database\QueryException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\ConnectionException;
@@ -352,14 +353,22 @@ class SealNightJob implements ShouldQueue
      */
     private function isTransientFailure(\Throwable $e): bool
     {
-        if ($e instanceof ConnectionException) {
-            return true;                                    // service unreachable
+        if ($e instanceof ConnectionException || $e instanceof QueryException) {
+            return true;                                    // service/DB unreachable — an ops state
+        }
+        // MinIO / S3 / any filesystem read-back failure (the raw blob store) is infra, not a data verdict.
+        if ($e instanceof \League\Flysystem\FilesystemException || is_a($e, 'Aws\\Exception\\AwsException')) {
+            return true;
         }
         if ($e instanceof RequestException) {
-            return ($e->response?->status() ?? 0) >= 500;   // server-side ops error, not our payload
+            $status = $e->response?->status() ?? 0;
+            // 5xx / connection-timeout / rate-limit / auth-rotation are all ops states. A 4xx DATA fault
+            // (notably 422 — the biosignal routers now emit that for a poison payload) is deterministic and
+            // MUST count toward the cap, so it's excluded here.
+            return $status >= 500 || in_array($status, [401, 403, 408, 425, 429], true);
         }
 
-        return false;                                        // unknown/4xx → deterministic, let it count
+        return false;                                        // unknown / 4xx data fault → deterministic, count it
     }
 
     /**
@@ -658,9 +667,12 @@ class SealNightJob implements ShouldQueue
                 'updated_via' => 'biosignal:sealed-session-marker',
             ];
 
-        // A confirmed marker is authoritative — force the write so the scoped windows bind to (and the coach
-        // narrates) THIS honest computation, never a stale richer row the guard would otherwise have kept.
-        $log = $this->upsertSleep($key, $attrs, true);
+        // A confirmed marker is authoritative for its OWN night — force the write so the honest computation
+        // replaces a stale/inflated row (and the coach narrates the real night). But scope the force to a
+        // same-night correction: a distinct ≥4h evening doze that happens to share this wake-date key must
+        // NOT clobber the real morning night, so there it falls back to the richer-row guard.
+        $forceWrite = $this->confirmedOverwriteAllowed($key, $bed, $wake, $tz);
+        $log = $this->upsertSleep($key, $attrs, $forceWrite);
 
         // Only the scoped windows are consumed by this session — everything else stays for its own seal.
         $scoped->each(fn (DeviceIngestion $i) => $i->update([
@@ -803,16 +815,85 @@ class SealNightJob implements ShouldQueue
             }
         }
 
+        // A force write (an authoritative same-night correction) must not leave STALE stages under a new
+        // duration — a duration-only reseal that omits the stage columns would otherwise keep the old row's
+        // deep/REM/light/awake/quality/hypnogram, a chimera (430-min duration over a 15h hypnogram). Null any
+        // stage column this write doesn't set. (A staged force write supplies them, so they're untouched.)
+        if ($force) {
+            foreach (self::STAGE_COLUMNS as $col) {
+                $attrs[$col] = $attrs[$col] ?? null;
+            }
+        }
+
         return SleepLog::updateOrCreate($key, $attrs);
     }
 
+    /** Stage columns cleared on an authoritative force reseal so a duration-only correction can't inherit
+     *  a stale row's stages. */
+    private const STAGE_COLUMNS = ['deep_min', 'rem_min', 'light_min', 'awake_min', 'quality', 'hypnogram'];
+
     /**
-     * A user-CONFIRMED marker seal or an explicit operator --night reseal overrides the richer-row guard —
-     * both are authoritative corrections, not the routine hourly auto-seal that the guard protects against.
+     * May a CONFIRMED seal overwrite the existing same-key row? Yes when there's nothing (or no
+     * biosignal-sealed night) to protect, or when the marker's [bed,wake] OVERLAPS the existing row's span —
+     * i.e. it's the SAME sleep being corrected, not a distinct same-date session (a ≥4h evening doze) that
+     * would otherwise replace the real morning night. When the existing span can't be reconstructed we refuse
+     * (protect the sealed row) — a confirmed night always writes bedtime/wake_time, so this only bites edge rows.
+     */
+    private function confirmedOverwriteAllowed(array $key, int $bed, int $wake, string $tz): bool
+    {
+        $existing = SleepLog::where($key)->first();
+        if (! $existing || ! str_starts_with((string) $existing->updated_via, 'biosignal:sealed')) {
+            return true;
+        }
+        [$exBed, $exWake] = $this->reconstructSpan($existing, $tz);
+        if ($exBed === null || $exWake === null) {
+            return false;
+        }
+
+        return $bed < $exWake && $wake > $exBed;   // half-open overlap → same sleep, a correction
+    }
+
+    /**
+     * Reconstruct a sealed row's absolute [bed,wake] UTC-epoch span. A nap carries an unambiguous
+     * session_start; a night stores only slept_at (morning date) + bedtime/wake_time as bare H:i:s, so the
+     * bed side is the previous evening when its clock time is later than wake's (it crossed midnight).
+     *
+     * @return array{0:?int,1:?int}
+     */
+    private function reconstructSpan(SleepLog $log, string $tz): array
+    {
+        if ($log->is_nap && $log->session_start) {
+            $start = CarbonImmutable::parse((string) $log->session_start, $tz);
+
+            return [$start->utc()->timestamp, $start->addMinutes((int) $log->duration_min)->utc()->timestamp];
+        }
+        if (! $log->slept_at || ! $log->bedtime || ! $log->wake_time) {
+            return [null, null];
+        }
+        $date = CarbonImmutable::parse($log->slept_at->toDateString(), $tz)->startOfDay();
+        $secs = function (string $hms): int {
+            [$h, $m, $s] = array_pad(array_map('intval', explode(':', $hms)), 3, 0);
+
+            return $h * 3600 + $m * 60 + $s;
+        };
+        $bedSec = $secs((string) $log->bedtime);
+        $wakeSec = $secs((string) $log->wake_time);
+        $wakeDt = $date->addSeconds($wakeSec);
+        $bedDt = $bedSec > $wakeSec ? $date->subDay()->addSeconds($bedSec) : $date->addSeconds($bedSec);
+
+        return [$bedDt->utc()->timestamp, $wakeDt->utc()->timestamp];
+    }
+
+    /**
+     * Only a user-CONFIRMED marker seal overrides the richer-row guard — and even then the confirmed path
+     * scopes it to a same-night correction (see confirmedOverwriteAllowed). A `--night` reseal is deliberately
+     * NOT authoritative: it runs FLEET-WIDE (every profile when --profile is omitted), so forcing there let a
+     * straggler fragment overwrite a rich sealed night across the fleet — and it was inert for repair anyway
+     * (the bad row's windows are already SEALED, so nothing re-scopes). Repair needs an explicit unseal tool.
      */
     private function isAuthoritative(): bool
     {
-        return $this->confirmed || $this->night !== null;
+        return $this->confirmed;
     }
 
     /** Did this upsert actually write (insert or change) the row, vs. discard to a richer existing one? */

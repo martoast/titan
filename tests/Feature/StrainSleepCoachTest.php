@@ -26,7 +26,7 @@ class StrainSleepCoachTest extends TestCase
         $p->dailyActivity()->create(['date' => now()->toDateString(), 'steps' => 2000, 'source' => 'manual']);
         $rest = Strain::assess($p)['strain'];
 
-        $p->activitySessions()->create(['started_at' => now(), 'trimp' => 70, 'source' => 'titan_band']);
+        $p->activitySessions()->create(['started_at' => now(), 'duration_min' => 40, 'trimp' => 70, 'source' => 'titan_band']);
         $worked = Strain::assess($p)['strain'];
 
         $this->assertGreaterThan($rest, $worked);

@@ -118,6 +118,9 @@ async def process_activity(window: ActivityWindow) -> ActivityResponse:
             speed_kmh=window.speed_kmh,
             grade=window.grade,
         )
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        # Deterministic data fault (e.g. an unknown accel unit) → 422, not a retry-forever 5xx.
+        raise HTTPException(status_code=422, detail=f"Activity processing rejected the payload: {exc}")
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Activity processing failed: {exc}")
 

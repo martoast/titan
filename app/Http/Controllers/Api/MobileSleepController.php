@@ -17,7 +17,7 @@ class MobileSleepController extends Controller
     {
         $profile = $request->user()->profile ?? $request->user()->ensureProfile();
 
-        $nights = $profile->sleepLogs()->orderByDesc('slept_at')->limit(14)->get()
+        $nights = $profile->sleepLogs()->nights()->orderByDesc('slept_at')->limit(14)->get()
             ->map(fn ($s) => [
                 'date' => $s->slept_at?->toDateString(),
                 'duration_min' => $s->duration_min,

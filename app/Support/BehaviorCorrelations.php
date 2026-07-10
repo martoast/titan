@@ -55,7 +55,7 @@ class BehaviorCorrelations
             $recMap[$r->logged_at->toDateString()] = ['hrv' => $r->hrv_ms, 'rhr' => $r->resting_hr];
         }
         $slpMap = [];
-        foreach ($profile->sleepLogs()->where('slept_at', '>=', $from)
+        foreach ($profile->sleepLogs()->nights()->where('slept_at', '>=', $from)
             ->get(['slept_at', 'quality', 'duration_min']) as $s) {
             $slpMap[$s->slept_at->toDateString()] = [
                 'sleep_quality' => $s->quality,

@@ -487,8 +487,9 @@ class SealActivityJob implements ShouldQueue
                 // splits into several — sessions[0] is only its first leg).
                 'duration_min' => $durationMin ?? (isset($sess['duration_min']) ? (int) round($sess['duration_min']) : null),
                 'activity_type' => $activityType,
-                // The watch chose the type → full confidence; otherwise the classifier's own score.
-                'activity_confidence' => ($liftHint || $runHint) ? 1.0 : ($sess['activity_confidence'] ?? null),
+                // The watch chose the type → full confidence; otherwise the classifier's own score FOR THE
+                // BOUT WE LABELLED (the longest one), so the confidence matches the type, not sessions[0].
+                'activity_confidence' => ($liftHint || $runHint) ? 1.0 : ($typeSess['activity_confidence'] ?? null),
                 'distance_km' => $distance,
                 'distance_source' => $distanceSource,
                 // WHOLE-workout mean HR: the in-motion estimator's reliable-window mean, else the full series

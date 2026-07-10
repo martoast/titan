@@ -43,21 +43,21 @@ class TrainingScopeTest extends TestCase
         ], $attrs));
     }
 
-    public function test_training_scope_keeps_real_untyped_and_null_duration_but_drops_micro_walk(): void
+    public function test_training_scope_keeps_real_untyped_but_drops_micro_walk_and_null_placeholder(): void
     {
         $p = $this->profile();
 
-        // A real 30-min imported workout with no mapped kind → 'other'. MUST count.
+        // A real 30-min imported workout with no mapped kind → 'other'. MUST count (the type axis is gone).
         $realOther = $this->mkSession($p, ['started_at' => now()->subHours(6), 'activity_type' => 'other', 'duration_min' => 30]);
-        // A watch-confirmed workout whose length we never sealed (NULL) → unknown-length real workout. Keep.
-        $nullDur = $this->mkSession($p, ['started_at' => now()->subHours(4), 'activity_type' => 'strength', 'duration_min' => null]);
+        // The coach's startActivity leaves a NULL-duration, unfinished placeholder → MUST NOT light a streak.
+        $placeholder = $this->mkSession($p, ['started_at' => now()->subHours(4), 'ended_at' => null, 'activity_type' => 'run', 'duration_min' => null]);
         // A passively-imported 2-minute walk → ambient noise. MUST be dropped.
         $microWalk = $this->mkSession($p, ['started_at' => now()->subHours(2), 'activity_type' => 'walk', 'duration_min' => 2]);
 
         $ids = ActivitySession::query()->training()->pluck('id')->all();
 
         $this->assertContains($realOther->id, $ids, "a real 30-min 'other' workout must count as training");
-        $this->assertContains($nullDur->id, $ids, 'a NULL-duration (unknown-length) real workout must count');
+        $this->assertNotContains($placeholder->id, $ids, 'an unfinished NULL-duration placeholder must not count');
         $this->assertNotContains($microWalk->id, $ids, 'a 2-min ambient walk must not count as training');
     }
 

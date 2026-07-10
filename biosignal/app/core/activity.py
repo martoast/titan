@@ -129,14 +129,24 @@ def _summarize_session(accel, hr, i, end, t0, hr_max, hr_rest, weight_kg) -> dic
     start_dt = t0 + timedelta(seconds=i * EPOCH_SEC)
     end_dt = t0 + timedelta(seconds=end * EPOCH_SEC)
 
-    # Intensity proxy in [0,1]. If HR available, use heart-rate reserve; else accel.
+    # Intensity proxy in [0,1]. If usable HR is available, use heart-rate reserve; else accel.
+    # Mask the all-zero dropout epochs (HR is published only at confidence >= 90): averaging them in would
+    # deflate intensity/TRIMP and mean_hr (a single dropped ~10-min window drags 148 -> 111). We drop them
+    # from the STATS only — duration_min stays from len(seg), so accel/speed/grade epoch alignment is untouched.
+    # An epoch with NO positive HR sample falls back to the accel proxy rather than scoring a false zero.
+    hr_valid = None
     if hr is not None and len(hr) >= end:
-        hr_seg = hr[i:end]
-        hrr = np.clip((hr_seg - hr_rest) / max(hr_max - hr_rest, 1), 0, 1)
+        hr_seg = np.asarray(hr[i:end], dtype=float)
+        positive = hr_seg[hr_seg > 0]
+        if positive.size:
+            hr_valid = positive
+
+    if hr_valid is not None:
+        hrr = np.clip((hr_valid - hr_rest) / max(hr_max - hr_rest, 1), 0, 1)
         intensity = float(np.mean(hrr))
         # Banister TRIMP (male coefficient).
         trimp = float(duration_min * intensity * 0.64 * np.exp(1.92 * intensity))
-        mean_hr = round(float(np.mean(hr_seg)), 1)
+        mean_hr = round(float(np.mean(hr_valid)), 1)
     else:
         # Accel-only proxy: normalize counts to a 0-1 intensity (cap at 60 counts/epoch).
         intensity = float(np.clip(np.mean(seg) / 60.0, 0, 1))

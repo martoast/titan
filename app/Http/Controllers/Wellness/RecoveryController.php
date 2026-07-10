@@ -36,7 +36,7 @@ class RecoveryController extends Controller
             'energy' => $r->energy,
         ])->values();
 
-        $lastSleep = $profile->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        $lastSleep = $profile->sleepLogs()->nights()->orderByDesc('slept_at')->orderByDesc('id')->first();
 
         // §5 readiness: ln-RMSSD vs rolling baseline + inverted RHR + sleep.
         $readiness = Readiness::compute($profile, $latest?->logged_at);

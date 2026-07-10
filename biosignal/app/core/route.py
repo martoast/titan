@@ -337,10 +337,12 @@ def grade_adjusted_pace_s_per_km(track: Sequence[dict], cum: Sequence[float], mo
 _ZONES = [(0.60, 0.0), (0.70, 1.0), (0.80, 2.0), (0.90, 4.0), (float("inf"), 6.0)]
 
 # ...but the catch-all needs an upper PLAUSIBILITY clamp, or a PPG cadence-lock artifact (a sustained
-# ~220 bpm, which the 215-bpm HRmax cap can't clip out of the raw series) scores the max weight forever —
-# 10 min of artifact = +60 Relative Effort, a whole extra hard run. A real human effort never sustains
-# above ~1.15×HRmax, so treat samples beyond that as artifacts and drop them (not score them as max effort).
+# ~220 bpm) scores the max weight forever — 10 min of artifact = +60 Relative Effort, a whole extra hard run.
+# TWO ceilings, because the fractional one alone is porous: 220/1.15 ≈ 191, so for any fit user (hr_max > 191)
+# a 220 bpm artifact gives frac < 1.15 and slips through. The absolute 215 bpm cap (shared with the
+# SealActivityJob HRmax-accept ceiling) catches those; the fractional cap still handles a low personal HRmax.
 _MAX_PLAUSIBLE_HR_FRAC = 1.15
+_MAX_PLAUSIBLE_BPM = 215  # absolute physiological ceiling; above this is a PPG/cadence-lock artifact
 
 def relative_effort(hr1: Optional[Sequence[float]], hr_max: Optional[float]) -> Optional[int]:
     """Strava-style Relative Effort: minutes in each HR zone × a progressively higher weight, summed.
@@ -351,11 +353,10 @@ def relative_effort(hr1: Optional[Sequence[float]], hr_max: Optional[float]) -> 
     for bpm in hr1:
         if not bpm:
             continue
-        frac = bpm / hr_max
-        if frac > _MAX_PLAUSIBLE_HR_FRAC:
+        if bpm > _MAX_PLAUSIBLE_BPM or bpm / hr_max > _MAX_PLAUSIBLE_HR_FRAC:
             continue  # implausibly high → a cadence-lock/PPG artifact, not a real max effort
         for ub, w in _ZONES:
-            if frac < ub:
+            if bpm / hr_max < ub:
                 score += w / 60.0  # one sample = 1 s; weight is per-minute
                 break
     return int(round(score)) if score > 0 else 0

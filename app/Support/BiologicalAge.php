@@ -88,7 +88,7 @@ class BiologicalAge
             $components[] = self::comp('hrv', 'HRV (RMSSD)', 'lever', (float) $recovery->hrv_ms, round($off, 1));
         }
 
-        $sri = SleepRegularity::compute($profile->sleepLogs()->where('slept_at', '>=', Carbon::today()->subDays(27))->get());
+        $sri = SleepRegularity::compute($profile->sleepLogs()->nights()->where('slept_at', '>=', Carbon::today()->subDays(27))->get());
         if ($sri && ($sri['sri'] ?? null) !== null) {
             $off = self::cap(-(($sri['sri'] - 60) / 20.0) * 3.0, 4.0);          // irregular → older (Windred)
             $modifiers += $off;

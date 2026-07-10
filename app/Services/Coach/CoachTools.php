@@ -1918,7 +1918,7 @@ class CoachTools
             'resting_hr', 'rhr' => [$this->trendSeries($this->profile->recoveryLogs(), 'logged_at', 'resting_hr', $since), 'bpm', 'Resting HR'],
             'steps' => [$this->trendSeries($this->profile->dailyActivity(), 'date', 'steps', $since), '', 'Steps'],
             'vo2max' => [$this->trendSeries($this->profile->activitySessions(), 'started_at', 'vo2max', $since), '', 'VO₂max'],
-            'sleep' => [$this->profile->sleepLogs()->whereDate('slept_at', '>=', $since)->whereNotNull('duration_min')->orderBy('slept_at')->pluck('duration_min')->map(fn ($m) => round($m / 60, 1))->filter(fn ($v) => $v > 0)->values()->all(), 'h', 'Sleep'],
+            'sleep' => [$this->profile->sleepLogs()->nights()->whereDate('slept_at', '>=', $since)->whereNotNull('duration_min')->orderBy('slept_at')->pluck('duration_min')->map(fn ($m) => round($m / 60, 1))->filter(fn ($v) => $v > 0)->values()->all(), 'h', 'Sleep'],
             default => [[], '', ucfirst($metric)],
         };
 

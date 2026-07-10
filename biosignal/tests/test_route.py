@@ -83,6 +83,17 @@ def test_relative_effort_needs_hr_and_max():
     assert route.analyze(track, hr1=hr1, hr_max=None)["relative_effort"] is None
 
 
+def test_relative_effort_drops_cadence_lock_artifacts():
+    # A-6: a sustained ~220 bpm PPG cadence-lock artifact must NOT score as top-zone max effort. For a fit
+    # user (hr_max 195) the fractional 1.15x clamp alone is porous (220/195 = 1.13 < 1.15) — the absolute
+    # 215-bpm ceiling is what rejects it. 10 min of artifact would otherwise add ~60 Relative Effort.
+    artifact = [220.0] * 600  # 10 min at 1 Hz
+    assert route.relative_effort(artifact, hr_max=195) == 0
+    # A genuine hard effort just under the ceiling still scores.
+    real = [185.0] * 600
+    assert route.relative_effort(real, hr_max=195) > 0
+
+
 def test_too_short_track_is_invalid():
     assert route.analyze([{"t": 1, "lat": 1.0, "lon": 2.0, "alt": 0.0}])["valid"] is False
     assert route.analyze([])["valid"] is False

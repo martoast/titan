@@ -126,7 +126,7 @@ class InsightFeed
 
     private static function win(Profile $p): ?array
     {
-        $sleeps = $p->sleepLogs()->whereNotNull('quality')->orderByDesc('slept_at')->orderByDesc('id')
+        $sleeps = $p->sleepLogs()->nights()->whereNotNull('quality')->orderByDesc('slept_at')->orderByDesc('id')
             ->limit(30)->get(['quality']);
         if ($sleeps->count() < 14) {
             return null;
