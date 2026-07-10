@@ -1088,20 +1088,30 @@ function emitGpsFrame(speedKmh, altM, sats, lat, lon) {
 // phone's count as a per-day MAX. 12 bytes: [ver u8, year-2000 u8, month u8, day u8, steps u32,
 // epochSec u32]. Only streamed live (steps self-accumulate on the watch; on reconnect the current
 // total already includes any phone-free walk taken since the last sync).
-function emitStepFrame() {
-  if (!state.connected) return;
-  var steps = stepCount();
-  if (!isFinite(steps) || steps < 0) return;
-  var d = new Date();
+// One T8 frame for (dateStr "YYYY-MM-DD", steps). The date comes from the SAME counter snapshot as the
+// total — never from a fresh new Date(): reading the clock separately raced the midnight rollover, so a
+// frame built in the straddle paired YESTERDAY's total with TODAY's date, and the server's per-day MAX
+// then pinned yesterday's count onto the new day for the rest of it (irreversibly — max never lowers).
+function emitStepFrameFor(dateStr, steps) {
+  if (!isFinite(steps) || steps < 0 || !dateStr) return;
+  var p = dateStr.split("-");
   var buf = new ArrayBuffer(12);
   var dv = new DataView(buf);
   dv.setUint8(0, CFG.STEP_PROTO_VERSION);
-  dv.setUint8(1, (d.getFullYear() - 2000) & 0xff);
-  dv.setUint8(2, (d.getMonth() + 1) & 0xff);
-  dv.setUint8(3, d.getDate() & 0xff);
+  dv.setUint8(1, ((p[0] | 0) - 2000) & 0xff);
+  dv.setUint8(2, (p[1] | 0) & 0xff);
+  dv.setUint8(3, (p[2] | 0) & 0xff);
   dv.setUint32(4, steps >>> 0, true);
   dv.setUint32(8, Math.round(getTime()) >>> 0, true);
   try { Bluetooth.println("T8:" + b64(buf)); state.framesSent++; } catch (e) {}
+}
+function emitStepFrame() {
+  if (!state.connected) return;
+  var steps = stepCount();                        // rolls the day first (stepTick) …
+  emitStepFrameFor(stepDay, steps);               // … so stepDay and the total are one consistent snapshot
+  // Yesterday's banked final rides along until the next rollover — idempotent server-side (per-day MAX),
+  // and it's what delivers the last-sync→midnight tail after a night disconnected.
+  if (stepFinalDay && stepFinalDay !== stepDay) emitStepFrameFor(stepFinalDay, stepFinalSteps);
 }
 
 // ----- BLE connection tracking ----------------------------------------------
@@ -1649,6 +1659,9 @@ var STEP_ACTIVE_HOLD = 8.0;       // s without an in-cadence stride before a wal
 var stepDay = "";                 // local date the counters belong to
 var stepCarry = 0;                // committed steps from EARLIER boots today (persisted → survives reboot)
 var stepRun = 0;                  // committed steps THIS boot (gated), boot-relative
+var stepFinalDay = "";            // YESTERDAY's date, once rolled — its final total still owed to the server
+var stepFinalSteps = 0;           // yesterday's final gated total (emitted until the next rollover; the
+                                  // server's per-day MAX makes re-sends idempotent, so no ack needed)
 var stepProv = 0;                 // consecutive in-cadence strides not yet confirmed (held back, not shown)
 var stepActive = false;           // inside a confirmed walk (armed)?
 var stepLastT = 0;                // getTime() (s) of the previous step event (any), for the cadence gap
@@ -1663,15 +1676,28 @@ function stepLoad() {
   try {
     var s = require("Storage").readJSON(STEP_FILE, true);
     if (s && s.d === stepDay) stepCarry = s.s | 0;   // resume today's committed total across a reboot
+    else if (s && s.d && s.d < stepDay) { stepFinalDay = s.d; stepFinalSteps = s.s | 0; }
+    // ^ rebooted past midnight: the file still holds YESTERDAY's total — owe it to the server (a night
+    //   offline across midnight otherwise silently loses the evening's steps: the tail-loss desync).
+    if (s && s.fd && s.fd !== stepDay) { stepFinalDay = s.fd; stepFinalSteps = s.fs | 0; }
   } catch (e) {}
 }
 function stepSave() {
-  try { require("Storage").writeJSON(STEP_FILE, { d: stepDay, s: stepCarry + stepRun }); } catch (e) {}
+  try {
+    var o = { d: stepDay, s: stepCarry + stepRun };
+    if (stepFinalDay) { o.fd = stepFinalDay; o.fs = stepFinalSteps; }
+    require("Storage").writeJSON(STEP_FILE, o);
+  } catch (e) {}
 }
 // Roll the day over at local midnight (the only reconciliation the event-counted total needs). Cheap.
+// The outgoing day's FINAL total is banked (stepFinal*) and re-emitted until the NEXT rollover — if the
+// phone wasn't connected at midnight, yesterday's last-sync→midnight steps would otherwise never land.
 function stepTick() {
   var d = stepLocalDate();
-  if (d !== stepDay) { stepDay = d; stepCarry = 0; stepRun = 0; stepProv = 0; stepActive = false; stepSave(); }
+  if (d !== stepDay) {
+    stepFinalDay = stepDay; stepFinalSteps = stepCarry + stepRun;   // bank yesterday's final for the server
+    stepDay = d; stepCarry = 0; stepRun = 0; stepProv = 0; stepActive = false; stepSave();
+  }
 }
 function stepCount() {
   stepTick();
