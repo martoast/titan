@@ -1,4 +1,5 @@
 import SwiftUI
+import TitanCore
 
 /// The screen shown the INSTANT the night ends (WAKE on the watch) — the sleep "wow moment." Built to
 /// feel like waking to a beautiful report: a deep-night hero with the sleep-performance ring and total
@@ -37,9 +38,9 @@ struct SleepSummaryView: View {
                         bigStats.stagger(appeared, 0.10)
 
                         if let hyp = detail?.hypnogram, hyp.count >= 4 {
-                            hypnogramCard(hyp).stagger(appeared, 0.15)
+                            timelineCard(hyp).stagger(appeared, 0.15)
                         } else if summary.loading {
-                            loadingNote("Staging your night…").stagger(appeared, 0.15)
+                            timelineCard([]).stagger(appeared, 0.15)   // computing → skeleton ribbon
                         }
 
                         if let stages = detail?.stages, !stages.isEmpty {
@@ -211,51 +212,31 @@ struct SleepSummaryView: View {
     private struct Tile { let icon, value: String; let unit: String?; let label: String; let accent: Color
         init(_ i: String, _ v: String, _ u: String?, _ l: String, _ a: Color) { icon = i; value = v; unit = u; label = l; accent = a } }
 
-    // MARK: - Hypnogram (the centerpiece)
+    // MARK: - Timeline (the shape of the night, at a glance)
 
-    /// The classic stage graph: awake at the top, then REM, light, deep going down — each 30-s epoch a
-    /// colored block at its depth. Rendered in a Canvas so hundreds of epochs stay smooth.
-    private func hypnogramCard(_ hyp: [String]) -> some View {
-        card("Sleep stages", clock(summary.bedtime) + " – " + clock(summary.wake)) {
+    /// A MINI, non-interactive `SleepTimeline` under the headline numbers (spec §2.2) — the shape of
+    /// the night at a glance, with the four-depth legend below. Uses the shared `SleepStage` mapping,
+    /// so NODATA renders as an honest hatched gap. While the night is still sealing (`summary.loading`
+    /// with no stages yet) it shows the computing skeleton ribbon.
+    private func timelineCard(_ hyp: [String]) -> some View {
+        card("The night", clock(summary.bedtime) + " – " + clock(summary.wake)) {
             VStack(spacing: Theme.Space.s) {
-                Canvas { ctx, size in
-                    let n = hyp.count
-                    guard n > 0 else { return }
-                    let rowH = size.height / 4
-                    let colW = size.width / CGFloat(n)
-                    for (i, code) in hyp.enumerated() {
-                        let s = stageStyle(code)
-                        let x = CGFloat(i) * colW
-                        let y = CGFloat(s.level) * rowH
-                        let rect = CGRect(x: x, y: y + 2, width: max(colW + 0.6, 1), height: rowH - 4)
-                        ctx.fill(Path(roundedRect: rect, cornerRadius: 1.5), with: .color(s.color))
-                    }
-                }
-                .frame(height: 132)
+                SleepTimeline(stages: hyp,
+                              epochSec: detail?.epoch_sec,
+                              bedtime: detail?.bedtime, wakeTime: detail?.wake_time,
+                              computing: summary.loading || detail?.stage_status == "computing",
+                              interactive: false, mini: true)
                 // Row labels for the four depths.
                 HStack {
-                    ForEach(["Awake", "REM", "Light", "Deep"], id: \.self) { name in
+                    ForEach(SleepStage.lanes, id: \.self) { s in
                         HStack(spacing: 4) {
-                            Circle().fill(stageStyle(name.lowercased()).color).frame(width: 7, height: 7)
-                            Text(name).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                            Circle().fill(s.color).frame(width: 7, height: 7)
+                            Text(s.label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                         }
-                        if name != "Deep" { Spacer() }
+                        if s != .deep { Spacer() }
                     }
                 }
             }
-        }
-    }
-
-    /// stage code → (depth row 0…3, color). Awake highest, Deep lowest — matches the hypnogram layout.
-    private func stageStyle(_ code: String) -> (level: Int, color: Color) {
-        switch code.lowercased() {
-        case "awake", "wake": return (0, Theme.Palette.amber)
-        case "rem": return (1, Theme.Palette.violet)
-        case "light": return (2, Theme.Palette.cyan)
-        case "deep": return (3, Theme.Palette.indigo)
-        // A coverage HOLE (band didn't sample) — a faint gap, NEVER painted as sleep.
-        case "nodata": return (0, Theme.Palette.textFaint.opacity(0.22))
-        default: return (2, Theme.Palette.cyan)
         }
     }
 
@@ -269,7 +250,7 @@ struct SleepSummaryView: View {
                     HStack(spacing: 2) {
                         ForEach(stages) { s in
                             if s.min > 0 {
-                                Capsule().fill(stageStyle(s.key).color)
+                                Capsule().fill(SleepStage.color(forCode: s.key))
                                     .frame(width: max(3, geo.size.width * CGFloat(Double(s.min) / Double(total))))
                             }
                         }
@@ -278,7 +259,7 @@ struct SleepSummaryView: View {
                 VStack(spacing: Theme.Space.xs) {
                     ForEach(stages) { s in
                         HStack(spacing: Theme.Space.s) {
-                            Circle().fill(stageStyle(s.key).color).frame(width: 8, height: 8)
+                            Circle().fill(SleepStage.color(forCode: s.key)).frame(width: 8, height: 8)
                             Text(s.label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                             Spacer()
                             Text("\(s.pct)%").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 40, alignment: .trailing)
@@ -385,11 +366,6 @@ struct SleepSummaryView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
     }
 
-    private func loadingNote(_ text: String) -> some View {
-        HStack(spacing: Theme.Space.s) { ProgressView().tint(Theme.Palette.textFaint); Text(text).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
-            .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.m)
-            .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.Palette.card))
-    }
 
     // The asleep total: prefer the server's duration; fall back to the watch's in-bed markers. While the
     // night is still computing, the server's `duration_min` is the ENVELOPE (bed→wake = time in bed), not

@@ -178,6 +178,7 @@ struct SleepResponse: Codable {
         let bedtime: String?; let wake_time: String?
         let hypnogram: [String]?         // per-30s stage codes: wake/light/deep/rem
         let epoch_sec: Int?
+        let stage_status: String?        // "computing" while still sealing, else "final" — drives the timeline skeleton
         struct Stage: Codable, Identifiable {
             let key: String; let label: String; let min: Int; let pct: Int; let color: String
             var id: String { key }

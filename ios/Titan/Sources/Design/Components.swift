@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import TitanCore
 
 // MARK: - Glass card
 struct GlassCard<Content: View>: View {
@@ -312,4 +313,290 @@ func minToHrs(_ m: Int?) -> String {
     guard let m, m > 0 else { return "—" }
     let h = m / 60, mm = m % 60
     return h > 0 ? "\(h)h \(mm)m" : "\(mm)m"
+}
+
+// MARK: - Sleep stage color (the ONE app-side mapping)
+
+extension SleepStage {
+    /// The single place a stage's platform-neutral `colorRole` becomes a real `Color`. Canonical:
+    /// deep→indigo, rem→violet, light→cyan, wake→amber, hole→faint gray (the NODATA gap). Every sleep
+    /// surface (timeline, proportional bar, legends) routes through here so colors can't diverge again.
+    var color: Color {
+        switch colorRole {
+        case .deep:  return Theme.Palette.indigo
+        case .rem:   return Theme.Palette.violet
+        case .light: return Theme.Palette.cyan
+        case .wake:  return Theme.Palette.amber
+        case .hole:  return Theme.Palette.textFaint.opacity(0.22)
+        }
+    }
+
+    /// Color for a raw stage code (routes legends/proportional bars through the shared enum). An
+    /// unrecognized code falls back to faint gray rather than mis-coloring — the fail-loud path lives
+    /// in `SleepStage.parse`, used by the timeline.
+    static func color(forCode code: String) -> Color {
+        SleepStage(code: code)?.color ?? Theme.Palette.textFaint
+    }
+}
+
+// MARK: - Sleep timeline (one component, everywhere)
+
+/// The one sleep timeline for the whole app: a stepped four-lane hypnogram ribbon (Awake / REM /
+/// Light / Deep, top→bottom — depth reads as depth) across a real clock-time axis in the user's
+/// timezone. Wake interruptions spike to the top lane; **NODATA epochs render as honest full-height
+/// hatched gaps, never painted as sleep**. All lanes/colors come from the shared `SleepStage`
+/// (TitanCore), so a new server-side stage fails loudly in exactly one place (`SleepStage.parse`).
+///
+/// Three states (spec §2.3): `computing` with no ribbon yet → a shimmering skeleton between the
+/// bed/wake anchors; stages present → the ribbon; duration-only (thin coverage) → a span bar with a
+/// low-signal note. Used interactive + full on the Sleep detail hero, and `mini` (compact,
+/// non-interactive) on the morning summary card. Naps reuse it with a shorter axis (fewer epochs).
+struct SleepTimeline: View {
+    let stages: [String]                 // raw per-30s codes: wake/light/deep/rem/nodata
+    var epochSec: Int? = nil             // night-start unix ts → real clock axis; epoch N = epochSec + N·30
+    var bedtime: String? = nil           // "H:i" fallback label for the start anchor
+    var wakeTime: String? = nil          // "H:i" fallback label for the wake anchor
+    var computing: Bool = false          // stage_status == "computing" (still being sealed)
+    var interactive: Bool = true
+    var mini: Bool = false               // compact ~48pt, non-interactive summary-card variant
+
+    private static let epochLen = 30
+    private var parsed: [SleepStage] { stages.map(SleepStage.parse) }
+    private var hasRibbon: Bool { parsed.contains { !$0.isHole } }
+    private var ribbonHeight: CGFloat { mini ? 48 : 128 }
+
+    @State private var scrubFraction: CGFloat? = nil
+
+    var body: some View {
+        if computing && !hasRibbon {
+            skeleton
+        } else if hasRibbon {
+            ribbonWithChrome
+        } else {
+            durationOnly
+        }
+    }
+
+    // MARK: Ribbon + axis + (optional) lane labels
+
+    private var ribbonWithChrome: some View {
+        VStack(alignment: .leading, spacing: mini ? 4 : Theme.Space.s) {
+            if mini {
+                ribbon
+            } else {
+                HStack(spacing: Theme.Space.s) {
+                    laneLabels
+                    ribbon
+                }
+                clockAxis
+            }
+        }
+    }
+
+    private var laneLabels: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            ForEach(SleepStage.lanes, id: \.self) { s in
+                Text(s.label).font(.system(size: 9)).foregroundStyle(Theme.Palette.textDim)
+                    .frame(maxHeight: .infinity)
+            }
+        }.frame(width: 34, height: ribbonHeight)
+    }
+
+    private var ribbon: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                Canvas { ctx, size in draw(ctx, size) }
+
+                if let f = scrubFraction, let idx = index(at: f) {
+                    scrubOverlay(fraction: f, index: idx, width: geo.size.width, height: geo.size.height)
+                }
+            }
+            .contentShape(Rectangle())
+            .modifier(ScrubGesture(enabled: interactive && !mini, width: geo.size.width, fraction: $scrubFraction))
+        }
+        .frame(height: ribbonHeight)
+    }
+
+    /// Paint the stepped ribbon: runs of a sleep stage as rounded blocks in their lane; runs of NODATA
+    /// as a full-height faint rect with a diagonal hatch — an honest gap, never a lane.
+    private func draw(_ ctx: GraphicsContext, _ size: CGSize) {
+        let stages = parsed
+        let n = stages.count
+        guard n > 0 else { return }
+        let laneH = size.height / CGFloat(SleepStage.laneCount)
+        let barH = laneH * 0.62
+        let colW = size.width / CGFloat(n)
+
+        var i = 0
+        while i < n {
+            let s = stages[i]
+            var j = i
+            while j < n && stages[j] == s { j += 1 }
+            let x = CGFloat(i) * colW
+            let w = max(1, CGFloat(j - i) * colW)
+
+            if let lane = s.lane {
+                let y = CGFloat(lane) * laneH + (laneH - barH) / 2
+                let rect = CGRect(x: x, y: y, width: w, height: barH)
+                ctx.fill(Path(roundedRect: rect, cornerRadius: min(3, barH / 2)), with: .color(s.color))
+            } else {
+                // NODATA coverage hole — full-height faint rect + diagonal hatch, clipped to the gap.
+                let hole = CGRect(x: x, y: 0, width: w, height: size.height)
+                ctx.fill(Path(hole), with: .color(s.color))
+                var hatched = ctx
+                hatched.clip(to: Path(hole))
+                var lines = Path()
+                let step: CGFloat = 6
+                var hx = hole.minX - hole.height
+                while hx < hole.maxX {
+                    lines.move(to: CGPoint(x: hx, y: hole.maxY))
+                    lines.addLine(to: CGPoint(x: hx + hole.height, y: hole.minY))
+                    hx += step
+                }
+                hatched.stroke(lines, with: .color(Theme.Palette.textFaint.opacity(0.5)), lineWidth: 1)
+            }
+            i = j
+        }
+    }
+
+    // MARK: Clock axis (real times, user tz)
+
+    private var clockAxis: some View {
+        HStack(spacing: 0) {
+            // Aligns the axis under the ribbon (which sits right of the 34pt lane-label column).
+            Color.clear.frame(width: 34 + Theme.Space.s)
+            GeometryReader { geo in
+                ForEach(axisTicks, id: \.fraction) { tick in
+                    Text(tick.label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        .fixedSize()
+                        .position(x: min(max(18, geo.size.width * tick.fraction), geo.size.width - 18), y: 7)
+                }
+            }.frame(height: 14)
+        }
+    }
+
+    private struct Tick { let fraction: CGFloat; let label: String }
+
+    private var axisTicks: [Tick] {
+        let n = parsed.count
+        guard n > 0 else { return [] }
+        // Prefer real clock times from the night-start epoch; fall back to the bed/wake "H:i" labels.
+        if let start = epochSec {
+            let steps = 4
+            return (0...steps).map { k in
+                let frac = CGFloat(k) / CGFloat(steps)
+                let idx = Int((CGFloat(n - 1) * frac).rounded())
+                let t = Date(timeIntervalSince1970: TimeInterval(start + idx * Self.epochLen))
+                return Tick(fraction: frac, label: Self.clock(t))
+            }
+        }
+        var ticks: [Tick] = []
+        if let b = bedtime.map(Self.hhmm) { ticks.append(Tick(fraction: 0, label: b)) }
+        if let w = wakeTime.map(Self.hhmm) { ticks.append(Tick(fraction: 1, label: w)) }
+        return ticks
+    }
+
+    // MARK: Scrub tooltip
+
+    private func index(at fraction: CGFloat) -> Int? {
+        let n = parsed.count
+        guard n > 0 else { return nil }
+        return min(n - 1, max(0, Int(fraction * CGFloat(n))))
+    }
+
+    private func scrubOverlay(fraction: CGFloat, index: Int, width: CGFloat, height: CGFloat) -> some View {
+        let x = fraction * width
+        let stage = parsed[index]
+        var label = stage.label
+        if !stage.isHole { label = "\(stage.label) sleep" }
+        if let start = epochSec {
+            let t = Date(timeIntervalSince1970: TimeInterval(start + index * Self.epochLen))
+            label = "\(Self.clock(t)) · \(label)"
+        }
+        // Phase 2: append per-epoch HR here once `/api/me/sleep` exposes a downsampled series
+        // (e.g. `label += " · HR \(hr)"`) — the stager already has `hr_e` internally.
+        return ZStack(alignment: .topLeading) {
+            Rectangle().fill(Theme.Palette.text.opacity(0.35)).frame(width: 1, height: height)
+                .position(x: x, y: height / 2)
+            Text(label)
+                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.text)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Theme.Palette.bg2))
+                .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
+                .fixedSize()
+                .position(x: min(max(48, x), width - 48), y: -2)
+        }
+    }
+
+    // MARK: Computing (skeleton) + duration-only states
+
+    private var skeleton: some View {
+        VStack(alignment: .leading, spacing: mini ? 4 : Theme.Space.s) {
+            Shimmer().frame(height: ribbonHeight).frame(maxWidth: .infinity)
+            if !mini {
+                HStack {
+                    Text(bedtime.map(Self.hhmm) ?? "—").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    Spacer()
+                    Label("Writing your story…", systemImage: "sparkles")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    Spacer()
+                    Text(wakeTime.map(Self.hhmm) ?? "—").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+        }
+    }
+
+    /// Thin-coverage fallback: no per-stage data this night, so show an honest span bar + a plain note
+    /// instead of an empty chart.
+    private var durationOnly: some View {
+        VStack(alignment: .leading, spacing: mini ? 4 : Theme.Space.s) {
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.Palette.card).frame(height: mini ? 14 : 20)
+                Capsule().fill(Theme.Palette.indigo.opacity(0.55)).frame(height: mini ? 14 : 20)
+            }
+            if !mini {
+                HStack {
+                    Text(bedtime.map(Self.hhmm) ?? "—").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    Spacer()
+                    Text("stages unavailable — low signal this night")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    Spacer()
+                    Text(wakeTime.map(Self.hhmm) ?? "—").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+        }
+    }
+
+    // MARK: Time formatting (user's timezone via the current locale/calendar)
+
+    private static let clockFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "h:mm a"; return f
+    }()
+    private static func clock(_ date: Date) -> String { clockFormatter.string(from: date) }
+
+    /// Format an "H:i" (24h) server string like "23:05" as a 12h clock "11:05 PM".
+    private static func hhmm(_ s: String) -> String {
+        let parts = s.split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return s }
+        var c = DateComponents(); c.hour = h; c.minute = m
+        if let d = Calendar.current.date(from: c) { return clock(d) }
+        return s
+    }
+}
+
+/// Drag/tap scrubbing for the timeline, gated by `enabled` so the mini/non-interactive variants ignore
+/// touches. Reports the touch position as a 0…1 fraction of the ribbon width.
+private struct ScrubGesture: ViewModifier {
+    let enabled: Bool
+    let width: CGFloat
+    @Binding var fraction: CGFloat?
+
+    func body(content: Content) -> some View {
+        guard enabled, width > 0 else { return AnyView(content) }
+        return AnyView(content.gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { v in fraction = min(1, max(0, v.location.x / width)) }
+                .onEnded { _ in fraction = nil }
+        ))
+    }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import TitanCore
 
 struct RecoveryView: View {
     @EnvironmentObject var model: AppModel
@@ -85,57 +86,6 @@ struct RecoveryView: View {
     }
 }
 
-/// The classic Whoop hypnogram — four stage lanes (Awake / REM / Light / Deep, top→bottom), each run
-/// of a stage drawn as a coloured block, so the night reads as a wavy timeline of stage transitions.
-struct HypnogramChart: View {
-    let stages: [String]   // per-30s codes: wake/light/deep/rem
-    private static let lanes = ["Awake", "REM", "Light", "Deep"]
-
-    private func lane(_ s: String) -> Int {
-        switch s { case "wake", "awake": return 0; case "rem": return 1; case "light": return 2; case "nodata": return 0; default: return 3 }
-    }
-    private func color(_ s: String) -> Color {
-        switch s {
-        case "wake", "awake": return Theme.Palette.pink.opacity(0.85)
-        case "rem": return Theme.Palette.violet
-        case "light": return Theme.Palette.cyan.opacity(0.7)
-        case "nodata": return Theme.Palette.textFaint.opacity(0.22)   // a coverage hole — a faint gap, never sleep
-        default: return Theme.Palette.indigo
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: Theme.Space.s) {
-            VStack(alignment: .trailing, spacing: 0) {
-                ForEach(Self.lanes, id: \.self) { l in
-                    Text(l).font(.system(size: 9)).foregroundStyle(Theme.Palette.textDim)
-                        .frame(maxHeight: .infinity)
-                }
-            }.frame(width: 34, height: 104)
-
-            Canvas { ctx, size in
-                guard !stages.isEmpty else { return }
-                let n = stages.count
-                let laneH = size.height / 4
-                let barH = laneH * 0.60
-                let w = size.width / CGFloat(n)
-                var i = 0
-                while i < n {
-                    let s = stages[i]
-                    var j = i
-                    while j < n && stages[j] == s { j += 1 }
-                    let x = CGFloat(i) * w
-                    let width = max(1.5, CGFloat(j - i) * w)
-                    let y = CGFloat(lane(s)) * laneH + (laneH - barH) / 2
-                    let rect = CGRect(x: x, y: y, width: width, height: barH)
-                    ctx.fill(Path(roundedRect: rect, cornerRadius: min(3, barH / 2)), with: .color(color(s)))
-                    i = j
-                }
-            }.frame(height: 104)
-        }
-    }
-}
-
 /// One Whoop-style recovery row: "Heart Rate Variability   65 ▼ / 92" — the value big, a trend arrow
 /// coloured by whether it moved the healthy way, and the personal baseline underneath.
 struct RecoveryMetricRow: View {
@@ -181,15 +131,6 @@ struct RecoveryMetricRow: View {
 struct SleepView: View {
     @EnvironmentObject var model: AppModel
 
-    static func stageColor(_ key: String) -> Color {
-        switch key {
-        case "deep": return Theme.Palette.indigo
-        case "rem": return Theme.Palette.violet
-        case "light": return Theme.Palette.cyan.opacity(0.6)
-        default: return Theme.Palette.textFaint
-        }
-    }
-
     var body: some View {
         let d = model.sleepDetail?.detail
         let fallback = model.dashboard?.sleep
@@ -208,7 +149,22 @@ struct SleepView: View {
                 }
             }.frame(maxWidth: .infinity)
 
-            // Stages — a proportional hypnogram bar + per-stage minutes & %.
+            // HERO: the full interactive stage timeline — the night as a story (spec §2.2). Scrub for a
+            // "3:12 AM · Deep sleep" tooltip; NODATA renders as honest hatched gaps. Totals live below.
+            if d != nil {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        SectionHeader(title: "Sleep timeline")
+                        SleepTimeline(stages: d?.hypnogram ?? [],
+                                      epochSec: d?.epoch_sec,
+                                      bedtime: d?.bedtime, wakeTime: d?.wake_time,
+                                      computing: d?.stage_status == "computing",
+                                      interactive: true)
+                    }
+                }
+            }
+
+            // Stages — a proportional bar + per-stage minutes & %. Colors route through the shared enum.
             GlassCard {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
                     SectionHeader(title: "Sleep stages")
@@ -217,7 +173,7 @@ struct SleepView: View {
                         let total = max(1, stages.reduce(0) { $0 + $1.min })
                         HStack(spacing: 2) {
                             ForEach(stages) { st in
-                                Capsule().fill(Self.stageColor(st.key))
+                                Capsule().fill(SleepStage.color(forCode: st.key))
                                     .frame(width: max(2, geo.size.width * CGFloat(st.min) / CGFloat(total)))
                             }
                         }
@@ -225,27 +181,12 @@ struct SleepView: View {
                     VStack(spacing: Theme.Space.s) {
                         ForEach(stages) { st in
                             HStack(spacing: Theme.Space.s) {
-                                Circle().fill(Self.stageColor(st.key)).frame(width: 8, height: 8)
+                                Circle().fill(SleepStage.color(forCode: st.key)).frame(width: 8, height: 8)
                                 Text(st.label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                                 Spacer()
                                 Text("\(st.pct)%").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 40, alignment: .trailing)
                                 Text(minToHrs(st.min)).font(Theme.Font.body).foregroundStyle(Theme.Palette.text).frame(width: 56, alignment: .trailing)
                             }
-                        }
-                    }
-                }
-            }
-
-            // The classic Whoop hypnogram: the wavy stage timeline across the night.
-            if let hyp = d?.hypnogram, hyp.count > 4 {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: Theme.Space.s) {
-                        SectionHeader(title: "Sleep timeline")
-                        HypnogramChart(stages: hyp)
-                        HStack {
-                            Text(d?.bedtime ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                            Spacer()
-                            Text(d?.wake_time ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                         }
                     }
                 }

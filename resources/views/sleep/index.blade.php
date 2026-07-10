@@ -1,12 +1,4 @@
 <x-titan-layout title="Sleep" subtitle="Duration, quality and stage trends">
-    @php
-        $stageColors = [
-            'deep'  => ['label' => 'Deep',  'class' => 'bg-titan-indigo'],
-            'rem'   => ['label' => 'REM',   'class' => 'bg-titan-violet'],
-            'light' => ['label' => 'Light', 'class' => 'bg-titan-indigo/50'],
-            'awake' => ['label' => 'Awake', 'class' => 'bg-gray-600'],
-        ];
-    @endphp
 
     @if ($errors->any())
         <div class="mb-4 rounded-xl bg-rose-500/10 border border-rose-500/20 px-4 py-3 text-sm text-rose-300">
@@ -61,6 +53,9 @@
                     </div>
                 </div>
 
+                {{-- The night as a story: the stage timeline (honest NODATA holes), above the totals. --}}
+                @include('sleep._timeline', ['log' => $latest])
+
                 @if ($latest->hasStages())
                     @php
                         $stages = [
@@ -76,16 +71,18 @@
                         <div class="flex h-3 w-full overflow-hidden rounded-full bg-white/5">
                             @foreach ($stages as $key => $min)
                                 @if ($min > 0)
-                                    <div class="{{ $stageColors[$key]['class'] }}" style="width: {{ round($min / $total * 100, 2) }}%" title="{{ $stageColors[$key]['label'] }}: {{ $min }}m"></div>
+                                    @php $st = \App\Support\SleepStages::for($key); @endphp
+                                    <div class="{{ $st['class'] }}" style="width: {{ round($min / $total * 100, 2) }}%" title="{{ $st['label'] }}: {{ $min }}m"></div>
                                 @endif
                             @endforeach
                         </div>
                         <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-gray-400">
                             @foreach ($stages as $key => $min)
                                 @if ($min > 0)
+                                    @php $st = \App\Support\SleepStages::for($key); @endphp
                                     <span class="inline-flex items-center gap-1.5">
-                                        <span class="h-2 w-2 rounded-full {{ $stageColors[$key]['class'] }}"></span>
-                                        {{ $stageColors[$key]['label'] }} <span class="nums text-gray-300">{{ intdiv($min, 60) }}h {{ $min % 60 }}m</span>
+                                        <span class="h-2 w-2 rounded-full {{ $st['class'] }}"></span>
+                                        {{ $st['label'] }} <span class="nums text-gray-300">{{ intdiv($min, 60) }}h {{ $min % 60 }}m</span>
                                     </span>
                                 @endif
                             @endforeach
