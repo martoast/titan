@@ -160,7 +160,7 @@ class DuoService
         }
 
         try {
-            $rows = \App\Models\SleepLog::where('profile_id', $profileId)->get();
+            $rows = \App\Models\SleepLog::where('profile_id', $profileId)->nights()->get();
             $rows = $rows->filter(fn ($r) => $this->dateInWindow($this->sleepDate($r), $start, $end));
 
             if ($rows->isEmpty()) {
@@ -182,7 +182,7 @@ class DuoService
         }
 
         try {
-            return \App\Models\SleepLog::where('profile_id', $profileId)->get()
+            return \App\Models\SleepLog::where('profile_id', $profileId)->nights()->get()
                 ->filter(fn ($r) => $this->dateInWindow($this->sleepDate($r), $start, $end))
                 ->count();
         } catch (Throwable) {

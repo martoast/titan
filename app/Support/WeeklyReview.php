@@ -148,7 +148,7 @@ class WeeklyReview
         }
 
         if (class_exists(\App\Models\SleepLog::class)) {
-            $nights = $profile->sleepLogs()->whereBetween('slept_at', [$start->toDateString(), $end->toDateString()])->get(['duration_min']);
+            $nights = $profile->sleepLogs()->nights()->whereBetween('slept_at', [$start->toDateString(), $end->toDateString()])->get(['duration_min']);
             if ($nights->count() > 0) {
                 $m['have'] = true;
                 $avgH = round($nights->avg('duration_min') / 60, 1);

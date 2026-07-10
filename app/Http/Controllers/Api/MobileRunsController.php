@@ -106,10 +106,13 @@ class MobileRunsController extends Controller
         // so the logged sets actually attach instead of silently vanishing.
         $from = $session->started_at->copy()->subMinutes(20);
         $to = ($session->ended_at ?? $session->started_at->copy()->addHours(4))->copy()->addMinutes(20);
+        // Closest-first by |performed_at − started_at|, ranked in PHP rather than an ORDER BY TIMESTAMPDIFF
+        // (which is MySQL-only and blows up on sqlite CI). Small candidate set — a single lift's worth.
         $workout = $profile->workouts()
             ->whereBetween('performed_at', [$from, $to])
-            ->orderByRaw('ABS(TIMESTAMPDIFF(SECOND, performed_at, ?))', [$session->started_at])
             ->with(['exercises.exercise', 'exercises.sets'])
+            ->get()
+            ->sortBy(fn ($w) => abs($w->performed_at->diffInSeconds($session->started_at)))
             ->first();
         if (! $workout) {
             return null;

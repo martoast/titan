@@ -56,7 +56,7 @@ class Readiness
         $today = $history->firstWhere(fn (RecoveryLog $r) => $r->logged_at->toDateString() === $date)
             ?? $history->last();
 
-        $sleep = $profile->sleepLogs()
+        $sleep = $profile->sleepLogs()->nights()
             ->whereDate('slept_at', '<=', $date)
             ->orderByDesc('slept_at')
             ->orderByDesc('id')

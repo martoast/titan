@@ -118,13 +118,20 @@ class ActivitySession extends Model
      * Effective visibility is `COALESCE(activity_sessions.visibility, profiles.default_…)`, so the
      * gate is expressed in SQL against a join on the owning profile.
      */
-    /** Sessions that count as real TRAINING for streaks/strain/trends — excludes an unclassified 'other'
-     *  blob and a sub-5-min bout, so a passively-imported 2-minute walk can't light a streak or add strain. */
+    /** Minimum length (min) for a session to count as real TRAINING — screens the passively-imported
+     *  2-minute walk that would otherwise light a streak or add strain. */
+    public const MIN_TRAINING_MIN = 5;
+
+    /** Sessions that count as real TRAINING for streaks/strain/trends. The length floor alone screens the
+     *  ambient micro-walk; we deliberately do NOT filter on activity_type — a genuine watch-confirmed or
+     *  HealthKit-imported workout legitimately carries 'other' (no kind), so excluding 'other' silently
+     *  dropped real training. A NULL duration is an unknown-length real workout (a confirmed envelope always
+     *  seals a duration), so it's kept — only a KNOWN sub-floor bout is excluded. */
     public function scopeTraining(Builder $query): Builder
     {
-        return $query
-            ->where('duration_min', '>=', 5)
-            ->where(fn ($q) => $q->whereNull('activity_type')->orWhere('activity_type', '!=', 'other'));
+        return $query->where(
+            fn ($q) => $q->whereNull('duration_min')->orWhere('duration_min', '>=', self::MIN_TRAINING_MIN)
+        );
     }
 
     public function scopeVisibleTo(Builder $query, Profile $viewer): Builder

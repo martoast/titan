@@ -194,7 +194,7 @@ class CoachNudge
         if (! class_exists(\App\Models\SleepLog::class)) {
             return null;
         }
-        $times = $profile->sleepLogs()->whereNotNull('wake_time')->latest('slept_at')->take(14)->pluck('wake_time');
+        $times = $profile->sleepLogs()->nights()->whereNotNull('wake_time')->latest('slept_at')->take(14)->pluck('wake_time');
         if ($times->isEmpty()) {
             return null;
         }

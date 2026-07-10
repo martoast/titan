@@ -1949,7 +1949,7 @@ class CoachTools
         $strain = rescue(fn () => \App\Support\Strain::assess($this->profile), [], false);
         $sleep = rescue(fn () => \App\Support\SleepCoach::assess($this->profile), null, false);
         $focus = rescue(fn () => \App\Support\DailyFocus::compute($this->profile), [], false);
-        $lastSleep = $this->profile->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        $lastSleep = $this->profile->sleepLogs()->nights()->orderByDesc('slept_at')->orderByDesc('id')->first();
 
         $card = [
             'type' => 'checkin',
@@ -1981,7 +1981,7 @@ class CoachTools
         if (! class_exists(\App\Models\SleepLog::class)) {
             return ['error' => 'Sleep is not available.'];
         }
-        $last = $this->profile->sleepLogs()->orderByDesc('slept_at')->orderByDesc('id')->first();
+        $last = $this->profile->sleepLogs()->nights()->orderByDesc('slept_at')->orderByDesc('id')->first();
         if (! $last) {
             return ['note' => 'No nights logged yet. Connect the band or tell me how you slept and I\'ll start tracking it.'];
         }
@@ -2473,7 +2473,7 @@ class CoachTools
         // --- Last night's sleep ---
         if (class_exists(\App\Models\SleepLog::class)) {
             try {
-                $s = \App\Models\SleepLog::query()
+                $s = \App\Models\SleepLog::query()->nights()
                     ->where('profile_id', $this->profile->id)
                     ->whereDate('slept_at', $day->toDateString())
                     ->latest('id')->first();
@@ -2662,7 +2662,7 @@ class CoachTools
 
         if (class_exists(\App\Models\SleepLog::class)) {
             try {
-                $sleep = \App\Models\SleepLog::query()
+                $sleep = \App\Models\SleepLog::query()->nights()
                     ->where('profile_id', $this->profile->id)
                     ->latest('id')->take(14)->get();
                 if ($sleep->isNotEmpty()) {

@@ -110,7 +110,7 @@ class SleepDetail
      */
     private static function consistency(Profile $profile, Carbon $day): ?int
     {
-        $nights = SleepLog::where('profile_id', $profile->id)
+        $nights = SleepLog::where('profile_id', $profile->id)->nights()
             ->whereDate('slept_at', '>=', $day->copy()->subDays(7))
             ->whereNotNull('bedtime')->whereNotNull('wake_time')
             ->get();

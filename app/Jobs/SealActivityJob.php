@@ -34,10 +34,8 @@ class SealActivityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** A session is complete once no new window has arrived for this many minutes. */
-    public const QUIET_MINUTES = 10;
-
-    /** A gap larger than this between windows starts a new session. */
+    /** A gap larger than this between windows starts a new session — and a session is complete once it has
+     *  been quiet for a full gap (no later window can still cluster in). */
     public const SESSION_GAP_MINUTES = 20;
 
     /** Shortest run we bother sealing (filters stray motion blips). */
@@ -70,8 +68,8 @@ class SealActivityJob implements ShouldQueue
 
     /**
      * @param  bool  $force  The most recent session ended explicitly (phone tagged the final window
-     *                       `ended` — user/watch tapped End). Seal it NOW, bypassing the QUIET_MINUTES
-     *                       wait and the MIN_SESSION_MIN floor, so a just-finished run appears at once.
+     *                       `ended` — user/watch tapped End). Seal it NOW, bypassing the SESSION_GAP_MINUTES
+     *                       quiescence wait and the MIN_SESSION_MIN floor, so a just-finished run appears at once.
      * @param  int|null  $sessionStartEpoch  A watch-CONFIRMED workout envelope's real [start,end] (epoch
      *                       seconds) + chosen kind. When present the seal is SCOPED to that window and a
      *                       bounded activity_sessions row is GUARANTEED even when the accel windows are
@@ -362,6 +360,15 @@ class SealActivityJob implements ShouldQueue
         ], fn ($v) => $v !== null))['metrics'] ?? [];
 
         $sess = $activity['sessions'][0] ?? [];
+        // For the TYPE label only, prefer the LONGEST detected bout — with MIN_SESSION_MIN at 5, a brief
+        // warm-up walk can be sessions[0] (chronological) and would otherwise mislabel the whole workout as
+        // a "Walk". Everything else (totals, HR, route) is already aggregate/whole-workout, not sessions[0].
+        $typeSess = $sess;
+        foreach (($activity['sessions'] ?? []) as $s) {
+            if (($s['duration_min'] ?? 0) > ($typeSess['duration_min'] ?? 0)) {
+                $typeSess = $s;
+            }
+        }
 
         // The watch's explicit choice wins over the accel classifier. A 'strength'/'lift' session is
         // sealed as strength (no route, gym analysis) even if the motion briefly looked like a run; a
@@ -369,7 +376,7 @@ class SealActivityJob implements ShouldQueue
         $liftHint = in_array($kindHint, ['lift', 'strength', 'hiit', 'yoga'], true);
         $runHint = in_array($kindHint, ['run', 'walk', 'hike', 'cycle', 'swim', 'row'], true);
         $cardioTypes = ['run', 'walk', 'cycle', 'stairs', 'hike'];
-        $activityType = $sess['activity_type'] ?? null;
+        $activityType = $typeSess['activity_type'] ?? null;
         if ($liftHint) {
             $activityType = 'strength';
         } elseif ($runHint) {
@@ -464,6 +471,13 @@ class SealActivityJob implements ShouldQueue
         $startCarbon = $startIso ? CarbonImmutable::parse($startIso) : now();
         $mergeId = $this->overlappingSessionId($profile, $startCarbon);
 
+        // WHOLE-workout mean HR from the raw series, but only over POSITIVE samples: the per-second builders
+        // emit all-zero windows when HR loses lock (firmware publishes only at confidence ≥ 90), and averaging
+        // those zeros deflates avg_hr (a single dropped ~10-min window drags 148→111). Same $v>0 guard
+        // zonesFromHr already uses. Only reached when the in-motion reliable mean is absent (on-chip path).
+        $hr1Positive = $hr1 ? array_values(array_filter($hr1, fn ($v) => $v > 0)) : [];
+        $hr1Mean = $hr1Positive !== [] ? array_sum($hr1Positive) / count($hr1Positive) : null;
+
         $log = ActivitySession::updateOrCreate(
             $mergeId ? ['id' => $mergeId] : ['profile_id' => $profile->id, 'started_at' => $startCarbon],
             array_filter([
@@ -480,7 +494,7 @@ class SealActivityJob implements ShouldQueue
                 // WHOLE-workout mean HR: the in-motion estimator's reliable-window mean, else the full series
                 // — never sessions[0]'s first-leg mean (wrong for a multi-segment run).
                 'avg_hr' => $imReliableMean !== null ? (int) round($imReliableMean)
-                    : ($hr1 ? (int) round(array_sum($hr1) / count($hr1))
+                    : ($hr1Mean !== null ? (int) round($hr1Mean)
                     : (isset($sess['mean_hr']) ? (int) round($sess['mean_hr']) : null)),
                 'max_hr' => $maxHr,
                 'hr_source' => $hrSource,
@@ -488,10 +502,12 @@ class SealActivityJob implements ShouldQueue
                 'workout_hrv_ms' => $workoutHrv,
                 'hr_zones' => $hrZones,
                 // TRIMP + calories summed across ALL detected sub-sessions (biosignal's total_*), so a run
-                // with a mid-run stop isn't ~50% undercounted by reading only its first leg.
-                'trimp' => $activity['total_trimp'] ?? ($sess['trimp'] ?? null),
-                'calories_kcal' => isset($activity['total_calories_kcal']) ? (int) round($activity['total_calories_kcal'])
-                    : (isset($sess['calories_kcal']) ? (int) round($sess['calories_kcal']) : null),
+                // with a mid-run stop isn't ~50% undercounted by reading only its first leg. detect_sessions
+                // ALWAYS returns total_* (sum([]) = 0), so treat a 0 total as "couldn't estimate" (→ null,
+                // array_filter drops it, preserving any prior real value) rather than stamping a hard 0.
+                'trimp' => ($activity['total_trimp'] ?? 0) > 0 ? $activity['total_trimp'] : ($sess['trimp'] ?? null),
+                'calories_kcal' => ($activity['total_calories_kcal'] ?? 0) > 0 ? (int) round($activity['total_calories_kcal'])
+                    : (isset($sess['calories_kcal']) && $sess['calories_kcal'] > 0 ? (int) round($sess['calories_kcal']) : null),
                 'vo2max' => $fitness['vo2max'] ?? null,
                 'fitness_level' => $fitness['fitness_level'] ?? null,
                 'hrr_bpm' => $fitness['hrr']['hrr_bpm'] ?? null,

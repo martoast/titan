@@ -8,6 +8,7 @@ use App\Models\SleepLog;
 use App\Models\User;
 use App\Services\Wearables\BiosignalClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -360,6 +361,61 @@ class SleepDutyCycleSealTest extends TestCase
         $win->refresh();
         $this->assertSame(DeviceIngestion::STATUS_SEALED, $win->status, 'released at the attempt cap so it stops looping');
         $this->assertArrayHasKey('seal_error', (array) $win->result_refs);
+    }
+
+    public function test_an_authoritative_reseal_overrides_a_stale_richer_row(): void
+    {
+        // S-1: the richer-row guard protects against a thinner AUTO seal — but a user-CONFIRMED seal or an
+        // operator --night reseal is a correction and must ALWAYS write, or an inflated stale row (a
+        // 900-min-bug-era or grace-inflated night) is permanently unrepairable and the coach narrates it.
+        $profile = User::factory()->create()->ensureProfile();
+        $date = Carbon::parse('yesterday', 'UTC')->toDateString();
+        $stale = SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false,
+            'duration_min' => 900, 'light_min' => 900,
+            'hypnogram' => array_fill(0, 1800, 'light'), 'updated_via' => 'biosignal:sealed-ppg',
+        ]);
+
+        $m = new \ReflectionMethod(SealNightJob::class, 'upsertSleep');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, true);   // confirmed = authoritative
+        $honest = ['slept_at' => $date, 'duration_min' => 430, 'light_min' => 430,
+            'hypnogram' => array_fill(0, 860, 'light'), 'updated_via' => 'biosignal:sealed-session-marker'];
+        $result = $m->invoke($job, ['profile_id' => $profile->id, 'slept_at' => $date, 'is_nap' => false], $honest, true);
+
+        $this->assertSame($stale->id, $result->id, 'same night row, corrected in place');
+        $this->assertSame(430, (int) $result->fresh()->duration_min, 'the authoritative reseal overwrote the inflated 900-min night');
+
+        $written = new \ReflectionMethod(SealNightJob::class, 'sleepRowWritten');
+        $written->setAccessible(true);
+        $this->assertTrue($written->invoke($job, $result), 'a real correction signals a write, so the coach summary fires');
+    }
+
+    public function test_a_transient_outage_does_not_burn_an_attempt_or_seal_the_night(): void
+    {
+        // S-2: a biosignal ops failure (service unreachable / 5xx) is transient, not a data verdict. It must
+        // NOT count toward the attempt cap nor terminal-seal the night — a multi-hour outage would otherwise
+        // destroy it. The window stays OPEN (unsealed, attempt count untouched) for the next cron.
+        $profile = User::factory()->create()->ensureProfile();
+        $win = DeviceIngestion::create([
+            'batch_uid' => substr(hash('sha256', (string) mt_rand()), 0, 40),
+            'profile_id' => $profile->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+            'status' => DeviceIngestion::STATUS_PROCESSED,
+            'window_start' => Carbon::createFromTimestamp(time() - 3600),
+            'window_end' => Carbon::createFromTimestamp(time() - 3570),
+            'result_refs' => ['epoch_motion' => [2.0], 'seal_attempts' => SealNightJob::MAX_SEAL_ATTEMPTS - 1],
+        ]);
+
+        $m = new \ReflectionMethod(SealNightJob::class, 'handleSessionFailure');
+        $m->setAccessible(true);
+        $job = new SealNightJob($profile->id, null, false);
+        // At the cap-minus-one: a DETERMINISTIC error would seal here. A transient one must not.
+        $m->invoke($job, $profile, collect([$win]), new ConnectionException('biosignal unreachable'));
+
+        $win->refresh();
+        $this->assertNotSame(DeviceIngestion::STATUS_SEALED, $win->status, 'a transient outage never seals the night away');
+        $this->assertArrayNotHasKey('seal_error', (array) $win->result_refs);
+        $this->assertSame(SealNightJob::MAX_SEAL_ATTEMPTS - 1, (int) ($win->result_refs['seal_attempts'] ?? 0), 'no attempt was burned');
     }
 
     public function test_a_nap_never_surfaces_as_last_night(): void

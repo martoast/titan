@@ -36,10 +36,13 @@ class Strain
         // (looks frozen/wrong). Callers that don't care (coach tools, nudges) omit tz → UTC as before.
         [$dayStart, $startUtc, $endUtc] = self::dayBounds($day, $tz);
 
-        // Workout load: sum of TRIMP for sessions that STARTED on this local day.
+        // Workout load: sum of TRIMP for real-training sessions that STARTED on this local day. The
+        // ->training() filter matches StrainDetail's per-session breakdown exactly, so the strain RING and
+        // the list that explains it never disagree (and a passively-imported 2-min walk adds no strain).
         $workout = (float) $profile->activitySessions()
             ->where('started_at', '>=', $startUtc)
             ->where('started_at', '<', $endUtc)
+            ->training()
             ->sum('trimp');
 
         // Ambient load: a day of living. MVPA minutes are the strongest signal; fall back to steps.

@@ -117,10 +117,13 @@ class AchievementEngine
         return $awards;
     }
 
-    /** How many consecutive ISO weeks (ending this week) the profile has had ≥1 activity. */
+    /** How many consecutive ISO weeks (ending this week) the profile has had ≥1 real-training activity.
+     *  Uses the same ->training() filter as WorkoutStreak so the two streak notions can't disagree on screen
+     *  (a passively-imported 2-min walk lights neither). */
     private function currentWeekStreak(Profile $profile): int
     {
         $weeks = $profile->activitySessions()
+            ->training()
             ->where('started_at', '>=', now()->subWeeks(12)->startOfWeek())
             ->orderBy('started_at')
             ->pluck('started_at')

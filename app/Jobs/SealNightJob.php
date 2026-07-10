@@ -11,6 +11,8 @@ use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
@@ -310,6 +312,19 @@ class SealNightJob implements ShouldQueue
      */
     private function handleSessionFailure(Profile $profile, \Illuminate\Support\Collection $windows, \Throwable $e): void
     {
+        // A biosignal OPS failure (service down / restarting / 5xx) is transient, not a data verdict — never
+        // burn an attempt or seal the night away for it, or a multi-hour outage (a bad overnight deploy)
+        // would silently destroy the night. Leave the windows OPEN so the next cron reseals once the
+        // service recovers. Only a DETERMINISTIC failure (a 4xx bad-payload, a code fault) counts toward the
+        // cap — those never succeed on retry, so terminal-sealing them is what actually prevents the livelock.
+        if ($this->isTransientFailure($e)) {
+            Log::warning('[Biosignal] session seal deferred — transient service failure, will retry next cron', [
+                'profile_id' => $profile->id, 'windows' => $windows->count(), 'error' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
         $attempt = 1 + (int) $windows->max(fn (DeviceIngestion $i) => $i->result_refs['seal_attempts'] ?? 0);
         Log::warning('[Biosignal] session seal failed', [
             'profile_id' => $profile->id, 'attempt' => $attempt, 'windows' => $windows->count(), 'error' => $e->getMessage(),
@@ -327,6 +342,24 @@ class SealNightJob implements ShouldQueue
         $windows->each(fn (DeviceIngestion $i) => $i->update([
             'result_refs' => array_merge((array) $i->result_refs, ['seal_attempts' => $attempt]),
         ]));
+    }
+
+    /**
+     * Is this an OPS/transient failure (retry later) rather than a data-verdict one (count toward the cap)?
+     * A bad staging payload doesn't even throw — invalid data returns null and exits early — so almost every
+     * exception here is the biosignal service being unreachable or 5xx. We still treat a 4xx (a genuinely
+     * malformed request) and any unexpected fault as deterministic, so a real poison payload can't livelock.
+     */
+    private function isTransientFailure(\Throwable $e): bool
+    {
+        if ($e instanceof ConnectionException) {
+            return true;                                    // service unreachable
+        }
+        if ($e instanceof RequestException) {
+            return ($e->response?->status() ?? 0) >= 500;   // server-side ops error, not our payload
+        }
+
+        return false;                                        // unknown/4xx → deterministic, let it count
     }
 
     /**
@@ -625,7 +658,9 @@ class SealNightJob implements ShouldQueue
                 'updated_via' => 'biosignal:sealed-session-marker',
             ];
 
-        $log = $this->upsertSleep($key, $attrs);
+        // A confirmed marker is authoritative — force the write so the scoped windows bind to (and the coach
+        // narrates) THIS honest computation, never a stale richer row the guard would otherwise have kept.
+        $log = $this->upsertSleep($key, $attrs, true);
 
         // Only the scoped windows are consumed by this session — everything else stays for its own seal.
         $scoped->each(fn (DeviceIngestion $i) => $i->update([
@@ -633,8 +668,11 @@ class SealNightJob implements ShouldQueue
             'result_refs' => array_merge((array) $i->result_refs, ['sleep_log_id' => $log->id, 'sealed' => true]),
         ]));
 
-        // A confirmed session fires the coach's summary (the user asked for it by ending on the band).
-        \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
+        // A confirmed session fires the coach's summary (the user asked for it by ending on the band) — but
+        // only when this seal actually wrote the row, never re-narrating an unchanged no-op reseal.
+        if ($this->sleepRowWritten($log)) {
+            \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
+        }
 
         Log::info('[Biosignal] confirmed session sealed', [
             'profile_id' => $profile->id, 'is_nap' => $isNap, 'dur_min' => $durMin,
@@ -748,21 +786,39 @@ class SealNightJob implements ShouldQueue
      * @param  array<string,mixed>  $key
      * @param  array<string,mixed>  $attrs
      */
-    private function upsertSleep(array $key, array $attrs): SleepLog
+    private function upsertSleep(array $key, array $attrs, bool $force = false): SleepLog
     {
         $existing = SleepLog::where($key)->first();
-        // Only guard against clobbering a prior BIOSIGNAL-SEALED row (source-scoped like the recovery guard):
-        // a manual/other-source entry isn't a staged night to compare against, and shouldn't block a seal.
-        if ($existing && str_starts_with((string) $existing->updated_via, 'biosignal:sealed')) {
+        // Guard a thinner AUTO re-seal from clobbering a richer prior biosignal-sealed night. But a
+        // user-CONFIRMED seal or an operator --night reseal ($force) is authoritative and ALWAYS writes its
+        // honest computation: otherwise a stale/inflated row (a 900-min-bug-era or grace-inflated night) is
+        // permanently unrepairable, and the confirmed path would seal windows to — and narrate — the wrong
+        // row. Source-scoped like the recovery guard: a manual/other-source entry never blocks a seal.
+        if (! $force && $existing && str_starts_with((string) $existing->updated_via, 'biosignal:sealed')) {
             $exStaged = is_array($existing->hypnogram) && count($existing->hypnogram) > 0;
             $exDur = (int) $existing->duration_min;
             $newDur = (int) ($attrs['duration_min'] ?? 0);
             if ($exStaged && $exDur >= $newDur + 30) {
-                return $existing; // the existing night is richer — don't let this shorter seal clobber it
+                return $existing; // the existing night is richer — don't let this shorter auto-seal clobber it
             }
         }
 
         return SleepLog::updateOrCreate($key, $attrs);
+    }
+
+    /**
+     * A user-CONFIRMED marker seal or an explicit operator --night reseal overrides the richer-row guard —
+     * both are authoritative corrections, not the routine hourly auto-seal that the guard protects against.
+     */
+    private function isAuthoritative(): bool
+    {
+        return $this->confirmed || $this->night !== null;
+    }
+
+    /** Did this upsert actually write (insert or change) the row, vs. discard to a richer existing one? */
+    private function sleepRowWritten(SleepLog $log): bool
+    {
+        return $log->wasRecentlyCreated || $log->wasChanged();
     }
 
 
@@ -828,11 +884,12 @@ class SealNightJob implements ShouldQueue
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
                     'updated_via' => 'biosignal:sealed-ppg',
                 ], fn ($v) => $v !== null),
+                $this->isAuthoritative(),
             );
 
         // The night's data is computed either way; the coach SUMMARY fires only when the user marked
-        // awake on the band (confirmed) — so the morning push is user-controlled, never automatic.
-        if ($this->confirmed) {
+        // awake on the band (confirmed) AND this seal actually wrote the row (no re-narrating a no-op).
+        if ($this->confirmed && $this->sleepRowWritten($log)) {
             \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
         }
     }
@@ -914,6 +971,7 @@ class SealNightJob implements ShouldQueue
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
                     'updated_via' => 'biosignal:sealed',
                 ], fn ($v) => $v !== null),
+                $this->isAuthoritative(),
             );
 
             $sleepWindows->each(fn (DeviceIngestion $i) => $i->update([
@@ -923,8 +981,8 @@ class SealNightJob implements ShouldQueue
             ]));
 
             // The night's data is computed either way; the coach SUMMARY fires only when the user
-            // marked awake on the band (confirmed) — so the morning push is user-controlled, never automatic.
-            if ($this->confirmed) {
+            // marked awake on the band (confirmed) AND this seal actually wrote the row (no re-narrating).
+            if ($this->confirmed && $this->sleepRowWritten($log)) {
                 \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
             }
         } catch (\Throwable $e) {
