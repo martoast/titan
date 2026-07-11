@@ -925,8 +925,17 @@ class SealNightJob implements ShouldQueue
         // banked one this night — it has a point for every ~30 s epoch, where the HRV-burst proxy
         // ($accel) only has a value where a burst happened to land (dotted). On a fully-connected night
         // the band emits no T10 (dense accel already rides the T1 frames), so the continuous series is
-        // empty and the proxy wins — never a regression. Both align to the SAME t0 grid, so the app
-        // overlays them identically (the renderer is scale-relative, so the unit difference is moot).
+        // empty and the proxy wins. Both align to the SAME t0 grid, so the app overlays them identically
+        // (the renderer is scale-relative, so the unit difference is moot).
+        //
+        // Deliberately PICK ONE whole series rather than merge per-epoch. The two channels are in
+        // DIFFERENT units (proxy = (1-ppg_quality)×100 or np.std(accel); continuous = milli-g EMA), so a
+        // per-epoch union would put a visual CLIFF at each offline↔connected seam — the smaller-scaled
+        // span would normalize to ~flat and read as false-calm, worse than an honest gap. Pick-one keeps
+        // every rendered value truthful (a span the winner doesn't cover shows as a "signal gap", never
+        // fabricated). Cost: on a night split ~evenly between a long offline stretch and a long connected
+        // one, the loser span's real movement becomes a gap. A correct per-epoch merge needs the two
+        // channels on a common movement scale (cross-channel calibration) — a deferred follow-up.
         $proxyMotion = $this->buildOverlaySeries($epochs, $accel, requirePositive: false, decimals: 2);
         $continuousMotion = $this->buildContinuousMotionSeries((int) ($windows->first()->profile_id ?? 0), $t0, $t1);
         $metrics['motion_series'] = count($continuousMotion) > count($proxyMotion) ? $continuousMotion : $proxyMotion;

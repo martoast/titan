@@ -405,10 +405,16 @@ class DeviceIngestionService
 
     /**
      * Persist a batch of continuous-motion points (the overnight movement strip). Each point is
-     * {t: epoch-seconds, motion: milli-g EMA}; we store recorded_at as the owner's local wall-clock
-     * (matching hr_samples, and what the seal's night bounds are expressed in) so the day/night
-     * grouping lines up. insertOrIgnore dedups on the (profile_id, recorded_at) unique key, so a
-     * re-sent window (a retry, or overlap from the offline ring) never double-inserts.
+     * {t: epoch-seconds, motion: milli-g EMA}.
+     *
+     * recorded_at is stored in the APP timezone — NOT the connection tz — deliberately: the night seal
+     * cross-references these rows against `device_ingestions.window_start`, which is ALSO stored in app
+     * tz (see the window-bounds block above), by mapping both onto one `$t0`-anchored epoch grid. If we
+     * stored recorded_at in the phone's tz (as hr_samples does — it's read back through the app-tz
+     * `datetime` cast) then on any server where app tz ≠ the user's tz, the seal's app-tz query bounds
+     * and epoch math would land on the wrong instants and the whole night's movement strip would be
+     * mis-timed or dropped. Same-tz round-trip, opposite-side of the exact trap the window block fixes.
+     * insertOrIgnore dedups on (profile_id, recorded_at) so a re-sent window never double-inserts.
      *
      * @param  array<string,mixed>  $summary
      */
@@ -419,6 +425,7 @@ class DeviceIngestionService
             return false;
         }
 
+        $appTz = config('app.timezone', 'UTC');
         $now = now();
         $rows = [];
         foreach ($samples as $s) {
@@ -433,7 +440,7 @@ class DeviceIngestionService
             $motion = max(0, min(65535, $motion));   // clamp to the wire's uint16 range (column is smallint)
             $rows[] = [
                 'profile_id' => $connection->profile_id,
-                'recorded_at' => CarbonImmutable::createFromTimestamp($t, 'UTC')->setTimezone($tz)->toDateTimeString(),
+                'recorded_at' => CarbonImmutable::createFromTimestamp($t, 'UTC')->setTimezone($appTz)->toDateTimeString(),
                 'motion' => $motion,
                 'source' => $connection->source,
                 'created_at' => $now,
