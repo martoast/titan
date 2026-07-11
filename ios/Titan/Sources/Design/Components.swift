@@ -359,11 +359,37 @@ struct SleepTimeline: View {
     var computing: Bool = false          // stage_status == "computing" (still being sealed)
     var interactive: Bool = true
     var mini: Bool = false               // compact ~48pt, non-interactive summary-card variant
+    // v2 layers — two SPARSE per-epoch series indexed off the SAME grid as `stages` (epoch i's clock =
+    // epochSec + i·30). Only measured epochs are present; missing indices are honest gaps, never drawn.
+    var hrSeries: [SleepResponse.Detail.EpochPoint]? = nil      // top HR-peaks overlay
+    var motionSeries: [SleepResponse.Detail.EpochPoint]? = nil  // bottom restlessness strip
 
     private static let epochLen = 30
     private var parsed: [SleepStage] { stages.map(SleepStage.parse) }
     private var hasRibbon: Bool { parsed.contains { !$0.isHole } }
     private var ribbonHeight: CGFloat { mini ? 48 : 128 }
+
+    // v2 overlay bands. Shown only when their series carry measured points (older nights → just ribbon).
+    private var hasHR: Bool { !(hrSeries?.isEmpty ?? true) }
+    private var hasMotion: Bool { !(motionSeries?.isEmpty ?? true) }
+    private var hrBandHeight: CGFloat { mini ? 16 : 38 }
+    private var motionStripHeight: CGFloat { mini ? 8 : 16 }
+    private var layerSpacing: CGFloat { mini ? 2 : 4 }
+
+    /// Epoch-index → value lookups for the scrub tooltip (sparse: absent key = signal gap).
+    private var hrByIndex: [Int: Double] {
+        Dictionary((hrSeries ?? []).map { ($0.i, $0.v) }, uniquingKeysWith: { a, _ in a })
+    }
+    private var motionByIndex: [Int: Double] {
+        Dictionary((motionSeries ?? []).map { ($0.i, $0.v) }, uniquingKeysWith: { a, _ in a })
+    }
+    /// Night-relative "restless" cut (70th percentile of the night's own motion) — a per-night threshold
+    /// so calm vs. restless reads against this sleeper, not an absolute scale.
+    private var restlessThreshold: Double {
+        let vals = (motionSeries ?? []).map { $0.v }.sorted()
+        guard !vals.isEmpty else { return .greatestFiniteMagnitude }
+        return vals[min(vals.count - 1, Int(Double(vals.count) * 0.7))]
+    }
 
     @State private var scrubFraction: CGFloat? = nil
 
@@ -382,14 +408,120 @@ struct SleepTimeline: View {
     private var ribbonWithChrome: some View {
         VStack(alignment: .leading, spacing: mini ? 4 : Theme.Space.s) {
             if mini {
-                ribbon
-            } else {
-                HStack(spacing: Theme.Space.s) {
-                    laneLabels
+                // Mini keeps the ribbon as the shape + adds the movement strip (at-a-glance restlessness);
+                // a faint HR peak line is optional context — the scrub tooltip is detail-screen only.
+                VStack(spacing: layerSpacing) {
+                    if hasHR { hrOverlay(faint: true) }
                     ribbon
+                    if hasMotion { movementStrip }
+                }
+            } else {
+                // Full hero: three legible layers over one clock axis — HR peaks, the stage ribbon (hero),
+                // the movement strip. Lane labels align to the ribbon via matching top/bottom spacers.
+                HStack(alignment: .top, spacing: Theme.Space.s) {
+                    VStack(spacing: layerSpacing) {
+                        if hasHR { Color.clear.frame(width: 34, height: hrBandHeight) }
+                        laneLabels
+                        if hasMotion { Color.clear.frame(width: 34, height: motionStripHeight) }
+                    }
+                    VStack(spacing: layerSpacing) {
+                        if hasHR { hrOverlay(faint: false) }
+                        ribbon
+                        if hasMotion { movementStrip }
+                    }
                 }
                 clockAxis
             }
+        }
+    }
+
+    // MARK: v2 — HR peaks overlay (top) + movement strip (bottom)
+
+    /// Thin HR trace over the top band, drawn ONLY across contiguous measured runs (a break wherever
+    /// epochs are missing — never connected across a gap). Y-scaled to the night's own HR min/max, with a
+    /// faint fill so it reads as an envelope and the arousal peaks (the "3am spike") stand out.
+    private func hrOverlay(faint: Bool) -> some View {
+        Canvas { ctx, size in drawHR(ctx, size, faint: faint) }
+            .frame(height: hrBandHeight)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// Per-epoch restlessness bars: height/opacity ∝ motion, measured epochs only. Calm deep sleep →
+    /// nearly empty; restless light/wake → visible teeth. A subtle amber tint above the night-relative
+    /// restless percentile, kept continuous underneath (no hard bucketing).
+    private var movementStrip: some View {
+        Canvas { ctx, size in drawMotion(ctx, size) }
+            .frame(height: motionStripHeight)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// Group a sparse `{i,v}` series into runs of consecutive epoch indices. A run break = a real gap;
+    /// the HR line only connects within a run, so it is never painted across missing epochs.
+    private func contiguousRuns(_ series: [SleepResponse.Detail.EpochPoint]) -> [[SleepResponse.Detail.EpochPoint]] {
+        let sorted = series.sorted { $0.i < $1.i }
+        var runs: [[SleepResponse.Detail.EpochPoint]] = []
+        var cur: [SleepResponse.Detail.EpochPoint] = []
+        for p in sorted {
+            if let last = cur.last, p.i != last.i + 1 { runs.append(cur); cur = [] }
+            cur.append(p)
+        }
+        if !cur.isEmpty { runs.append(cur) }
+        return runs
+    }
+
+    private func drawHR(_ ctx: GraphicsContext, _ size: CGSize, faint: Bool) {
+        guard let series = hrSeries, !series.isEmpty else { return }
+        let n = parsed.count
+        guard n > 0, size.width > 0, size.height > 0 else { return }
+        let vals = series.map { $0.v }
+        let lo = vals.min() ?? 0, hi = vals.max() ?? 1
+        let span = max(1, hi - lo)
+        let colW = size.width / CGFloat(n)
+        let pad: CGFloat = 3
+        func point(_ p: SleepResponse.Detail.EpochPoint) -> CGPoint {
+            let x = (CGFloat(p.i) + 0.5) * colW
+            let yFrac = (p.v - lo) / span                       // night-relative
+            let y = pad + (size.height - 2 * pad) * (1 - CGFloat(yFrac))
+            return CGPoint(x: x, y: y)
+        }
+        let stroke = Theme.Palette.pink.opacity(faint ? 0.5 : 0.9)
+        let fill = Theme.Palette.pink.opacity(faint ? 0.06 : 0.13)
+        for run in contiguousRuns(series) {
+            let pts = run.map(point)
+            if pts.count == 1 {
+                // Isolated measured epoch — a dot, so a lone peak is still honest and visible.
+                let r = CGRect(x: pts[0].x - 1.2, y: pts[0].y - 1.2, width: 2.4, height: 2.4)
+                ctx.fill(Path(ellipseIn: r), with: .color(stroke))
+                continue
+            }
+            var line = Path(); line.addLines(pts)
+            var envelope = line
+            envelope.addLine(to: CGPoint(x: pts.last!.x, y: size.height))
+            envelope.addLine(to: CGPoint(x: pts.first!.x, y: size.height))
+            envelope.closeSubpath()
+            ctx.fill(envelope, with: .color(fill))
+            ctx.stroke(line, with: .color(stroke),
+                       style: StrokeStyle(lineWidth: faint ? 1 : 1.5, lineCap: .round, lineJoin: .round))
+        }
+    }
+
+    private func drawMotion(_ ctx: GraphicsContext, _ size: CGSize) {
+        guard let series = motionSeries, !series.isEmpty else { return }
+        let n = parsed.count
+        guard n > 0, size.width > 0, size.height > 0 else { return }
+        let hi = max(1, series.map { $0.v }.max() ?? 1)
+        let thr = restlessThreshold
+        let colW = size.width / CGFloat(n)
+        let barW = max(1, colW * 0.7)
+        for p in series {
+            let frac = min(1, max(0, p.v / hi))
+            let h = max(1, size.height * CGFloat(frac))
+            let x = (CGFloat(p.i) + 0.5) * colW - barW / 2
+            let rect = CGRect(x: x, y: size.height - h, width: barW, height: h)
+            // Continuous opacity ∝ motion; a subtle amber tint above the night's restless percentile.
+            let base = p.v >= thr ? Theme.Palette.amber : Theme.Palette.text
+            let c = base.opacity(0.28 + 0.52 * Double(frac))
+            ctx.fill(Path(roundedRect: rect, cornerRadius: min(1.5, barW / 2)), with: .color(c))
         }
     }
 
@@ -513,8 +645,14 @@ struct SleepTimeline: View {
             let t = Date(timeIntervalSince1970: TimeInterval(start + index * Self.epochLen))
             label = "\(Self.clock(t)) · \(label)"
         }
-        // Phase 2: append per-epoch HR here once `/api/me/sleep` exposes a downsampled series
-        // (e.g. `label += " · HR \(hr)"`) — the stager already has `hr_e` internally.
+        // v2: append the measured per-epoch HR + restlessness for this epoch → "3:12 AM · Deep · HR 52 ·
+        // calm". Sparse: an epoch with no measured HR/motion says "· signal gap" — never a stale value.
+        let hr = hrByIndex[index]
+        let motion = motionByIndex[index]
+        if let hr { label += " · HR \(Int(hr.rounded()))" }
+        if let motion { label += motion >= restlessThreshold ? " · restless" : " · calm" }
+        // Only when the night HAS these channels but this epoch measured neither — honest gap, not silence.
+        if hr == nil, motion == nil, hasHR || hasMotion { label += " · signal gap" }
         return ZStack(alignment: .topLeading) {
             Rectangle().fill(Theme.Palette.text.opacity(0.35)).frame(width: 1, height: height)
                 .position(x: x, y: height / 2)

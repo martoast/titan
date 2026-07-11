@@ -159,7 +159,8 @@ struct SleepView: View {
                                       epochSec: d?.epoch_sec,
                                       bedtime: d?.bedtime, wakeTime: d?.wake_time,
                                       computing: d?.stage_status == "computing",
-                                      interactive: true)
+                                      interactive: true,
+                                      hrSeries: d?.hr_series, motionSeries: d?.motion_series)
                     }
                 }
             }

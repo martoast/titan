@@ -225,7 +225,8 @@ struct SleepSummaryView: View {
                               epochSec: detail?.epoch_sec,
                               bedtime: detail?.bedtime, wakeTime: detail?.wake_time,
                               computing: summary.loading || detail?.stage_status == "computing",
-                              interactive: false, mini: true)
+                              interactive: false, mini: true,
+                              hrSeries: detail?.hr_series, motionSeries: detail?.motion_series)
                 // Row labels for the four depths.
                 HStack {
                     ForEach(SleepStage.lanes, id: \.self) { s in

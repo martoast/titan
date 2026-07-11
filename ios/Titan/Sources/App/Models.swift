@@ -179,10 +179,18 @@ struct SleepResponse: Codable {
         let hypnogram: [String]?         // per-30s stage codes: wake/light/deep/rem
         let epoch_sec: Int?
         let stage_status: String?        // "computing" while still sealing, else "final" — drives the timeline skeleton
+        // Two SPARSE per-epoch series (SLEEP TIMELINE v2), aligned to the SAME epoch_sec + 30s grid as
+        // `hypnogram`: epoch i's clock = epoch_sec + i·30. Only MEASURED epochs are present — a missing
+        // index is a real signal gap (band duty-cycles), rendered as a gap, never interpolated. nil on
+        // older nights / duration-only rows.
+        let hr_series: [EpochPoint]?     // per-epoch HR (bpm), measured epochs only
+        let motion_series: [EpochPoint]? // per-epoch restlessness (0..N), measured epochs only
         struct Stage: Codable, Identifiable {
             let key: String; let label: String; let min: Int; let pct: Int; let color: String
             var id: String { key }
         }
+        /// A sparse per-epoch sample: `i` = epoch index into the hypnogram grid, `v` = the value.
+        struct EpochPoint: Codable { let i: Int; let v: Double }
     }
     struct Night: Codable, Identifiable {
         var id: String { date ?? "" }
