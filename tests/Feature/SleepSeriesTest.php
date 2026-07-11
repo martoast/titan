@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\SealNightJob;
 use App\Models\DeviceIngestion;
+use App\Models\MotionSample;
 use App\Models\SleepLog;
 use App\Models\User;
 use App\Services\Wearables\BiosignalClient;
@@ -134,6 +135,98 @@ class SleepSeriesTest extends TestCase
             $this->assertArrayNotHasKey('color', $stage, 'the stray per-stage color copy was removed (§4)');
             $this->assertArrayHasKey('key', $stage);
         }
+    }
+
+    /**
+     * The movement strip prefers the DENSE continuous channel (T10 → motion_samples) over the sparse
+     * HRV-burst proxy. A night whose duty-cycle bursts land on only a handful of epochs (the dotted
+     * proxy) but whose always-on offline motion frame filled every epoch must seal a motion_series
+     * built from the continuous channel — denser than the proxy, and in the proxy's absence of those
+     * values. A fully-connected night (no T10) keeps the proxy; that's the SleepSeriesTest above.
+     */
+    public function test_seal_prefers_dense_continuous_motion_channel_over_sparse_burst_proxy(): void
+    {
+        config(['services.biosignal.url' => 'http://biosignal:8000', 'services.biosignal.token' => 't']);
+        Http::fake(['*/process/sleep' => function ($request) {
+            $data = $request->data();
+            $n = (int) round((Carbon::parse($data['end'])->timestamp - Carbon::parse($data['start'])->timestamp) / 30);
+
+            return Http::response(['algo_version' => 'test', 'metrics' => [
+                'duration_min' => 200, 'deep_min' => 40, 'rem_min' => 30, 'light_min' => 120, 'awake_min' => 10,
+                'bedtime' => $data['start'], 'wake_time' => $data['end'], 'quality' => 75,
+                'coverage' => 0.9, 'hypnogram_30s' => array_fill(0, max(1, $n), 'light'),
+            ]]);
+        }]);
+
+        $profile = User::factory()->create()->ensureProfile();
+        $tz = config('app.timezone');
+        $wake = time();
+        $n = 520;                       // 260-min night (> NAP_MAX_MIN so it seals as a night, not a nap)
+        $bed = $wake - $n * 30;
+
+        // SPARSE burst proxy: three thin windows spanning the whole night — the dotted coverage the HRV
+        // duty-cycle leaves. Small proxy-unit motion values (max ~4). Spanning bed→wake so the seal's
+        // window-derived staging span covers the full night (and thus every continuous sample).
+        $proxyEpochs = 0;
+        foreach ([['e' => 0, 'c' => 5], ['e' => 260, 'c' => 5], ['e' => 510, 'c' => 10]] as $w) {
+            $this->seedWindow($profile->id, $bed, $w['e'], $w['c'], motion: 4.0, hr: 60.0);
+            $proxyEpochs += $w['c'];
+        }
+
+        // DENSE continuous channel: one T10 point per epoch, on a distinct milli-g scale (500, with a
+        // 3000 spike) so the assertion can tell which channel the seal chose.
+        $rows = [];
+        for ($e = 0; $e < $n; $e++) {
+            $rows[] = [
+                'profile_id' => $profile->id,
+                'recorded_at' => Carbon::createFromTimestamp($bed + $e * 30, $tz)->toDateTimeString(),
+                'motion' => $e === 150 ? 3000 : 500,
+                'source' => 'titan-band',
+                'created_at' => now(), 'updated_at' => now(),
+            ];
+        }
+        MotionSample::insert($rows);
+
+        Queue::fake();
+        (new SealNightJob($profile->id, null, true, $bed, $wake, 0))->handle(app(BiosignalClient::class));
+
+        $row = SleepLog::where('profile_id', $profile->id)->where('is_nap', false)->first();
+        $this->assertNotNull($row, 'a night row was sealed');
+        $motion = $row->motion_series;
+        $this->assertIsArray($motion);
+
+        // The DENSE continuous channel won: many more points than the ~20-epoch proxy, capped at 180.
+        $this->assertGreaterThan($proxyEpochs, count($motion));
+        $this->assertLessThanOrEqual(180, count($motion));
+        // The values are the continuous channel's milli-g (500 / 3000), NOT the proxy's ~4 — the spike
+        // is the fingerprint the sparse proxy could never contain, proving the preference engaged.
+        $this->assertSame(3000, collect($motion)->max('v'));
+        $this->assertGreaterThanOrEqual(500, collect($motion)->min('v'));
+
+        // The HR overlay is untouched by the motion preference — still built from the proxy windows.
+        $this->assertNotEmpty($row->hr_series);
+    }
+
+    /** Seed one duty-cycle window of `count` epochs at `baseEpoch`, filled with a flat motion + HR. */
+    private function seedWindow(int $profileId, int $bed, int $baseEpoch, int $count, float $motion, float $hr): void
+    {
+        $tz = config('app.timezone');
+        $start = $bed + $baseEpoch * 30;
+        $end = $start + $count * 30;
+        $w = DeviceIngestion::create([
+            'batch_uid' => substr(hash('sha256', $profileId.'-'.$baseEpoch.'-'.mt_rand()), 0, 40),
+            'profile_id' => $profileId,
+            'source' => 'titan_band',
+            'kind' => 'ppg_raw',
+            'status' => DeviceIngestion::STATUS_PROCESSED,
+            'window_start' => Carbon::createFromTimestamp($start, $tz),
+            'window_end' => Carbon::createFromTimestamp($end, $tz),
+            'result_refs' => [
+                'epoch_motion' => array_fill(0, $count, $motion),
+                'epoch_hr' => array_fill(0, $count, $hr),
+            ],
+        ]);
+        $w->forceFill(['created_at' => Carbon::createFromTimestamp($end, $tz)])->saveQuietly();
     }
 
     /**

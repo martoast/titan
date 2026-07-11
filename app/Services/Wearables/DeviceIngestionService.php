@@ -7,6 +7,7 @@ use App\Models\BodyMetric;
 use App\Models\DailyActivity;
 use App\Models\DeviceIngestion;
 use App\Models\HrSample;
+use App\Models\MotionSample;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Models\SleepLog;
@@ -327,6 +328,9 @@ class DeviceIngestionService
             'workout_session' => $this->triggerWorkoutSummary($connection, $summary),
             // The 24/7 HR trend (≈1 point/minute) → time-series rows for the all-day HR graph.
             'hr_trend' => $this->writeHrTrend($connection, $summary, $tz),
+            // The continuous overnight motion channel (≈1 point/30s, T10) → per-epoch rows the night
+            // seal prefers over the sparse HRV-burst proxy for the sleep-timeline movement strip.
+            'motion_trend' => $this->writeMotionTrend($connection, $summary, $tz),
             'body' => (bool) BodyMetric::create(array_filter([
                 'profile_id' => $pid,
                 'taken_at' => $this->dateOf($summary['taken_at'] ?? null, $tz),
@@ -395,6 +399,52 @@ class DeviceIngestionService
         }
 
         HrSample::insertOrIgnore($rows);
+
+        return true;
+    }
+
+    /**
+     * Persist a batch of continuous-motion points (the overnight movement strip). Each point is
+     * {t: epoch-seconds, motion: milli-g EMA}; we store recorded_at as the owner's local wall-clock
+     * (matching hr_samples, and what the seal's night bounds are expressed in) so the day/night
+     * grouping lines up. insertOrIgnore dedups on the (profile_id, recorded_at) unique key, so a
+     * re-sent window (a retry, or overlap from the offline ring) never double-inserts.
+     *
+     * @param  array<string,mixed>  $summary
+     */
+    private function writeMotionTrend(WearableConnection $connection, array $summary, string $tz): bool
+    {
+        $samples = $summary['samples'] ?? null;
+        if (! is_array($samples) || count($samples) === 0) {
+            return false;
+        }
+
+        $now = now();
+        $rows = [];
+        foreach ($samples as $s) {
+            if (! is_array($s)) {
+                continue;
+            }
+            $t = (int) ($s['t'] ?? 0);
+            if ($t <= 0) {
+                continue;   // unstamped point — skip, don't poison the series
+            }
+            $motion = (int) ($s['motion'] ?? 0);
+            $motion = max(0, min(65535, $motion));   // clamp to the wire's uint16 range (column is smallint)
+            $rows[] = [
+                'profile_id' => $connection->profile_id,
+                'recorded_at' => CarbonImmutable::createFromTimestamp($t, 'UTC')->setTimezone($tz)->toDateTimeString(),
+                'motion' => $motion,
+                'source' => $connection->source,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        if (count($rows) === 0) {
+            return false;
+        }
+
+        MotionSample::insertOrIgnore($rows);
 
         return true;
     }

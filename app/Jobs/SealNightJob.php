@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\DeviceIngestion;
+use App\Models\MotionSample;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Models\SleepLog;
@@ -919,9 +920,58 @@ class SealNightJob implements ShouldQueue
         // only where a real reading exists (>0). Downsampled here (max-pool) so the stored value is already
         // payload-sized. A charge/BLE gap contributed no epochs → it's simply absent (a hole), never filled.
         $metrics['hr_series'] = $this->buildOverlaySeries($epochs, $hr, requirePositive: true, decimals: 0);
-        $metrics['motion_series'] = $this->buildOverlaySeries($epochs, $accel, requirePositive: false, decimals: 2);
+
+        // Movement strip: prefer the DENSE continuous channel (T10 → motion_samples) when the band
+        // banked one this night — it has a point for every ~30 s epoch, where the HRV-burst proxy
+        // ($accel) only has a value where a burst happened to land (dotted). On a fully-connected night
+        // the band emits no T10 (dense accel already rides the T1 frames), so the continuous series is
+        // empty and the proxy wins — never a regression. Both align to the SAME t0 grid, so the app
+        // overlays them identically (the renderer is scale-relative, so the unit difference is moot).
+        $proxyMotion = $this->buildOverlaySeries($epochs, $accel, requirePositive: false, decimals: 2);
+        $continuousMotion = $this->buildContinuousMotionSeries((int) ($windows->first()->profile_id ?? 0), $t0, $t1);
+        $metrics['motion_series'] = count($continuousMotion) > count($proxyMotion) ? $continuousMotion : $proxyMotion;
 
         return $metrics;
+    }
+
+    /**
+     * Build the sleep-timeline movement strip from the CONTINUOUS overnight-motion channel (the band's
+     * T10 frames → motion_samples): one dense per-epoch point, aligned to the SAME t0 grid stageSparse
+     * uses — i = floor((recorded_at − t0)/EPOCH_SEC), mirroring its window_start mapping EXACTLY so both
+     * overlays share one axis. Returns [] when the band banked no T10 this night (it was connected the
+     * whole time), so the caller keeps the burst proxy. Max-pooled/capped by buildOverlaySeries.
+     *
+     * @return array<int,array{i:int,v:int|float}>
+     */
+    private function buildContinuousMotionSeries(int $profileId, CarbonImmutable $t0, CarbonImmutable $t1): array
+    {
+        if ($profileId <= 0) {
+            return [];
+        }
+        // motion_samples.recorded_at is stored as the owner's local wall-clock (see writeMotionTrend),
+        // which the whole time-series subsystem treats as app-tz (same as hr_samples). Bound the query
+        // in that representation; the epoch index below then uses the parsed instant, exactly as
+        // stageSparse does with window_start, so the two series land on the identical grid.
+        $tz = config('app.timezone');
+        $samples = MotionSample::query()
+            ->where('profile_id', $profileId)
+            ->whereBetween('recorded_at', [
+                $t0->setTimezone($tz)->toDateTimeString(),
+                $t1->setTimezone($tz)->toDateTimeString(),
+            ])
+            ->orderBy('recorded_at')
+            ->get(['recorded_at', 'motion']);
+        if ($samples->isEmpty()) {
+            return [];
+        }
+        $epochs = [];
+        $values = [];
+        foreach ($samples as $s) {
+            $epochs[] = (int) floor((CarbonImmutable::parse($s->recorded_at)->timestamp - $t0->timestamp) / self::EPOCH_SEC);
+            $values[] = (float) $s->motion;
+        }
+
+        return $this->buildOverlaySeries($epochs, $values, requirePositive: false, decimals: 0);
     }
 
     /** Max points per overlay series in the payload — a Whoop-grade chart needs no more, and it keeps the
