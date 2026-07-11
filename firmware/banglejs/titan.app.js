@@ -747,7 +747,15 @@ function emitMotionFrame(motion, nowMs) {
   dv.setUint16(2, m, true);                               // motionEMA × 1000 (milli-g EMA), per-epoch magnitude
   dv.setUint32(4, (nowMs - hi * 4294967296) >>> 0, true);
   dv.setUint32(8, hi >>> 0, true);
-  appendLog("T10:" + b64(buf));
+  // Flow in BOTH states (mirrors the T5 HR frame): live over BLE when connected so the dense motion
+  // reaches the server the SAME night, else bank to the ring for the morning sync. The old code was
+  // appendLog-only, so a night slept with the band connected (the common case) produced zero T10.
+  var line = "T10:" + b64(buf);
+  if (state.connected) {
+    try { Bluetooth.println(line); state.framesSent++; } catch (e) {}
+  } else {
+    appendLog(line);
+  }
 }
 
 // Bank one continuous-motion epoch. Called from the always-on 1 Hz onHRM event (no dedicated timer),
@@ -756,7 +764,11 @@ function emitMotionFrame(motion, nowMs) {
 // When connected, dense 12.5 Hz accel already rides the live T1 frames, so we skip (this is a ring densifier).
 var lastMotionMs = 0;
 function bankMotionEpoch() {
-  if (state.connected) return;                           // connected → accel already in live T1 frames
+  // NO connection gate: the old `if (state.connected) return` meant T10 only ever emitted OFFLINE, so a
+  // night slept with the phone by the bed (band connected, streaming) produced motion_samples=0 — the
+  // dense-motion channel was dead for basically everyone. The premise that "connected → dense accel rides
+  // the T1 frames" fails overnight too, because raw capture is duty-cycled to ~17% for battery AND that
+  // accel never lands in motion_samples. motionEMA is always maintained (HRV gating) so this is ~free.
   if (!sleepModeActive()) return;                        // overnight sleep session only (streaming + sleep + !workout)
   var now = Math.round(getTime() * 1000);
   if (now - lastMotionMs < CFG.HR_TREND_MS) return;      // one epoch per 30 s (shares the HR-trend cadence)
