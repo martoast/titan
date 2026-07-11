@@ -39,6 +39,11 @@ class MobileSleepController extends Controller
             // The Whoop-style breakdown: performance %, hours vs need, stages (min + %), efficiency,
             // restorative (deep+REM), debt, respiratory rate, consistency.
             'detail' => \App\Support\SleepDetail::forProfile($profile),
+            // Sleep-as-sessions: TODAY's every sleep session (overnight + each nap), each with its own full
+            // detail + v2 timeline, above a daily aggregate (total asleep + combined stages). Grouped on the
+            // user's local day so a nap isn't dropped or mis-dated. This is what the sessions list + today
+            // card render; `detail`/`nights` above stay for the existing single-night surfaces.
+            'today' => \App\Support\SleepDetail::sessionsForDay($profile),
             // The most recent night's compute state — the app shows a loading card while this is 'computing'
             // and swaps to the full stats in place when it becomes 'final'.
             'last_status' => $nights->first()['stage_status'] ?? null,
