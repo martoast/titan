@@ -39,8 +39,14 @@ class WorkoutStreak
             ->whereNotNull('started_at')
             ->where('started_at', '>=', CarbonImmutable::now($tz)->subYear()->utc())
             ->orderBy('started_at')
-            ->pluck('started_at')
-            ->map(fn ($ts) => CarbonImmutable::parse($ts)->setTimezone($tz)->toDateString())
+            ->get(['started_at'])
+            // started_at is stored as UTC wall-clock (the seal convention — see
+            // MobileRunsController/SealActivityJob). The Eloquent cast mislabels it as app-tz, so read the
+            // RAW value and parse it AS UTC before converting to the caller's tz — otherwise an EVENING
+            // workout (past 00:00 UTC) buckets on tomorrow and "worked out today" reads false right after
+            // Alex finishes an evening session. This one map feeds every bucket below (they compare against
+            // these local dates), so fixing it here corrects streak / week / month / heat-strip together.
+            ->map(fn (ActivitySession $s) => CarbonImmutable::parse($s->getRawOriginal('started_at'), 'UTC')->setTimezone($tz)->toDateString())
             ->unique()
             ->values();
 

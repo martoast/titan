@@ -6,6 +6,7 @@ use App\Models\ActivitySession;
 use App\Models\Profile;
 use App\Models\User;
 use App\Support\WorkoutStreak;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -70,5 +71,31 @@ class TrainingScopeTest extends TestCase
 
         $this->assertTrue($streak['worked_out_today'], "an 'other'-typed real workout should count toward the streak");
         $this->assertSame(1, $streak['current']);
+    }
+
+    public function test_an_evening_workout_buckets_on_the_local_day_not_the_utc_next_day(): void
+    {
+        // started_at is stored UTC wall-clock. An EVENING local workout crosses 00:00 UTC, so reading it as
+        // app-local (no source-tz) buckets it on TOMORROW — "worked out today" reads false right after Alex
+        // finishes, and the heat-strip marks the wrong day. The streak must convert from UTC to the caller tz.
+        $tz = 'America/Mexico_City';
+        // Freeze now at 2026-07-11 04:30 UTC = 2026-07-10 22:30 Mexico → "today" (local) is the 10th.
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-07-11 04:30:00', 'UTC'));
+        $p = $this->profile();
+        // A 21:52 Mexico session on the 10th → stored UTC wall-clock 2026-07-11 03:52; its LOCAL day is the 10th.
+        $this->mkSession($p, [
+            'started_at' => CarbonImmutable::parse('2026-07-11 03:52:38', 'UTC'),
+            'ended_at' => CarbonImmutable::parse('2026-07-11 04:32:38', 'UTC'),
+            'activity_type' => 'strength', 'duration_min' => 40,
+        ]);
+
+        $streak = WorkoutStreak::forProfile($p, $tz);
+
+        $this->assertTrue($streak['worked_out_today'], 'an evening (post-00:00-UTC) workout must count as TODAY in the local tz');
+        $this->assertContains('2026-07-10', $streak['active_days']);
+        $this->assertNotContains('2026-07-11', $streak['active_days'], 'must not leak onto the UTC next-day');
+        $this->assertSame(1, $streak['current']);
+
+        CarbonImmutable::setTestNow();
     }
 }

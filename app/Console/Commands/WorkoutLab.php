@@ -15,6 +15,7 @@ use App\Services\Lab\WorkoutCalibration;
 use App\Services\Lab\WorkoutScript;
 use App\Services\Simulator\BiosignalSimulator;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -162,9 +163,31 @@ class WorkoutLab extends Command
         }
 
         $seed = $this->option('seed') !== null ? (int) $this->option('seed') : 424242;
-        $ingestUrl = $this->option('ingest-url') ?: 'http://localhost/api/devices/ingest';
 
-        return new VirtualAthlete(new BiosignalSimulator($seed), $device, $secret, WorkoutCalibration::load(), $ingestUrl);
+        return new VirtualAthlete(new BiosignalSimulator($seed), $device, $secret, WorkoutCalibration::load(), $this->resolveIngestUrl());
+    }
+
+    /**
+     * The ingest URL reachable from this process. --ingest-url wins; otherwise PROBE the ports the app might
+     * serve on (serversideup :8080, then Sail :80) and pick the first that ANSWERS — hardcoding :80 silently
+     * dropped every batch on the serversideup stack (the same swallow trap SLEEP LAB fixed).
+     */
+    private function resolveIngestUrl(): string
+    {
+        if ($override = $this->option('ingest-url')) {
+            return (string) $override;
+        }
+        foreach ([8080, 80] as $port) {
+            try {
+                Http::connectTimeout(2)->timeout(3)->get("http://localhost:{$port}/up");
+
+                return "http://localhost:{$port}/api/devices/ingest";
+            } catch (\Throwable $e) {
+                continue; // connection refused on this port — try the next
+            }
+        }
+
+        return 'http://localhost:8080/api/devices/ingest';
     }
 
     /** Wipe the lab profile's ingestion + activity/strength rows so the one-session invariant is meaningful. */
@@ -237,7 +260,10 @@ class WorkoutLab extends Command
         foreach ($script->setEvents as $order => $ev) {
             $exercise = Exercise::firstOrCreate(
                 ['slug' => Exercise::slugFor($ev['name'])],
-                ['name' => $ev['name'], 'muscle_group' => $ev['muscle_group'] ?? null],
+                // exercises.category is NOT NULL (compound|isolation|cardio) with no default — the setEvent
+                // may carry one, else default to compound (a barbell lift), or the whole gym-lift scenario
+                // 500s on insert before it can score.
+                ['name' => $ev['name'], 'muscle_group' => $ev['muscle_group'] ?? null, 'category' => $ev['category'] ?? 'compound'],
             );
             $we = $workout->exercises()->create(['exercise_id' => $exercise->id, 'order' => $order + 1]);
             foreach ($ev['sets'] as $i => $set) {
