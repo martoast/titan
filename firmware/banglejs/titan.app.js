@@ -184,6 +184,18 @@ var CFG = {
   // or a still evening never triggers a wrong-time push).
   SLEEP_PROTO_VERSION: 9,          // T9 frame: { confirmed flag, bedtime epoch, wake epoch }
 
+  // --- CONTINUOUS OVERNIGHT MOTION (Lever 1: near-zero battery, dense sleep movement strip) --------
+  // The accelerometer is ALWAYS-ON: motionEMA updates on every accel event to gate the HRV bursts (see
+  // onAccel, ~:717 — so reading it costs nothing). Overnight, movement was only RECORDED during the ~17%
+  // HRM raw bursts, leaving the v2 sleep timeline's movement strip DOTTED. Fix: bank the always-on
+  // motionEMA once per epoch — reusing HR_TREND_MS's 30 s cadence, driven off the always-on 1 Hz onHRM
+  // event (NO new timer, NO extra sensor) — as a tiny dedicated T10 frame to the ring while asleep +
+  // offline. Unlike the T5 HR-trend it is NOT gated on HR confidence, so the strip stays dense even when
+  // the PPG lock drops. ~960 frames/night × 21 B ≈ 20 KB/night — trivial vs the ~2 MB/night of T2 PPG
+  // (the ring caps at ~4.1 MB and evicts oldest, so flash is never overrun even across an unsynced
+  // multi-night gap). Epoch grid stays 30 s → drops straight into the server's hypnogram alignment.
+  MOTION_PROTO_VERSION: 10,        // T10 frame: { motion (motionEMA×1000, milli-g EMA), timestamp } — per-epoch overnight movement
+
   // --- AUTO workout detection (Whoop-style: no button) -----------------------
   // Watch motion energy (the accel EMA) + HR-above-resting and auto-start/stop a workout so you
   // never have to tap. The hard case is LIFTING (long inter-set rests): HR stays elevated THROUGH the
@@ -664,6 +676,7 @@ function onHRM(e) {
   // continuously (the HRM stays powered) — HRV/recovery is still computed server-side from the raw PPG.
   var bpm = e.bpm | 0, conf = e.confidence | 0;
   state.conf = conf;
+  bankMotionEpoch();   // continuous overnight motion (Lever 1) — NOT gated on conf, so the sleep movement strip stays dense
   if (conf >= 90 && bpm > 0) {
     state.bpm = bpm;
     if (state.streaming) publishHr();
@@ -703,6 +716,52 @@ function emitHrFrame(bpm, conf) {
   } else {
     appendLog(line);
   }
+}
+
+// ----- Continuous overnight motion (Lever 1) --------------------------------
+// T10 frame — one per-epoch movement sample banked to the ring while asleep + offline, so the v2 sleep
+// timeline's movement strip is DENSE (every 30 s = one epoch) instead of only dotted where an HRV burst
+// landed. Reuses the always-on accel (motionEMA is already maintained for HRV gating → ~zero battery) and
+// the 30 s HR_TREND cadence driven off the always-on 1 Hz onHRM event (no new timer). See the CFG note at
+// MOTION_PROTO_VERSION for the full rationale.
+//   WIRE LAYOUT (12 bytes, little-endian) — FOR THE SERVER DECODER:
+//     byte 0     uint8   ver    = CFG.MOTION_PROTO_VERSION (10)
+//     byte 1     uint8   rsvd   = 0 (reserved; mirrors the T2/T5 header's rsvd byte)
+//     byte 2-3   uint16  motion = clamp(round(motionEMA * 1000), 0..65535) — milli-g EMA of per-sample
+//                                 |Δaccel| (gravity-cancelled). A per-epoch movement MAGNITUDE (an EMA
+//                                 level), NOT a windowed sum like T2's activity field. Higher = more motion.
+//     byte 4-7   uint32  tsLo   = epoch-ms low 32 bits  (sample time = getTime()*1000)
+//     byte 8-11  uint32  tsHi   = epoch-ms high 32 bits (full 64-bit unix ms)
+//   Emitted as the base64 line "T10:<b64>\n" into the ring (drained on morning sync, same path as T2/T5).
+//   NOTE for the router: the tag is the TWO-digit "T10:" — parse the frame tag as the text before the
+//   first ':' (a naive startsWith("T1:") check will NOT and must not match "T10:").
+function emitMotionFrame(motion, nowMs) {
+  var m = Math.round(motion * 1000);
+  if (m < 0) m = 0;
+  if (m > 65535) m = 65535;
+  var buf = new ArrayBuffer(12);
+  var dv = new DataView(buf);
+  var hi = Math.floor(nowMs / 4294967296);
+  dv.setUint8(0, CFG.MOTION_PROTO_VERSION);
+  dv.setUint8(1, 0);                                      // reserved
+  dv.setUint16(2, m, true);                               // motionEMA × 1000 (milli-g EMA), per-epoch magnitude
+  dv.setUint32(4, (nowMs - hi * 4294967296) >>> 0, true);
+  dv.setUint32(8, hi >>> 0, true);
+  appendLog("T10:" + b64(buf));
+}
+
+// Bank one continuous-motion epoch. Called from the always-on 1 Hz onHRM event (no dedicated timer),
+// throttled to the HR-trend 30 s cadence, ONLY on the overnight offline sleep path — and, unlike the T5
+// HR-trend, NOT gated on HR confidence, so the movement strip stays dense even when the PPG lock drops.
+// When connected, dense 12.5 Hz accel already rides the live T1 frames, so we skip (this is a ring densifier).
+var lastMotionMs = 0;
+function bankMotionEpoch() {
+  if (state.connected) return;                           // connected → accel already in live T1 frames
+  if (!sleepModeActive()) return;                        // overnight sleep session only (streaming + sleep + !workout)
+  var now = Math.round(getTime() * 1000);
+  if (now - lastMotionMs < CFG.HR_TREND_MS) return;      // one epoch per 30 s (shares the HR-trend cadence)
+  lastMotionMs = now;
+  emitMotionFrame(motionEMA, now);
 }
 
 function onAccel(a) {
