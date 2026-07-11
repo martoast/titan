@@ -91,25 +91,40 @@ class ReprocessWindows extends Command
             return self::SUCCESS;
         }
 
+        $failed = [];
         foreach ($nights as $key => $wins) {
             [$pid, $date] = explode('|', $key);
 
-            // 1) Unseal + re-queue each window (clearing only the sleep-seal markers, exactly like
-            //    sleep:recover-stages), then re-process it INLINE so ProcessWindowJob re-reads the raw waveform
-            //    and recomputes the epoch features through the fixed biosignal before we reseal.
-            foreach ($wins as $i) {
-                $refs = (array) $i->result_refs;
-                unset($refs['sealed'], $refs['sleep_log_id'], $refs['seal_attempts'], $refs['seal_error']);
-                $i->update(['status' => DeviceIngestion::STATUS_QUEUED, 'result_refs' => $refs]);
-                dispatch_sync(new ProcessWindowJob($i->batch_uid));
-            }
+            // Per-night fault tolerance: one degenerate/junk night (or a biosignal hiccup on a window) must
+            // NOT abort the whole batch — log it, skip it, keep going. Its windows are left QUEUED (recoverable
+            // by the hourly cron or a re-run), never half-sealed.
+            try {
+                // 1) Unseal + re-queue each window (clearing only the sleep-seal markers, exactly like
+                //    sleep:recover-stages), then re-process it INLINE so ProcessWindowJob re-reads the raw
+                //    waveform and recomputes the epoch features through the fixed biosignal before we reseal.
+                foreach ($wins as $i) {
+                    $refs = (array) $i->result_refs;
+                    unset($refs['sealed'], $refs['sleep_log_id'], $refs['seal_attempts'], $refs['seal_error']);
+                    $i->update(['status' => DeviceIngestion::STATUS_QUEUED, 'result_refs' => $refs]);
+                    dispatch_sync(new ProcessWindowJob($i->batch_uid));
+                }
 
-            // 2) Reseal the night from the now-reprocessed windows (idempotent — a staged row never loses to a
-            //    thinner one; the seal re-derives stages + recovery from the corrected features).
-            dispatch_sync(new SealNightJob((int) $pid, $date));
-            $this->line("  <info>✓</info> profile #{$pid} night {$date} reprocessed + resealed");
+                // 2) Reseal the night from the now-reprocessed windows (idempotent — a staged row never loses
+                //    to a thinner one; the seal re-derives stages + recovery from the corrected features).
+                dispatch_sync(new SealNightJob((int) $pid, $date));
+                $this->line("  <info>✓</info> profile #{$pid} night {$date} reprocessed + resealed");
+            } catch (\Throwable $e) {
+                $failed[] = "#{$pid} {$date}";
+                \Illuminate\Support\Facades\Log::warning('[sleep:reprocess] night failed — skipped', [
+                    'profile_id' => (int) $pid, 'date' => $date, 'error' => $e->getMessage(),
+                ]);
+                $this->warn("  <fg=red>✗</> profile #{$pid} night {$date} FAILED — skipped: ".\Illuminate\Support\Str::limit($e->getMessage(), 120));
+            }
         }
 
+        if ($failed !== []) {
+            $this->warn(count($failed).' night(s) skipped on error (left un-resealed for the cron/a re-run): '.implode(', ', $failed));
+        }
         $this->info('Done. Re-run `sleep:lab --calibrate` to rebuild the calibration from the corrected windows.');
 
         return self::SUCCESS;

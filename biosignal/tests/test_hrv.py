@@ -173,3 +173,38 @@ def test_epoch_rmssd_rejects_ppg_artifacts_instead_of_saturating():
     assert abs(r_noisy - r_clean) < 15, (r_clean, r_noisy)   # artifacts rejected → ~clean
     # An essentially all-artifact epoch is honestly unknown, not a fabricated 250.
     assert math.isnan(_epoch_rmssd_ms(np.tile([1000.0, 500.0], 15)))
+
+
+def test_finite_int_indices_drops_nan_so_kubios_does_not_crash():
+    """NeuroKit artifact index lists can carry NaN placeholders; int(NaN) 500'd the HRV request
+    (blocking reprocess of real nights). The guard keeps finite indices and drops non-finite ones."""
+    from app.core.hrv import _finite_int_indices
+    import numpy as np
+    assert _finite_int_indices([1.0, float("nan"), 3.0, float("inf"), 5.0]) == {1, 3, 5}
+    assert _finite_int_indices(np.array([np.nan, np.nan])) == set()
+    assert _finite_int_indices([]) == set()
+
+
+def test_process_hrv_ppg_degenerate_window_returns_clean_response_not_500():
+    """A degenerate ppg window (beats peak-detect into all-artifact epochs) must return a clean HRV
+    result — epoch_rmssd None per epoch, valid False — never raise (the crash that blocked reprocess)."""
+    from app.core import hrv
+    import numpy as np
+    fs = 25
+    # Pulses at alternating 0.6s/1.2s intervals: successive IBIs alternate 600/1200 (all-artifact).
+    t, cur, toggle = [], 0.0, True
+    while cur < 90:
+        cur += 0.6 if toggle else 1.2
+        toggle = not toggle
+        t.append(cur)
+    n = int(90 * fs)
+    ppg = np.zeros(n)
+    for pt in t:
+        i = int(pt * fs)
+        for k in range(-3, 4):
+            if 0 <= i + k < n:
+                ppg[i + k] += np.exp(-(k * k) / 2.0) * 100
+    r = hrv.process_hrv(ppg=ppg.tolist(), sample_rate_hz=fs, ibi_ms=None, accel=None, want_resp=False)
+    # The point is it RETURNS (never raises int(NaN)); the all-artifact epochs are guarded to None.
+    assert isinstance(r, dict)
+    assert r["epoch_rmssd"] is not None and all(x is None for x in r["epoch_rmssd"])

@@ -363,13 +363,12 @@ def _summarize(hyp: list[str], t0: datetime) -> dict:
     # Simple 0-100 quality: efficiency + healthy deep/REM proportions.
     deep_ratio = deep_min / max(asleep_min, 1.0)
     rem_ratio = rem_min / max(asleep_min, 1.0)
-    quality = int(
-        np.clip(
-            100 * (0.6 * efficiency + 0.2 * min(deep_ratio / 0.18, 1.0) + 0.2 * min(rem_ratio / 0.22, 1.0)),
-            0,
-            100,
-        )
-    )
+    _q = float(np.clip(
+        100 * (0.6 * efficiency + 0.2 * min(deep_ratio / 0.18, 1.0) + 0.2 * min(rem_ratio / 0.22, 1.0)),
+        0,
+        100,
+    ))
+    quality = int(_q) if np.isfinite(_q) else 0   # int(NaN) crashes; a NaN score → 0 (unknown/degenerate)
 
     return {
         "duration_min": duration_min,

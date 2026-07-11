@@ -72,6 +72,17 @@ def ibi_to_peaks(ibi_ms: np.ndarray, sampling_rate: int = 1000) -> np.ndarray:
     return peaks
 
 
+def _finite_int_indices(vals) -> set:
+    """Beat indices from a NeuroKit artifact list, dropping NON-FINITE entries.
+
+    Some NeuroKit versions surface NaN placeholders for empty/degenerate artifact categories (or on a
+    sparse/degraded real waveform), and `int(NaN)` raises "cannot convert float NaN to integer" — which
+    500'd the whole HRV request (and blocked reprocessing real nights). A non-finite value is not a valid
+    beat index, so skip it.
+    """
+    return {int(v) for v in np.asarray(vals, dtype=float).ravel() if np.isfinite(v)}
+
+
 def correct_peaks_kubios(peaks: np.ndarray, sampling_rate: int = 1000) -> tuple[np.ndarray, float]:
     """Kubios artifact correction (Lipponen & Tarvainen 2019) via nk.signal_fixpeaks.
 
@@ -105,7 +116,7 @@ def correct_peaks_kubios(peaks: np.ndarray, sampling_rate: int = 1000) -> tuple[
         for key in ("ectopic", "missed", "extra", "longshort"):
             vals = info.get(key)
             if vals is not None:
-                flagged.update(int(v) for v in np.asarray(vals).ravel())
+                flagged.update(_finite_int_indices(vals))
     n_flagged = len(flagged)
     # If a NK version didn't surface indices, fall back to a count of new/dropped beats.
     if n_flagged == 0:
