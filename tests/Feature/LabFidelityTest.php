@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Services\Lab\NightScript;
 use App\Services\Lab\VirtualBand;
+use App\Support\Lab\FidelityGate;
 use App\Services\Simulator\BiosignalSimulator;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -70,6 +71,52 @@ class LabFidelityTest extends TestCase
         // hr_trend carries per-minute points with a confidence.
         $this->assertArrayHasKey('bpm', $byKind['hr_trend']['samples'][0]);
         $this->assertArrayHasKey('conf', $byKind['hr_trend']['samples'][0]);
+    }
+
+    public function test_fidelity_gate_passes_a_faithful_night_and_flags_a_lying_one(): void
+    {
+        // A FAITHFUL night: ppg_raw bursts (29 s, 1 epoch) with real HR jitter, dense T10 motion, hr_samples.
+        $faithful = User::factory()->create()->ensureProfile();
+        $base = \Illuminate\Support\Carbon::parse('2026-07-11 05:00:00')->timestamp;
+        $hrs = [58, 66, 61, 73, 64, 70, 60, 68];   // median |ΔHR| ≈ 7
+        foreach ($hrs as $i => $hr) {
+            \App\Models\DeviceIngestion::create([
+                'batch_uid' => substr(hash('sha256', $faithful->id.'-'.$i.'-'.mt_rand()), 0, 40),
+                'profile_id' => $faithful->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+                'status' => \App\Models\DeviceIngestion::STATUS_PROCESSED,
+                'window_start' => \Illuminate\Support\Carbon::createFromTimestamp($base + $i * 180),
+                'window_end' => \Illuminate\Support\Carbon::createFromTimestamp($base + $i * 180 + 29),
+                'result_refs' => ['epoch_hr' => [$hr], 'epoch_motion' => [1.8], 'epoch_rmssd' => [120]],
+            ]);
+        }
+        foreach (range(0, 20) as $i) {   // dense T10 motion (milli-g), ~1/30s
+            \App\Models\MotionSample::create(['profile_id' => $faithful->id,
+                'recorded_at' => \Illuminate\Support\Carbon::createFromTimestamp($base + $i * 30), 'motion' => 30, 'source' => 'band']);
+            \App\Models\HrSample::create(['profile_id' => $faithful->id,
+                'recorded_at' => \Illuminate\Support\Carbon::createFromTimestamp($base + $i * 60), 'bpm' => 60, 'source' => 'band']);
+        }
+
+        $fchecks = FidelityGate::check($faithful->id, expectJitter: true);
+        $ffailed = implode('; ', array_map(fn ($c) => $c['label'].' ('.$c['detail'].')', array_filter($fchecks, fn ($c) => ! $c['pass'])));
+        $this->assertTrue(FidelityGate::passes($fchecks), "a faithful night reproduces the real fingerprint — failed: {$ffailed}");
+
+        // A LYING night: no motion_samples, no hr_samples, clean HR — the old sim.
+        $lying = User::factory()->create()->ensureProfile();
+        foreach (range(0, 5) as $i) {
+            \App\Models\DeviceIngestion::create([
+                'batch_uid' => substr(hash('sha256', $lying->id.'-'.$i.'-'.mt_rand()), 0, 40),
+                'profile_id' => $lying->id, 'source' => 'titan_band', 'kind' => 'ppg_raw',
+                'status' => \App\Models\DeviceIngestion::STATUS_PROCESSED,
+                'window_start' => \Illuminate\Support\Carbon::createFromTimestamp($base + $i * 180),
+                'window_end' => \Illuminate\Support\Carbon::createFromTimestamp($base + $i * 180 + 29),
+                'result_refs' => ['epoch_hr' => [60], 'epoch_motion' => [1.8]],   // clean, no jitter
+            ]);
+        }
+        $checks = FidelityGate::check($lying->id, expectJitter: true);
+        $this->assertFalse(FidelityGate::passes($checks), 'a clean-HR, strip-less night is caught');
+        $failed = array_column(array_filter($checks, fn ($c) => ! $c['pass']), 'label');
+        $this->assertContains('motion_samples populated', $failed);
+        $this->assertContains('HR jitter matches real (median |ΔHR|)', $failed);
     }
 
     public function test_hr_jitter_knob_shifts_the_window_hr(): void

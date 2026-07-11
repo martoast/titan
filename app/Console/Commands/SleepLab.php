@@ -44,6 +44,7 @@ class SleepLab extends Command
         {--calibrate-profile=1 : Which real profile to calibrate from}
         {--timeout=300 : Seconds to wait for the async seal to finalize}
         {--ingest-url= : Override the ingest URL (default: the app server reachable from this container)}
+        {--jitter=0 : HR-jitter realism — "0" (idealized clean HR) or "real" (the measured band jitter that over-stages REM)}
         {--seed= : Deterministic RNG seed}';
 
     protected $description = 'SLEEP LAB: render a scripted night through the real pipeline and prove the five promises.';
@@ -79,6 +80,13 @@ class SleepLab extends Command
             return self::FAILURE;
         }
 
+        // FIDELITY knob: overlay the real band's measured HR jitter so the LAB reproduces a real night's
+        // staging (a clean-HR sim can't catch an HR-noise bug — LAB_PIPELINE_FIDELITY.md).
+        $jitterOn = strtolower((string) $this->option('jitter')) === 'real';
+        if ($jitterOn) {
+            $script->hrJitterSd = \App\Services\Lab\NightScript::REAL_HR_JITTER_SD;
+        }
+
         // Isolate: wipe any prior lab data so the one-row invariants are meaningful.
         $this->resetLabData($band->profileId());
 
@@ -108,7 +116,31 @@ class SleepLab extends Command
         $scorecard = $this->assertPromises($script, $expected, $row, $band, $stream);
         $this->printScorecard($scenario, $tz, $expected, $row, $scorecard);
 
-        return collect($scorecard)->every(fn ($p) => $p['pass']) ? self::SUCCESS : self::FAILURE;
+        // FIDELITY GATE (LAB_PIPELINE_FIDELITY Part C): does this LAB night's ingested data reproduce the
+        // real watch's fingerprint? The gate that would have caught every "passed in sim, failed on the
+        // watch" bug. A fidelity miss FAILS the run — the sim is lying about the wrist.
+        $fidelity = \App\Support\Lab\FidelityGate::check($band->profileId(), $jitterOn);
+        $this->printFidelity($fidelity, $jitterOn);
+
+        $promisesOk = collect($scorecard)->every(fn ($p) => $p['pass']);
+        $fidelityOk = \App\Support\Lab\FidelityGate::passes($fidelity);
+
+        return ($promisesOk && $fidelityOk) ? self::SUCCESS : self::FAILURE;
+    }
+
+    /** Render the fidelity gate as its own compact section under the scorecard. */
+    private function printFidelity(array $checks, bool $jitterOn): void
+    {
+        $this->newLine();
+        $this->line('═══ PIPELINE FIDELITY '.($jitterOn ? '(jitter: real)' : '(jitter: idealized)').' ═══');
+        foreach ($checks as $c) {
+            $tag = $c['pass'] ? '<info>PASS</info>' : '<error>FAIL</error>';
+            $this->line(sprintf('  [%s] %-34s %s', $tag, $c['label'], $c['detail']));
+        }
+        if (! \App\Support\Lab\FidelityGate::passes($checks)) {
+            $this->newLine();
+            $this->line('  <error>The LAB night does not match the real watch fingerprint (docs/DATA_PIPELINE_REFERENCE.md §4).</error>');
+        }
     }
 
     // ---------------------------------------------------------------- scenarios
@@ -197,6 +229,11 @@ class SleepLab extends Command
         DeviceIngestion::where('profile_id', $profileId)->delete();
         SleepLog::where('profile_id', $profileId)->delete();
         RecoveryLog::where('profile_id', $profileId)->delete();
+        // The faithful sim now emits summary channels too — wipe them so per-run counts (and the fidelity
+        // gate's coverage) are meaningful and don't accumulate across LAB runs.
+        \App\Models\HrSample::where('profile_id', $profileId)->delete();
+        \App\Models\MotionSample::where('profile_id', $profileId)->delete();
+        \App\Models\DailyActivity::where('profile_id', $profileId)->delete();
     }
 
     // ---------------------------------------------------------------- await the async seal
