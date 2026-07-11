@@ -25,6 +25,10 @@ Schedule::command('meals:remind')->everyFifteenMinutes()->withoutOverlapping();
 // Weekly coaching review — the longitudinal "is this working?" arc (Sunday evening).
 Schedule::command('coach:weekly-review')->weeklyOn(0, '18:00')->timezone(config('app.timezone'));
 
+// Living knowledge (COACH v2 · P3): synthesize each profile's WEEK OF DATA into durable Brain pages
+// (patterns / milestones / shifts), so the wiki grows from data — not only from chat at compaction.
+Schedule::command('coach:enrich-knowledge')->weeklyOn(1, '05:00')->timezone(config('app.timezone'));
+
 // The correlation engine: learn each user's "what helps/hurts my recovery" overnight (after seals),
 // and fire a one-time Discovery push when a new pattern is confirmed.
 Schedule::command('insights:behavior')->dailyAt('05:30')->timezone(config('app.timezone'));
