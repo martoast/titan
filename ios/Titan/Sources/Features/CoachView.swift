@@ -468,7 +468,7 @@ private enum CoachSegment {
 }
 
 /// Coerce a JSON value (NSNumber/Int/Double/String) to a Double.
-private func jsonNum(_ any: Any?) -> Double? {
+func jsonNum(_ any: Any?) -> Double? {
     switch any {
     case let d as Double: return d
     case let i as Int: return Double(i)
@@ -478,34 +478,31 @@ private func jsonNum(_ any: Any?) -> Double? {
     }
 }
 
-/// Renders a parsed titan-card. `macros` (the meal-logging card) is first-class; everything else
-/// falls back to a clean key/value card so a card type we don't draw natively never shows as JSON.
+/// Renders a parsed titan-card. THE REGISTRY: one switch mapping a card `type` to a first-class native
+/// widget — add a new type here and NOWHERE else. An unknown type falls through to `GenericCard` (a
+/// clean title + key/value list), so a type we don't draw yet degrades gracefully but never shows raw
+/// JSON. Widgets live in CoachCards.swift; `macros`/`GenericCard` stay here (the original pair).
 private struct TitanCardView: View {
     let json: [String: Any]
     var body: some View {
         Group {
             switch json["type"] as? String {
-            case "macros": MacrosCard(json: json)
-            default: GenericCard(json: json)
+            case "macros":                MacrosCard(json: json)
+            case "readiness":             ReadinessCard(json: json)
+            case "strain":                StrainCard(json: json)
+            case "sleep":                 SleepCard(json: json)
+            case "sparkline", "trend":    SparklineCard(json: json)
+            case "stat":                  StatCard(json: json)
+            case "stats", "vitals":       StatsCard(json: json)
+            case "markers":               MarkersCard(json: json)
+            case "weight":                WeightTrendCard(json: json)
+            case "bioage":                BioAgeCard(json: json)
+            case "fitness":               FitnessCard(json: json)
+            case "protocol", "plan":      ProtocolCard(json: json)
+            default:                      GenericCard(json: json)
             }
         }
         .frame(maxWidth: 300, alignment: .leading)
-    }
-}
-
-private struct CardBar: View {
-    let value: Double
-    let target: Double
-    let color: Color
-    var body: some View {
-        let pct = target > 0 ? min(1, value / target) : 0
-        Capsule().fill(Color.white.opacity(0.08)).frame(height: 6)
-            .overlay(alignment: .leading) {
-                GeometryReader { geo in
-                    Capsule().fill(color).frame(width: geo.size.width * pct)
-                }
-            }
-            .frame(height: 6)
     }
 }
 

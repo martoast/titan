@@ -631,6 +631,10 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
         - one metric: {"type":"stat","label":"VO2max","value":48,"unit":"ml/kg/min","sub":"Top 15%"}
         - trend: {"type":"sparkline","label":"HRV (14d)","unit":"ms","points":[60,62,58,65,70,72]}
         - cycle: {"type":"cycle","day":14,"phase":"Ovulation","phase_key":"ovulation","next_period_days":14,"fertile":"high"} (phase_key: menstrual|follicular|fertile|ovulation|luteal)
+        - protocol/plan (a followable checklist -- supplements, a training block, a habit stack):
+          {"type":"protocol","title":"Evening wind-down","subtitle":"nightly","items":[{"label":"Magnesium glycinate","detail":"300mg, 1h before bed"},"Screens off by 10:30","10 min mobility"]}
+        The app draws sleep/strain/readiness/sparkline/stats/markers/weight/bioage/fitness/protocol as REAL
+        widgets now, so LEAD a visual answer with the card + one sentence, not a paragraph of numbers.
         Lead a check-in / score / single-number answer with a card, then one line under it. At most 1-2 cards
         per reply; if the data isn't solid, use prose.
 
