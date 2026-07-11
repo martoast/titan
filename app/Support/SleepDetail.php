@@ -43,15 +43,17 @@ class SleepDetail
 
         // Stages as % of the STAGED night (deep/rem/light/awake). Whoop shows minutes + a bar.
         $den = max(1, $total);
+        // No `color` here: iOS re-derives the swatch from `key` and web reads SleepStages.php — a per-stage
+        // color string in the payload was a stray divergent copy (spec v2 §4), so it's dropped.
         $stages = [];
         foreach ([
-            ['deep', 'Deep (SWS)', $deep, 'indigo'],
-            ['rem', 'REM', $rem, 'violet'],
-            ['light', 'Light', $light, 'cyan'],
-            ['awake', 'Awake', $awake, 'faint'],
-        ] as [$key, $label, $min, $color]) {
+            ['deep', 'Deep (SWS)', $deep],
+            ['rem', 'REM', $rem],
+            ['light', 'Light', $light],
+            ['awake', 'Awake', $awake],
+        ] as [$key, $label, $min]) {
             $stages[] = ['key' => $key, 'label' => $label, 'min' => $min,
-                'pct' => (int) round($min / $den * 100), 'color' => $color];
+                'pct' => (int) round($min / $den * 100)];
         }
 
         // Efficiency = asleep / in-bed (only when awake is tracked, else null rather than a fake 100%).
@@ -104,6 +106,11 @@ class SleepDetail
             'bedtime' => $last->bedtime ? Carbon::parse($last->bedtime)->format('H:i') : null,
             'wake_time' => $last->wake_time ? Carbon::parse($last->wake_time)->format('H:i') : null,
             'hypnogram' => is_array($last->hypnogram) && count($last->hypnogram) ? $last->hypnogram : null,
+            // v2 movement/peaks overlays: sparse, gap-honest {i,v} series on the SAME epoch_sec+30s grid as
+            // the hypnogram (epoch i's clock = epoch_sec + i×30). Only MEASURED epochs — a band-off/charge gap
+            // is a hole, never interpolated. Persisted downsampled (≤180 pts, max-pool) at seal time.
+            'hr_series' => $last->hr_series ?: null,
+            'motion_series' => $last->motion_series ?: null,
             'epoch_sec' => $startEpoch,
             // Progressive summary: expose the compute state so any consumer can tell a still-`computing`
             // placeholder (real duration/times, but stages/quality NULL → 0% here) from a settled `final` night.

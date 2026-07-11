@@ -283,7 +283,143 @@ class SleepLab extends Command
         // ---- P5 · Every surface agrees: the /api/me/sleep reader returns the same night as the DB row.
         $checks[5] = $this->assertReaderAgreement($band, $row);
 
+        // ---- L6–L9 · SLEEP TIMELINE v2 (movement & peaks): the persisted overlay series prove the layers.
+        foreach ($this->assertLayers($script, $row, $profileId) as $i => $c) {
+            $checks[$i] = $c;
+        }
+
         return $checks;
+    }
+
+    /**
+     * SLEEP TIMELINE v2 §5 — prove the persisted hr_series / motion_series render the night's movement and
+     * peaks off the ONE epoch grid the hypnogram uses. All four are derived from the script + the sealed
+     * windows, never hand-tuned numbers:
+     *   L6 Movement fidelity — motion is elevated across the restless (non-deep) epochs and low during deep.
+     *   L7 Gap honesty       — no series point lands in a scripted charge gap, nor on a NODATA hypnogram epoch.
+     *   L8 Alignment         — every series index is a valid epoch on the hypnogram grid (i ⇒ epoch_sec+i×30).
+     *   L9 Peak survival     — the series' max equals the max MEASURED epoch value, so max-pool downsampling
+     *                          kept the arousal spike / restless burst instead of averaging it away.
+     *
+     * @return array<int,array{promise:string,pass:bool,detail:string}>
+     */
+    private function assertLayers(NightScript $script, ?SleepLog $row, int $profileId): array
+    {
+        if ($row === null) {
+            $miss = fn (string $p) => $this->check($p, false, 'no row');
+
+            return [6 => $miss('L6 · Movement'), 7 => $miss('L7 · Gap honesty'), 8 => $miss('L8 · Alignment'), 9 => $miss('L9 · Peak survival')];
+        }
+
+        $hr = is_array($row->hr_series) ? $row->hr_series : [];
+        $motion = is_array($row->motion_series) ? $row->motion_series : [];
+        $hyp = is_array($row->hypnogram) ? $row->hypnogram : [];
+        $spans = $script->layerSpans();
+        $inAny = function (int $i, array $ss): bool {
+            foreach ($ss as [$s, $e]) {
+                if ($i >= $s && $i < $e) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+        $maxOver = function (array $series, array $ss) use ($inAny): ?float {
+            $vals = [];
+            foreach ($series as $p) {
+                if ($inAny((int) $p['i'], $ss)) {
+                    $vals[] = (float) $p['v'];
+                }
+            }
+
+            return $vals === [] ? null : max($vals);
+        };
+
+        // L6 · Movement fidelity — restless teeth above the calm deep valleys.
+        $restMax = $maxOver($motion, $spans['nondeep']);
+        $deepMax = $maxOver($motion, $spans['deep']);
+        $l6 = $motion !== [] && $restMax !== null && $deepMax !== null && $restMax > $deepMax;
+        $checks6 = $this->check('L6 · Movement', $l6, $motion === []
+            ? 'no motion_series persisted'
+            : sprintf('motion peak non-deep %.1f vs deep %s (restless > calm)', $restMax ?? -1, $deepMax !== null ? sprintf('%.1f', $deepMax) : '—'));
+
+        // L7 · Gap honesty — no HR/motion point inside a scripted charge gap, nor on a NODATA hypnogram epoch.
+        $inGap = 0;
+        $onHole = 0;
+        foreach ([$hr, $motion] as $series) {
+            foreach ($series as $p) {
+                $i = (int) $p['i'];
+                if ($inAny($i, $spans['gap'])) {
+                    $inGap++;
+                }
+                if (isset($hyp[$i]) && strtolower((string) $hyp[$i]) === 'nodata') {
+                    $onHole++;
+                }
+            }
+        }
+        $l7 = $inGap === 0 && $onHole === 0;
+        $checks7 = $this->check('L7 · Gap honesty', $l7,
+            $l7 ? (count($spans['gap']) ? 'no points in the charge gap; none on a NODATA epoch' : 'no points on a NODATA epoch (no gap scripted)')
+                : "{$inGap} point(s) inside a charge gap, {$onHole} on a NODATA epoch");
+
+        // L8 · Alignment — every series index is a real epoch on the hypnogram grid.
+        $oob = 0;
+        foreach ([$hr, $motion] as $series) {
+            foreach ($series as $p) {
+                $i = (int) $p['i'];
+                if ($hyp !== [] && ($i < 0 || $i >= count($hyp))) {
+                    $oob++;
+                }
+            }
+        }
+        $l8 = ($hr !== [] || $motion !== []) && $oob === 0;
+        $checks8 = $this->check('L8 · Alignment', $l8,
+            ($hr === [] && $motion === []) ? 'no series to align'
+                : ($oob === 0 ? sprintf('all %d hr + %d motion indices sit on the %d-epoch grid', count($hr), count($motion), count($hyp)) : "{$oob} index/indices off the grid"));
+
+        // L9 · Peak survival — the series max equals the max MEASURED epoch value (max-pool kept the peak).
+        [$measHrMax, $measMotionMax] = $this->measuredMaxima($profileId);
+        $serHrMax = $hr !== [] ? max(array_map(fn ($p) => (float) $p['v'], $hr)) : null;
+        $serMotionMax = $motion !== [] ? max(array_map(fn ($p) => (float) $p['v'], $motion)) : null;
+        $peakOk = $serMotionMax !== null && $measMotionMax !== null && abs($serMotionMax - round($measMotionMax, 2)) < 0.05
+            && ($measHrMax === null || ($serHrMax !== null && abs($serHrMax - round($measHrMax)) < 1.0));
+        $checks9 = $this->check('L9 · Peak survival', $peakOk,
+            $serMotionMax === null ? 'no series to check'
+                : sprintf('motion peak %.2f == measured %.2f · hr peak %s == measured %s',
+                    $serMotionMax, $measMotionMax ?? -1,
+                    $serHrMax !== null ? (string) round($serHrMax) : '—', $measHrMax !== null ? (string) round($measHrMax) : '—'));
+
+        return [6 => $checks6, 7 => $checks7, 8 => $checks8, 9 => $checks9];
+    }
+
+    /**
+     * Max MEASURED per-epoch HR (>0) and motion across the profile's SEALED windows — the ground truth the
+     * downsampled series' max must still equal (max-pool never drops the global peak). HR is optional (a
+     * ppg_raw night may carry no per-epoch HR); motion is always present on a staged night.
+     *
+     * @return array{0:?float,1:?float}  [hrMax, motionMax]
+     */
+    private function measuredMaxima(int $profileId): array
+    {
+        $hrMax = null;
+        $motionMax = null;
+        DeviceIngestion::where('profile_id', $profileId)
+            ->whereIn('kind', ['ibi', 'ppg_raw', 'sleep'])
+            ->get()
+            ->each(function (DeviceIngestion $i) use (&$hrMax, &$motionMax) {
+                foreach ((array) ($i->result_refs['epoch_motion'] ?? []) as $v) {
+                    if (is_numeric($v)) {
+                        $motionMax = $motionMax === null ? (float) $v : max($motionMax, (float) $v);
+                    }
+                }
+                foreach ((array) ($i->result_refs['epoch_hr'] ?? []) as $v) {
+                    if (is_numeric($v) && $v > 0) {
+                        $hrMax = $hrMax === null ? (float) $v : max($hrMax, (float) $v);
+                    }
+                }
+            });
+
+        return [$hrMax, $motionMax];
     }
 
     private function assertStages(array $exp, ?SleepLog $row): array

@@ -780,6 +780,8 @@ class SealNightJob implements ShouldQueue
                 'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null, $tz) ?? $wakeDt->setTimezone($tz)->format('H:i:s'),
                 'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                 'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
+                'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
+                'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                 'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                 'stage_status' => 'final',
                 'finalized_at' => now(),
@@ -911,7 +913,84 @@ class SealNightJob implements ShouldQueue
             return null; // phantom guard: nothing scored asleep → don't present an all-awake block
         }
 
+        // SLEEP TIMELINE v2 overlays: the (epochIndex → hr, motion) pairs we just assembled ARE the two
+        // sparse, gap-honest series. They align to the hypnogram's grid (index i ⇒ t0 + i×30 = epoch_sec),
+        // so the app renders all three layers off one axis. Motion is measured for every emitted epoch; HR
+        // only where a real reading exists (>0). Downsampled here (max-pool) so the stored value is already
+        // payload-sized. A charge/BLE gap contributed no epochs → it's simply absent (a hole), never filled.
+        $metrics['hr_series'] = $this->buildOverlaySeries($epochs, $hr, requirePositive: true, decimals: 0);
+        $metrics['motion_series'] = $this->buildOverlaySeries($epochs, $accel, requirePositive: false, decimals: 2);
+
         return $metrics;
+    }
+
+    /** Max points per overlay series in the payload — a Whoop-grade chart needs no more, and it keeps the
+     *  stored JSON small. Downsampling is by MAX-POOL (below) so peaks survive the cap. */
+    private const SERIES_MAX_POINTS = 180;
+
+    /**
+     * Build ONE sparse, gap-honest overlay series ({i,v}) from the parallel (epochIndex → value) samples
+     * stageSparse assembled, aligned to the hypnogram's epoch grid (i ⇒ epoch_sec + i×30). Only MEASURED
+     * epochs are emitted — an unmeasured HR (≤0) and a pre-bed negative epoch are dropped, and a span with
+     * no samples (charge/BLE gap) simply has no points (a hole, never interpolated). Downsampled to
+     * SERIES_MAX_POINTS by MAX-POOL, NOT mean: within each epoch-index bucket we keep the max value at its
+     * OWN epoch, so an arousal HR spike / restless-motion burst survives the cap (the 3am peak, at its real
+     * time) instead of being smoothed away.
+     *
+     * @param  array<int,int|float>  $epochs  each sample's real epoch index in the night (parallel to $values)
+     * @param  array<int,int|float>  $values
+     * @return array<int,array{i:int,v:int|float}>
+     */
+    private function buildOverlaySeries(array $epochs, array $values, bool $requirePositive, int $decimals, int $cap = self::SERIES_MAX_POINTS): array
+    {
+        // Collapse to one value per epoch, keeping the MAX — a replayed burst that re-hit an epoch (or a
+        // spike) is preserved, never averaged down. Drop unmeasured HR and pre-bed (negative) epochs.
+        $byEpoch = [];
+        foreach ($epochs as $k => $i) {
+            $i = (int) $i;
+            $v = (float) ($values[$k] ?? 0.0);
+            if ($i < 0 || ($requirePositive && $v <= 0.0)) {
+                continue;
+            }
+            $byEpoch[$i] = isset($byEpoch[$i]) ? max($byEpoch[$i], $v) : $v;
+        }
+        if ($byEpoch === []) {
+            return [];
+        }
+        ksort($byEpoch);
+
+        $cast = fn (float $v) => $decimals === 0 ? (int) round($v) : round($v, $decimals);
+
+        if (count($byEpoch) <= $cap) {
+            $out = [];
+            foreach ($byEpoch as $i => $v) {
+                $out[] = ['i' => $i, 'v' => $cast($v)];
+            }
+
+            return $out;
+        }
+
+        // MAX-POOL downsample: bucket the epoch-index RANGE into $cap even buckets; within each bucket keep
+        // the max value AT ITS OWN epoch (peak + its real time survive). Empty buckets emit nothing, so the
+        // gaps between measured runs stay holes rather than being bridged by the downsample.
+        $indices = array_keys($byEpoch);
+        $lo = $indices[0];
+        $hi = $indices[count($indices) - 1];
+        $bucketSize = (int) max(1, ceil(($hi - $lo + 1) / $cap));
+        $buckets = [];   // bucket => [i, v] of the max in that bucket
+        foreach ($byEpoch as $i => $v) {
+            $b = intdiv($i - $lo, $bucketSize);
+            if (! isset($buckets[$b]) || $v > $buckets[$b][1]) {
+                $buckets[$b] = [$i, $v];
+            }
+        }
+        ksort($buckets);
+        $out = [];
+        foreach ($buckets as [$i, $v]) {
+            $out[] = ['i' => $i, 'v' => $cast($v)];
+        }
+
+        return $out;
     }
 
     /**
@@ -973,7 +1052,14 @@ class SealNightJob implements ShouldQueue
     /** Stage columns cleared on an authoritative force reseal so a duration-only correction can't inherit
      *  a stale row's stages. `coverage` is staging-derived, so it's nulled too (else a duration-only
      *  correction keeps a stale coverage over a now-null hypnogram — a chimera). */
-    private const STAGE_COLUMNS = ['deep_min', 'rem_min', 'light_min', 'awake_min', 'quality', 'hypnogram', 'coverage'];
+    private const STAGE_COLUMNS = ['deep_min', 'rem_min', 'light_min', 'awake_min', 'quality', 'hypnogram', 'hr_series', 'motion_series', 'coverage'];
+
+    /** Normalize an overlay series for persistence: an empty/absent series is stored as NULL (so array_filter
+     *  drops it rather than writing an empty [] over a good prior value), a non-empty one is kept as-is. */
+    private function seriesAttr(mixed $series): ?array
+    {
+        return (is_array($series) && $series !== []) ? $series : null;
+    }
 
     /**
      * May a CONFIRMED seal overwrite the existing same-key row? Yes when there's nothing (or no
@@ -1155,6 +1241,8 @@ class SealNightJob implements ShouldQueue
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     // The per-30s hypnogram (the stager already computes it) → the Whoop stage timeline.
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
+                    'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
+                    'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
@@ -1245,6 +1333,10 @@ class SealNightJob implements ShouldQueue
                     'wake_time' => $this->timeOnly($metrics['wake_time'] ?? null, $tz),
                     'quality' => isset($metrics['quality']) ? (int) round($metrics['quality']) : null,
                     'hypnogram' => (isset($metrics['hypnogram_30s']) && is_array($metrics['hypnogram_30s'])) ? $metrics['hypnogram_30s'] : null,
+                    // Legacy Shape-C sleep windows carry no per-epoch grid, so this path has no overlay series
+                    // (stays null); STAGE_COLUMNS clears any stale value on a force reseal.
+                    'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
+                    'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                     'stage_status' => 'final',
                     'finalized_at' => now(),

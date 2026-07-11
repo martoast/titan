@@ -18,7 +18,7 @@ class SleepLog extends Model
     protected $fillable = [
         'profile_id', 'slept_at', 'is_nap', 'session_start', 'duration_min', 'quality',
         'deep_min', 'rem_min', 'light_min', 'awake_min',
-        'bedtime', 'wake_time', 'notes', 'updated_via', 'hypnogram',
+        'bedtime', 'wake_time', 'notes', 'updated_via', 'hypnogram', 'hr_series', 'motion_series',
         'stage_status', 'coverage', 'finalized_at',
     ];
 
@@ -26,7 +26,8 @@ class SleepLog extends Model
     {
         return [
             'slept_at' => 'date', 'session_start' => 'datetime', 'is_nap' => 'boolean',
-            'hypnogram' => 'array', 'finalized_at' => 'datetime', 'coverage' => 'float',
+            'hypnogram' => 'array', 'hr_series' => 'array', 'motion_series' => 'array',
+            'finalized_at' => 'datetime', 'coverage' => 'float',
         ];
     }
 

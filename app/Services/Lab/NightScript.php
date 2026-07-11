@@ -132,6 +132,43 @@ class NightScript
     }
 
     /**
+     * Epoch-index spans (30s grid, index 0 = bedAt — the SAME grid the persisted hr_series / motion_series
+     * and hypnogram align to) for the SLEEP TIMELINE v2 movement/peaks LAYER assertions (spec §5). Derived
+     * purely from the script: which epochs are true DEEP (the calm valleys — motion must be low there), which
+     * are NON-DEEP (light/rem/wake — the restless teeth live here), the scripted restless WAKE bouts, and the
+     * CHARGE-GAP holes (where the persisted series must have NO points).
+     *
+     * @return array{deep:list<array{0:int,1:int}>,nondeep:list<array{0:int,1:int}>,restless:list<array{0:int,1:int}>,gap:list<array{0:int,1:int}>}
+     */
+    public function layerSpans(): array
+    {
+        $epoch = 0;   // running epoch index from bedAt
+        $deep = $nondeep = $restless = [];
+        foreach ($this->blocks as $b) {
+            $len = (int) round((int) $b['minutes'] * 60 / 30);
+            $span = [$epoch, $epoch + $len];
+            if ($b['stage'] === 'deep') {
+                $deep[] = $span;
+            } else {
+                $nondeep[] = $span;
+            }
+            if ($b['stage'] === 'wake') {
+                $restless[] = $span;
+            }
+            $epoch += $len;
+        }
+        $gap = [];
+        foreach ($this->chargeGaps as $g) {
+            $gap[] = [
+                (int) round((int) $g['start_min'] * 60 / 30),
+                (int) round(((int) $g['start_min'] + (int) $g['dur_min']) * 60 / 30),
+            ];
+        }
+
+        return compact('deep', 'nondeep', 'restless', 'gap');
+    }
+
+    /**
      * The clean golden-path night (spec §4 · defends P2 + P5). A well-covered duty-cycle night with a live
      * wake marker: stages ≈ script, coverage ≈ 1.0, one row, one summary. Architecture proportions come from
      * the calibration (real sealed-night statistics) so the stager reproduces them within tolerance.
