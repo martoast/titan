@@ -147,6 +147,28 @@ def _upslope_fiducials(clean: np.ndarray, peaks: np.ndarray) -> np.ndarray:
     return np.asarray(fids, dtype=int)
 
 
+def _epoch_rmssd_ms(seg: np.ndarray) -> float:
+    """Artifact-robust per-epoch RMSSD (ms). `seg` is IBIs pre-filtered to the physiologic [300, 2000] ms band.
+
+    Low-rate ppg peak detection injects missed/doubled beats: a single spurious interval makes ONE successive
+    difference enormous, so raw sqrt(mean(d^2)) saturates — whole nights were pinning at the 250 ms ceiling
+    (real overnight RMSSD is ~20-100 ms). That flattened the deep(high)/REM(low) HRV discriminator, so REM
+    read as light, AND poisoned the recovery HRV number. Reject the successive differences that are
+    physiologically implausible before the RMS — a real beat-to-beat change is a small fraction of the interval
+    (RSA ~5-15%); a jump beyond ~20% (floor 200 ms) is a detection artifact, not vagal tone — so RMSSD reflects
+    variability, not detection noise. An epoch that is essentially all-artifact returns NaN (honestly unknown)
+    rather than a fabricated 250.
+    """
+    if seg.size < 3:
+        return float("nan")
+    d = np.diff(seg)
+    thr = max(200.0, 0.2 * float(np.median(seg)))
+    d = d[np.abs(d) <= thr]
+    if d.size < 2:
+        return float("nan")
+    return float(min(np.sqrt(np.mean(d * d)), 250.0))
+
+
 def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float, Optional[dict]]:
     """Raw PPG → IBI (ms) using nk.ppg_process (band-pass 0.5-8 Hz, Elgendi peaks).
 
@@ -206,11 +228,7 @@ def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float,
             # implausible IBIs first, clip to a physiologic ceiling.
             seg = ibi_ms[(ibi_t >= lo) & (ibi_t < hi)]
             seg = seg[(seg >= 300) & (seg <= 2000)]
-            if seg.size >= 3:
-                d = np.diff(seg)
-                ep_rmssd.append(float(min(np.sqrt(np.mean(d * d)), 250.0)))
-            else:
-                ep_rmssd.append(float("nan"))
+            ep_rmssd.append(_epoch_rmssd_ms(seg))
             if quality.size:
                 q = quality[int(lo * proc_rate):int(hi * proc_rate)]
                 ep_motion.append(float((1.0 - np.nanmean(q)) * 100.0) if q.size else 0.0)
@@ -303,11 +321,7 @@ def _epochs_from_ibi(ibi_ms: np.ndarray) -> Optional[dict]:
         seg = ibi_ms[(end_t >= lo) & (end_t < hi)]
         seg = seg[(seg >= 300) & (seg <= 2000)]
         ep_hr.append(float(60000.0 / np.mean(seg)) if seg.size else 0.0)
-        if seg.size >= 3:
-            d = np.diff(seg)
-            ep_rmssd.append(float(min(np.sqrt(np.mean(d * d)), 250.0)))
-        else:
-            ep_rmssd.append(float("nan"))
+        ep_rmssd.append(_epoch_rmssd_ms(seg))
     return {"hr": ep_hr, "motion": [0.0] * n_ep, "rmssd": ep_rmssd}
 
 

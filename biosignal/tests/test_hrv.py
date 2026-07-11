@@ -147,3 +147,29 @@ def test_duty_cycled_night_stages_asleep_not_all_awake():
                             start=t0.isoformat(), end=t0.isoformat(), sample_epochs=sample_epochs)
     asleep = m["deep_min"] + m["rem_min"] + m["light_min"]
     assert asleep > m["awake_min"], f"night staged mostly awake ({asleep} asleep vs {m['awake_min']} awake)"
+
+
+def test_epoch_rmssd_rejects_ppg_artifacts_instead_of_saturating():
+    """Per-epoch RMSSD must not pin at the 250ms ceiling from ppg missed/doubled beats.
+
+    Real wrist-ppg peak detection injects the occasional spurious interval; the old crude
+    [300,2000]+clamp path let one huge successive difference saturate RMSSD, pinning whole
+    nights at 250 and flattening the deep/REM HRV discriminator. The artifact-robust path
+    rejects implausible beat-to-beat jumps before the RMS.
+    """
+    from app.core.hrv import _epoch_rmssd_ms
+    import math
+    import numpy as np
+    rng = np.random.default_rng(7)
+    clean = 1000.0 + rng.normal(0, 30, 30)
+    noisy = clean.copy()
+    for i in (5, 12, 20, 25):          # a few missed/doubled beats
+        noisy[i] = 1900.0 if i % 2 else 500.0
+
+    r_clean = _epoch_rmssd_ms(clean)
+    r_noisy = _epoch_rmssd_ms(noisy)
+    assert 15 < r_clean < 100, r_clean                 # real overnight RMSSD band
+    assert r_noisy < 100, r_noisy                      # crucially NOT pinned at 250
+    assert abs(r_noisy - r_clean) < 15, (r_clean, r_noisy)   # artifacts rejected → ~clean
+    # An essentially all-artifact epoch is honestly unknown, not a fabricated 250.
+    assert math.isnan(_epoch_rmssd_ms(np.tile([1000.0, 500.0], 15)))
