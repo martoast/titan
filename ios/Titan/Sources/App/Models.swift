@@ -155,6 +155,9 @@ struct SleepResponse: Codable {
     let assess: Assess?
     let detail: Detail?
     let nights: [Night]
+    /// SLEEP-AS-SESSIONS: today's every sleep session (overnight + each nap) + a daily aggregate. Each
+    /// session is a full `Detail` (its own timeline). nil on an older server → fall back to `detail`.
+    let today: Today?
     /// The most recent night's compute state: "computing" while it's still being staged (show the loading
     /// card), "final" once settled. nil on an older server → treat as final. See docs/PROGRESSIVE_SUMMARY.md.
     let last_status: String?
@@ -162,8 +165,23 @@ struct SleepResponse: Codable {
         let need_h: Double?; let debt_h: Double?; let last_h: Double?
         let performance_pct: Int?; let band: String?; let label: String?; let advice: String?
     }
-    /// The Whoop-style sleep breakdown.
-    struct Detail: Codable {
+    /// A day's sleep sessions + the daily roll-up (sleep modelled like workouts).
+    struct Today: Codable {
+        let date: String?
+        let sessions: [Detail]         // overnight + each nap, newest first — each is its own full detail
+        let aggregate: Aggregate?
+        struct Aggregate: Codable {
+            let total_asleep_min: Int?
+            let deep_min: Int?; let rem_min: Int?; let light_min: Int?; let awake_min: Int?
+            let session_count: Int?; let night_count: Int?; let nap_count: Int?
+            let performance_pct: Int?; let need_h: Double?; let debt_h: Double?
+            let label: String?         // e.g. "1 night + 1 nap"
+        }
+    }
+    /// The Whoop-style sleep breakdown — for one SESSION (night or nap; `is_nap` distinguishes them).
+    struct Detail: Codable, Identifiable {
+        let id: Int?                   // sleep_log id (present per-session); nil tolerated for old payloads
+        let is_nap: Bool?
         let date: String?
         let performance_pct: Int?
         let duration_min: Int?
@@ -186,7 +204,10 @@ struct SleepResponse: Codable {
         let hr_series: [EpochPoint]?     // per-epoch HR (bpm), measured epochs only
         let motion_series: [EpochPoint]? // per-epoch restlessness (0..N), measured epochs only
         struct Stage: Codable, Identifiable {
-            let key: String; let label: String; let min: Int; let pct: Int; let color: String
+            // `color` is derived from `key` via SleepStage (the server intentionally stopped sending it in
+            // v2 — a stray divergent copy). Optional so a payload without it decodes; if it were required,
+            // the whole SleepResponse decode would throw and the sleep detail + timeline would vanish.
+            let key: String; let label: String; let min: Int; let pct: Int; let color: String?
             var id: String { key }
         }
         /// A sparse per-epoch sample: `i` = epoch index into the hypnogram grid, `v` = the value.
