@@ -180,14 +180,20 @@ class BiosignalSimulator
      */
     public function accelCounts(float $motion, int $epochs): array
     {
+        // biosignal derives each epoch's motion as np.std of that epoch's ACCEL SAMPLES with the gravity DC
+        // removed (hrv.py) — so the wire must carry a per-SAMPLE magnitude stream, NOT one aggregated count per
+        // epoch. A single value per epoch makes np.std == 0, killing the ENTIRE motion channel: the stager then
+        // runs on HR alone, collapses the stages toward deep, and reads the still low-HR tail as one long wake
+        // block (the LAB acceptance tail-trim). Emit K samples per 30 s epoch — a ~1g gravity baseline plus
+        // movement whose WITHIN-EPOCH standard deviation == $motion, which is exactly the value the stager reads
+        // back for that epoch (a still wrist ≈ 0-5, restlessness ≈ 20-40).
+        $samplesPerEpoch = 30;      // enough for a stable per-epoch std after biosignal's array_split
+        $gravity = 100.0;           // centi-g DC (1g); np.std removes it — kept for a realistic magnitude scale
         $out = [];
-        for ($i = 0; $i < $epochs; $i++) {
-            $base = $motion + $this->gauss() * $motion * 0.25;
-            // Sleep occasionally twitches.
-            if ($motion < 2 && $this->frand() < 0.08) {
-                $base += $this->frand() * 8;
+        for ($e = 0, $n = max(1, $epochs); $e < $n; $e++) {
+            for ($s = 0; $s < $samplesPerEpoch; $s++) {
+                $out[] = max(0, (int) round($gravity + $this->gauss() * $motion));
             }
-            $out[] = max(0, (int) round($base));
         }
 
         return $out;
