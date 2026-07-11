@@ -159,32 +159,46 @@ def _rolling_std(x: np.ndarray, win: int = 5) -> np.ndarray:
     return out
 
 
-def _denoise_hr(hr: np.ndarray, k: int = 5) -> np.ndarray:
-    """Rolling MEDIAN filter the per-epoch HR before feature extraction.
+def _denoise_hr(hr: np.ndarray, k: int = 5, n_sigmas: float = 3.0) -> np.ndarray:
+    """Clean the RAW sparse HR *readings* (a Hampel spike-reject + a light rolling median), operating on
+    the real readings IN ORDER — and it MUST run BEFORE reconstruction, not on the epoch grid.
 
-    Our band's HR is duty-cycled PPG: it jumps 58->80->86->49->88 between epochs (median |dHR| ~5 bpm,
-    p90 ~16) -- sampling noise, NOT autonomic signal. The trained stager reads multi-scale HR *variability*
-    (rolling std, gradients, acceleration in sleep_features) as REM, so that jitter over-stages REM badly
-    (~48% on real nights). A k~5 median filter removes the epoch-to-epoch spikes while preserving the real
-    slow HR structure (the deep-sleep floor, REM surges), which on real data pulls REM back to ~20% and
-    lifts deep to a textbook ~17% -- the single biggest, lowest-risk staging fix (Henry's night-#54 proof).
-    NaN holes are preserved (they mark unsampled epochs the caller handles separately).
+    Our band's duty-cycled PPG HR jumps 58->80->86->49->88 between readings (median |dHR| ~5 bpm, p90 ~16)
+    -- sampling noise, NOT autonomic signal. The trained stager reads multi-scale HR *variability* (rolling
+    std/gradients/acceleration in sleep_features) as REM, so that jitter over-stages REM badly (~48%).
+
+    Crucially (Henry's reseal proof, f42c3f8): filtering the POST-reconstruction grid does nothing, because
+    that grid is a STEP function -- each real reading is HELD across ~5 epochs -- and a rolling median can't
+    remove a sustained step, only shift its edge. So we filter the raw readings themselves: extract the
+    finite readings, Hampel-reject any that sit > n_sigmas MADs from their neighbours (kills the spike
+    readings at the source), then a light rolling median to tamp residual jitter, and scatter the CLEANED
+    readings back. NaN gaps (unsampled epochs) are preserved for the reconstruction to hole-fill.
     """
-    hr = np.asarray(hr, dtype=float).ravel()
-    n = hr.size
-    if n == 0 or k < 3:
-        return hr
-    half = k // 2
-    out = hr.copy()
-    for i in range(n):
-        lo, hi = max(0, i - half), min(n, i + half + 1)
-        seg = hr[lo:hi]
-        finite = seg[np.isfinite(seg)]
-        if finite.size:
-            out[i] = np.median(finite)
-    # Keep genuine holes as holes; only smooth where we actually had a reading.
-    out[~np.isfinite(hr)] = np.nan
-    return out
+    x = np.asarray(hr, dtype=float).ravel().copy()
+    idx = np.where(np.isfinite(x))[0]
+    if idx.size < 3 or k < 1:
+        return x
+    vals = x[idx].astype(float)          # the real readings, compacted in time order
+
+    # 1) Hampel: replace a reading that deviates > n_sigmas robust-sigmas from its local median.
+    cleaned = vals.copy()
+    for i in range(vals.size):
+        lo, hi = max(0, i - k), min(vals.size, i + k + 1)
+        w = vals[lo:hi]
+        med = np.median(w)
+        sigma = 1.4826 * np.median(np.abs(w - med))
+        if sigma > 0 and abs(vals[i] - med) > n_sigmas * sigma:
+            cleaned[i] = med
+
+    # 2) Light rolling median over the real readings (the operation proven on night #54).
+    half = max(1, k // 2)
+    smoothed = cleaned.copy()
+    for i in range(cleaned.size):
+        lo, hi = max(0, i - half), min(cleaned.size, i + half + 1)
+        smoothed[i] = np.median(cleaned[lo:hi])
+
+    x[idx] = smoothed
+    return x
 
 
 def _viterbi_path(log_emit: np.ndarray, log_trans: np.ndarray) -> np.ndarray:
@@ -252,7 +266,9 @@ def stage_night(
         accel_grid, covered = _reconstruct(accel, sample_epochs, n_epochs)
         hole_mask = ~covered
         accel_e = _fill_holes(accel_grid)
-        hr_arr = _zero_to_nan(np.asarray(hr_bpm, dtype=float)) if hr_bpm else None
+        # Denoise the RAW sparse readings BEFORE reconstruction (see _denoise_hr) — filtering the
+        # hold-filled grid afterwards can't remove the sustained step edges the model reads as REM.
+        hr_arr = _denoise_hr(_zero_to_nan(np.asarray(hr_bpm, dtype=float))) if hr_bpm else None
         if hr_arr is not None and hr_arr.size == accel.size:
             hr_grid, _ = _reconstruct(hr_arr, sample_epochs, n_epochs)
             has_hr = np.isfinite(hr_grid).any()
@@ -268,7 +284,8 @@ def stage_night(
             rmssd_e = None
     else:
         accel_e = _to_epochs(accel, n_epochs)
-        hr_full = _zero_to_nan(np.asarray(hr_bpm, dtype=float)) if hr_bpm else None
+        # Denoise the raw readings before resampling (same rationale as the sparse path).
+        hr_full = _denoise_hr(_zero_to_nan(np.asarray(hr_bpm, dtype=float))) if hr_bpm else None
         hr_e = _to_epochs(hr_full, n_epochs) if hr_full is not None else np.full(n_epochs, np.nan)
         has_hr = np.isfinite(hr_e).any()
         # Only treat RMSSD as present if at least one real value exists — an all-missing list
@@ -286,11 +303,9 @@ def stage_night(
         try:
             stages = bundle.get("stages", ["wake", "light", "deep", "rem"])
             model = bundle["model"]
-            # DENOISE HR first: the band's duty-cycled PPG HR jitter reads as REM variability to the model
-            # (see _denoise_hr). Only the model's feature input is smoothed; hr_e is left untouched for the
-            # fallbacks / summary below.
-            hr_model = _denoise_hr(hr_e, k=5)
-            X = sleep_features.extract_features(accel_e, hr_model, has_hr=True)
+            # HR was already denoised at the RAW-reading stage (before reconstruction); hr_e here is the
+            # reconstructed grid built from cleaned readings, so features no longer fire REM on spike edges.
+            X = sleep_features.extract_features(accel_e, hr_e, has_hr=True)
             log_trans = bundle.get("logT")
             if log_trans is not None and hasattr(model, "predict_proba"):
                 # Decode WITH the bundle's shipped transition matrix (Viterbi) instead of raw per-epoch

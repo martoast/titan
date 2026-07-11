@@ -1,13 +1,16 @@
-"""Unit tests for the sleep-staging robustness fixes (Henry's night-#54 diagnosis).
+"""Unit tests for the sleep-staging robustness fixes (Henry's night-#54 + reseal diagnoses).
 
-These guard the MECHANISMS that fix the "band HR jitter reads as REM" pathology:
-  - `_denoise_hr` removes epoch-to-epoch PPG-HR spikes before feature extraction.
-  - `_viterbi_path` decodes with the bundle's shipped transition matrix (temporal smoothing) instead
-    of raw per-epoch argmax, so impossible rapid stage flips / marathon bouts can't survive.
+The pathology: the band's duty-cycled PPG HR spikes between readings, and the trained stager reads that
+HR *variability* (rolling std/gradients in sleep_features) as REM (~48% on real nights).
 
-The end-to-end REM-fraction improvement was PROVEN by Henry on a real reflashed night (#54, 48%->20%
-REM); it can't be reproduced from synthetic HR here (synthetic jitter isn't real duty-cycled PPG), so
-that verification lives with re-sealing the real night. Here we pin the deterministic building blocks.
+The load-bearing lesson from the reseal review (f42c3f8): filtering the POST-reconstruction epoch grid
+does NOT help, because that grid is a step function (each reading HELD across ~5 epochs) and a rolling
+median can't remove a sustained step. The denoise MUST run on the RAW readings before reconstruction.
+So the key test below drives the fix through the SAME `_reconstruct` path the seal uses and asserts the
+reconstructed grid's variability actually drops — the thing an isolated model call missed.
+
+(The end-to-end REM fraction on Alex's real nights is validated by re-sealing them on prod — the real
+duty-cycled HR pathology can't be faithfully reproduced from synthetic data here.)
 """
 
 import numpy as np
@@ -15,52 +18,60 @@ import numpy as np
 from app.core import staging
 
 
-def test_denoise_hr_removes_epoch_jitter_but_keeps_structure():
-    rng = np.random.default_rng(0)
-    n = 600
-    # A slow HR floor with a real REM-like surge, plus heavy epoch-to-epoch PPG jitter on top.
-    base = np.full(n, 52.0)
-    base[200:260] = 62.0
-    hr = base + rng.normal(0, 9, n)
+def test_denoise_hr_rejects_spike_readings_but_keeps_slow_structure():
+    # Henry's shape: a slow HR floor with a real REM-like surge, punctuated by spike readings.
+    hr = np.array([52, 53, 86, 51, 52, 49, 53, 52, 63, 62, 88, 61, 62, 40, 63, 62], dtype=float)
+    out = staging._denoise_hr(hr)
+    # The isolated spikes (86, 88, 40) are pulled back toward their neighbours…
+    assert out[2] < 70 and out[10] < 75 and out[13] > 50
+    # …while the two regimes (floor ~52, surge ~62) remain clearly distinct.
+    assert np.median(out[:8]) < np.median(out[8:]) - 5
+    assert float(np.median(np.abs(np.diff(out)))) < float(np.median(np.abs(np.diff(hr))))
 
-    before = float(np.median(np.abs(np.diff(hr))))
-    after = staging._denoise_hr(hr, k=5)
-    after_jitter = float(np.median(np.abs(np.diff(after))))
 
-    assert before > 5.0                          # the raw signal is genuinely jittery
-    assert after_jitter < before / 3             # the median filter kills the epoch spikes
-    # The slow structure survives: the surge region still reads clearly higher than the floor.
-    assert np.median(after[200:260]) > np.median(after[:150]) + 5
+def test_denoise_before_reconstruction_cuts_the_grids_rem_variability():
+    # THE load-bearing test: clean raw sparse readings, then reconstruct via the SAME path the seal uses,
+    # and confirm the reconstructed grid's rolling-STD (the exact feature the model reads as REM) collapses.
+    # Filtering the hold-filled grid (the old bug) could not do this.
+    n_epochs = 300
+    sample_epochs = list(range(0, n_epochs, 6))
+    rng = np.random.default_rng(1)
+    slow = 55 + 3 * np.sin(np.linspace(0, 6, len(sample_epochs)))
+    spikes = rng.choice([0, 0, 0, 28, -22, 25], len(sample_epochs))
+    raw = slow + spikes + rng.normal(0, 7, len(sample_epochs))
+
+    def grid_from(samples):
+        g, _ = staging._reconstruct(np.asarray(samples, float), sample_epochs, n_epochs)
+        return staging._fill_holes(g)
+
+    raw_var = float(np.mean(staging._rolling_std(grid_from(raw), 11)))
+    clean_var = float(np.mean(staging._rolling_std(grid_from(staging._denoise_hr(raw)), 11)))
+
+    assert clean_var < raw_var / 2.0, (raw_var, clean_var)   # ~3-4x in practice
 
 
 def test_denoise_hr_preserves_holes_and_is_safe_on_edges():
-    hr = np.array([60.0, np.nan, 61.0, 200.0, 59.0, np.nan])
-    out = staging._denoise_hr(hr, k=5)
-    assert np.isnan(out[1]) and np.isnan(out[5])         # unsampled epochs stay holes
-    assert out[3] < 100                                  # the 200 bpm spike is medianed away
+    hr = np.array([60.0, np.nan, 61.0, 200.0, 59.0, 60.0, 61.0, np.nan])
+    out = staging._denoise_hr(hr)
+    assert np.isnan(out[1]) and np.isnan(out[7])          # unsampled epochs stay holes
+    assert out[3] < 100                                   # the 200 bpm spike reading is rejected
     # Degenerate inputs never raise.
-    assert staging._denoise_hr(np.array([]), 5).size == 0
-    assert np.allclose(staging._denoise_hr(np.array([60.0, 61.0]), 1), [60.0, 61.0])
+    assert staging._denoise_hr(np.array([])).size == 0
+    assert staging._denoise_hr(np.array([60.0, 61.0])).size == 2
 
 
 def test_viterbi_path_smooths_a_flip_flopping_emission():
-    # Two states; the per-epoch argmax alternates every epoch, but transitions are strongly penalized,
-    # so the most-likely PATH is a single constant state (no oscillation) — the temporal-smoothing win.
     n = 40
     log_emit = np.zeros((n, 2))
     for i in range(n):
-        log_emit[i] = [0.0, -0.2] if i % 2 == 0 else [-0.2, 0.0]   # near-tie, alternating winner
-    log_trans = np.log(np.array([[0.99, 0.01], [0.01, 0.99]]))     # staying is 99×more likely than flipping
+        log_emit[i] = [0.0, -0.2] if i % 2 == 0 else [-0.2, 0.0]
+    log_trans = np.log(np.array([[0.99, 0.01], [0.01, 0.99]]))
     path = staging._viterbi_path(log_emit, log_trans)
-
-    flips = int(np.sum(np.abs(np.diff(path))))
-    assert flips == 0                                    # argmax would flip ~39 times; Viterbi holds one state
-    argmax_flips = int(np.sum(np.abs(np.diff(np.argmax(log_emit, axis=1)))))
-    assert argmax_flips > 30                             # sanity: the raw signal really is flip-flopping
+    assert int(np.sum(np.abs(np.diff(path)))) == 0        # Viterbi holds one state; argmax would flip ~39×
+    assert int(np.sum(np.abs(np.diff(np.argmax(log_emit, axis=1))))) > 30
 
 
 def test_viterbi_path_follows_strong_evidence_and_handles_empty():
-    # A clear two-block signal must still be decoded as two blocks (smoothing ≠ collapsing everything).
     log_emit = np.vstack([np.tile([0.0, -8.0], (20, 1)), np.tile([-8.0, 0.0], (20, 1))])
     log_trans = np.log(np.array([[0.95, 0.05], [0.05, 0.95]]))
     path = staging._viterbi_path(log_emit, log_trans)
