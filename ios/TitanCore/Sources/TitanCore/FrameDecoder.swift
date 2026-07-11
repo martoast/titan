@@ -49,6 +49,14 @@ public struct SleepSession: Equatable {
     public let wake: UInt32         // epoch seconds the user marked awake
     public let confirmed: Bool      // user ended it on the band → fire the morning summary
 }
+/// One continuous overnight-motion sample (T10). `t` is unix-ms; `motion` is the band's per-epoch
+/// movement MAGNITUDE — motionEMA×1000 (milli-g EMA of gravity-cancelled |Δaccel|). It's a RELATIVE
+/// level, not an absolute unit: the sleep-timeline strip normalizes it to the night's own max.
+public struct MotionReading: Equatable {
+    public let t: UInt64
+    public let motion: Int
+    public init(t: UInt64, motion: Int) { self.t = t; self.motion = motion }
+}
 
 public enum FrameDecoder {
 
@@ -149,6 +157,16 @@ public enum FrameDecoder {
     public static func decodeT9(_ b64: String) -> SleepSession? {
         guard let r = Reader(b64), r.count >= 12 else { return nil }
         return SleepSession(bedtime: r.u32(4), wake: r.u32(8), confirmed: r.u8(1) == 1)
+    }
+
+    /// T10 — continuous overnight motion: [ver u8, rsvd u8, motion u16 (milli-g EMA), ts u64] (12 B).
+    /// One per-epoch movement magnitude the band banks to its ring during offline sleep (~1 / 30 s),
+    /// so the v2 sleep timeline's movement strip is DENSE everywhere — not only where an HRV burst
+    /// happened to land. The two-digit tag is exactly why the router splits on the first ':' (a
+    /// `prefix(3)` would read this as "T10" with a stray ":"-led payload and never route it).
+    public static func decodeT10(_ b64: String) -> MotionReading? {
+        guard let r = Reader(b64), r.count >= 12 else { return nil }
+        return MotionReading(t: r.u64(4), motion: Int(r.u16(2)))
     }
 
     /// T7 — ambient baro altitude batch: 16-B header [ver u8, count u8, ts u64, intervalMs u16,

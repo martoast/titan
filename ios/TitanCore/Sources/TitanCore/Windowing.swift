@@ -157,6 +157,52 @@ public final class HrTrendBuilder {
     }
 }
 
+/// One point on the continuous overnight-motion trend — a per-epoch movement magnitude. `t` is epoch
+/// SECONDS; `motion` is milli-g EMA (relative — the sleep strip normalizes to the night's own max).
+public struct MotionTrendPoint: Codable, Equatable {
+    public let t: Int
+    public let motion: Int
+    public init(t: Int, motion: Int) { self.t = t; self.motion = motion }
+}
+
+/// A `kind=motion_trend` summary — a batch of per-epoch motion points from the band's T10 frames.
+/// Sent in `summaries[]`; the server's `writeMotionTrend` inserts each into `motion_samples` (deduped
+/// on (profile_id, recorded_at)), and the night seal PREFERS this dense continuous channel over the
+/// sparse HRV-burst accel proxy when building the sleep-timeline movement strip.
+public struct MotionTrendWindow: Codable, Equatable {
+    public let kind: String          // "motion_trend"
+    public let samples: [MotionTrendPoint]
+    public init(samples: [MotionTrendPoint]) { self.kind = "motion_trend"; self.samples = samples }
+}
+
+/// Batches decoded T10 motion readings into `motion_trend` windows for upload. Unlike the HR trend,
+/// T10 is ALREADY one point per epoch on the wire (the firmware throttles it to the 30 s HR-trend
+/// cadence), so there's no per-minute bucketing — just accumulate and ship in bounded batches. The
+/// band drains a whole night's ring in a burst on the morning sync, so `flush()` ships the tail too.
+public final class MotionTrendBuilder {
+    private static let FLUSH_AT = 20          // ~10 min of 30 s epochs per upload — bounds the payload
+
+    private var pending: [MotionTrendPoint] = []
+
+    public init() {}
+
+    /// Feed one decoded T10 reading (`t` in ms). Returns a window once enough epochs accumulate.
+    public func add(t: UInt64, motion: Int) -> MotionTrendWindow? {
+        let sec = Int(t / 1000)
+        if sec > 0 { pending.append(MotionTrendPoint(t: sec, motion: max(0, motion))) }
+        return pending.count >= Self.FLUSH_AT ? drain() : nil
+    }
+
+    public func flush() -> MotionTrendWindow? { drain() }
+
+    private func drain() -> MotionTrendWindow? {
+        guard !pending.isEmpty else { return nil }
+        let w = MotionTrendWindow(samples: pending)
+        pending = []
+        return w
+    }
+}
+
 /// Accumulates decoded PPG samples and emits 120s `ppg_raw` windows — ports the bridge's
 /// `_drainWindows` / `_flushWindow` / `_shipSamples`. Pure: the caller does the actual POST.
 public final class PpgWindowBuilder {

@@ -26,6 +26,7 @@ public final class FrameRouter {
     }()                                            // alwaysEnded → a recovered phone-free workout seals
                                                    // immediately (and can show a catch-up summary).
     private let hrTrend = HrTrendBuilder()         // 24/7 HR graph — per-minute points from every T5
+    private let motionTrend = MotionTrendBuilder() // continuous overnight motion — per-epoch T10 points
     private let queue: SyncQueue
     private var maxDeviceT: UInt64 = 0
     public var onBpm: ((UInt8) -> Void)?          // live HR for the UI
@@ -108,10 +109,17 @@ public final class FrameRouter {
     }
 
     private func handle(_ line: Data) {
-        guard line.count > 3, let s = String(data: line, encoding: .utf8) else { return }
-        let payload = String(s.dropFirst(3))             // strip "Tn:"
-        switch s.prefix(3) {
-        case "T1:":
+        // Frame tags are VARIABLE-LENGTH ("T1:" … "T10:" …), so split on the FIRST ':' instead of
+        // assuming a 3-char "Tn:" prefix — a hardcoded prefix(3)/dropFirst(3) truncates the two-digit
+        // "T10:" motion frame to the tag "T10" with a stray ":"-led payload and it never routes. The
+        // firmware's T10 emit comment says exactly this: "parse the frame tag as the text before the
+        // first ':'." Keeps the length guard (drops the bare 3-byte "TB:" heartbeat + partial lines).
+        guard line.count > 3, let s = String(data: line, encoding: .utf8),
+              let colon = s.firstIndex(of: ":") else { return }
+        let tag = String(s[..<colon])                    // "T1", "T2", … "T10" (no trailing ':')
+        let payload = String(s[s.index(after: colon)...]) // everything after the first ':'
+        switch tag {
+        case "T1":
             let frame = FrameDecoder.decodeT1(payload)
             // Live stats for the UI (waveform + counters).
             totalSamples += frame.samples.count
@@ -140,7 +148,7 @@ public final class FrameRouter {
                 if let w = wa.tick(maxDeviceT) { submit(.workout(w)) }   // close a finished workout
                 if let w = waLog.tick(maxDeviceT) { submit(.workout(w)) } // …and a drained offline one
             }
-        case "T2:":
+        case "T2":
             // Compact offline/overnight PPG, flushed on reconnect. Its own decoder (PPG-only, 2-B
             // stride) + its own window builder — keeps this older buffered data off the live path so
             // it can't interleave with current T1 timestamps and underflow the window math (the crash
@@ -148,7 +156,7 @@ public final class FrameRouter {
             let frame = FrameDecoder.decodeT2(payload)
             totalSamples += frame.samples.count
             for w in ppgLog.add(frame.samples) { submit(.ppg(w)) }
-        case "T4:":
+        case "T4":
             if let fix = FrameDecoder.decodeT4(payload) {
                 if Self.frameIsLive(fix.t) {
                     onGps?(fix)                    // only a CURRENT fix may drive the live map/distance
@@ -159,7 +167,7 @@ public final class FrameRouter {
                     if let w = waLog.addGps(fix) { submit(.workout(w)) }
                 }
             }
-        case "T5:":
+        case "T5":
             if let hr = FrameDecoder.decodeT5(payload) {
                 // The LIVE bpm readout must reflect only the CURRENT reading. On reconnect/sync the band
                 // replays its offline ring as T5 lines carrying OLD bpm values; feeding those to the live
@@ -179,7 +187,7 @@ public final class FrameRouter {
                 // ...and the 24/7 trend, which keeps EVERY reading (rest or active) for the all-day graph.
                 if let w = hrTrend.add(t: hr.t, bpm: hr.bpm, conf: hr.conf) { submit(.hrTrend(w)) }
             }
-        case "T6:":
+        case "T6":
             // T6 is only ever LOGGED offline and flushed later, so it's backlog by construction —
             // route by timestamp anyway so a just-logged tail (an offline workout that reconnected
             // seconds ago) still joins the live session it belongs to.
@@ -189,7 +197,7 @@ public final class FrameRouter {
             } else {
                 if let w = wa.addWorkoutAccel(acc) { submit(.workout(w)) }
             }
-        case "TA:":
+        case "TA":
             // Activity kind for THIS workout (JSON {"k":"run"|"strength"}). The band sends it on workout
             // start and on reconnect. Stamp the assembler so every window seals with the user's choice,
             // and tell the app so it shows the right live screen (run map vs lift HR) + summary.
@@ -203,7 +211,7 @@ public final class FrameRouter {
                     onActivityKind?(k)
                 }
             }
-        case "TW:":
+        case "TW":
             // The watch's confirmed workout SESSION envelope: {"s":start,"e":end,"k":kind,"m":manual}
             // (epoch seconds). Live OR replayed from the offline ring on reconnect — the DURABLE end a
             // stop-out-of-range relies on. Ship it as a `workout_session` summary so the server seals a
@@ -216,20 +224,20 @@ public final class FrameRouter {
                 submit(.workoutSession(WorkoutSessionSummary(start: s, end: e, activity_kind: k, manual: manual)))
                 onWorkoutSession?()
             }
-        case "TS:":
+        case "TS":
             // The band finished draining its offline ring. Seal whatever workout we recovered from the
             // backlog RIGHT NOW (its windows are already `ended`, so the server seals in seconds) instead
             // of waiting for the next disconnect — this is what lets a phone-free lift/run show its
             // catch-up summary on the very sync it arrived on. onBacklogSynced pokes AppModel to look.
             if let w = waLog.flush() { submit(.workout(w)) }
             onBacklogSynced?()
-        case "TB:":
+        case "TB":
             break  // link heartbeat (keeps the phone's staleness watchdog LIVE between rest HR bursts).
                    // Liveness is already stamped at the value level in BandManager.noteFrame(); the bare
                    // 3-byte "TB:" is also caught by the length guard above — this case just documents it.
-        case "T7:":
+        case "T7":
             break  // ambient baro (floors) — server-side; not on the live upload path yet
-        case "T8:":
+        case "T8":
             // Step total → a daily-activity summary (server merges with the phone's count, per-day MAX).
             if let s = FrameDecoder.decodeT8(payload) {
                 let summary = StepDailySummary(date: s.date, steps: Int(s.steps))
@@ -240,7 +248,16 @@ public final class FrameRouter {
                     submit(.steps(summary))            // server per-day MAX merge
                 }
             }
-        case "T9:":
+        case "T10":
+            // Continuous overnight motion, banked to the ring while asleep + offline and flushed on the
+            // morning sync (never live — when connected, dense accel already rides the T1 frames). Batch
+            // the per-epoch points and ship them as a `motion_trend` summary: the server persists them and
+            // the night seal prefers this DENSE channel over the sparse HRV-burst proxy for the movement
+            // strip. Purely a timeline densifier — it feeds no live UI and opens no workout/window.
+            if let m = FrameDecoder.decodeT10(payload), let w = motionTrend.add(t: m.t, motion: m.motion) {
+                submit(.motionTrend(w))
+            }
+        case "T9":
             // "I'm awake" marker → a sleep-session summary (server seals the night + fires the summary).
             if let s = FrameDecoder.decodeT9(payload), s.confirmed {
                 submit(.sleep(SleepSessionSummary(bedtime: Int(s.bedtime), wake: Int(s.wake), confirmed: true)))
@@ -249,7 +266,7 @@ public final class FrameRouter {
                 // surfaces the summary regardless.
                 onSleepConfirmed?()
             }
-        case "TN:":
+        case "TN":
             // Live sleep-session notification from the dedicated Sleep face: {"s":1,"t":startMs} on
             // START, {"s":0,"bed":epochSec,"wake":epochSec} on WAKE. Drives the app's live "Sleeping"
             // state and the instant post-sleep summary. (T9 above is the durable seal; TN is the UX.)
@@ -297,6 +314,7 @@ public final class FrameRouter {
         }
         if let w = waLog.flush() { submit(.workout(w)) }   // backlog is independent of the live run
         if let w = hrTrend.flush() { submit(.hrTrend(w)) }
+        if let w = motionTrend.flush() { submit(.motionTrend(w)) }   // ship the night's trailing motion epochs
         // On a real disconnect, drop any half-received frame — the firmware re-flushes from scratch on
         // reconnect, so stale partial bytes would otherwise corrupt the first frame of the new stream.
         if !live { rx.removeAll(keepingCapacity: false) }
@@ -319,7 +337,7 @@ public final class FrameRouter {
 /// `.steps` ships in the batch's `summaries[]`; the windows ship in `windows[]` (see IngestClient).
 public enum AnyWindow: Codable {
     case ppg(PpgWindow), workout(WorkoutWindow), steps(StepDailySummary), sleep(SleepSessionSummary)
-    case hrTrend(HrTrendWindow), workoutSession(WorkoutSessionSummary)
+    case hrTrend(HrTrendWindow), workoutSession(WorkoutSessionSummary), motionTrend(MotionTrendWindow)
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
@@ -330,6 +348,7 @@ public enum AnyWindow: Codable {
         case .sleep(let s): try c.encode(s)
         case .hrTrend(let w): try c.encode(w)
         case .workoutSession(let s): try c.encode(s)
+        case .motionTrend(let w): try c.encode(w)
         }
     }
     public init(from decoder: Decoder) throws {
@@ -338,6 +357,7 @@ public enum AnyWindow: Codable {
         else if let s = try? c.decode(WorkoutSessionSummary.self), s.kind == "workout_session" { self = .workoutSession(s) }
         else if let s = try? c.decode(StepDailySummary.self), s.kind == "activity" { self = .steps(s) }
         else if let w = try? c.decode(HrTrendWindow.self), w.kind == "hr_trend" { self = .hrTrend(w) }
+        else if let w = try? c.decode(MotionTrendWindow.self), w.kind == "motion_trend" { self = .motionTrend(w) }
         else if let w = try? c.decode(WorkoutWindow.self), w.kind == "workout" { self = .workout(w) }
         else { self = .ppg(try c.decode(PpgWindow.self)) }
     }

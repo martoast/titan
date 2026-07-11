@@ -25,6 +25,7 @@ const decode = {
   T4(p) { const r = new Reader(p); if (r.count < 20) return null; const NONE = -2147483648; let lat = null, lon = null; if (r.count >= 24) { const la = r.i32(16), lo = r.i32(20); if (la !== NONE) lat = la / 1e7; if (lo !== NONE) lon = lo / 1e7; } return { t: r.u64(4), sats: r.u8(1), speedKmh: r.i16(2) / 100, lat, lon }; },
   T9(p) { const r = new Reader(p); if (r.count < 12) return null; return { confirmed: r.u8(1) === 1, bedtime: r.u32(4), wake: r.u32(8) }; },
   T2(p) { const r = new Reader(p); if (r.count < 20) return 0; return r.u16(2); },   // offline PPG frame → sample count
+  T10(p) { const r = new Reader(p); if (r.count < 12) return null; return { t: r.u64(4), motion: r.u16(2) }; },   // continuous overnight motion
 };
 
 function haversineM(la1, lo1, la2, lo2) {
@@ -91,6 +92,7 @@ class Phone {
     this.sleepSummaryShown = false;
     this.ppgLiveSamples = 0;       // live T1 PPG streamed while connected (real-time overnight capture)
     this.ppgBacklogSamples = 0;    // T2 PPG recovered from the ring on the morning sync (offline capture)
+    this.motionEpochs = [];        // continuous overnight motion points (T10) the phone would upload
     this.lastDataAt = null;        // when the phone last received ANY frame — the "last synced" readout
     this.sealed = [];              // windows submitted (from sealWorkout + disconnect flush + periodic)
     this.liveSheetShown = false;
@@ -105,33 +107,45 @@ class Phone {
 
   // FrameRouter.ingest — one NUS line.
   ingest(line) {
-    const tag = line.slice(0, 3);
-    const payload = line.slice(3);
+    // Variable-length frame tags (T1: … T10:): split on the FIRST ':' so a 2-digit tag routes.
+    // Mirrors FrameRouter.handle — a hardcoded slice(0,3) truncates "T10:" to "T10" (no colon) and
+    // it never matches any case, so the continuous-motion frame would be silently dropped in the sim.
+    const ci = line.indexOf(':');
+    if (ci < 0) return;
+    const tag = line.slice(0, ci);
+    const payload = line.slice(ci + 1);
     this.lastDataAt = this._now();   // any delivered frame = the watch just passed data over
-    if (tag === 'T5:') {
+    if (tag === 'T5') {
       const hr = decode.T5(payload); if (!hr) return;
       this._ingestLiveHr(hr);
       if (this._frameIsLive(hr.t)) this._submit(this.wa.addWorkoutHr(hr), 'periodic');
       else this._submit(this.waLog.addWorkoutHr(hr), 'periodic-log');
-    } else if (tag === 'T2:') {
+    } else if (tag === 'T10') {
+      // Continuous overnight motion (one per-epoch point, banked to the ring while offline, flushed on
+      // sync). Mirrors FrameRouter routing T10 → MotionTrendBuilder → a `motion_trend` summary. The
+      // proof the variable-length tag split works: a naive slice(0,3) would read this as tag "T10" with
+      // a ":"-led payload and never match here. We accumulate the points the phone would upload.
+      const m = decode.T10(payload); if (!m) return;
+      this.motionEpochs.push(m);
+    } else if (tag === 'T2') {
       this.ppgBacklogSamples += decode.T2(payload);   // overnight PPG recovered from the ring on sync
-    } else if (tag === 'T1:') {
+    } else if (tag === 'T1') {
       const f = decode.T1(payload);
       if (this._frameIsLive(f.samples.length ? f.samples[f.samples.length - 1].t : 0)) this.ppgLiveSamples += f.samples.length;
       this.wa.addAccel(f.samples);
       const last = f.samples.length ? f.samples[f.samples.length - 1].t : null;
       if (last) { this.maxDeviceT = Math.max(this.maxDeviceT, last); this._submit(this.wa.tick(this.maxDeviceT), 'gap'); this._submit(this.waLog.tick(this.maxDeviceT), 'gap-log'); }
-    } else if (tag === 'T4:') {
+    } else if (tag === 'T4') {
       const fix = decode.T4(payload); if (!fix) return;
       if (this._frameIsLive(fix.t)) { this._ingestLiveGps(fix); this._submit(this.wa.addGps(fix), 'periodic'); }
       else this._submit(this.waLog.addGps(fix), 'periodic-log');
-    } else if (tag === 'TA:') {
+    } else if (tag === 'TA') {
       let obj; try { obj = JSON.parse(payload); } catch (e) { return; }
       const k = obj && obj.k;
       if (!k) return;
       if (k === 'end') this._onWorkoutEnd();
       else { this.wa.activityKind = k; this.waLog.activityKind = k; this._setWorkoutKind(k); }
-    } else if (tag === 'TW:') {
+    } else if (tag === 'TW') {
       // The watch's confirmed workout SESSION envelope — [start, end, kind] — live OR replayed from the
       // ring on reconnect. It ALWAYS resolves the workout: it's the durable end an offline stop relies
       // on. So it clears any stuck live-run state and surfaces the finished workout even when the live
@@ -143,11 +157,11 @@ class Phone {
       this.workoutSummaryShown = true;
       if (this.runActive) this._endRun(false);   // resolve the live sheet (idempotent — already-ended is a no-op, so never double-counted)
       this._log(`workout session start=${obj.s} end=${obj.e} kind=${obj.k}`);
-    } else if (tag === 'TS:') {
+    } else if (tag === 'TS') {
       // Offline ring fully drained → seal whatever workout we recovered from the backlog now.
       this._submit(this.waLog.flush(), 'backlog-synced');
       this.backlogSynced = (this.backlogSynced || 0) + 1;   // AppModel.checkForSyncedWorkout() fires here
-    } else if (tag === 'T9:') {
+    } else if (tag === 'T9') {
       const s = decode.T9(payload);
       if (s && s.confirmed) {
         this.sleepSummaries.push(s);
@@ -158,7 +172,7 @@ class Phone {
         this.sleepSummaryShown = true;
         this._log(`sleep saved bed=${s.bedtime} wake=${s.wake}`);
       }
-    } else if (tag === 'TN:') {
+    } else if (tag === 'TN') {
       // Live sleep notification (mirrors AppModel onSleepStart/onSleepEnd): START → show the live
       // "Sleeping" state (timer runs); WAKE → clear it + show the summary.
       let obj; try { obj = JSON.parse(payload); } catch (e) { return; }

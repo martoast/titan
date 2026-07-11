@@ -79,6 +79,12 @@ final class FrameDecoderTests: XCTestCase {
         XCTAssertEqual(f, SleepSession(bedtime: 1719200000, wake: 1719230000, confirmed: true))
     }
 
+    func testT10() {
+        // [ver 10, rsvd 0, motion 1234 u16, ts 1719230400000 ms (u64)] — continuous overnight motion.
+        let f = FrameDecoder.decodeT10("CgDSBAAGHkqQAQAA")
+        XCTAssertEqual(f, MotionReading(t: 1719230400000, motion: 1234))
+    }
+
     func testShortFramesAreSafe() {
         XCTAssertEqual(FrameDecoder.decodeT1("AQ==").samples.count, 0)
         XCTAssertNil(FrameDecoder.decodeT4("AQ=="))
@@ -87,5 +93,6 @@ final class FrameDecoderTests: XCTestCase {
         XCTAssertEqual(FrameDecoder.decodeT7("AQ=="), [])
         XCTAssertNil(FrameDecoder.decodeT8("AQ=="))
         XCTAssertNil(FrameDecoder.decodeT9("AQ=="))
+        XCTAssertNil(FrameDecoder.decodeT10("AQ=="))
     }
 }

@@ -121,6 +121,32 @@ final class WindowingTests: XCTestCase {
         XCTAssertNil(b.flush())                                      // nothing to ship
     }
 
+    // MARK: MotionTrendBuilder — continuous overnight movement (T10 → motion_trend)
+
+    func testMotionTrendBatchesPerEpochPointsAndShipsTailOnFlush() throws {
+        let b = MotionTrendBuilder()
+        let m0: UInt64 = 1_750_000_000_000
+        // 19 epochs stay pending (FLUSH_AT is 20); flush() ships them as one window in ms→sec form.
+        for i in 0..<19 { XCTAssertNil(b.add(t: m0 + UInt64(i) * 30_000, motion: 100 + i)) }
+        let w = try XCTUnwrap(b.flush())
+        XCTAssertEqual(w.kind, "motion_trend")
+        XCTAssertEqual(w.samples.count, 19)
+        XCTAssertEqual(w.samples[0].t, Int(m0 / 1000))       // epoch SECONDS, not ms
+        XCTAssertEqual(w.samples[0].motion, 100)
+        XCTAssertNil(b.flush())                              // nothing left after draining
+    }
+
+    func testMotionTrendDrainsAtFlushThresholdAndSkipsUnstamped() throws {
+        let b = MotionTrendBuilder()
+        let m0: UInt64 = 1_750_000_000_000
+        var shipped: MotionTrendWindow?
+        for i in 0..<20 { if let w = b.add(t: m0 + UInt64(i) * 30_000, motion: 5) { shipped = w } }
+        let w = try XCTUnwrap(shipped)                       // 20th point crosses FLUSH_AT → auto-drain
+        XCTAssertEqual(w.samples.count, 20)
+        XCTAssertNil(b.add(t: 0, motion: 9))                 // t==0 (unstamped) is dropped, nothing pends
+        XCTAssertNil(b.flush())
+    }
+
     // MARK: Non-monotonic safety — the offline-sleep resync crash
 
     // The builder must NEVER trap on out-of-order timestamps. Before the fix, a buffer whose last

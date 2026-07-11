@@ -1084,6 +1084,34 @@ const WO_MIN = 120;   // 2-min sessions (above the 60-s confirmed floor)
   check('batch-flush (40) - the tail buffer is flushed on stop (no rows lost)', s.watch.profFlushedRows().length === flushedBefore + buffered, `flushed=${s.watch.profFlushedRows().length} expected=${flushedBefore + buffered}`);
 })();
 
+// 41) CONTINUOUS OVERNIGHT MOTION (T10): the phone must ROUTE the two-digit frame tag. FrameRouter (and
+//     this sim's phone) split on the FIRST ':' precisely so "T10:" isn't truncated to "T10" by a fixed
+//     3-char prefix and silently dropped. Feed crafted T10 lines straight into the frame router and
+//     assert they accumulate as the per-epoch motion points the phone would upload as `motion_trend`.
+(() => {
+  const s = new Session();
+  const t10 = (motion, tsMs) => {
+    const buf = Buffer.alloc(12);
+    const hi = Math.floor(tsMs / 4294967296);
+    buf.writeUInt8(10, 0); buf.writeUInt8(0, 1);
+    buf.writeUInt16LE(motion & 0xffff, 2);
+    buf.writeUInt32LE((tsMs - hi * 4294967296) >>> 0, 4);
+    buf.writeUInt32LE(hi >>> 0, 8);
+    return 'T10:' + buf.toString('base64');
+  };
+  const base = 1_750_000_000_000;
+  s.phone.ingest(t10(1234, base));
+  s.phone.ingest(t10(50, base + 30_000));
+  check('T10 motion · two-digit frame tag routes (not truncated by a 3-char prefix)', s.phone.motionEpochs.length === 2,
+    `motionEpochs=${s.phone.motionEpochs.length}`);
+  check('T10 motion · decoded motion + timestamps preserved',
+    s.phone.motionEpochs[0].motion === 1234 && s.phone.motionEpochs[0].t === base && s.phone.motionEpochs[1].motion === 50,
+    JSON.stringify(s.phone.motionEpochs));
+  const before = s.phone.motionEpochs.length;
+  s.phone.ingest('T10' + t10(9, base).slice(4));   // strip the ':' → no delimiter → must be ignored, never mis-split
+  check('T10 motion · a tagless line (no colon) is safely ignored', s.phone.motionEpochs.length === before, '');
+})();
+
 console.log('\n=== Titan watch simulator — lift/run/sleep sequences ===\n');
 for (const r of results) console.log(`${r.ok ? '  ✓' : '  ✗'} ${r.name}${r.ok ? '' : `\n      → ${r.detail}`}`);
 console.log(`\n${results.length - failures}/${results.length} checks passed\n`);
