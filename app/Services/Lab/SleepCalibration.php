@@ -190,6 +190,10 @@ class SleepCalibration
         // a UTC misread shifts the overlap window hours off and matches nothing (silent no-op extraction).
         $tz = WearableConnection::where('profile_id', $profileId)
             ->whereNotNull('timezone')->value('timezone') ?: config('app.timezone', 'UTC');
+        // The tz device_ingestions.window_start is STORED in — the Eloquent datetime cast writes/reads in the
+        // app timezone, so the clock-overlap bounds must be serialized in this tz (NOT the profile's wearable
+        // tz, which may differ, and NOT UTC). Used only to format the window_start query bounds below.
+        $colTz = config('app.timezone', 'UTC');
 
         foreach ($nights as $night) {
             // Proportions come from EVERY quality night's sealed stage minutes (authoritative even when the raw
@@ -212,13 +216,16 @@ class SleepCalibration
                 ->where('profile_id', $profileId)
                 ->whereIn('kind', ['ibi', 'ppg_raw'])
                 ->where('status', DeviceIngestion::STATUS_SEALED)
-                ->where(function ($q) use ($night, $start, $end) {
-                    // Bounds are absolute epochs; force UTC so the serialized datetime matches the UTC-stored
-                    // window_start column (a local-tz Carbon would compare a shifted wall-clock and miss).
+                ->where(function ($q) use ($night, $start, $end, $colTz) {
+                    // $start/$end are absolute epochs. device_ingestions.window_start is stored in the Eloquent
+                    // cast tz (app timezone — verified: the raw column is app-local wall-clock, NOT UTC), so the
+                    // bounds MUST be formatted in that same tz. Forcing UTC here shifted the window by the tz
+                    // offset and matched only the post-midnight slice of each night — dropping the early,
+                    // deep-heavy hours entirely (deep → default, acceptance REJECT).
                     $q->where('result_refs->sleep_log_id', $night->id)
                         ->orWhereBetween('window_start', [
-                            CarbonImmutable::createFromTimestamp($start - 300, 'UTC'),
-                            CarbonImmutable::createFromTimestamp($end + 300, 'UTC'),
+                            CarbonImmutable::createFromTimestamp($start - 300, $colTz),
+                            CarbonImmutable::createFromTimestamp($end + 300, $colTz),
                         ]);
                 })
                 ->get();
