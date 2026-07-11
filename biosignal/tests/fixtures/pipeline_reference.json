@@ -1,0 +1,15 @@
+{
+    "_note": "Canonical watch->server pipeline fingerprint (docs/DATA_PIPELINE_REFERENCE.md §4). The SLEEP LAB fidelity gate asserts a rendered LAB night reproduces these within tolerance. Regenerate from REAL data with: php artisan lab:pipeline-reference --profile=<id>. Values are the measured real fingerprint (profile 1, 2026-07); the gate bands are in FidelityGate.",
+    "source": "docs/DATA_PIPELINE_REFERENCE.md#4 (measured, profile 1)",
+    "expected_kinds": ["ppg_raw", "hr_trend", "motion_trend", "sleep_session"],
+    "ppg_raw": {
+        "window_len_sec": { "p50": 29, "min": 20, "max": 30 },
+        "epochs_per_window": { "p50": 1, "min": 1, "max": 1 },
+        "bursts_per_night": { "min": 100, "max": 190 }
+    },
+    "hr_jitter_abs_dhr": { "p50": 7, "p90": 18 },
+    "epoch_hr": { "min": 40, "max": 90 },
+    "epoch_rmssd": { "p50": 120, "min": 40, "max": 180 },
+    "epoch_motion_proxy": { "p50": 1.8, "min": 1.0, "max": 3.5 },
+    "t10_motion": { "p50": 31, "min": 14, "max": 199, "coverage_pct": 80 }
+}
