@@ -81,6 +81,13 @@ class SealActivityJob implements ShouldQueue
 
     public int $backoff = 15;
 
+    /** Per-attempt wall-clock budget. WITHOUT this the job inherits the queue worker's default 60s — but a
+     *  real strength seal runs ~2min (per-window biosignal gym/activity inference + route/HR passes), so
+     *  every gym workout timed out, retried, timed out again, and was SILENTLY DROPPED (P1 "never lost"
+     *  broke). 300s gives the seal room to finish; the underlying per-window cost still wants profiling
+     *  (a much longer/denser session could re-breach even this). Must stay < the worker's --max-time (3600). */
+    public int $timeout = 300;
+
     /**
      * @param  bool  $force  The most recent session ended explicitly (phone tagged the final window
      *                       `ended` — user/watch tapped End). Seal it NOW, bypassing the SESSION_GAP_MINUTES

@@ -122,6 +122,13 @@ class SealNightJob implements ShouldQueue
 
     public int $backoff = 15;
 
+    /** Per-attempt wall-clock budget. Without it the job inherits the worker's default 60s, but a whole-night
+     *  seal (sparse per-window staging + recovery through the biosignal service) can run well past that on a
+     *  dense night — and a timeout kills the attempt, so it would silently drop the night's stages. 300s of
+     *  headroom; must stay below the redis connection's retry_after (else the job is redelivered and
+     *  double-seals) — see config/queue.php. Mirrors SealActivityJob. */
+    public int $timeout = 300;
+
     /**
      * A confirmed session seals the instant the band's "I'm awake" marker lands — it does NOT wait for
      * quiescence. But staging reads per-epoch motion that each raw window only gains once its

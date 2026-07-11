@@ -68,7 +68,10 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Must exceed the LONGEST job timeout on this connection (SealActivityJob/SealNightJob $timeout=300),
+            // or a still-running seal is redelivered at retry_after and DOUBLE-processed. 360 > 300 timeout and
+            // < the worker --max-time (3600). Raised from Laravel's 90s default for exactly this reason.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 360),
             'block_for' => null,
             'after_commit' => false,
         ],
