@@ -65,8 +65,18 @@ class NightScript
         public string $markerTiming = self::MARKER_LIVE,
         public int $markerDelaySec = 0,
         public int $clockDriftSec = 0,
-        public string $wireKind = 'ibi',
+        // FIDELITY: overnight is `T2 → ppg_raw` on the real band — it NEVER emits `ibi`. Default to the
+        // real shape (DATA_PIPELINE_REFERENCE §5.1). `ibi` stays selectable for the legacy SimulateNight path.
+        public string $wireKind = 'ppg_raw',
+        // FIDELITY: the band's duty-cycled PPG HR jitters epoch-to-epoch (measured median |ΔHR| ~7, p90
+        // ~18 — the noise that over-staged REM). This is the per-window HR-offset SD (bpm) the VirtualBand
+        // overlays; 0.0 = an idealized clean-HR night, ~7.4 = the measured real profile. The knob that
+        // lets the LAB reproduce a real night's staging instead of a lie.
+        public float $hrJitterSd = 0.0,
     ) {}
+
+    /** Real-profile HR-jitter SD (bpm): consecutive N(0,sd) offsets give median |ΔHR| ≈ 0.95·sd ≈ 7. */
+    public const REAL_HR_JITTER_SD = 7.4;
 
     /** Total scripted time-in-bed (minutes) = the sum of every block. */
     public function totalMinutes(): int
@@ -190,7 +200,9 @@ class NightScript
             blocks: $blocks,
             dutyCycle: $cal->dutyCycle(),
             markerTiming: self::MARKER_LIVE,
-            wireKind: 'ibi',
+            // Real overnight shape (ppg_raw). Idealized clean HR (jitter 0) — the baseline acceptance;
+            // the fidelity gate / a real-night scenario turns jitter on to reproduce real staging.
+            wireKind: 'ppg_raw',
         );
     }
 

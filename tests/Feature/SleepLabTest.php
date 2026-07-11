@@ -134,6 +134,8 @@ class SleepLabTest extends TestCase
         $a = $this->band(seed: 7)->renderNight($script())['live'];
         $b = $this->band(seed: 7)->renderNight($script())['live'];
 
-        $this->assertSame($a[0]['ibi_ms'], $b[0]['ibi_ms'], 'same seed must render an identical night');
+        // Default shape is now ppg_raw (the real overnight); with jitter off (default) it's fully seeded.
+        $this->assertSame('ppg_raw', $a[0]['kind']);
+        $this->assertSame($a, $b, 'same seed must render an identical night');
     }
 }

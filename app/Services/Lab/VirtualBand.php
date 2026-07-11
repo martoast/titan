@@ -57,13 +57,19 @@ class VirtualBand
      *
      * @return array<string,mixed>
      */
-    public function renderWindow(string $stage, CarbonImmutable $start, int $seconds, string $wireKind = 'ibi', int $ppgHz = 25): array
+    public function renderWindow(string $stage, CarbonImmutable $start, int $seconds, string $wireKind = 'ibi', int $ppgHz = 25, float $hrOffset = 0.0): array
     {
         // Sample from the calibrated per-stage distribution for a known LAB token; otherwise (or with no
         // calibration) fall back to the STATES preset — so SimulateNight's behaviour is unchanged.
         $cfg = ($this->calibration && isset(NightScript::STAGE_STATE[$stage]))
             ? $this->calibration->stageCfg($stage)
             : $this->cfgFromStates($stage);
+
+        // FIDELITY: overlay the real band's per-window HR jitter (a duty-cycled PPG reads a bit different
+        // each burst). Shifting the window's mean HR reproduces the epoch-to-epoch |ΔHR| the stager reads.
+        if ($hrOffset !== 0.0) {
+            $cfg['hr'] = max(35.0, (float) ($cfg['hr'] ?? 60.0) + $hrOffset);
+        }
 
         return $this->wireWindow($this->sim->generateWindowFromCfg($cfg, $seconds), $start, $seconds, $wireKind, $stage, $ppgHz);
     }
@@ -149,13 +155,116 @@ class VirtualBand
             $delivered++;
         }
 
+        // FIDELITY: a real night also streams the SUMMARY channels the LAB used to skip entirely, so
+        // hr_samples / motion_samples populate and the dense-motion stager + timeline strips are exercised.
+        $summaries = $this->renderSummaries($script);
+        foreach ($summaries as $summary) {
+            $this->postSigned(['summaries' => [$summary]], throwOnFailure: true);
+        }
+
         return [
             'windows' => count($live),
             'batches' => $batches,
             'buffered' => $rendered['buffered'],
             'delivered' => $delivered,
+            'summaries' => array_map(fn ($s) => $s['kind'], $summaries),
             'summary' => $rendered['summary'],
         ];
+    }
+
+    /**
+     * The real band's summary channels for a night, derived from the script's stage architecture (§5.2 of
+     * DATA_PIPELINE_REFERENCE): `hr_trend` (T5, 1 point/min), `motion_trend` (T10, 1 point/epoch on the
+     * milli-g EMA scale ~14-199), and an `activity` step total (T8). These are what make a LAB night have a
+     * real HR strip + dense movement strip, and let it exercise the dense-motion path — the sim used to
+     * emit none of them.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function renderSummaries(NightScript $script): array
+    {
+        $tz = $script->tz;
+        $bedTs = $script->bedAt->timestamp + $script->clockDriftSec;
+        $out = [];
+
+        // Per-epoch (30 s) dense motion on the milli-g EMA scale, ~80% coverage (holes for the rest).
+        $motionPts = [];
+        $epoch = 0;
+        foreach ($script->blocks as $block) {
+            $epochs = (int) round(($block['minutes'] * 60) / 30);
+            for ($e = 0; $e < $epochs; $e++, $epoch++) {
+                if (mt_rand() / mt_getrandmax() > 0.80) {
+                    continue;                                   // ~20% duty-cycle holes
+                }
+                $motionPts[] = ['t' => $bedTs + $epoch * 30, 'motion' => $this->stageMotionEma($block['stage'])];
+            }
+        }
+        if ($motionPts !== []) {
+            $out[] = ['kind' => 'motion_trend', 'samples' => $motionPts];
+        }
+
+        // Per-minute HR trend (median bpm), asleep stages carry high confidence (the real T5 gate).
+        $hrPts = [];
+        $minute = 0;
+        foreach ($script->blocks as $block) {
+            $cfg = ($this->calibration && isset(NightScript::STAGE_STATE[$block['stage']]))
+                ? $this->calibration->stageCfg($block['stage'])
+                : $this->cfgFromStates($block['stage']);
+            $baseHr = (int) round((float) ($cfg['hr'] ?? 60.0));
+            for ($mm = 0; $mm < (int) $block['minutes']; $mm++, $minute++) {
+                $hrPts[] = ['t' => $bedTs + $minute * 60, 'bpm' => $baseHr + mt_rand(-2, 2),
+                    'conf' => $this->isAsleepStage($block['stage']) ? 96 : 88];
+            }
+        }
+        if ($hrPts !== []) {
+            $out[] = ['kind' => 'hr_trend', 'samples' => $hrPts];
+        }
+
+        // The day's step total (T8) → daily_activity.
+        $out[] = ['kind' => 'activity', 'date' => $script->wakeAt()->setTimezone($tz)->toDateString(),
+            'steps' => 1500 + mt_rand(0, 4000)];
+
+        return $out;
+    }
+
+    /** Per-stage T10 motion magnitude on the milli-g EMA scale (§4: ~14-199, p50 ~31). */
+    private function stageMotionEma(string $stage): int
+    {
+        $key = array_key_exists($stage, BiosignalSimulator::STATES) ? $stage : (NightScript::STAGE_STATE[$stage] ?? 'rest');
+
+        return match ($key) {
+            'deep' => 14 + mt_rand(0, 8),
+            'sleep', 'rem' => 22 + mt_rand(0, 18),
+            'rest' => 30 + mt_rand(0, 25),
+            default => 90 + mt_rand(0, 109),   // wake / movement
+        };
+    }
+
+    /**
+     * A per-window HR-offset sample (bpm) for the band's PPG jitter: a Gaussian at the script's SD plus the
+     * occasional isolated spike reading (missed/doubled beat) that gives the real p90 tail. 0 when the knob
+     * is off. Independent per window → consecutive |ΔHR| ≈ 0.95·sd, matching the measured median.
+     */
+    private function sampleJitter(float $sd): float
+    {
+        if ($sd <= 0.0) {
+            return 0.0;
+        }
+        $g = $this->gauss() * $sd;
+        if (mt_rand() / mt_getrandmax() < 0.08) {           // ~8% spike readings → the p90 tail
+            $g += ($this->gauss() >= 0 ? 1 : -1) * (12.0 + mt_rand(0, 15));
+        }
+
+        return $g;
+    }
+
+    /** Standard-normal sample (Box–Muller). */
+    private function gauss(): float
+    {
+        $u1 = max(1e-9, mt_rand() / mt_getrandmax());
+        $u2 = mt_rand() / mt_getrandmax();
+
+        return sqrt(-2.0 * log($u1)) * cos(2.0 * M_PI * $u2);
     }
 
     /**
@@ -204,7 +313,7 @@ class VirtualBand
                     continue; // band was off charging — a real NODATA hole, emit nothing
                 }
 
-                $window = $this->renderWindow($block['stage'], $start, $burstSec, $script->wireKind);
+                $window = $this->renderWindow($block['stage'], $start, $burstSec, $script->wireKind, 25, $this->sampleJitter($script->hrJitterSd));
                 $this->collectHrv($window, $block['stage'], $allIbi, $rhrMedians);
 
                 $drop = $this->gapFor($sampleTs, $bleDrops);
