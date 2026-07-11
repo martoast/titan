@@ -660,6 +660,15 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
             $prompt .= "\n\n--- KEY FACTS ABOUT {$name} (weave in, never re-ask; more is searchable via search_knowledge) ---\n".$memory;
         }
 
+        // TRAJECTORY: the always-on situational awareness — where each domain is HEADING (7d vs 28d
+        // baseline, direction + confidence), so the coach opens every chat already knowing the shape of
+        // {$name}'s week instead of flying blind until it fetches. Deeper drill-downs stay as tools.
+        $trajectory = class_exists(\App\Support\CoachTrajectory::class) ? \App\Support\CoachTrajectory::digest($profile) : '';
+        if ($trajectory !== '') {
+            $prompt .= "\n\n--- {$name}'s TRAJECTORY right now (7d vs 28d baseline; HONOR the per-domain confidence) ---\n".$trajectory
+                ."\nLead with this awareness: reference where a metric is HEADING, not just today's value; proactively flag a concerning slide; connect domains (\"deep sleep drops the nights after late training\"). Speak a soft number flatly only when its confidence is solid; when it's building/thin, hedge and don't hang hard training calls on it. This is your situational awareness — call show_trend / sleep_recovery_summary / weekly_review to zoom in.";
+        }
+
         $core = $this->coreMemory($profile);
         if ($core !== '') {
             $prompt .= "\n\n--- PINNED in their Brain (titles only -- call search_knowledge to read any before relevant advice) ---\n".$core;
