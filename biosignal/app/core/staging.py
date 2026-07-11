@@ -455,6 +455,21 @@ def _summarize(hyp: list[str], t0: datetime) -> dict:
     ))
     quality = int(_q) if np.isfinite(_q) else 0   # int(NaN) crashes; a NaN score → 0 (unknown/degenerate)
 
+    # Physiological plausibility FLAG (Henry's durable follow-up). Even with the HR denoise, the stager
+    # can still return an implausible split on some nights — e.g. 07-10 collapsed to REM 1% / deep 32%
+    # despite normal jitter; no global HR filter fixes a per-night model outlier. So when the STAGE split
+    # itself is physiologically unlikely — REM under ~5% of sleep, or any single stage over ~70% — mark
+    # the night low-confidence so the coach/UI CAVEATS the breakdown instead of stating it as fact. It's a
+    # soft flag, not a reject: some real nights are genuinely skewed (short/late sleep is REM-enriched, a
+    # long light night happens), and duration/efficiency stay trustworthy either way. Needs enough sleep
+    # to judge (a handful of epochs can't).
+    asleep_epochs = counts[DEEP] + counts[REM] + counts[LIGHT]
+    stages_low_confidence = False
+    if asleep_epochs >= 20:   # ≥10 min asleep before the split is judgeable
+        rem_frac = counts[REM] / asleep_epochs
+        dominant_frac = max(counts[DEEP], counts[REM], counts[LIGHT]) / asleep_epochs
+        stages_low_confidence = bool(rem_frac < 0.05 or dominant_frac > 0.70)
+
     return {
         "duration_min": duration_min,
         "deep_min": deep_min,
@@ -465,6 +480,7 @@ def _summarize(hyp: list[str], t0: datetime) -> dict:
         "wake_time": wake_time.isoformat(),
         "quality": quality,
         "coverage": coverage,
+        "stages_low_confidence": stages_low_confidence,
         "hypnogram_30s": hyp,
     }
 

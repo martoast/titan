@@ -71,6 +71,22 @@ def test_viterbi_path_smooths_a_flip_flopping_emission():
     assert int(np.sum(np.abs(np.diff(np.argmax(log_emit, axis=1))))) > 30
 
 
+def test_stages_low_confidence_flags_implausible_splits_only():
+    t0 = staging._parse_ts("2026-06-14T05:00:00Z")
+    # A healthy split (deep 18% / rem 24% / light 58%) is NOT flagged.
+    healthy = ["deep"] * 40 + ["rem"] * 52 + ["light"] * 128
+    assert staging._summarize(healthy, t0)["stages_low_confidence"] is False
+    # REM collapsed (<5%) — the 07-10-style model outlier — IS flagged.
+    rem_collapse = ["deep"] * 70 + ["rem"] * 3 + ["light"] * 147
+    assert staging._summarize(rem_collapse, t0)["stages_low_confidence"] is True
+    # One stage dominating (>70%) IS flagged.
+    dominated = ["light"] * 190 + ["rem"] * 20 + ["deep"] * 10
+    assert staging._summarize(dominated, t0)["stages_low_confidence"] is True
+    # Too little sleep to judge → never flagged (can't call a split on a handful of epochs).
+    tiny = ["rem"] * 2 + ["light"] * 4
+    assert staging._summarize(tiny, t0)["stages_low_confidence"] is False
+
+
 def test_viterbi_path_follows_strong_evidence_and_handles_empty():
     log_emit = np.vstack([np.tile([0.0, -8.0], (20, 1)), np.tile([-8.0, 0.0], (20, 1))])
     log_trans = np.log(np.array([[0.95, 0.05], [0.05, 0.95]]))
