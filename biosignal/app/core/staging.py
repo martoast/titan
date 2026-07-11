@@ -190,8 +190,12 @@ def _denoise_hr(hr: np.ndarray, k: int = 5, n_sigmas: float = 3.0) -> np.ndarray
         if sigma > 0 and abs(vals[i] - med) > n_sigmas * sigma:
             cleaned[i] = med
 
-    # 2) Light rolling median over the real readings (the operation proven on night #54).
-    half = max(1, k // 2)
+    # 2) Light rolling median over the real readings. WINDOW 3 (half=1), not k//2: the Hampel above
+    #    already removed the isolated spike readings surgically; a wider median then over-smooths the
+    #    genuine multi-epoch REM HR surges too, collapsing REM on some nights (Henry's real-data reseal:
+    #    a window-5 median drove 07-10 to REM 3% / deep 38%). Window 3 tamps residual jitter while
+    #    preserving the real surges the stager legitimately reads as REM.
+    half = 1
     smoothed = cleaned.copy()
     for i in range(cleaned.size):
         lo, hi = max(0, i - half), min(cleaned.size, i + half + 1)
