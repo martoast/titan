@@ -47,16 +47,23 @@ Always-visible status the user sees BEFORE moving, driven by the existing gpsTes
 - **🛰️ Acquiring GPS…** (spinner + `gpsTestProgress`/3) — fixes coming in.
 - **🚫 Weak signal (indoors?)** — test ran, best accuracy poor. Suggest stepping outside.
 
-Auto-run the self-test when the user opens the run screen (or taps Start), so readiness is known up
-front, not discovered after the run is routeless.
+Auto-run the self-test when the user opens the run screen AND when a watch-started run begins (the
+`startRunIfNeeded` path), so readiness is known up front — and if GPS isn't ready when the watch kicks
+off a run, fire a prominent nudge ("Location is off — this run won't map. Tap to fix.") rather than
+letting it seal routeless in silence. Ideally also mirror a one-word GPS status to the watch Run face
+(Ready / No-GPS) so the user sees it on-wrist before they start moving.
 
-### 2 · A manual "Start Run / Walk" button
-Add an explicit in-app start that calls `startRunIfNeeded()` directly (independent of the watch's
-`sport==1`), pops the live sheet, and guarantees GPS engages. This:
-- **Covers walks** and any activity the watch's run classifier misses.
-- Gives the user agency — the Whoop/Strava mental model is "I start my run," not "I hope my watch
-  noticed." Keep the watch auto-start too (it's great when it fires); the manual path is the floor.
-- Consider a Run/Walk mode chip (walk = same GPS route, lower pace expectations).
+### 2 · NO app button — the watch Run face is the entry (works for walk OR run)
+Decision (Alex): do NOT add an in-app Start button. The **watch Run face already IS the start** — press
+it, it opens a workout with `sport==1`, the phone's `startRunIfNeeded()` fires, and phone GPS engages.
+We proved this chain works: the walk sealed as `type=run`, so the watch→phone trigger already fired.
+The entry is fine; the job is making the phone GPS that it kicks off actually **capture** — for walks
+and runs alike (same code path, the watch Run face doesn't care about pace). So: keep the watch face as
+the one entry, and fix everything downstream of it (readiness + permission + honest failure) so a
+watch-started activity reliably records a route.
+
+Corollary — the "walk didn't trigger" theory was wrong: it DID trigger (sealed as run). The route was
+lost purely because phone GPS produced nothing (permission/precise/fix), silently. That's the whole bug.
 
 ### 3 · Request permission at an intentional moment
 Move the Location permission ask to onboarding or first visit to the run screen, with a one-line
@@ -80,9 +87,10 @@ GPS-routed scenario to the WORKOUT LAB.
 ## Acceptance
 - Readiness chip reflects each state (grant/deny/preciseOff/acquiring/ready) — verify by toggling
   Location + Precise in Settings.
-- Manual Start begins a tracked run with GPS active even with the watch idle; a short outdoor walk seals
-  WITH a route + non-zero distance (the first route this device has ever produced — watch for it in
-  `device_ingestions` gaining a route-bearing window / the session's `route_polyline` going non-null).
+- A run/walk STARTED FROM THE WATCH Run face, with Location granted + Precise on, seals WITH a route +
+  non-zero distance (the first route this device has ever produced — watch for it in `device_ingestions`
+  gaining a route-bearing window / the session's `route_polyline` going non-null). Same result whether
+  the pace is a walk or a run — the watch face and phone GPS don't care.
 - Permission denied → run still seals on HR, summary clearly states "no GPS route," no silent dist=0.
 
 *The band can't see where you go — the phone can. Right now nothing tells the user that, so every route
