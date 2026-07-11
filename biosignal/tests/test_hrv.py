@@ -208,3 +208,21 @@ def test_process_hrv_ppg_degenerate_window_returns_clean_response_not_500():
     # The point is it RETURNS (never raises int(NaN)); the all-artifact epochs are guarded to None.
     assert isinstance(r, dict)
     assert r["epoch_rmssd"] is not None and all(x is None for x in r["epoch_rmssd"])
+
+
+def test_ppg_to_ibi_survives_a_neurokit_crash_on_a_degenerate_window(monkeypatch):
+    """nk.ppg_process can raise on a pathological window (a near-flat / too-few-cycles ppg makes its own
+    epochs_create do int(NaN)). That must NOT 500 the HRV request or abort a night's reprocess — the call
+    is guarded so a raising window degrades to (empty ibi, quality 0, no epochs)."""
+    import numpy as np
+    from app.core import hrv
+
+    def boom(*a, **k):
+        raise ValueError("cannot convert float NaN to integer")
+
+    monkeypatch.setattr(hrv.nk, "ppg_process", boom)
+    ibi, q, epochs = hrv.ppg_to_ibi(np.full(450, 100.0), sample_rate_hz=15)
+    assert ibi.size == 0 and q == 0.0 and epochs is None
+    # And the full request path returns valid=False instead of raising.
+    r = hrv.process_hrv(ppg=[100.0] * 450, sample_rate_hz=15, ibi_ms=None, accel=None, want_resp=False)
+    assert r["valid"] is False

@@ -203,7 +203,18 @@ def ppg_to_ibi(ppg: np.ndarray, sample_rate_hz: int) -> tuple[np.ndarray, float,
         ppg = CubicSpline(t, ppg)(t_up)
         proc_rate = PPG_PROC_HZ
 
-    signals, info = nk.ppg_process(ppg, sampling_rate=proc_rate)
+    try:
+        signals, info = nk.ppg_process(ppg, sampling_rate=proc_rate)
+    except Exception as exc:
+        # nk.ppg_process can raise on a pathological window (near-flat / too few detectable cycles at a low
+        # sample rate): its own quality step feeds a NaN cycle duration into epochs_create's int(), which blows
+        # up. A single bad window out of a night's hundreds must NOT 500 the HRV request (that aborts the whole
+        # night's reprocess) — treat it as an unusable, low-quality window and move on, exactly like the
+        # too-few-peaks case below.
+        logging.getLogger(__name__).warning(
+            "nk.ppg_process failed on a degenerate ppg window (%s) — treating as low-quality / no beats", exc)
+
+        return np.array([]), 0.0, None
     peaks_idx = np.asarray(info.get("PPG_Peaks", []), dtype=int)
     if peaks_idx.size < 2:
         return np.array([]), 0.0, None
