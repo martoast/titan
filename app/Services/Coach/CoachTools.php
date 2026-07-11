@@ -193,7 +193,7 @@ class CoachTools
             $tools[] = $this->fn('web_search', "Live Google for current/factual things you shouldn't guess (studies, supplement specs, prices, news). Returns top answer + sources; cite the domain.", [
                 'query' => ['type' => 'string', 'description' => 'The search query.'],
             ], ['query']);
-            $tools[] = $this->fn('lookup_food', "Real per-100g macros (cache-first, web on a miss, then cached). ALWAYS call before log_meal unless exact macros given. Pass the food name; you scale to the portion.", [
+            $tools[] = $this->fn('lookup_food', "Real per-100g macros (cache-first, web on a miss). OPTIONAL — use only when the user wants precision or names a specific brand/packaged product; for a normal 'I ate X', estimate and log_meal directly instead. Pass the food name; you scale to the portion.", [
                 'food' => ['type' => 'string', 'description' => 'The food (portion optional — macros come back per 100g).'],
             ], ['food']);
         }
@@ -311,7 +311,7 @@ class CoachTools
 
         // --- Logging & data entry (write) — so the chat can run the whole platform ---
         if (class_exists(\App\Models\Meal::class)) {
-            $tools[] = $this->fn('log_meal', 'Log a meal with its macros when the user tells you what they ate. (For a photo of food they use the camera button.)', [
+            $tools[] = $this->fn('log_meal', "Log a meal FAST with your best macro estimate the moment they say they ate something — don't wait on a lookup or ask for exact portions. (For a photo of food they use the camera button.)", [
                 'name' => ['type' => 'string', 'description' => 'Short meal name.'],
                 'calories' => ['type' => 'integer', 'description' => 'Calories (kcal).'],
                 'protein_g' => ['type' => 'number', 'description' => 'Protein grams.'],

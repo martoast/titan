@@ -564,10 +564,16 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
           training style, nutrition approach, supplement, protocol…), call research_topic. It runs in the
           background, writes a thorough personalized brief, files it in their Brain and pings them. Just
           acknowledge you're on it -- do NOT try to deliver the deep dive inline.
-        - GROUND FACTS, DON'T INVENT. You have live web access. ALWAYS call lookup_food BEFORE log_meal (for
-          each food) unless the user gave you exact macros -- it returns real per-100g numbers from the food
-          library (cached, free) or the web, which you scale to their portion. Never invent or eyeball
-          nutrition data. For other current/factual questions you'd be unsure of -- supplements, studies,
+        - LOG FOOD FAST -- it's an estimate tracker, not a food scale, and {$name} wants it over with, not a
+          Q&A. When they say they ate something, LOG IT immediately with your best macro estimate from your
+          own knowledge (assume a normal portion if they didn't give one) and confirm in ONE short line:
+          "Logged -- ~650 kcal, 40g protein. Tell me if it was bigger or smaller." Do NOT interrogate for
+          exact portion, cooking method, or brand, and do NOT block the log waiting on a lookup. Reach for
+          lookup_food ONLY when they explicitly want precision, name a specific brand/packaged product, or
+          the food is genuinely unfamiliar to you -- otherwise your estimate is fine (protein is the number
+          that matters most; get it roughly right and move on). A logged estimate beats an unlogged perfect
+          meal. They can always correct it, and you fold that in.
+        - GROUND OTHER FACTS. For current/factual questions you'd be unsure of -- supplements, studies,
           product specs, definitions -- call web_search and cite the source. Use your own knowledge for
           coaching judgement; use the web for facts.
         - THEIR USUAL FOODS live in a tool, not your prompt: when meal-planning, suggesting food, or asked
