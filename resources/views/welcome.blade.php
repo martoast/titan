@@ -439,29 +439,30 @@
                     <div class="score-sub">Today's effort vs your recovery-aware target</div>
                 </div>
             </div>
-            @verbatim
+            {{-- Marketing hypnogram mock — colours driven from the ONE shared map (App\Support\SleepStages),
+                 not hardcoded, so the landing page speaks the same vocabulary as the real timeline. --}}
+            @php $sm = \App\Support\SleepStages::MAP; @endphp
             <div class="sleeparch rv">
                 <div class="sleeparch-top">
                     <h4>Last night's <span>sleep architecture</span></h4>
                     <div class="sleeparch-dur">7h 42m <small>· 92% performance</small></div>
                 </div>
                 <div class="sleeparch-bar">
-                    <i style="width:5%;background:#475569" title="Awake"></i>
-                    <i style="width:24%;background:#818cf8" title="Light"></i>
-                    <i style="width:16%;background:#6366f1" title="Deep"></i>
-                    <i style="width:13%;background:#22d3ee" title="REM"></i>
-                    <i style="width:22%;background:#818cf8" title="Light"></i>
-                    <i style="width:8%;background:#6366f1" title="Deep"></i>
-                    <i style="width:12%;background:#22d3ee" title="REM"></i>
+                    <i style="width:5%;background:{{ $sm['wake']['hex'] }}" title="Awake"></i>
+                    <i style="width:24%;background:{{ $sm['light']['hex'] }}" title="Light"></i>
+                    <i style="width:16%;background:{{ $sm['deep']['hex'] }}" title="Deep"></i>
+                    <i style="width:13%;background:{{ $sm['rem']['hex'] }}" title="REM"></i>
+                    <i style="width:22%;background:{{ $sm['light']['hex'] }}" title="Light"></i>
+                    <i style="width:8%;background:{{ $sm['deep']['hex'] }}" title="Deep"></i>
+                    <i style="width:12%;background:{{ $sm['rem']['hex'] }}" title="REM"></i>
                 </div>
                 <div class="sleeparch-legend">
-                    <span><i style="background:#6366f1"></i> Deep <b>1h 12m</b></span>
-                    <span><i style="background:#22d3ee"></i> REM <b>1h 58m</b></span>
-                    <span><i style="background:#818cf8"></i> Light <b>4h 13m</b></span>
-                    <span><i style="background:#475569"></i> Awake <b>0h 19m</b></span>
+                    <span><i style="background:{{ $sm['deep']['hex'] }}"></i> Deep <b>1h 12m</b></span>
+                    <span><i style="background:{{ $sm['rem']['hex'] }}"></i> REM <b>1h 58m</b></span>
+                    <span><i style="background:{{ $sm['light']['hex'] }}"></i> Light <b>4h 13m</b></span>
+                    <span><i style="background:{{ $sm['wake']['hex'] }}"></i> Awake <b>0h 19m</b></span>
                 </div>
             </div>
-            @endverbatim
         </div>
     </section>
 

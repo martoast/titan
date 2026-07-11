@@ -620,7 +620,8 @@
 
                     const minutes = 480;
                     const segments = this.buildHypnogram(minutes);
-                    const colors = { deep: '#6366f1', sleep: '#22d3ee', rem: '#a78bfa', rest: '#475569' };
+                    {{-- Colours from the ONE shared map (App\Support\SleepStages) — sleep=Light, rest=Awake. --}}
+                    const colors = { deep: '{{ \App\Support\SleepStages::MAP['deep']['hex'] }}', sleep: '{{ \App\Support\SleepStages::MAP['light']['hex'] }}', rem: '{{ \App\Support\SleepStages::MAP['rem']['hex'] }}', rest: '{{ \App\Support\SleepStages::MAP['wake']['hex'] }}' };
                     const labels = { deep: 'Deep', sleep: 'Light', rem: 'REM', rest: 'Awake' };
                     this.hypnogram = segments.map(s => ({ pct: s.minutes / minutes * 100, color: colors[s.state], label: labels[s.state] }));
 
