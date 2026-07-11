@@ -404,7 +404,7 @@ private struct Bubble: View {
                     let segments = CoachSegment.parse(msg.text, streaming: msg.streaming)
                     ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                         switch seg {
-                        case .text(let t): if !t.isEmpty { textBubble(t) }
+                        case .text(let t): if !t.isEmpty { markdownBubble(t) }
                         case .card(let json): TitanCardView(json: json)
                         }
                     }
@@ -415,6 +415,7 @@ private struct Bubble: View {
         .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .opacity))
     }
 
+    // The user's own bubble: their typed text is almost always plain, so inline markdown is enough.
     private func textBubble(_ text: String) -> some View {
         Text(.init(text)).font(Theme.Font.body)
             .padding(.horizontal, 14).padding(.vertical, 10)
@@ -424,6 +425,17 @@ private struct Bubble: View {
                 in: RoundedRectangle(cornerRadius: 20, style: .continuous)
             )
             .overlay(isUser ? nil : RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.Palette.cardStroke))
+    }
+
+    // The coach's bubble: full block markdown (headings, lists, tables, quotes, code, images) — the coach
+    // is told to use exactly these, and SwiftUI's inline-only Text would leak them as raw `#`/`-`/`|`.
+    private func markdownBubble(_ text: String) -> some View {
+        MarkdownText(markdown: text)
+            .foregroundStyle(Theme.Palette.text)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.Palette.cardStroke))
     }
 }
 
