@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\SleepLog;
 use App\Services\Notifications\NotificationService;
+use App\Support\CoachReaction;
 use App\Support\SleepCoach;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -44,8 +45,28 @@ class ReactToSleepConfirmed implements ShouldQueue
         // Push AND email -- email is what reaches the native app without a paid Apple account.
         $notifications->notify($profile, $msg['title'], $msg['push'], '/coach', 'sleep', email: true);
 
+        // The chat message is trajectory-grounded (P4): a real sleep card (drawn by the P2 widget) plus a
+        // read that reasons over where recovery/sleep are HEADING, not just last night. Falls back to the
+        // templated summary if the model is unavailable, so the morning note is never dropped.
+        $assess = rescue(fn () => SleepCoach::assess($profile), null, false);
+        $card = array_filter([
+            'type' => 'sleep',
+            'hours' => $log->duration_min ? round($log->duration_min / 60, 1) : null,
+            'performance' => $assess['performance_pct'] ?? null,
+            'debt' => isset($assess['debt_h']) ? round((float) $assess['debt_h'], 1) : null,
+            'status' => $assess['label'] ?? null,
+            'stages' => array_filter([
+                'deep' => $log->deep_min, 'rem' => $log->rem_min,
+                'light' => $log->light_min, 'awake' => $log->awake_min,
+            ], fn ($v) => $v !== null),
+        ], fn ($v) => $v !== null && $v !== []);
+
+        $facts = 'Confirmed night. '.trim(($msg['push'] ?? '')).' Assessment: '.($assess['label'] ?? 'n/a')
+            .(($assess['advice'] ?? '') !== '' ? ' — '.$assess['advice'] : '');
+        $body = CoachReaction::ground($profile, "last night's sleep", $facts, $msg['body'], $card);
+
         $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
-        $convo->messages()->create(['role' => 'assistant', 'content' => $msg['body']]);
+        $convo->messages()->create(['role' => 'assistant', 'content' => $body]);
 
         if ($night) {
             $settings = $profile->settings ?? [];

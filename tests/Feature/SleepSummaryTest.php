@@ -33,6 +33,11 @@ class SleepSummaryTest extends TestCase
             'deep_min' => 95, 'rem_min' => 110, 'light_min' => 240, 'awake_min' => 17, 'updated_via' => 'test',
         ]);
 
+        // Pin the model OFF so the P4 grounding falls back to the deterministic templated summary — the
+        // guaranteed-safe path that still carries the breakdown. (The grounded path is covered by
+        // CoachReactionTest.) The reaction is now card-led, so a real `sleep` card leads the message.
+        $this->mock(\App\Services\Ai\AiService::class, fn ($m) => $m->shouldReceive('configured')->andReturn(false));
+
         ReactToSleepConfirmed::dispatchSync($log->id);
 
         $convo = $profile->conversations()->where('title', 'Daily Briefings')->first();
@@ -40,6 +45,8 @@ class SleepSummaryTest extends TestCase
         $msg = $convo->messages()->where('role', 'assistant')->get();
         $this->assertCount(1, $msg);
         $body = $msg->first()->content;
+        $this->assertStringContainsString('```titan-card', $body);   // card-led (P4) — renders via the P2 sleep widget
+        $this->assertStringContainsString('"type":"sleep"', $body);
         $this->assertStringContainsString('Good morning', $body);
         $this->assertStringContainsString('95 min deep', $body);   // the breakdown, not just duration
         $this->assertStringContainsString('110 min REM', $body);
