@@ -159,6 +159,58 @@ def _rolling_std(x: np.ndarray, win: int = 5) -> np.ndarray:
     return out
 
 
+def _denoise_hr(hr: np.ndarray, k: int = 5) -> np.ndarray:
+    """Rolling MEDIAN filter the per-epoch HR before feature extraction.
+
+    Our band's HR is duty-cycled PPG: it jumps 58->80->86->49->88 between epochs (median |dHR| ~5 bpm,
+    p90 ~16) -- sampling noise, NOT autonomic signal. The trained stager reads multi-scale HR *variability*
+    (rolling std, gradients, acceleration in sleep_features) as REM, so that jitter over-stages REM badly
+    (~48% on real nights). A k~5 median filter removes the epoch-to-epoch spikes while preserving the real
+    slow HR structure (the deep-sleep floor, REM surges), which on real data pulls REM back to ~20% and
+    lifts deep to a textbook ~17% -- the single biggest, lowest-risk staging fix (Henry's night-#54 proof).
+    NaN holes are preserved (they mark unsampled epochs the caller handles separately).
+    """
+    hr = np.asarray(hr, dtype=float).ravel()
+    n = hr.size
+    if n == 0 or k < 3:
+        return hr
+    half = k // 2
+    out = hr.copy()
+    for i in range(n):
+        lo, hi = max(0, i - half), min(n, i + half + 1)
+        seg = hr[lo:hi]
+        finite = seg[np.isfinite(seg)]
+        if finite.size:
+            out[i] = np.median(finite)
+    # Keep genuine holes as holes; only smooth where we actually had a reading.
+    out[~np.isfinite(hr)] = np.nan
+    return out
+
+
+def _viterbi_path(log_emit: np.ndarray, log_trans: np.ndarray) -> np.ndarray:
+    """Most-likely state path over per-epoch log emission probs + a log transition matrix.
+
+    The trained bundle SHIPS a `logT` (4x4, validated WITH temporal smoothing), but inference used raw
+    per-epoch argmax and ignored it -- a real train/inference mismatch that let impossible bouts through
+    (a 69-min continuous-REM block; real REM bouts cap ~40 min). Decoding with logT enforces realistic
+    stage durations. O(n*states^2) -- states=4, n bounded by MAX_EPOCHS.
+    """
+    n, k = log_emit.shape
+    if n == 0:
+        return np.zeros(0, dtype=int)
+    delta = log_emit[0].astype(float).copy()
+    psi = np.zeros((n, k), dtype=int)
+    for t in range(1, n):
+        scores = delta[:, None] + log_trans          # (from_i, to_j)
+        psi[t] = np.argmax(scores, axis=0)
+        delta = log_emit[t] + np.max(scores, axis=0)
+    path = np.zeros(n, dtype=int)
+    path[-1] = int(np.argmax(delta))
+    for t in range(n - 2, -1, -1):
+        path[t] = psi[t + 1][path[t + 1]]
+    return path
+
+
 def stage_night(
     accel_counts: list,
     hr_bpm: Optional[list] = None,
@@ -233,10 +285,24 @@ def stage_night(
     if bundle is not None and has_hr:
         try:
             stages = bundle.get("stages", ["wake", "light", "deep", "rem"])
-            X = sleep_features.extract_features(accel_e, hr_e, has_hr=True)
-            preds = bundle["model"].predict(X)
-            # Model classes may be ints (real-PSG model) or strings (older artifact).
-            hypnogram = [stages[int(p)] if isinstance(p, (int, np.integer)) else str(p) for p in preds]
+            model = bundle["model"]
+            # DENOISE HR first: the band's duty-cycled PPG HR jitter reads as REM variability to the model
+            # (see _denoise_hr). Only the model's feature input is smoothed; hr_e is left untouched for the
+            # fallbacks / summary below.
+            hr_model = _denoise_hr(hr_e, k=5)
+            X = sleep_features.extract_features(accel_e, hr_model, has_hr=True)
+            log_trans = bundle.get("logT")
+            if log_trans is not None and hasattr(model, "predict_proba"):
+                # Decode WITH the bundle's shipped transition matrix (Viterbi) instead of raw per-epoch
+                # argmax — the model was validated this way; it kills impossible bouts.
+                proba = np.clip(np.asarray(model.predict_proba(X), dtype=float), 1e-9, None)
+                path = _viterbi_path(np.log(proba), np.asarray(log_trans, dtype=float))
+                classes = list(getattr(model, "classes_", range(len(stages))))
+                hypnogram = [stages[int(classes[c])] for c in path]
+            else:
+                preds = model.predict(X)
+                # Model classes may be ints (real-PSG model) or strings (older artifact).
+                hypnogram = [stages[int(p)] if isinstance(p, (int, np.integer)) else str(p) for p in preds]
         except Exception:
             hypnogram = None
 
