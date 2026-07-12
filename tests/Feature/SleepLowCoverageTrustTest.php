@@ -50,13 +50,13 @@ class SleepLowCoverageTrustTest extends TestCase
         return $m->invoke($job, $clusters, 'UTC');
     }
 
-    private function isLowConfidence(?array $metrics): bool
+    private function isLowConfidence(?array $metrics, ?float $validFraction = null): bool
     {
         $job = new SealNightJob(1);
         $m = new \ReflectionMethod($job, 'isLowConfidence');
         $m->setAccessible(true);
 
-        return $m->invoke($job, $metrics);
+        return $m->invoke($job, $metrics, $validFraction);
     }
 
     public function test_overnight_fragments_split_by_a_nodata_hole_merge_into_one_night(): void
@@ -102,7 +102,28 @@ class SleepLowCoverageTrustTest extends TestCase
     {
         $this->assertTrue($this->isLowConfidence(null), 'duration-only = low confidence');
         $this->assertTrue($this->isLowConfidence(['coverage' => 0.40]), 'below 0.5 coverage = low confidence');
-        $this->assertTrue($this->isLowConfidence(['coverage' => 0.90, 'stages_low_confidence' => true]), 'implausible split = low confidence');
+        $this->assertTrue($this->isLowConfidence(['coverage' => 0.90, 'stages_low_confidence' => true]), 'stager-flagged split = low confidence');
         $this->assertFalse($this->isLowConfidence(['coverage' => 0.85]), 'good coverage, plausible split = confident');
+    }
+
+    public function test_poor_signal_flags_even_when_the_merge_inflated_coverage(): void
+    {
+        // Tester B's real night after the span-merge: coverage bridged to 0.99, but 0/170 windows were fully
+        // valid → still an estimate. The valid-window fraction (measured on the raw windows) must fire
+        // regardless of the inflated coverage.
+        $this->assertTrue($this->isLowConfidence(['coverage' => 0.99], 0.0), 'zero valid windows = low confidence despite high coverage');
+        $this->assertTrue($this->isLowConfidence(['coverage' => 0.99], 0.30), 'below half valid = low confidence');
+        $this->assertFalse($this->isLowConfidence(['coverage' => 0.99], 0.80), 'mostly-valid windows + good coverage = confident');
+    }
+
+    public function test_php_side_stage_plausibility_catches_rem_collapse(): void
+    {
+        // Tester B's stages: deep 38% / REM 2% / light 60% — REM under 5% is physiologically implausible and must
+        // flag even if the stager didn't surface stages_low_confidence.
+        $this->assertTrue($this->isLowConfidence(['coverage' => 0.99, 'deep_min' => 150, 'rem_min' => 8, 'light_min' => 240], 0.9));
+        // A dominant single stage (>70%) also flags.
+        $this->assertTrue($this->isLowConfidence(['coverage' => 0.99, 'deep_min' => 20, 'rem_min' => 20, 'light_min' => 320], 0.9));
+        // A healthy split does not.
+        $this->assertFalse($this->isLowConfidence(['coverage' => 0.99, 'deep_min' => 90, 'rem_min' => 100, 'light_min' => 250], 0.9));
     }
 }

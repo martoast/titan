@@ -70,6 +70,13 @@ class SealNightJob implements ShouldQueue
      *  confident fact. A DIY optical band loses contact often; the honest failure mode builds trust. */
     private const LOW_COVERAGE_CONFIDENCE = 0.5;
 
+    /** Below this fraction of FULLY-VALID ppg_raw windows (the rest tagged short/invalid for poor contact),
+     *  the night is low_confidence regardless of bridged epoch coverage. This is the SIGNAL-quality gate the
+     *  span-merge can't mask: bridging NODATA holes inflates `coverage` toward 1.0, but a night where the
+     *  band never got a clean pulse read (Tester B: 0/170 valid) is still an estimate. Measured on the RAW
+     *  windows, before any merge. */
+    private const MIN_VALID_WINDOW_FRAC = 0.5;
+
     /** A "sleep" longer than this (min) is someone who forgot to end the session on the band — cap it and
      *  flag it rather than writing a 17-hour night into recovery/debt math. */
     private const MAX_SESSION_MIN = 16 * 60;
@@ -850,7 +857,7 @@ class SealNightJob implements ShouldQueue
                 'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
                 'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                 'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
-                'low_confidence' => $this->isLowConfidence($metrics),
+                'low_confidence' => $this->isLowConfidence($metrics, $this->validWindowFraction($scoped)),
                 'stage_status' => 'final',
                 'finalized_at' => now(),
                 'updated_via' => 'biosignal:sealed-session',
@@ -1287,19 +1294,64 @@ class SealNightJob implements ShouldQueue
 
     /**
      * Is this night an honest ESTIMATE the app/coach must caveat rather than a confident fact? True when
-     * there are no stages at all (duration-only), when coverage is low (mostly NODATA — poor band contact),
-     * or when the stager judged the stage split physiologically implausible (d85f377). The `low_confidence`
-     * flag it feeds is the trust line: "we could only confirm ~4h — sensor contact was low, check your fit."
+     * ANY of: no stages at all (duration-only); low bridged coverage (mostly NODATA); a low FULLY-VALID
+     * ppg_raw fraction (poor contact — the signal-quality gate the span-merge can't mask, measured on the
+     * raw windows); or a physiologically implausible stage split (the stager's d85f377 flag OR a PHP-side
+     * fallback: REM < 5% / any stage > 70%). The `low_confidence` flag it feeds is the trust line: "we
+     * could only confirm part of your night — sensor contact was low, check your fit."
      */
-    private function isLowConfidence(?array $metrics): bool
+    private function isLowConfidence(?array $metrics, ?float $validFraction = null): bool
     {
         if ($metrics === null) {
             return true;   // duration-only: no hypnogram to trust
         }
+        if ($validFraction !== null && $validFraction < self::MIN_VALID_WINDOW_FRAC) {
+            return true;   // the band barely got a clean pulse read — an estimate, whatever the coverage says
+        }
         $cov = $this->clampCoverage($metrics['coverage'] ?? null);
 
         return ($cov !== null && $cov < self::LOW_COVERAGE_CONFIDENCE)
-            || (bool) ($metrics['stages_low_confidence'] ?? false);
+            || (bool) ($metrics['stages_low_confidence'] ?? false)
+            || $this->stageSplitImplausible($metrics);
+    }
+
+    /**
+     * Fraction of the night's ppg_raw windows that were FULLY VALID (passed the standalone HRV gate — no
+     * `skipped` marker). A window tagged `short_window_aggregate_only` or `invalid_signal` (poor contact,
+     * ProcessWindowJob) is NOT fully valid. Measured on the RAW windows so the span-merge (which bridges
+     * NODATA into `coverage`) can't hide a night the band couldn't read. Null when there are no ppg_raw
+     * windows to judge (a legacy/sleep-only cluster).
+     *
+     * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
+     */
+    private function validWindowFraction(\Illuminate\Support\Collection $windows): ?float
+    {
+        $ppg = $windows->filter(fn (DeviceIngestion $w) => $w->kind === 'ppg_raw');
+        if ($ppg->isEmpty()) {
+            return null;
+        }
+        $valid = $ppg->filter(fn (DeviceIngestion $w) => empty(((array) $w->result_refs)['skipped']))->count();
+
+        return $valid / $ppg->count();
+    }
+
+    /** The d85f377 stage-plausibility rule, applied PHP-side to the sealed stage minutes as a fallback for
+     *  when the stager didn't surface `stages_low_confidence`: once there's ≥10 min of sleep, REM under ~5%
+     *  of it — or any single stage over ~70% — is physiologically unlikely and reads as low-confidence. */
+    private function stageSplitImplausible(array $metrics): bool
+    {
+        $deep = (float) ($metrics['deep_min'] ?? 0);
+        $rem = (float) ($metrics['rem_min'] ?? 0);
+        $light = (float) ($metrics['light_min'] ?? 0);
+        $sleep = $deep + $rem + $light;
+        if ($sleep < 10) {
+            return false;   // too little sleep to judge a split (short/late sleep is legitimately skewed)
+        }
+        if ($rem / $sleep < 0.05) {
+            return true;
+        }
+
+        return max($deep, $rem, $light) / $sleep > 0.70;
     }
 
     /**
@@ -1388,7 +1440,7 @@ class SealNightJob implements ShouldQueue
                     'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
                     'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
-                    'low_confidence' => $this->isLowConfidence($metrics),
+                    'low_confidence' => $this->isLowConfidence($metrics, $this->validWindowFraction($ibiWindows)),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed-ppg',
@@ -1483,7 +1535,7 @@ class SealNightJob implements ShouldQueue
                     'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
                     'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
-                    'low_confidence' => $this->isLowConfidence($metrics),
+                    'low_confidence' => $this->isLowConfidence($metrics, $this->validWindowFraction($sleepWindows)),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed',
