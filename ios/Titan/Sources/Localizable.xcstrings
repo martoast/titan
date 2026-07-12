@@ -1,0 +1,78 @@
+{
+  "sourceLanguage" : "en",
+  "version" : "1.0",
+  "strings" : {
+    "Sign in" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Iniciar sesión" } } }
+    },
+    "Signing in…" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Iniciando sesión…" } } }
+    },
+    "Email" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Correo electrónico" } } }
+    },
+    "Password" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Contraseña" } } }
+    },
+    "Today" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Hoy" } } }
+    },
+    "Fuel" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Nutrición" } } }
+    },
+    "Fuel today" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Nutrición de hoy" } } }
+    },
+    "Hydration" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Hidratación" } } }
+    },
+    "Glass" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Vaso" } } }
+    },
+    "Bottle" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Botella" } } }
+    },
+    "Large" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Grande" } } }
+    },
+    "Sleep" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Sueño" } } }
+    },
+    "Recovery" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Recuperación" } } }
+    },
+    "Strain" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Esfuerzo" } } }
+    },
+    "Coach" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Coach" } } }
+    },
+    "Your coach" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Tu coach" } } }
+    },
+    "Profile" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Perfil" } } }
+    },
+    "Settings" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Ajustes" } } }
+    },
+    "Language" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Idioma" } } }
+    },
+    "System" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Sistema" } } }
+    },
+    "Save" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Guardar" } } }
+    },
+    "Continue" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Continuar" } } }
+    },
+    "Done" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Listo" } } }
+    },
+    "Cancel" : {
+      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Cancelar" } } }
+    }
+  }
+}

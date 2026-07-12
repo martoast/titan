@@ -102,6 +102,10 @@ struct DashboardView: View {
                 }
             }.buttonStyle(PressCard())
 
+            // Hydration — a quick-add water card right under the macros, so logging a glass is one tap from
+            // the Today glance (it lives in the full Fuel world too; the component is shared).
+            HydrationCard()
+
             // Training today — what you did today + your day streak, one tap from the full Workouts screen.
             if let w = d?.workout {
                 NavigationLink { TrainScreen() } label: {

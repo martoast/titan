@@ -7,6 +7,7 @@ struct TitanApp: App {
     // State Restoration on a cold background relaunch (see AppDelegate / B1).
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
+    @StateObject private var language = LanguageManager.shared
     @Environment(\.scenePhase) private var scenePhase
 
     init() { Appearance.apply() }
@@ -15,6 +16,11 @@ struct TitanApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(model)
+                .environmentObject(language)
+                // Live in-app language: the chosen language drives string lookup (bundle swap in
+                // LanguageManager) + locale-aware formatting, and `.id` forces a full re-render on switch.
+                .environment(\.locale, language.locale)
+                .id(language.code)
                 .preferredColorScheme(.dark)
                 .tint(Theme.Palette.indigo)
                 .onChange(of: scenePhase) { _, phase in

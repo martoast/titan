@@ -68,6 +68,8 @@ struct ProfileView: View {
             .buttonStyle(PressCard())
             .sheet(isPresented: $showBand) { DevicesView() }
 
+            LanguageRow()
+
             if AppFeatures.community {
                 Button { Haptic.tap(); showCommunity = true } label: {
                     GlassCard {
