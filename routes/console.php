@@ -42,8 +42,10 @@ Schedule::command('coach:nudge move')->dailyAt('14:30')->timezone(config('app.ti
 Schedule::command('coach:nudge strain')->dailyAt('15:30')->timezone(config('app.timezone'));
 Schedule::command('coach:nudge sleep')->everyThirtyMinutes()->between('20:00', '23:30')->timezone(config('app.timezone'));
 
-// Stress monitor: sample the day strip every 15 min from the HR trend + motion gate.
+// Stress monitor: sample the day strip every 15 min from the HR trend + motion gate, and — during
+// waking hours — offer a breathing minute when stress has held high for a sustained window.
 Schedule::command('stress:sample')->everyFifteenMinutes()->withoutOverlapping();
+Schedule::command('stress:nudge')->everyThirtyMinutes()->between('09:00', '21:00')->timezone(config('app.timezone'));
 
 // Living goal-physique: weekly render of the progress step toward the dream physique.
 Schedule::command('physique:living-render')->weeklyOn(1, '06:00');

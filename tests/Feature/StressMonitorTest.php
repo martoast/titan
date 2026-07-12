@@ -157,4 +157,18 @@ class StressMonitorTest extends TestCase
         $this->assertGreaterThan(0.0, $strip['peak']);
         $this->assertContains($strip['points'][0]['level'], ['low', 'medium', 'high']);
     }
+
+    public function test_sustained_high_needs_consistent_elevation_not_a_spike(): void
+    {
+        $p = $this->profileWithBaseline();
+        // Three recent samples, all ≥ medium (150 = 1.5) → sustained.
+        foreach ([10, 30, 45] as $i => $ago) {
+            \App\Models\StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes($ago), 'stress' => 180, 'source' => 'derived']);
+        }
+        $this->assertNotNull(StressMonitor::sustainedHigh($p));
+
+        // One calm sample in the window breaks it — a single spike must NOT trigger.
+        \App\Models\StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes(20), 'stress' => 40, 'source' => 'derived']);
+        $this->assertNull(StressMonitor::sustainedHigh($p));
+    }
 }

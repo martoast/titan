@@ -174,6 +174,30 @@ class StressMonitor
         return round($peaks->avg() / 100, 1);
     }
 
+    /**
+     * Has stress HELD high (≥ medium) across a sustained recent window? The proactive nudge's trigger —
+     * we interrupt on a real, held elevation, never a single transient spike. Needs ≥2 samples in the
+     * last `$minutes` and ALL of them at/above `medium` (1.5). Returns the mean of that window, or null.
+     */
+    public static function sustainedHigh(Profile $profile, int $minutes = 50): ?float
+    {
+        $rows = StressSample::query()
+            ->where('profile_id', $profile->id)
+            ->where('recorded_at', '>=', Carbon::now()->subMinutes($minutes))
+            ->orderBy('recorded_at')
+            ->pluck('stress');
+
+        if ($rows->count() < 2) {
+            return null;
+        }
+        // Every recent read at/above medium (150 = 1.5 ×100) → genuinely sustained, not a blip.
+        if ($rows->min() < 150) {
+            return null;
+        }
+
+        return round($rows->avg() / 100, 2);
+    }
+
     /** Shape the return + attach confidence, level and human drivers. */
     private static function result(
         float $stress, bool $moving, Profile $profile, ?int $hr, int $rest,
