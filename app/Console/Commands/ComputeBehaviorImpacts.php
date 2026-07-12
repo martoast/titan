@@ -60,7 +60,8 @@ class ComputeBehaviorImpacts extends Command
         $good = $meta['better'] === 'higher' ? $raised : ! $raised;
         $verb = $good ? 'lifts' : 'lowers';
 
-        $title = '🔍 New discovery';
+        \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
+        $title = __('🔍 New discovery');
         $body = "{$behavior} tends to {$verb} your {$meta['label']} by about {$pct}% — based on {$top->n_with} days you logged it.";
 
         $notifications->notify($profile, $title, $body, '/coach', 'insight');

@@ -44,7 +44,8 @@ class MealReminder extends Command
                     continue;
                 }
 
-                $title = $m['status'] === 'overdue' ? '🍽️ Eat now -- you\'re overdue' : '🍽️ Time to eat';
+                \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
+                $title = $m['status'] === 'overdue' ? __('🍽️ Eat now -- you\'re overdue') : __('🍽️ Time to eat');
                 $notifications->notify($profile, $title, $m['advice'], '/meals/add', 'meal');
 
                 $profile->settings = array_merge($profile->settings ?? [], ['meal_last_reminder' => $slotKey]);

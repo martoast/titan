@@ -42,7 +42,8 @@ class ReactToSpotReading implements ShouldQueue
         // A noisy capture (motion artifact / no clean beats) → coach asks for a redo.
         if (! $this->valid || $this->hrvMs === null) {
             $body = "I couldn't get a clean read just now -- usually movement or a loose band. Sit still, keep it snug on the wrist, and ask me to take another.";
-            $notifications->notify($profile, '📍 Spot reading -- try again', $body, '/coach', 'spot');
+            \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
+            $notifications->notify($profile, __('📍 Spot reading -- try again'), $body, '/coach', 'spot');
             $this->post($profile, "📍 **Spot reading -- couldn't lock on.**\n\n{$body}");
 
             return;
@@ -63,7 +64,8 @@ class ReactToSpotReading implements ShouldQueue
         $line = "HRV {$this->hrvMs}ms".($this->restingHr ? ", heart rate {$this->restingHr}" : '')
             .($baseline ? " (baseline {$baseline}ms)" : '').' -- '.$read;
 
-        $notifications->notify($profile, '📍 Your spot reading is in', $line, '/coach', 'spot');
+        \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
+        $notifications->notify($profile, __('📍 Your spot reading is in'), $line, '/coach', 'spot');
 
         $fence = "```titan-card\n".json_encode($card)."\n```";
         $this->post($profile, "{$fence}\n\n📍 **Live reading:** {$line}");

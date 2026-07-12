@@ -88,7 +88,8 @@ class ReactToDeviceSync implements ShouldQueue
         try {
             $body = "Your overnight data just synced -- readiness {$score}".($label ? " ({$label})" : '').'.'.($focus ? " Today's focus: {$focus}." : '');
 
-            $notifications->notify($profile, '🌅 Your recovery is in', $body, '/coach', 'sync');
+            \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
+            $notifications->notify($profile, __('🌅 Your recovery is in'), $body, '/coach', 'sync');
 
             // Drop it into the Daily Briefings thread so it's waiting in the coach UI.
             $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);

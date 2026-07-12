@@ -25,7 +25,8 @@ class CommunityBadgeSweep extends Command
             foreach ($profiles as $p) {
                 foreach ($engine->evaluate($p) as $key) {
                     [$title] = AchievementEngine::CATALOG[$key] ?? ['New badge'];
-                    $notify->notify($p, "Badge earned: {$title}", 'You just unlocked a new achievement on Titan.', '/community', 'community');
+                    \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($p->primary_language));
+                    $notify->notify($p, __('Badge earned: :title', ['title' => $title]), __('You just unlocked a new achievement on Titan.'), '/community', 'community');
                     $awarded++;
                 }
             }

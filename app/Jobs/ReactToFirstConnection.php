@@ -55,7 +55,8 @@ class ReactToFirstConnection implements ShouldQueue
 
         $body = "Your {$source} just came online and started streaming. {$detail}";
 
-        $notifications->notify($profile, "🎉 Your {$source} is live!", $body, '/coach', 'band_live');
+        \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
+        $notifications->notify($profile, __('🎉 Your :source is live!', ['source' => $source]), $body, '/coach', 'band_live');
 
         $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
         $convo->messages()->create([
