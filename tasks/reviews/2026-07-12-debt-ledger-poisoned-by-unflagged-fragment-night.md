@@ -65,3 +65,36 @@ the flag fix lands.**
 
 ## Repro
 `SleepDebt::forProfile(Profile::find(1))` → inspect `history`; `sleep_logs` id=7 is the +7.9h step.
+
+---
+
+## UPDATE 2026-07-12 — same unflagged night ALSO poisons Sleep Week (fa1fb88)
+
+Field-tested `SleepWeek::forProfile(Profile::find(1))` after fa1fb88 shipped. The exact same id=7
+fragment leaks into TWO more surfaces — proving the blast radius of the one honesty flag:
+
+```
+2026-07-06 Mon score=1   dur=7   hit=false low=false   ← the fragment
+2026-07-07 Tue score=79  ...  (real nights: 79,73,57,66,56,69)
+week_score=57  label="Run down"
+tip: "Your bedtime swung 6h38m this week" (consistency)
+```
+
+1. **week_score flipped by the artifact.** Mean of the 6 real nights ≈ **67 ("Building")**. The
+   score=1 fragment drags it to **57 ("Run down")** — a worse *label*, not just a worse number.
+   SleepWeek is supposed to exclude low-confidence nights from `week_score`; it can't, because id=7
+   is `low_confidence=false`.
+2. **The weekly tip is driven by the artifact.** "Bedtime swung **6h38m**" is almost entirely id=7's
+   garbage 01:02 bedtime vs the real nights. The consistency tip fires on a 7-minute non-night. Spec
+   said pattern detection must use confident nights only — again blocked by the missing flag.
+
+**Conclusion: one fix, three surfaces.** Flagging id=7 (NULL coverage + degenerate split) as
+`low_confidence` self-corrects the debt ledger, `week_score`, AND the weekly tip at once — they all
+already honor the flag. This is why the fix belongs in the seal's honesty gate, not in three readers.
+I'll re-verify all three on Alex's real data once the flag fix lands.
+
+### Minor, separate (Sleep Week polish, not the honesty bug)
+- `strip` came back **empty** (0 lit) because Alex hit-need on no night in 35 days. An all-empty
+  heat strip renders as a dead row — consider shading logged-but-below-need nights at low intensity
+  so the strip still shows *presence*, with hit-need nights as the bright cells. Honest either way;
+  this is a render-quality call.
