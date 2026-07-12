@@ -701,6 +701,19 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
                 ."use physique_progress / render_dream_physique when they ask how they're tracking, and nudge a fresh photo if it's been a while.";
         }
 
+        // LANGUAGE (i18n): the user picked their app language — the coach must speak it. Kept LAST so it's
+        // the freshest instruction, and it overrides the default English of everything above.
+        if (($profile->primary_language ?? 'en') === 'es-MX') {
+            $prompt .= "\n\n--- LANGUAGE: RESPOND IN MEXICAN SPANISH ---\n"
+                ."{$name} uses Titan in Spanish. Respond ENTIRELY in natural MEXICAN Spanish (español de "
+                ."México) — warm, direct, Tijuana-friendly, using Mexican vocabulary and the informal \"tú\". "
+                ."EVERYTHING the user reads must be Spanish: coaching, explanations, questions, verdicts, "
+                ."table headers, chart labels. Numbers/units stay numeric (e.g. \"7.2 h\", \"180 g de proteína\"). "
+                ."Keep ```titan-card JSON keys and enum values in English (they are code the app parses), but any "
+                ."human-readable string INSIDE a card (title, label, caption, advice) must be Spanish. Never mix "
+                ."English prose in.";
+        }
+
         return $prompt;
     }
 

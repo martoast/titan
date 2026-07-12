@@ -158,6 +158,8 @@ class OnboardingService
                 array_unshift($rules[$field], 'sometimes');
             }
         }
+        // App language (i18n) — editable any time from onboarding OR the Profile picker.
+        $rules['primary_language'] = ['sometimes', 'string', 'in:en,es-MX'];
 
         return $rules;
     }
@@ -234,6 +236,9 @@ class OnboardingService
         }
         if (isset($data['coach_tone'])) {
             $cols['coach_tone'] = $data['coach_tone'];
+        }
+        if (isset($data['primary_language'])) {
+            $cols['primary_language'] = $data['primary_language'];
         }
 
         foreach (['units', 'timezone', 'activity_level', 'coaching_intensity'] as $k) {

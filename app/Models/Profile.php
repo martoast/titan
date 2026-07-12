@@ -20,7 +20,7 @@ class Profile extends Model
 
     protected $fillable = [
         'user_id', 'display_name', 'birthdate', 'sex', 'height_cm',
-        'primary_goal', 'coach_tone', 'settings', 'onboarded_at',
+        'primary_goal', 'coach_tone', 'primary_language', 'settings', 'onboarded_at',
         // Community
         'community_enabled', 'username', 'bio', 'avatar_path',
         'followers_require_approval', 'default_activity_visibility',
