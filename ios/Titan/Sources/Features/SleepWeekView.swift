@@ -127,7 +127,8 @@ struct SleepWeekView: View {
 
     // 5-week heat strip — nights that hit need, lit. Consistency is the metric that matters most.
     private var heatStrip: some View {
-        let lit = Set(week.strip)
+        let hit = Set(week.strip)            // hit-need nights — bright
+        let logged = Set(week.strip_logged)  // any confident night — dim (so an all-miss week still shows)
         let days: [String] = (0..<35).reversed().map { i in
             let d = Calendar.current.date(byAdding: .day, value: -i, to: Date()) ?? Date()
             let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d)
@@ -138,7 +139,7 @@ struct SleepWeekView: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
                     ForEach(days, id: \.self) { d in
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(lit.contains(d) ? accent : Color.white.opacity(0.06))
+                            .fill(hit.contains(d) ? accent : (logged.contains(d) ? accent.opacity(0.28) : Color.white.opacity(0.06)))
                             .frame(height: 16)
                     }
                 }

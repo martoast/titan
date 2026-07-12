@@ -100,6 +100,9 @@ class SleepWeek
             'streak' => self::streak($byDate, $today),
             'days' => $days,
             'strip' => self::strip($byDate, $today),
+            // Every confident logged night in the strip window — so the heat strip can show PRESENCE (dim)
+            // under the hit-need cells (bright), instead of a dead empty row when nothing hit need.
+            'strip_logged' => self::stripLogged($byDate),
             'tip' => self::tip($profile, $days, $byDate, $baseline),
         ];
     }
@@ -149,6 +152,20 @@ class SleepWeek
         $out = [];
         foreach ($byDate as $d => $e) {
             if (($e['score'] ?? null) !== null && $e['score'] >= self::NEED_THRESHOLD) {
+                $out[] = $d;
+            }
+        }
+        sort($out);
+
+        return $out;
+    }
+
+    /** Confident logged nights (any score) — the "presence" layer under the hit-need cells. */
+    private static function stripLogged(array $byDate): array
+    {
+        $out = [];
+        foreach ($byDate as $d => $e) {
+            if (($e['score'] ?? null) !== null) {
                 $out[] = $d;
             }
         }

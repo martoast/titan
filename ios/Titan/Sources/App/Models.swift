@@ -255,6 +255,7 @@ struct SleepWeekInfo: Codable, Equatable {
     let streak: Streak?
     let days: [Day]
     var strip: [String] = []
+    var strip_logged: [String] = []
     let tip: Tip?
     struct Streak: Codable, Equatable { let current: Int?; let longest: Int?; let slept_well_last_night: Bool? }
     struct Day: Codable, Equatable, Identifiable {
