@@ -26,7 +26,12 @@ class CoachMessage extends Mailable
         public string $title,
         public string $body,
         public ?string $url = null,
-    ) {}
+    ) {
+        // The Titan-branded chrome (greeting, button, disclaimer) renders in the athlete's language.
+        // The title/body are already composed by the caller (the coach reaction), which respects
+        // profile.primary_language, so the whole email reads in one language.
+        $this->locale(\App\Support\Lang::locale($profile->primary_language));
+    }
 
     public function envelope(): Envelope
     {

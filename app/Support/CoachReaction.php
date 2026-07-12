@@ -50,6 +50,12 @@ class CoachReaction
         so interpret them, don't restate them. End by inviting a quick reply.
         TXT;
 
+        if (($profile->primary_language ?? 'en') === 'es-MX') {
+            $system .= "\n\nLANGUAGE: Write ENTIRELY in natural MEXICAN Spanish (español de México) — "
+                ."warm, direct, Tijuana-friendly, using the informal \"tú\". Metric names/units stay as-is "
+                ."(HRV, bpm), but every sentence is Spanish.";
+        }
+
         $user = "MOMENT: {$facts}\n\nTRAJECTORY (7d vs 28d):\n"
             .($trajectory !== '' ? $trajectory : '(not much history yet — keep it light and encouraging)');
 
