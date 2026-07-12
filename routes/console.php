@@ -50,6 +50,9 @@ Schedule::command('stress:nudge')->everyThirtyMinutes()->between('09:00', '21:00
 // Living goal-physique: weekly render of the progress step toward the dream physique.
 Schedule::command('physique:living-render')->weeklyOn(1, '06:00');
 
+// Longevity Index: weekly Titan Age snapshot so pace-of-aging becomes a real trend over months.
+Schedule::command('longevity:snapshot')->weeklyOn(1, '05:30')->timezone(config('app.timezone'));
+
 // Community: Sunday-evening "week vs the group" recap push + a nightly badge sweep (so time-window
 // achievements like 100km-month / streaks land even on a day nothing sealed).
 Schedule::command('community:weekly-recap')->weeklyOn(0, '19:00')->timezone(config('app.timezone'));

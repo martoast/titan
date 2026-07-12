@@ -162,6 +162,11 @@ class Profile extends Model
         return $this->hasMany(StressSample::class);
     }
 
+    public function longevitySnapshots(): HasMany
+    {
+        return $this->hasMany(LongevitySnapshot::class);
+    }
+
     // --- Physique: progress photos + the living goal image ---
     public function progressPhotos(): HasMany
     {
