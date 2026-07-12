@@ -148,6 +148,80 @@ struct StrainCard: View {
     }
 }
 
+// MARK: - Stress now (0–3, motion-gated, with a breathing CTA)
+
+struct StressCard: View {
+    let json: [String: Any]
+    @State private var breathe: BreathPattern?
+    private let maxStress = 3.0
+
+    private var level: String { (json["level"] as? String) ?? "calm" }
+    private var moving: Bool { (json["moving"] as? Bool) ?? false }
+    private var color: Color {
+        switch level {
+        case "high": return Theme.Palette.pink
+        case "medium": return Theme.Palette.amber
+        case "low": return Theme.Palette.cyan
+        default: return Theme.Palette.mint
+        }
+    }
+    private var levelLabel: LocalizedStringKey {
+        switch level {
+        case "high": return "High stress"
+        case "medium": return "Medium stress"
+        case "low": return "A little stress"
+        default: return "Calm"
+        }
+    }
+
+    var body: some View {
+        let value = jsonNum(json["value"]) ?? 0
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                cardTitle("Stress now")
+                Spacer()
+                Text(String(format: "%.1f", value)).font(Theme.Font.num(20)).foregroundStyle(color)
+                    + Text(" / 3").font(Theme.Font.num(13)).foregroundStyle(Theme.Palette.textDim)
+            }
+            // 0–3 gauge.
+            GeometryReader { geo in
+                let w = geo.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08)).frame(height: 8)
+                    Capsule().fill(color)
+                        .frame(width: max(4, w * CGFloat(min(1, value / maxStress))), height: 8)
+                }
+            }
+            .frame(height: 8)
+
+            HStack(spacing: 6) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text(moving ? "Moving — that's your workout, not stress" : levelLabel)
+                    .font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            }
+            cardCaption(json["drivers"] as? String)
+            if let note = json["note"] as? String, !note.isEmpty {
+                Text(note).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+            }
+
+            // The intervention — offered when there's stress to shed.
+            if !moving && (level == "medium" || level == "high") {
+                Button { Haptic.tap(); breathe = .physiologicalSigh } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "wind")
+                        Text("Take a minute to breathe").font(Theme.Font.micro.weight(.semibold))
+                    }
+                    .foregroundStyle(Theme.Palette.bg)
+                    .frame(maxWidth: .infinity).padding(.vertical, 11)
+                    .background(color, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                }.buttonStyle(.plain)
+            }
+        }
+        .coachCard()
+        .fullScreenCover(item: $breathe) { p in BreathingView(pattern: p) }
+    }
+}
+
 // MARK: - Sleep (headline + stage breakdown)
 
 struct SleepCard: View {
