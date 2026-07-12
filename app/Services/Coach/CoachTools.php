@@ -436,6 +436,9 @@ class CoachTools
         if (class_exists(\App\Support\Strain::class)) {
             $tools[] = $this->fn('strain_status', "Today's cardiovascular strain as a ready-made `strain` gauge card (0–21 with the recovery-aware target zone). Lead any strain question with it.", [], []);
         }
+        if (class_exists(\App\Support\StressMonitor::class)) {
+            $tools[] = $this->fn('stress_status', "The user's real-time stress right now as a ready-made `stress_now` card (0–3, motion-gated so a workout isn't stress) with the HR/HRV drivers. Lead any 'am I stressed / how's my stress' question with it, and offer a breathing minute when it's medium/high.", [], []);
+        }
         if (class_exists(\App\Models\BiomarkerReading::class)) {
             $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
         }
@@ -552,6 +555,7 @@ class CoachTools
             'daily_checkin' => 'Pulling your check-in',
             'sleep_detail' => 'Reading last night',
             'strain_status' => 'Checking your strain',
+            'stress_status' => 'Reading your stress',
             'bloodwork_panel' => 'Pulling your bloodwork',
             'macros_today' => 'Tallying your macros',
             'set_targets' => 'Updating your targets',
@@ -685,6 +689,7 @@ class CoachTools
             'daily_checkin' => $this->dailyCheckin(),
             'sleep_detail' => $this->sleepDetail(),
             'strain_status' => $this->strainStatus(),
+            'stress_status' => $this->stressStatus(),
             'bloodwork_panel' => $this->bloodworkPanel(),
             'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
@@ -2018,6 +2023,25 @@ class CoachTools
         ];
 
         return ['card' => $card, '_show' => 'Open with this `strain` gauge card inside a ```titan-card fence, then a one-line read vs the target.'];
+    }
+
+    private function stressStatus(): mixed
+    {
+        if (! class_exists(\App\Support\StressMonitor::class)) {
+            return ['error' => 'Stress monitoring is not available.'];
+        }
+        $s = \App\Support\StressMonitor::assess($this->profile);
+        $card = [
+            'type' => 'stress_now',
+            'value' => round($s['stress'] ?? 0, 2),   // 0–3
+            'level' => $s['level'] ?? 'calm',
+            'moving' => (bool) ($s['moving'] ?? false),
+            'drivers' => $s['drivers'] ?? null,
+            'confidence' => $s['confidence']['level'] ?? null,
+            'note' => $s['confidence']['note'] ?? null,
+        ];
+
+        return ['card' => $card, '_show' => 'Open with this `stress_now` card inside a ```titan-card fence. If level is medium/high, offer a 90-second physiological sigh; if moving, note that elevated HR is their workout, not stress; if confidence is low, hedge ("still learning your calm baseline").'];
     }
 
     private function bloodworkPanel(): mixed

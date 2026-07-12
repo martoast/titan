@@ -82,6 +82,16 @@ class CoachTrajectory
             $lines[] = 'Training: '.implode(', ', $parts).'. conf: '.self::conf($sessions7 > 0 ? max(3, self::count($last7, 'strain')) : self::count($last7, 'strain'));
         }
 
+        // --- Stress: typical DAILY PEAK stress (0–3) + direction. Higher = worse; arrow shows raw
+        // direction (↑ = rising), the coach knows up is bad. Silent until the strip has coverage.
+        if (class_exists(\App\Support\StressMonitor::class)) {
+            $stress7 = rescue(fn () => \App\Support\StressMonitor::weeklyPeak($profile, 7), null, false);
+            if ($stress7 !== null) {
+                $stress28 = rescue(fn () => \App\Support\StressMonitor::weeklyPeak($profile, 28), null, false);
+                $lines[] = 'Stress: ~'.$stress7.'/3 typical daily peak '.self::arrow($stress7, $stress28).'. conf: '.self::conf($stress7 > 0 ? 3 : 1);
+            }
+        }
+
         // --- Nutrition: avg daily calories + protein vs target, protein gap, adherence.
         $nut = rescue(fn () => self::nutrition($profile), null, false);
         if (is_array($nut)) {

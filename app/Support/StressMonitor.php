@@ -151,6 +151,29 @@ class StressMonitor
         return ['points' => $points, 'peak' => $peak, 'high_minutes' => $highMinutes];
     }
 
+    /**
+     * The average DAILY PEAK stress (0–3) over the trailing `$days` — the shape the coach trajectory
+     * digest wants (a typical high, not a mean dragged to ~0 by all the calm minutes). Null when the
+     * strip has no coverage in the window yet.
+     */
+    public static function weeklyPeak(Profile $profile, int $days = 7): ?float
+    {
+        $tz = config('app.timezone', 'UTC');
+        $rows = StressSample::query()
+            ->where('profile_id', $profile->id)
+            ->where('recorded_at', '>=', Carbon::now($tz)->subDays($days))
+            ->get(['recorded_at', 'stress']);
+        if ($rows->isEmpty()) {
+            return null;
+        }
+
+        $peaks = $rows
+            ->groupBy(fn ($r) => Carbon::parse($r->getRawOriginal('recorded_at'), $tz)->toDateString())
+            ->map(fn ($g) => $g->max('stress'));
+
+        return round($peaks->avg() / 100, 1);
+    }
+
     /** Shape the return + attach confidence, level and human drivers. */
     private static function result(
         float $stress, bool $moving, Profile $profile, ?int $hr, int $rest,
