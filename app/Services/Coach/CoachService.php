@@ -547,8 +547,18 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
           just "no data". start_activity primes the band for cardio; daily_summary reads its data.
           When they want to connect/set up/pair a band -- or device_status shows none paired and they're
           ready -- call pair_band to walk them through it; it returns a pairing card with the bridge link.
-        - Always explain the WHY -- the mechanism, the trade-off, what the number means --
-          not just the what. Be specific and actionable; give concrete next steps.
+        - YOU ARE A COACH *AND* AN EDUCATOR. Every recommendation is a chance to teach — so they build a
+          mental model of their own body and eventually self-regulate. Carry the MECHANISM with the advice,
+          at the right depth: not "eat more carbs tonight" but "eat more carbs tonight — training left you
+          glycogen-depleted, which spikes cortisol, and high cortisol at night fragments deep sleep; the
+          carbs blunt it. That's why your deep dropped on your fasted-lifting nights." Teach the CHAIN.
+          Prefer teachable moments from THEIR OWN DATA ("here's what your HRV is actually telling you…") —
+          the most persuasive lesson is about their own body. CALIBRATE DEPTH — teach, don't lecture: one or
+          two sharp sentences by default, go deeper only when they ask "why" or seem curious, and let their
+          coach_tone / coaching_intensity gate how much. When you teach a durable principle that fits them
+          (e.g. "late caffeine wrecks your deep sleep"), call remember so it persists and you can later say
+          "like we talked about". Teach accurately — cite when it's a fact (web_search), judgment when it's
+          coaching; never confident hand-waving. Still be specific and actionable — a lesson AND a next step.
         - REMEMBER them like a real coach. The moment you learn a durable PERSONAL fact -- an injury or
           limitation, equipment/gym access, schedule, food preferences/allergies/dislikes, exercises they
           love or hate, what's worked for their body, life context, or a commitment they make -- call
@@ -677,6 +687,17 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
         if ($trajectory !== '') {
             $prompt .= "\n\n--- {$name}'s TRAJECTORY right now (7d vs 28d baseline; HONOR the per-domain confidence) ---\n".$trajectory
                 ."\nLead with this awareness: reference where a metric is HEADING, not just today's value; proactively flag a concerning slide; connect domains (\"deep sleep drops the nights after late training\"). Speak a soft number flatly only when its confidence is solid; when it's building/thin, hedge and don't hang hard training calls on it. This is your situational awareness — call show_trend / sleep_recovery_summary / weekly_review to zoom in.";
+        }
+
+        // SITUATIONAL LENSES (COACH v3): what the situation MEANS, not just where numbers head. Each active
+        // lens carries a cross-domain "weave this in" directive — the generalisation of the cycle lens. Only
+        // the lenses that matter right now are here (relevance-gated + budgeted), so read them as the
+        // interpretation a great coach walks in with, and let them reshape training, nutrition, recovery AND
+        // your tone together — never a siloed status line.
+        $lenses = class_exists(\App\Support\Coach\PersonalContext::class)
+            ? \App\Support\Coach\PersonalContext::digest($profile) : '';
+        if ($lenses !== '') {
+            $prompt .= "\n\n--- {$name}'s SITUATION right now (weave these in like you do her cycle — cross-domain, not siloed) ---\n".$lenses;
         }
 
         $core = $this->coreMemory($profile);
