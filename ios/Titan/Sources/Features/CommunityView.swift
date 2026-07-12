@@ -89,7 +89,7 @@ private struct CommunityFeed: View {
                     GlassCard {
                         HStack(spacing: Theme.Space.m) {
                             Image(systemName: "person.badge.clock.fill").foregroundStyle(Theme.Palette.amber)
-                            Text("\(model.followRequests.count) follow request\(model.followRequests.count == 1 ? "" : "s")")
+                            Text(model.followRequests.count == 1 ? "1 follow request" : "\(model.followRequests.count) follow requests")
                                 .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
@@ -214,7 +214,7 @@ private struct FeedCard: View {
     private func statBlock(_ v: String, _ l: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(v).font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.text).monospacedDigit()
-            Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(LocalizedStringKey(l)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }
     }
 }
@@ -356,7 +356,7 @@ private struct LeaderRow: View {
                 AthleteAvatar(name: row.name, url: row.avatar_url, size: 36)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.name).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                    Text("\(row.activity_count) activit\(row.activity_count == 1 ? "y" : "ies")").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    Text(row.activity_count == 1 ? "1 activity" : "\(row.activity_count) activities").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
                 }
                 Spacer()
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
@@ -396,7 +396,7 @@ private struct FindAthletes: View {
                     GlassCard {
                         HStack {
                             Image(systemName: "person.badge.clock.fill").foregroundStyle(Theme.Palette.amber)
-                            Text("\(model.followRequests.count) follow request\(model.followRequests.count == 1 ? "" : "s")")
+                            Text(model.followRequests.count == 1 ? "1 follow request" : "\(model.followRequests.count) follow requests")
                                 .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
@@ -478,8 +478,11 @@ private struct AthleteRow: View {
                     AthleteAvatar(name: athlete.name, url: athlete.avatar_url, size: 44)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(athlete.name).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                        Text(athlete.username.map { "@\($0)" } ?? "\(athlete.total_activities) activities")
-                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        Group {
+                            if let u = athlete.username { Text(verbatim: "@\(u)") }
+                            else { Text("\(athlete.total_activities) activities") }
+                        }
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     }
                     Spacer()
                     FollowButton(athlete: $athlete, busy: $busy)
@@ -585,7 +588,7 @@ struct AthleteProfileView: View {
     private func stat(_ v: String, _ l: String) -> some View {
         VStack(spacing: 2) {
             Text(v).font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.text).monospacedDigit()
-            Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(LocalizedStringKey(l)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }
     }
 
@@ -850,10 +853,10 @@ struct CommunitySettingsView: View {
 
     private func field(_ label: String, text: Binding<String>, prefix: String?, autocap: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+            Text(LocalizedStringKey(label)).font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
             HStack(spacing: 2) {
                 if let prefix { Text(prefix).foregroundStyle(Theme.Palette.textFaint) }
-                TextField(label, text: text)
+                TextField(LocalizedStringKey(label), text: text)
                     .textInputAutocapitalization(autocap ? .sentences : .never).autocorrectionDisabled(!autocap)
                     .foregroundStyle(Theme.Palette.text)
             }
@@ -908,7 +911,7 @@ struct PillSwitch<T: Hashable>: View {
         HStack(spacing: 4) {
             ForEach(options, id: \.0) { opt in
                 let on = selection == opt.0
-                Text(opt.1).font(Theme.Font.label.weight(.semibold))
+                Text(LocalizedStringKey(opt.1)).font(Theme.Font.label.weight(.semibold))
                     .padding(.vertical, 9).frame(maxWidth: .infinity)
                     .foregroundStyle(on ? Theme.Palette.text : Theme.Palette.textDim)
                     .background {
@@ -950,8 +953,8 @@ private func activityIcon(_ type: String?) -> String {
 private func relativeTime(_ iso: String?) -> String {
     guard let iso, let date = ISO8601DateFormatter().date(from: iso) else { return "" }
     let s = Int(Date().timeIntervalSince(date))
-    if s < 3600 { return "\(max(1, s / 60))m ago" }
-    if s < 86400 { return "\(s / 3600)h ago" }
-    if s < 604800 { return "\(s / 86400)d ago" }
+    if s < 3600 { return String(localized: "\(max(1, s / 60))m ago") }
+    if s < 86400 { return String(localized: "\(s / 3600)h ago") }
+    if s < 604800 { return String(localized: "\(s / 86400)d ago") }
     let f = DateFormatter(); f.dateFormat = "MMM d"; return f.string(from: date)
 }

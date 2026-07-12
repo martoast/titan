@@ -19,7 +19,7 @@ struct DashboardView: View {
 
             // A failed cold sync is legible + recoverable here, rather than a ring stuck at "building baseline".
             if model.dashboardPhase == .failed && model.dashboard == nil {
-                SyncErrorRow(message: "Couldn't sync today") { await model.refresh() }
+                SyncErrorRow(message: String(localized: "Couldn't sync today")) { await model.refresh() }
             }
 
             // A run is streaming live from the band — see it tracking, right at the top.
@@ -45,19 +45,19 @@ struct DashboardView: View {
                 HStack(alignment: .top, spacing: Theme.Space.s) {
                     NavigationLink { SleepView() } label: {
                         StatRing(value: d?.rings?.sleep_performance.map(Double.init), max: 100,
-                                 label: "Sleep", color: Theme.Palette.indigo, size: 92)
+                                 label: String(localized: "Sleep"), color: Theme.Palette.indigo, size: 92)
                     }.buttonStyle(PressCard())
                     NavigationLink { RecoveryView() } label: {
                         StatRing(value: d?.rings?.recovery.map(Double.init) ?? d?.readiness?.score.map(Double.init),
-                                 max: 100, label: "Recovery", color: Theme.Palette.recovery(d?.readiness?.score), size: 116)
+                                 max: 100, label: String(localized: "Recovery"), color: Theme.Palette.recovery(d?.readiness?.score), size: 116)
                     }.buttonStyle(PressCard())
                     NavigationLink { StrainView() } label: {
-                        StatRing(value: d?.rings?.strain, max: 21, label: "Strain", color: Theme.Palette.cyan, size: 92)
+                        StatRing(value: d?.rings?.strain, max: 21, label: String(localized: "Strain"), color: Theme.Palette.cyan, size: 92)
                     }.buttonStyle(PressCard())
                 }
                 .padding(.top, Theme.Space.s)
                 VStack(spacing: 6) {
-                    Text(d?.readiness?.label ?? "Building your baseline")
+                    Text(d?.readiness?.label ?? String(localized: "Building your baseline"))
                         .font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
                     if let note = d?.readiness?.note {
                         Text(note).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
@@ -81,7 +81,7 @@ struct DashboardView: View {
             NavigationLink { FuelScreen() } label: {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        SectionHeader(title: "Fuel today", trailing: chevron)
+                        SectionHeader(title: String(localized: "Fuel today"), trailing: chevron)
                         if let m = model.nutrition?.macros {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 Text("\(max(0, m.calories.target - m.calories.value))").font(Theme.Font.num(30)).foregroundStyle(Theme.Palette.text)
@@ -90,9 +90,9 @@ struct DashboardView: View {
                                 Text("\(m.calories.value) / \(m.calories.target)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).monospacedDigit()
                             }
                             HStack(spacing: Theme.Space.m) {
-                                macroBar("Protein", m.protein, Theme.Palette.mint)
-                                macroBar("Carbs", m.carbs, Theme.Palette.amber)
-                                macroBar("Fat", m.fat, Theme.Palette.pink)
+                                macroBar(String(localized: "Protein"), m.protein, Theme.Palette.mint)
+                                macroBar(String(localized: "Carbs"), m.carbs, Theme.Palette.amber)
+                                macroBar(String(localized: "Fat"), m.fat, Theme.Palette.pink)
                             }
                         } else {
                             Text("Snap a meal — today's macros land here.").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
@@ -117,13 +117,13 @@ struct DashboardView: View {
             NavigationLink { RecoveryView() } label: {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        SectionHeader(title: "Recovery", trailing: chevron)
+                        SectionHeader(title: String(localized: "Recovery"), trailing: chevron)
                         HStack(spacing: Theme.Space.m) {
-                            Metric(value: int(d?.recovery?.hrv_ms), unit: "ms", label: "HRV", color: Theme.Palette.cyan, icon: "waveform.path.ecg")
+                            Metric(value: int(d?.recovery?.hrv_ms), unit: "ms", label: String(localized: "HRV"), color: Theme.Palette.cyan, icon: "waveform.path.ecg")
                             divider
-                            Metric(value: int(d?.recovery?.resting_hr), unit: "bpm", label: "Resting HR", color: Theme.Palette.pink, icon: "heart.fill")
+                            Metric(value: int(d?.recovery?.resting_hr), unit: "bpm", label: String(localized: "Resting HR"), color: Theme.Palette.pink, icon: "heart.fill")
                             divider
-                            Metric(value: dec(d?.recovery?.resp_rate), unit: "br/m", label: "Respiration", color: Theme.Palette.violet, icon: "lungs.fill")
+                            Metric(value: dec(d?.recovery?.resp_rate), unit: String(localized: "br/m"), label: String(localized: "Respiration"), color: Theme.Palette.violet, icon: "lungs.fill")
                         }
                     }
                 }
@@ -133,17 +133,17 @@ struct DashboardView: View {
             NavigationLink { SleepView() } label: {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        SectionHeader(title: "Last night", trailing: chevron)
+                        SectionHeader(title: String(localized: "Last night"), trailing: chevron)
                         HStack(alignment: .firstTextBaseline) {
                             Text(minToHrs(d?.sleep?.duration_min)).font(Theme.Font.num(30)).foregroundStyle(Theme.Palette.text)
                             Spacer()
-                            if let q = d?.sleep?.quality { Metric(value: "\(q)", unit: nil, label: "Quality", color: Theme.Palette.indigo) }
+                            if let q = d?.sleep?.quality { Metric(value: "\(q)", unit: nil, label: String(localized: "Quality"), color: Theme.Palette.indigo) }
                         }
                         StageBars(stages: [
-                            ("Deep", d?.sleep?.deep_min ?? 0, Theme.Palette.indigo),
-                            ("REM", d?.sleep?.rem_min ?? 0, Theme.Palette.violet),
-                            ("Light", d?.sleep?.light_min ?? 0, Theme.Palette.cyan.opacity(0.6)),
-                            ("Awake", d?.sleep?.awake_min ?? 0, Theme.Palette.textFaint),
+                            (String(localized: "Deep"), d?.sleep?.deep_min ?? 0, Theme.Palette.indigo),
+                            (String(localized: "REM"), d?.sleep?.rem_min ?? 0, Theme.Palette.violet),
+                            (String(localized: "Light"), d?.sleep?.light_min ?? 0, Theme.Palette.cyan.opacity(0.6)),
+                            (String(localized: "Awake"), d?.sleep?.awake_min ?? 0, Theme.Palette.textFaint),
                         ])
                     }
                 }
@@ -154,13 +154,13 @@ struct DashboardView: View {
                 NavigationLink { TrainScreen() } label: {
                     GlassCard {
                         VStack(alignment: .leading, spacing: Theme.Space.m) {
-                            SectionHeader(title: "Activity", trailing: chevron)
+                            SectionHeader(title: String(localized: "Activity"), trailing: chevron)
                             HStack(spacing: Theme.Space.m) {
-                                Metric(value: int(a.steps.map(Double.init)), unit: nil, label: "Steps", color: Theme.Palette.mint, icon: "figure.walk")
+                                Metric(value: int(a.steps.map(Double.init)), unit: nil, label: String(localized: "Steps"), color: Theme.Palette.mint, icon: "figure.walk")
                                 divider
-                                Metric(value: int(a.active_kcal.map(Double.init)), unit: "kcal", label: "Active", color: Theme.Palette.amber, icon: "flame.fill")
+                                Metric(value: int(a.active_kcal.map(Double.init)), unit: "kcal", label: String(localized: "Active"), color: Theme.Palette.amber, icon: "flame.fill")
                                 divider
-                                Metric(value: int(a.floors.map(Double.init)), unit: nil, label: "Floors", color: Theme.Palette.cyan, icon: "stairs")
+                                Metric(value: int(a.floors.map(Double.init)), unit: nil, label: String(localized: "Floors"), color: Theme.Palette.cyan, icon: "stairs")
                             }
                         }
                     }
@@ -223,7 +223,7 @@ struct DashboardView: View {
             if let b = d?.bio_age, let age = b.biological_age {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.s) {
-                        SectionHeader(title: "Biological Age", trailing: b.confidence.map { "\($0.capitalized) confidence" })
+                        SectionHeader(title: String(localized: "Biological Age"), trailing: b.confidence.map { String(localized: "\($0.capitalized) confidence") })
                         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
                             Text(String(format: "%.0f", age))
                                 .font(Theme.Font.num(68))
@@ -264,8 +264,8 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Log your day").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                             Text(model.journalLogged.isEmpty
-                                 ? "Alcohol, caffeine, stress… learn what moves your recovery"
-                                 : "\(model.journalLogged.count) logged today")
+                                 ? String(localized: "Alcohol, caffeine, stress… learn what moves your recovery")
+                                 : String(localized: "\(model.journalLogged.count) logged today"))
                                 .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                         }
                         Spacer()
@@ -284,7 +284,7 @@ struct DashboardView: View {
         }
         .animation(Theme.Motion.spring, value: appeared)
         .animation(Theme.Motion.snappy, value: model.dashboardPhase)
-        .titanScreen("Today", glow: Theme.Palette.recovery(model.dashboard?.readiness?.score))
+        .titanScreen(String(localized: "Today"), glow: Theme.Palette.recovery(model.dashboard?.readiness?.score))
         .refreshable { Haptic.soft(); await model.refresh(); await model.loadHr(); await model.loadNutrition(); await model.loadInsights(); await model.loadJournal() }
         .task {
             appeared = true          // let the screen animate in immediately, not after the network
@@ -318,8 +318,8 @@ struct DashboardView: View {
     @ViewBuilder private func deltaBadge(_ delta: Double) -> some View {
         let younger = delta < -0.4, older = delta > 0.4
         let color = younger ? Theme.Palette.mint : (older ? Theme.Palette.amber : Theme.Palette.textDim)
-        let text = younger ? String(format: "%.1f yrs younger", -delta)
-                 : (older ? String(format: "%.1f yrs older", delta) : "Right on pace")
+        let text = younger ? String(format: String(localized: "%.1f yrs younger"), -delta)
+                 : (older ? String(format: String(localized: "%.1f yrs older"), delta) : String(localized: "Right on pace"))
         Label(text, systemImage: younger ? "arrow.down.right" : (older ? "arrow.up.right" : "equal"))
             .font(Theme.Font.label).foregroundStyle(color)
             .padding(.horizontal, 10).padding(.vertical, 5)
@@ -328,7 +328,7 @@ struct DashboardView: View {
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
-        let part = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
+        let part = hour < 12 ? String(localized: "Good morning") : (hour < 18 ? String(localized: "Good afternoon") : String(localized: "Good evening"))
         if let first = model.user?.name?.split(separator: " ").first { return "\(part), \(first)." }
         return part + "."
     }
@@ -395,7 +395,7 @@ struct SleepingBanner: View {
             Spacer()
             HStack(spacing: 4) {
                 Circle().fill(connected ? Theme.Palette.mint : Theme.Palette.textFaint).frame(width: 7, height: 7)
-                Text(connected ? "Live" : "Offline").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                Text(connected ? String(localized: "Live") : String(localized: "Offline")).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
             }
         }
         .padding(Theme.Space.m)
@@ -407,15 +407,15 @@ struct SleepingBanner: View {
     }
 
     private var elapsed: String {
-        guard let s = startedAt else { return "Tracking your night" }
+        guard let s = startedAt else { return String(localized: "Tracking your night") }
         let sec = max(0, Int(Date().timeIntervalSince(s)))
         let h = sec / 3600, m = (sec % 3600) / 60
-        return h > 0 ? "\(h)h \(m)m asleep" : "\(m)m asleep"
+        return h > 0 ? String(localized: "\(h)h \(m)m asleep") : String(localized: "\(m)m asleep")
     }
     private var statusLine: String {
-        if connected { return "Tracking your night · streaming live" }
-        if let l = lastData { return "Saved on your band · last synced \(rel(l))" }
-        return "Saved on your band · syncs when you reconnect"
+        if connected { return String(localized: "Tracking your night · streaming live") }
+        if let l = lastData { return String(localized: "Saved on your band · last synced \(rel(l))") }
+        return String(localized: "Saved on your band · syncs when you reconnect")
     }
     private func rel(_ d: Date) -> String {
         let f = RelativeDateTimeFormatter(); f.unitsStyle = .abbreviated

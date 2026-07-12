@@ -70,7 +70,7 @@ final class CoachViewModel: ObservableObject {
             endBG()
             if let cid = res.conversation_id { conversationId = cid }
             guard let pid = res.pending_message_id else {
-                failBubble(localId, "Couldn't reach your coach — please try again."); sending = false; return
+                failBubble(localId, String(localized: "Couldn't reach your coach — please try again.")); sending = false; return
             }
             setServerId(localId, pid)
             await pollReply(api: api, messageId: pid, localId: localId)
@@ -528,7 +528,7 @@ private struct MacrosCard: View {
         let (v, t) = pair(key)
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(name).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                Text(LocalizedStringKey(name)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                 Spacer()
                 Text("\(Int(v))\(t > 0 ? "/\(Int(t))" : "")g").font(Theme.Font.num(13)).foregroundStyle(color)
             }
@@ -538,7 +538,7 @@ private struct MacrosCard: View {
     var body: some View {
         let cal = pair("calories")
         VStack(alignment: .leading, spacing: 12) {
-            Text((json["title"] as? String) ?? "Today's fuel")
+            Text(json["title"] as? String ?? String(localized: "Today's fuel"))
                 .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
             VStack(alignment: .leading, spacing: 5) {
                 HStack {
@@ -624,7 +624,7 @@ private struct FlowChips: View {
         VStack(spacing: Theme.Space.s) {
             ForEach(items, id: \.self) { s in
                 Button { Haptic.tap(); onTap(s) } label: {
-                    Text(s).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                    Text(LocalizedStringKey(s)).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                         .padding(.horizontal, Theme.Space.m).padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
                         .background(Theme.Palette.card, in: Capsule())

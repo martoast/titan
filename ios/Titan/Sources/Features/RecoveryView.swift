@@ -49,7 +49,11 @@ struct RecoveryView: View {
                     HStack(spacing: Theme.Space.m) {
                         Image(systemName: confidenceIcon(c.level)).font(.title3).foregroundStyle(Theme.Palette.amber)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(c.caveat ?? (c.level?.capitalized ?? "Confidence")).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            if let caveat = c.caveat ?? c.level?.capitalized {
+                                Text(caveat).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            } else {
+                                Text("Confidence").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            }
                             if let n = c.nights_of_data { Text("\(n) nights of baseline").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
                         }
                     }
@@ -74,11 +78,11 @@ struct RecoveryView: View {
         .task { await model.refresh(); await model.loadTrends() }
     }
 
-    private func feel(_ label: String, _ v: Int?, _ icon: String, _ c: Color) -> some View {
+    private func feel(_ label: LocalizedStringKey, _ v: Int?, _ icon: String, _ c: Color) -> some View {
         VStack(spacing: 5) {
             Image(systemName: icon).font(.system(size: 15)).foregroundStyle(c)
             Text(v.map { "\($0)" } ?? "—").font(Theme.Font.num(20))
-            Text(label.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(label).textCase(.uppercase).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
         }.frame(maxWidth: .infinity)
     }
     private func confidenceIcon(_ l: String?) -> String {
@@ -224,13 +228,13 @@ struct SleepView: View {
         .task { await model.loadSleepDetail() }
     }
 
-    private func sleepStat(_ label: String, _ value: String?, _ unit: String?, _ color: Color) -> some View {
+    private func sleepStat(_ label: LocalizedStringKey, _ value: String?, _ unit: String?, _ color: Color) -> some View {
         VStack(spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value ?? "—").font(Theme.Font.num(22)).foregroundStyle(color)
                 if let unit, value != nil { Text(unit).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
             }
-            Text(label.uppercased()).font(Theme.Font.micro).tracking(0.5).foregroundStyle(Theme.Palette.textDim)
+            Text(label).textCase(.uppercase).font(Theme.Font.micro).tracking(0.5).foregroundStyle(Theme.Palette.textDim)
         }.frame(maxWidth: .infinity)
     }
 

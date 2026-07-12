@@ -32,6 +32,13 @@ enum RunFmt {
 enum WorkoutRange: String, CaseIterable, Identifiable {
     case week = "Week", month = "Month", all = "All"
     var id: String { rawValue }
+    var label: LocalizedStringKey {
+        switch self {
+        case .week: return "Week"
+        case .month: return "Month"
+        case .all: return "All"
+        }
+    }
 }
 
 struct RunsSection: View {
@@ -109,7 +116,7 @@ struct RunsSection: View {
             ForEach(WorkoutRange.allCases) { r in
                 let on = range == r
                 Button { Haptic.tap(); withAnimation(Theme.Motion.snappy) { range = r } } label: {
-                    Text(r.rawValue).font(Theme.Font.micro)
+                    Text(r.label).font(Theme.Font.micro)
                         .foregroundStyle(on ? Theme.Palette.bg : Theme.Palette.textDim)
                         .padding(.horizontal, 14).padding(.vertical, 7)
                         .background { if on { Capsule().fill(Theme.Palette.text) } }
@@ -177,8 +184,8 @@ private struct RunRow: View {
     }
     // Lift: the title carries the type ("Strength") so lead with duration; run: the distance.
     private var headline: String {
-        if run.isLift { return run.duration_min.map { RunFmt.dur($0 * 60) } ?? "Lift" }
-        return run.distance_km.map { String(format: "%.2f km", $0) } ?? "Run"
+        if run.isLift { return run.duration_min.map { RunFmt.dur($0 * 60) } ?? String(localized: "Lift") }
+        return run.distance_km.map { String(format: "%.2f km", $0) } ?? String(localized: "Run")
     }
     private var icon: String {
         switch run.activity_type {
@@ -239,9 +246,10 @@ struct RunDetailView: View {
     }
     private var shareCaption: String {
         let km = detail?.distance_km ?? fallback.distance_km
-        let d = km.map { imperial ? String(format: "%.2f mi", $0 * 0.621371) : String(format: "%.2f km", $0) } ?? "a run"
+        let d = km.map { imperial ? String(format: "%.2f mi", $0 * 0.621371) : String(format: "%.2f km", $0) } ?? String(localized: "a run")
         let p = paceLabel(detail?.avg_pace_s_per_km ?? fallback.avg_pace_s_per_km)
-        return "Ran \(d)\(p == "—" ? "" : " at \(p)") — tracked on Titan 🏃"
+        if p == "—" { return String(localized: "Ran \(d) — tracked on Titan 🏃") }
+        return String(localized: "Ran \(d) at \(p) — tracked on Titan 🏃")
     }
 
     private var hasMap: Bool { (detail?.map_url_large ?? fallback.map_thumb_url) != nil }

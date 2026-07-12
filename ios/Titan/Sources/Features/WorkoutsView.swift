@@ -29,7 +29,11 @@ struct TrainSection: View {
 
             GlassCard {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
-                    SectionHeader(title: "Start a workout")
+                    HStack {
+                        Text("Start a workout").textCase(.uppercase)
+                            .font(Theme.Font.label).tracking(1.2).foregroundStyle(Theme.Palette.textDim)
+                        Spacer()
+                    }
                     row("hand.tap.fill", Theme.Palette.cyan, "Double-tap the band button", "Starts a session (engages workout HR) — double-tap again to end it.")
                     row("bubble.left.and.text.bubble.right.fill", Theme.Palette.indigo, "Or tell the coach", "\u{201C}starting a run\u{201D} · \u{201C}log my lift\u{201D}")
                 }
@@ -37,7 +41,7 @@ struct TrainSection: View {
         }
     }
 
-    private func row(_ icon: String, _ c: Color, _ title: String, _ sub: String) -> some View {
+    private func row(_ icon: String, _ c: Color, _ title: LocalizedStringKey, _ sub: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: Theme.Space.m) {
             Image(systemName: icon).foregroundStyle(c).frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {

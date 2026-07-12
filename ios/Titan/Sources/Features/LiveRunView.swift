@@ -79,11 +79,11 @@ struct LiveRunView: View {
                     // Run shows distance + pace; a lift has neither — show the heart instead.
                     HStack(spacing: Theme.Space.m) {
                         if model.isLift {
-                            bigStat(model.runLiveBpm.map { "\($0)" } ?? "—", "bpm", "Heart", Theme.Palette.pink)
-                            bigStat(model.runMaxBpm > 0 ? "\(model.runMaxBpm)" : "—", "max", "Peak", Theme.Palette.amber)
+                            bigStat(model.runLiveBpm.map { "\($0)" } ?? "—", String(localized: "bpm"), String(localized: "Heart"), Theme.Palette.pink)
+                            bigStat(model.runMaxBpm > 0 ? "\(model.runMaxBpm)" : "—", String(localized: "max"), String(localized: "Peak"), Theme.Palette.amber)
                         } else {
-                            bigStat(distLive(model.runDistanceKm), "km", "Distance", Theme.Palette.mint)
-                            bigStat(fmtPaceLive(model.runPaceSecPerKm), "/km", "Pace", Theme.Palette.cyan)
+                            bigStat(distLive(model.runDistanceKm), String(localized: "km"), String(localized: "Distance"), Theme.Palette.mint)
+                            bigStat(fmtPaceLive(model.runPaceSecPerKm), String(localized: "/km"), String(localized: "Pace"), Theme.Palette.cyan)
                         }
                     }
 
@@ -93,7 +93,7 @@ struct LiveRunView: View {
                     } else if model.runHasGps {
                         GlassCard(padding: Theme.Space.s) {
                             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                                SectionHeader(title: "Your route", trailing: "\(model.runTrack.count) fixes")
+                                SectionHeader(title: String(localized: "Your route"), trailing: String(localized: "\(model.runTrack.count) fixes"))
                                 LiveRouteMap(track: model.runTrack)
                                     .frame(height: 240)
                                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))

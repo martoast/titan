@@ -67,11 +67,11 @@ struct TrendsView: View {
     }
 
     @ViewBuilder
-    private func trendCard(_ title: String, avg: Double?, unit: String, color: Color, decimals: Int = 0, @ViewBuilder chart: () -> some View) -> some View {
+    private func trendCard(_ title: LocalizedStringKey, avg: Double?, unit: String, color: Color, decimals: Int = 0, @ViewBuilder chart: () -> some View) -> some View {
         GlassCard {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(title.uppercased()).font(Theme.Font.label).tracking(0.8).foregroundStyle(Theme.Palette.textDim)
+                    Text(title).textCase(.uppercase).font(Theme.Font.label).tracking(0.8).foregroundStyle(Theme.Palette.textDim)
                     Spacer()
                     if let avg {
                         Text(decimals > 0 ? String(format: "%.1f", avg) : "\(Int(avg))")

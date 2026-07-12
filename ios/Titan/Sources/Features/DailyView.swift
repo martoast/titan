@@ -121,10 +121,10 @@ private struct SleepSection: View {
         .frame(height: 12).clipShape(Capsule())
     }
 
-    private func stat(_ v: String, _ l: String, _ c: Color) -> some View {
+    private func stat(_ v: String, _ l: LocalizedStringKey, _ c: Color) -> some View {
         VStack(spacing: 3) {
-            Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
-            Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(LocalizedStringKey(v)).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
+            Text(l).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }.frame(maxWidth: .infinity)
     }
 
@@ -222,7 +222,7 @@ private struct CycleSection: View {
             Text(big).font(Theme.Font.num(46)).foregroundStyle(Theme.Palette.text).multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity).padding(.top, Theme.Space.s)
     }
-    private func heroText(_ c: CycleResponse.Cycle) -> (String, String) {
+    private func heroText(_ c: CycleResponse.Cycle) -> (LocalizedStringKey, LocalizedStringKey) {
         let day = c.cycle_day ?? 1
         let periodLen = c.period_length ?? 5
         if c.late == true, let n = c.next_period?.in_days { return ("Period", "\(-n)d late") }
@@ -232,7 +232,7 @@ private struct CycleSection: View {
             if ov > 0 && ov <= 6 { return ("Ovulation in", "\(ov) day\(ov == 1 ? "" : "s")") }
         }
         if let np = c.next_period?.in_days, np >= 0 { return ("Period in", "\(np) day\(np == 1 ? "" : "s")") }
-        return (c.phase_label ?? "Cycle", "Day \(day)")
+        return (LocalizedStringKey(c.phase_label ?? "Cycle"), "Day \(day)")
     }
 
     // MARK: pregnancy chance — secondary, below the hero
@@ -252,7 +252,7 @@ private struct CycleSection: View {
             circleButton("calendar", "Calendar", filled: false) { Haptic.tap(); showCalendar = true }
         }
     }
-    private func circleButton(_ icon: String, _ label: String, filled: Bool, _ action: @escaping () -> Void) -> some View {
+    private func circleButton(_ icon: String, _ label: LocalizedStringKey, filled: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 7) {
                 ZStack {
@@ -391,17 +391,17 @@ private struct CycleSection: View {
     }
 
     // MARK: helpers
-    private func chance(_ s: String?) -> (String, Color) {
+    private func chance(_ s: String?) -> (LocalizedStringKey, Color) {
         let l = (s ?? "low").lowercased()
         if l.contains("high") { return ("HIGH", Theme.Palette.pink) }
         if l.contains("med") || l.contains("mod") { return ("MEDIUM", Theme.Palette.amber) }
         return ("LOW", Theme.Palette.mint)
     }
     private func daysLabel(_ d: Int) -> String { d == 0 ? "Today" : (d < 0 ? "\(-d)d ago" : "\(d)d") }
-    private func stat(_ v: String, _ l: String, _ c: Color) -> some View {
+    private func stat(_ v: String, _ l: LocalizedStringKey, _ c: Color) -> some View {
         VStack(spacing: 3) {
-            Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
-            Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(LocalizedStringKey(v)).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
+            Text(l).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }.frame(maxWidth: .infinity)
     }
     private func loadWeek() async {
@@ -484,7 +484,7 @@ private struct CycleCalendarView: View {
         }
     }
 
-    private func legend(_ c: Color, _ t: String) -> some View {
+    private func legend(_ c: Color, _ t: LocalizedStringKey) -> some View {
         HStack(spacing: 5) { Circle().fill(c).frame(width: 10, height: 10); Text(t).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
     }
 
@@ -584,10 +584,10 @@ private struct HrSection: View {
         .animation(Theme.Motion.snappy, value: model.liveBpm)
     }
 
-    private func stat(_ v: String, _ l: String, _ c: Color) -> some View {
+    private func stat(_ v: String, _ l: LocalizedStringKey, _ c: Color) -> some View {
         VStack(spacing: 3) {
-            Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
-            Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(LocalizedStringKey(v)).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
+            Text(l).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }.frame(maxWidth: .infinity)
     }
 }

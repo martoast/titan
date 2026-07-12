@@ -59,7 +59,7 @@ struct LiveStepsCard: View {
                             }
                         }
                         VStack(alignment: .leading, spacing: Theme.Space.s) {
-                            SectionHeader(title: "Move", trailing: model.bandStepsToday > tracker.steps ? "band · live" : "live")
+                            SectionHeader(title: String(localized: "Move"), trailing: model.bandStepsToday > tracker.steps ? String(localized: "band · live") : String(localized: "live"))
                             stat(String(format: "%.1f km", tracker.distanceKm), "Distance", Theme.Palette.cyan)
                             stat("\(tracker.flights)", "Flights", Theme.Palette.amber)
                         }
@@ -73,7 +73,7 @@ struct LiveStepsCard: View {
         .onDisappear { tracker.stop() }
     }
 
-    private func stat(_ value: String, _ label: String, _ color: Color) -> some View {
+    private func stat(_ value: String, _ label: LocalizedStringKey, _ color: Color) -> some View {
         HStack(spacing: 6) {
             Text(value).font(Theme.Font.num(15)).foregroundStyle(color).monospacedDigit()
             Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
@@ -116,7 +116,7 @@ struct HydrationCard: View {
         let h = model.hydration
         GlassCard {
             VStack(spacing: Theme.Space.m) {
-                SectionHeader(title: "Hydration", trailing: h.map { "\($0.pct)%" })
+                SectionHeader(title: String(localized: "Hydration"), trailing: h.map { "\($0.pct)%" })
                 HStack(spacing: Theme.Space.l) {
                     FuelRing(pct: Double(h?.pct ?? 0) / 100, color: Theme.Palette.cyan, size: 100) {
                         VStack(spacing: 0) {
@@ -135,7 +135,7 @@ struct HydrationCard: View {
         .task { await model.loadHydration() }
     }
 
-    private func addButton(_ title: String, _ ml: Int) -> some View {
+    private func addButton(_ title: LocalizedStringKey, _ ml: Int) -> some View {
         Button { Task { await model.addWater(ml) } } label: {
             HStack(spacing: 8) {
                 Image(systemName: "drop.fill").font(.system(size: 12)).foregroundStyle(Theme.Palette.cyan)
@@ -173,7 +173,7 @@ struct FastingCard: View {
         let start = f.started_at.flatMap(parseISO) ?? Date()
         let goalH = f.goal_h ?? 16
         return VStack(spacing: Theme.Space.m) {
-            SectionHeader(title: "Fasting", trailing: "Goal \(Int(goalH))h")
+            SectionHeader(title: String(localized: "Fasting"), trailing: String(localized: "Goal \(Int(goalH))h"))
             TimelineView(.periodic(from: .now, by: 30)) { ctx in
                 let elapsed = max(0, ctx.date.timeIntervalSince(start)) / 3600
                 HStack(spacing: Theme.Space.l) {
@@ -184,7 +184,7 @@ struct FastingCard: View {
                         }
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(f.stage ?? "Fasting").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.violet)
+                        Text(f.stage ?? String(localized: "Fasting")).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.violet)
                         if let blurb = f.stage_blurb {
                             Text(blurb).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -204,7 +204,7 @@ struct FastingCard: View {
 
     private var idle: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
-            SectionHeader(title: "Fasting")
+            SectionHeader(title: String(localized: "Fasting"))
             HStack(spacing: Theme.Space.m) {
                 ZStack {
                     Circle().fill(Theme.Palette.violet.opacity(0.16)).frame(width: 44, height: 44)
@@ -233,10 +233,10 @@ private struct FastingStartSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     private let presets: [(String, String, Double)] = [
-        ("16:8", "Most popular — 16 h fast, 8 h eating", 16),
-        ("18:6", "Leaner window — 18 h fast", 18),
-        ("20:4", "Warrior — 20 h fast", 20),
-        ("OMAD", "One meal a day — 24 h", 24),
+        ("16:8", String(localized: "Most popular — 16 h fast, 8 h eating"), 16),
+        ("18:6", String(localized: "Leaner window — 18 h fast"), 18),
+        ("20:4", String(localized: "Warrior — 20 h fast"), 20),
+        ("OMAD", String(localized: "One meal a day — 24 h"), 24),
     ]
 
     var body: some View {
@@ -278,7 +278,7 @@ struct WeightSection: View {
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
-                SectionHeader(title: "Weight", trailing: rateText)
+                SectionHeader(title: String(localized: "Weight"), trailing: rateText)
                 if let w = model.weightCard, let trend = w.trend_kg {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(String(format: "%.1f", trend)).font(Theme.Font.num(44)).foregroundStyle(.white).monospacedDigit()
@@ -307,7 +307,7 @@ struct WeightSection: View {
 
     private var rateText: String? {
         guard let r = model.weightCard?.rate_kg_wk, abs(r) >= 0.02 else { return nil }
-        return String(format: "%@%.1f kg/wk", r < 0 ? "▼ " : "▲ ", abs(r))
+        return String(format: String(localized: "%@%.1f kg/wk"), r < 0 ? "▼ " : "▲ ", abs(r))
     }
 
     @ViewBuilder private func chart(_ w: WeightCard) -> some View {
@@ -346,7 +346,7 @@ struct WeightSection: View {
         HStack(spacing: Theme.Space.s) {
             Image(systemName: "target").foregroundStyle(color).font(.system(size: 14))
             VStack(alignment: .leading, spacing: 1) {
-                Text(g.target_kg.map { "Goal \(String(format: "%.0f", $0)) kg" } ?? "Goal").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                Text(g.target_kg.map { String(localized: "Goal \(String(format: "%.0f", $0)) kg") } ?? String(localized: "Goal")).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                 Text(goalDetail(g)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
             }
             Spacer()
@@ -357,12 +357,13 @@ struct WeightSection: View {
 
     private func goalDetail(_ g: WeightCard.WeightGoal) -> String {
         guard let proj = g.projected_date, let d = parseYMD(proj) else {
-            return "Keep logging — I’ll project your finish date."
+            return String(localized: "Keep logging — I’ll project your finish date.")
         }
         let f = DateFormatter(); f.dateFormat = "MMM d"
-        var s = "On track → \(f.string(from: d))"
+        let dateStr = f.string(from: d)
+        var s = String(localized: "On track → \(dateStr)")
         if let vs = g.vs_goal_days {
-            if vs > 0 { s += " · \(vs)d early" } else if vs < 0 { s = "Behind → \(f.string(from: d)) · \(abs(vs))d late" }
+            if vs > 0 { s += String(localized: " · \(vs)d early") } else if vs < 0 { s = String(localized: "Behind → \(dateStr) · \(abs(vs))d late") }
         }
         return s
     }

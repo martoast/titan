@@ -56,7 +56,7 @@ struct DevicesView: View {
             if model.bandConnected {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        SectionHeader(title: "Live signal", trailing: model.liveHz > 0 ? "\(model.liveHz) Hz" : nil)
+                        SectionHeader(title: String(localized: "Live signal"), trailing: model.liveHz > 0 ? "\(model.liveHz) Hz" : nil)
                         WaveformView(samples: model.waveform)
                         HStack(spacing: Theme.Space.m) {
                             liveStat("\(model.syncedSamples)", "samples", Theme.Palette.cyan)
@@ -88,7 +88,7 @@ struct DevicesView: View {
                 if model.pairing {
                     GlassCard {
                         VStack(alignment: .leading, spacing: Theme.Space.m) {
-                            SectionHeader(title: "Pick your band", trailing: "code on screen")
+                            SectionHeader(title: String(localized: "Pick your band"), trailing: String(localized: "code on screen"))
                             Text("Your band is showing a 4-character code. Tap the matching one below — this binds the app to YOUR band only.")
                                 .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
                             if model.pairCandidates.isEmpty {
@@ -120,7 +120,7 @@ struct DevicesView: View {
                 } else {
                     GlassCard {
                         VStack(alignment: .leading, spacing: Theme.Space.m) {
-                            SectionHeader(title: "Pair your band")
+                            SectionHeader(title: String(localized: "Pair your band"))
                             VStack(alignment: .leading, spacing: Theme.Space.s) {
                                 pairStep("1", "On the band, swipe to the Status face and click the button — it shows PAIR + a code.")
                                 pairStep("2", "Tap Pair below, then pick that code in the app.")
@@ -142,7 +142,7 @@ struct DevicesView: View {
             } else {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        SectionHeader(title: "Always-on sync")
+                        SectionHeader(title: String(localized: "Always-on sync"))
                         feature("moon.zzz.fill", Theme.Palette.indigo, "Wear it 24/7", "Recovery, sleep, and workouts sync on their own.")
                         feature("antenna.radiowaves.left.and.right", Theme.Palette.mint, "Background connection", "Stays synced even when the app is closed.")
                         feature("bolt.fill", Theme.Palette.amber, "Morning sync", "Your whole night uploads in seconds when you wake.")
@@ -156,7 +156,7 @@ struct DevicesView: View {
             Color.clear.frame(height: 8)
         }
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        .titanScreen("Band", glow: model.bandConnected ? Theme.Palette.mint : Theme.Palette.indigo)
+        .titanScreen(String(localized: "Band"), glow: model.bandConnected ? Theme.Palette.mint : Theme.Palette.indigo)
     }
 
     // Run GPS test. The band has no GPS chip — runs are mapped by the PHONE — so this proves, on the spot,
@@ -181,27 +181,27 @@ struct DevicesView: View {
         }
     }
     private var gpsTitle: String {
-        if model.gpsTestActive { return "Locating…" }
+        if model.gpsTestActive { return String(localized: "Locating…") }
         switch model.gpsReadiness {
-        case .ready?:      return "Ready to run"
-        case .denied?:     return "Location off"
-        case .preciseOff?: return "Precise Location off"
-        case .weakSignal?: return "Weak signal"
-        case nil:          return "Not tested yet"
+        case .ready?:      return String(localized: "Ready to run")
+        case .denied?:     return String(localized: "Location off")
+        case .preciseOff?: return String(localized: "Precise Location off")
+        case .weakSignal?: return String(localized: "Weak signal")
+        case nil:          return String(localized: "Not tested yet")
         }
     }
     private var gpsSubText: String {
         if model.gpsTestActive {
-            return model.gpsAccuracyM.map { "Finding you… ±\(Int($0)) m" } ?? "Finding your location…"
+            return model.gpsAccuracyM.map { String(localized: "Finding you… ±\(Int($0)) m") } ?? String(localized: "Finding your location…")
         }
         switch model.gpsReadiness {
-        case .ready(let acc)?: return "Your runs will map. Locked to ±\(Int(acc)) m."
-        case .denied?:         return "Allow location so runs can map."
-        case .preciseOff?:     return "Turn on Precise Location for run mapping."
+        case .ready(let acc)?: return String(localized: "Your runs will map. Locked to ±\(Int(acc)) m.")
+        case .denied?:         return String(localized: "Allow location so runs can map.")
+        case .preciseOff?:     return String(localized: "Turn on Precise Location for run mapping.")
         case .weakSignal(let best)?:
-            return best.map { "Best was ±\(Int($0)) m — too coarse. Try outside." }
-                ?? "No fix — try outside with a clear view of the sky."
-        case nil: return "Tap to confirm a run will track before you go."
+            return best.map { String(localized: "Best was ±\(Int($0)) m — too coarse. Try outside.") }
+                ?? String(localized: "No fix — try outside with a clear view of the sky.")
+        case nil: return String(localized: "Tap to confirm a run will track before you go.")
         }
     }
     /// What the user should DO when the test fails (shown below the status, color-matched to the verdict).
@@ -209,11 +209,11 @@ struct DevicesView: View {
         if model.gpsTestActive { return nil }
         switch model.gpsReadiness {
         case .denied?:
-            return ("Enable Location for Titan in Settings → Privacy → Location Services, then test again.", true)
+            return (String(localized: "Enable Location for Titan in Settings → Privacy → Location Services, then test again."), true)
         case .preciseOff?:
-            return ("In Settings → Titan → Location, turn ON “Precise Location”. Without it, runs map to the wrong block.", true)
+            return (String(localized: "In Settings → Titan → Location, turn ON “Precise Location”. Without it, runs map to the wrong block."), true)
         case .weakSignal?:
-            return ("Step outside with a clear view of the sky and test again — walls and roofs block GPS.", false)
+            return (String(localized: "Step outside with a clear view of the sky and test again — walls and roofs block GPS."), false)
         default:
             return nil
         }
@@ -221,7 +221,7 @@ struct DevicesView: View {
     private var gpsTestCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
-                SectionHeader(title: "Run GPS (phone)", trailing: model.gpsTestActive ? "TESTING" : nil)
+                SectionHeader(title: String(localized: "Run GPS (phone)"), trailing: model.gpsTestActive ? String(localized: "TESTING") : nil)
 
                 HStack(spacing: Theme.Space.m) {
                     Image(systemName: gpsIcon)
@@ -319,7 +319,7 @@ struct DevicesView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 if model.strapPairing {
-                    SectionHeader(title: "Pick your strap")
+                    SectionHeader(title: String(localized: "Pick your strap"))
                     Text("Put the strap on (wet the electrodes) so it powers up, then tap it below.")
                         .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
                     if model.strapCandidates.isEmpty {
@@ -348,8 +348,8 @@ struct DevicesView: View {
                         Text("Cancel").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     }.frame(maxWidth: .infinity)
                 } else if model.isStrapPaired {
-                    SectionHeader(title: "Heart-rate strap",
-                                  trailing: model.strapConnected ? "CONNECTED" : "searching")
+                    SectionHeader(title: String(localized: "Heart-rate strap"),
+                                  trailing: model.strapConnected ? String(localized: "CONNECTED") : String(localized: "searching"))
                     HStack(spacing: Theme.Space.m) {
                         Image(systemName: model.strapConnected ? "heart.fill" : "heart.slash")
                             .font(.title2)
@@ -383,7 +383,7 @@ struct DevicesView: View {
                         Text("Forget strap").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     }
                 } else {
-                    SectionHeader(title: "Add a heart-rate strap", trailing: "optional")
+                    SectionHeader(title: String(localized: "Add a heart-rate strap"), trailing: String(localized: "optional"))
                     Text("Wrist HR is great for rest and sleep, but a chest strap (Polar H10, Garmin, Wahoo…) is far more accurate for running and lifting. Pair one and Titan uses it automatically during workouts.")
                         .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
                     Button {
@@ -439,19 +439,19 @@ struct DevicesView: View {
     }
 
     private var statusTitle: String {
-        if model.bandConnected { return "Band connected" }
-        if !model.isBandPaired { return "No band yet" }
-        return model.bandIdle ? "Power-saving" : "Searching…"
+        if model.bandConnected { return String(localized: "Band connected") }
+        if !model.isBandPaired { return String(localized: "No band yet") }
+        return model.bandIdle ? String(localized: "Power-saving") : String(localized: "Searching…")
     }
     private var statusSub: String {
-        if model.bandConnected { return "Live — syncing in real time." }
-        if !model.isBandPaired { return "Pair your Titan band to begin." }
+        if model.bandConnected { return String(localized: "Live — syncing in real time.") }
+        if !model.isBandPaired { return String(localized: "Pair your Titan band to begin.") }
         return model.bandIdle
-            ? "Band's on its own, saving battery. It syncs in bursts and the moment you open the app."
-            : "Reconnects automatically when it's near."
+            ? String(localized: "Band's on its own, saving battery. It syncs in bursts and the moment you open the app.")
+            : String(localized: "Reconnects automatically when it's near.")
     }
 
-    private func pairStep(_ n: String, _ text: String) -> some View {
+    private func pairStep(_ n: String, _ text: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: Theme.Space.s) {
             Text(n).font(Theme.Font.micro).foregroundStyle(.white)
                 .frame(width: 20, height: 20).background(Theme.Palette.indigo, in: Circle())
@@ -472,14 +472,14 @@ struct DevicesView: View {
 
     private var divider: some View { Rectangle().fill(Theme.Palette.cardStroke).frame(width: 1, height: 30) }
 
-    private func liveStat(_ value: String, _ label: String, _ color: Color) -> some View {
+    private func liveStat(_ value: String, _ label: LocalizedStringKey, _ color: Color) -> some View {
         VStack(spacing: 3) {
             Text(value).font(Theme.Font.num(20)).foregroundStyle(color).monospacedDigit().contentTransition(.numericText())
-            Text(label.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }.frame(maxWidth: .infinity)
     }
 
-    private func feature(_ icon: String, _ c: Color, _ title: String, _ sub: String) -> some View {
+    private func feature(_ icon: String, _ c: Color, _ title: LocalizedStringKey, _ sub: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: Theme.Space.m) {
             Image(systemName: icon).font(.system(size: 17)).foregroundStyle(c).frame(width: 26)
             VStack(alignment: .leading, spacing: 2) {

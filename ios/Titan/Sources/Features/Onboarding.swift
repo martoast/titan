@@ -79,6 +79,7 @@ final class OnboardingForm: ObservableObject {
             "timezone": TimeZone.current.identifier,
             "injuries": injuries.joined(separator: "|"),
             "focus_areas": focusAreas.joined(separator: "|"),
+            "primary_language": LanguageManager.shared.serverValue,
         ]
         if let h = Double(height) { p["height"] = h }
         if full, let w = Double(weight) { p["weight"] = w }
@@ -135,7 +136,7 @@ struct OBOptionList: View {
             ForEach(options, id: \.0) { opt in
                 Button { Haptic.tap(); selection = opt.0 } label: {
                     HStack {
-                        Text(opt.1).font(Theme.Font.body).foregroundStyle(selection == opt.0 ? .white : Theme.Palette.text)
+                        Text(LocalizedStringKey(opt.1)).font(Theme.Font.body).foregroundStyle(selection == opt.0 ? .white : Theme.Palette.text)
                         Spacer()
                         if selection == opt.0 { Image(systemName: "checkmark.circle.fill").foregroundStyle(.white) }
                     }
@@ -166,7 +167,7 @@ struct OBChips: View {
                         Haptic.tap()
                         if on { selected.removeAll { $0 == chip } } else { selected.append(chip) }
                     } label: {
-                        Text(chip).font(Theme.Font.micro).foregroundStyle(on ? .white : Theme.Palette.textDim)
+                        Text(LocalizedStringKey(chip)).font(Theme.Font.micro).foregroundStyle(on ? .white : Theme.Palette.textDim)
                             .frame(maxWidth: .infinity, minHeight: 32).padding(.horizontal, 8)
                             .background(on ? Theme.Palette.indigo : Theme.Palette.card, in: Capsule())
                             .overlay(Capsule().strokeBorder(on ? .clear : Theme.Palette.cardStroke))

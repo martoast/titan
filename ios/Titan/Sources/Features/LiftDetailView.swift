@@ -71,7 +71,7 @@ struct LiftDetailView: View {
             ForEach(items, id: \.0) { item in
                 VStack(spacing: 2) {
                     Text(item.1).font(Theme.Font.num(19))
-                    Text(item.0).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).multilineTextAlignment(.center)
+                    Text(LocalizedStringKey(item.0)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
                 .background(RoundedRectangle(cornerRadius: Theme.Radius.chip).fill(Theme.Palette.card))
@@ -138,7 +138,7 @@ struct LiftDetailView: View {
         }
     }
 
-    private func card<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+    private func card<Content: View>(_ title: LocalizedStringKey, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             Text(title).font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
             content()
@@ -149,7 +149,7 @@ struct LiftDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).stroke(Theme.Palette.cardStroke))
     }
 
-    private func loadingNote(_ text: String) -> some View {
+    private func loadingNote(_ text: LocalizedStringKey) -> some View {
         HStack(spacing: Theme.Space.s) {
             ProgressView().tint(Theme.Palette.textFaint)
             Text(text).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)

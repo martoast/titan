@@ -1,78 +1,8146 @@
 {
-  "sourceLanguage" : "en",
-  "version" : "1.0",
-  "strings" : {
-    "Sign in" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Iniciar sesión" } } }
+  "sourceLanguage": "en",
+  "version": "1.0",
+  "strings": {
+    " · %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · %@"
+          }
+        }
+      }
     },
-    "Signing in…" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Iniciando sesión…" } } }
+    " · %lldd early": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · %lldd antes"
+          }
+        }
+      }
     },
-    "Email" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Correo electrónico" } } }
+    "%.1f yrs older": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.1f años más viejo"
+          }
+        }
+      }
     },
-    "Password" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Contraseña" } } }
+    "%.1f yrs younger": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.1f años más joven"
+          }
+        }
+      }
     },
-    "Today" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Hoy" } } }
+    "%@ /km": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ /km"
+          }
+        }
+      }
     },
-    "Fuel" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Nutrición" } } }
+    "%@ confidence": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confianza %@"
+          }
+        }
+      }
     },
-    "Fuel today" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Nutrición de hoy" } } }
+    "%@ gain": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ de desnivel"
+          }
+        }
+      }
     },
-    "Hydration" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Hidratación" } } }
+    "%@ is leading the group this week — %lld effort.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ va liderando al grupo esta semana — %2$lld de esfuerzo."
+          }
+        }
+      }
     },
-    "Glass" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Vaso" } } }
+    "%@ · %@ km": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@ km"
+          }
+        }
+      }
     },
-    "Bottle" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Botella" } } }
+    "%@ · lifting": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · pesas"
+          }
+        }
+      }
     },
-    "Large" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Grande" } } }
+    "%@ — done %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — listo %@"
+          }
+        }
+      }
     },
-    "Sleep" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Sueño" } } }
+    "%@%.1f kg/wk": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@%.1f kg/sem"
+          }
+        }
+      }
     },
-    "Recovery" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Recuperación" } } }
+    "%@%@/wk": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@%2$@/sem"
+          }
+        }
+      }
     },
-    "Strain" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Esfuerzo" } } }
+    "%@h debt": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@h deuda"
+          }
+        }
+      }
     },
-    "Coach" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Coach" } } }
+    "%lld Hz": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Hz"
+          }
+        }
+      }
     },
-    "Your coach" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Tu coach" } } }
+    "%lld activities": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld actividades"
+          }
+        }
+      }
     },
-    "Profile" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Perfil" } } }
+    "%lld bpm avg": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld bpm prom"
+          }
+        }
+      }
     },
-    "Settings" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Ajustes" } } }
+    "%lld day%@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld día%@"
+          }
+        }
+      }
     },
-    "Language" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Idioma" } } }
+    "%lld earned": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld obtenidas"
+          }
+        }
+      }
     },
-    "System" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Sistema" } } }
+    "%lld fixes": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld puntos"
+          }
+        }
+      }
     },
-    "Save" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Guardar" } } }
+    "%lld follow requests": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld solicitudes de seguimiento"
+          }
+        }
+      }
     },
-    "Continue" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Continuar" } } }
+    "%lld kcal · %lldP": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld kcal · %lldP"
+          }
+        }
+      }
     },
-    "Done" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Listo" } } }
+    "%lld kcal · %lldP · %lldC · %lldF": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld kcal · %lldP · %lldC · %lldG"
+          }
+        }
+      }
     },
-    "Cancel" : {
-      "localizations" : { "es-MX" : { "stringUnit" : { "state" : "translated", "value" : "Cancelar" } } }
+    "%lld logged today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld registrados hoy"
+          }
+        }
+      }
+    },
+    "%lld min": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld min"
+          }
+        }
+      }
+    },
+    "%lld nights of baseline": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld noches de referencia"
+          }
+        }
+      }
+    },
+    "%lld peak": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld máx"
+          }
+        }
+      }
+    },
+    "%lld sets · %lld reps": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld series · %lld reps"
+          }
+        }
+      }
+    },
+    "%lld stages": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld fases"
+          }
+        }
+      }
+    },
+    "%lld things worth knowing": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld cosas que vale la pena saber"
+          }
+        }
+      }
+    },
+    "%lld% efficient": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld% de eficiencia"
+          }
+        }
+      }
+    },
+    "%lld% performance": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld% rendimiento"
+          }
+        }
+      }
+    },
+    "%lld/3": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/3"
+          }
+        }
+      }
+    },
+    "%lldd ago": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hace %lld d"
+          }
+        }
+      }
+    },
+    "%lldd late": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldd de retraso"
+          }
+        }
+      }
+    },
+    "%lldh %lldm asleep": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldh %lldm dormido"
+          }
+        }
+      }
+    },
+    "%lldh ago": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hace %lld h"
+          }
+        }
+      }
+    },
+    "%lldm": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldm"
+          }
+        }
+      }
+    },
+    "%lldm ago": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hace %lld min"
+          }
+        }
+      }
+    },
+    "%lldm asleep": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldm dormido"
+          }
+        }
+      }
+    },
+    "%lldm in red": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldm en rojo"
+          }
+        }
+      }
+    },
+    "%llds ago": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hace %llds"
+          }
+        }
+      }
+    },
+    "/ %@ needed": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "/ %@ necesarias"
+          }
+        }
+      }
+    },
+    "/km": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "/km"
+          }
+        }
+      }
+    },
+    "1 activity": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 actividad"
+          }
+        }
+      }
+    },
+    "1 follow request": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 solicitud de seguimiento"
+          }
+        }
+      }
+    },
+    "1 thing worth knowing": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 cosa que vale la pena saber"
+          }
+        }
+      }
+    },
+    "A full night in the bank. Well rested.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noche completa en el banco. Bien descansado."
+          }
+        }
+      }
+    },
+    "A mix": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una mezcla"
+          }
+        }
+      }
+    },
+    "A quick note makes the macros far more accurate — the dish, brand, and rough amount.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una nota rápida hace los macros mucho más precisos — el platillo, la marca y la cantidad aproximada."
+          }
+        }
+      }
+    },
+    "A ~%lld-min %@ (%@) session gets you there — %@ to go.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una sesión de ~%lld min de %@ (%@) te lleva ahí — te faltan %@."
+          }
+        }
+      }
+    },
+    "About you": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sobre ti"
+          }
+        }
+      }
+    },
+    "About you.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sobre ti."
+          }
+        }
+      }
+    },
+    "Accept": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aceptar"
+          }
+        }
+      }
+    },
+    "Active": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activas"
+          }
+        }
+      }
+    },
+    "Activities": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actividades"
+          }
+        }
+      }
+    },
+    "Activity": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actividad"
+          }
+        }
+      }
+    },
+    "Actual": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Real"
+          }
+        }
+      }
+    },
+    "Add": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agregar"
+          }
+        }
+      }
+    },
+    "Add %lld to what you take": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agregar %lld a lo que tomas"
+          }
+        }
+      }
+    },
+    "Add a comment…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agrega un comentario…"
+          }
+        }
+      }
+    },
+    "Add a heart-rate strap": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agregar una banda de frecuencia cardíaca"
+          }
+        }
+      }
+    },
+    "Add a note…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agrega una nota…"
+          }
+        }
+      }
+    },
+    "Add a photo": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agregar una foto"
+          }
+        }
+      }
+    },
+    "Add a progress photo": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agregar foto de progreso"
+          }
+        }
+      }
+    },
+    "Add a supplement or medication — search it, or just snap the bottle.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agrega un suplemento o medicamento: búscalo o solo toma una foto del frasco."
+          }
+        }
+      }
+    },
+    "Add a supplement or medication — your coach factors it in.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agrega un suplemento o medicamento; tu coach lo toma en cuenta."
+          }
+        }
+      }
+    },
+    "Add my whole shelf": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agregar todo mi estante"
+          }
+        }
+      }
+    },
+    "Add one — type a name": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agrega uno: escribe un nombre"
+          }
+        }
+      }
+    },
+    "Add to what you take": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agregar a lo que tomas"
+          }
+        }
+      }
+    },
+    "Add your first": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agrega el primero"
+          }
+        }
+      }
+    },
+    "Add your own…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agrega el tuyo…"
+          }
+        }
+      }
+    },
+    "Adding…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agregando…"
+          }
+        }
+      }
+    },
+    "Adjust meal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustar comida"
+          }
+        }
+      }
+    },
+    "Advanced": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avanzado"
+          }
+        }
+      }
+    },
+    "Alcohol, caffeine, stress… learn what moves your recovery": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcohol, cafeína, estrés… descubre qué mueve tu recuperación"
+          }
+        }
+      }
+    },
+    "All": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos"
+          }
+        }
+      }
+    },
+    "All optional — but it makes your coach sharper.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todo opcional, pero hace que tu coach sea más preciso."
+          }
+        }
+      }
+    },
+    "All time": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Histórico"
+          }
+        }
+      }
+    },
+    "All-in — coach me all day": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A todo — guíame todo el día"
+          }
+        }
+      }
+    },
+    "Allergies / intolerances": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alergias / intolerancias"
+          }
+        }
+      }
+    },
+    "Allergies / intolerances (optional)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alergias / intolerancias (opcional)"
+          }
+        }
+      }
+    },
+    "Allow location so runs can map.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permite la ubicación para que las carreras se mapeen."
+          }
+        }
+      }
+    },
+    "Always-on sync": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronización continua"
+          }
+        }
+      }
+    },
+    "Amount": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cantidad"
+          }
+        }
+      }
+    },
+    "Analyze photo": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analizar foto"
+          }
+        }
+      }
+    },
+    "Analyze with note": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analizar con nota"
+          }
+        }
+      }
+    },
+    "Analyzing your sets…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analizando tus series…"
+          }
+        }
+      }
+    },
+    "Anything else I should know? (optional)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Algo más que deba saber? (opcional)"
+          }
+        }
+      }
+    },
+    "Anything to work around?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Algo que debamos cuidar?"
+          }
+        }
+      }
+    },
+    "Apple Health": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Health"
+          }
+        }
+      }
+    },
+    "Approve new followers": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprobar nuevos seguidores"
+          }
+        }
+      }
+    },
+    "Arms": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brazos"
+          }
+        }
+      }
+    },
+    "As needed": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Según se necesite"
+          }
+        }
+      }
+    },
+    "Athlete": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atleta"
+          }
+        }
+      }
+    },
+    "Athletic performance": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rendimiento atlético"
+          }
+        }
+      }
+    },
+    "Average cycle length": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duración promedio del ciclo"
+          }
+        }
+      }
+    },
+    "Average cycle length: %lld days": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duración promedio del ciclo: %lld días"
+          }
+        }
+      }
+    },
+    "Avg": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prom"
+          }
+        }
+      }
+    },
+    "Avg HR": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FC media"
+          }
+        }
+      }
+    },
+    "Avoiding pregnancy": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evitando embarazo"
+          }
+        }
+      }
+    },
+    "Awake": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Despierto"
+          }
+        }
+      }
+    },
+    "BIRTH CONTROL": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ANTICONCEPTIVO"
+          }
+        }
+      }
+    },
+    "BIRTHDATE": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FECHA DE NACIMIENTO"
+          }
+        }
+      }
+    },
+    "BPM": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BPM"
+          }
+        }
+      }
+    },
+    "Back": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Espalda"
+          }
+        }
+      }
+    },
+    "Background connection": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conexión en segundo plano"
+          }
+        }
+      }
+    },
+    "Badges": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insignias"
+          }
+        }
+      }
+    },
+    "Balanced — a few daily nudges": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Equilibrado — algunos recordatorios al día"
+          }
+        }
+      }
+    },
+    "Balanced — honest + supportive": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Equilibrado — honesto y de apoyo"
+          }
+        }
+      }
+    },
+    "Band": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Banda"
+          }
+        }
+      }
+    },
+    "Band connected": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Banda conectada"
+          }
+        }
+      }
+    },
+    "Band offline": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Banda desconectada"
+          }
+        }
+      }
+    },
+    "Band streaming": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Banda transmitiendo"
+          }
+        }
+      }
+    },
+    "Band's on its own, saving battery. It syncs in bursts and the moment you open the app.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La banda está sola, ahorrando batería. Se sincroniza en ráfagas y en cuanto abres la app."
+          }
+        }
+      }
+    },
+    "Barcode scanning": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escaneo de código de barras"
+          }
+        }
+      }
+    },
+    "Barcode scanning needs a recent iPhone.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El escaneo de códigos de barras necesita un iPhone reciente."
+          }
+        }
+      }
+    },
+    "Barcode scanning unavailable": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escaneo de código no disponible"
+          }
+        }
+      }
+    },
+    "Be discoverable, follow people, and share your activities.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aparece en búsquedas, sigue a otros y comparte tus actividades."
+          }
+        }
+      }
+    },
+    "Be the first to comment.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sé el primero en comentar."
+          }
+        }
+      }
+    },
+    "Behind → %@ · %lldd late": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atrasado → %@ · %lldd tarde"
+          }
+        }
+      }
+    },
+    "Belly": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panza"
+          }
+        }
+      }
+    },
+    "Best efforts": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mejores marcas"
+          }
+        }
+      }
+    },
+    "Best was ±%lld m — too coarse. Try outside.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo mejor fue ±%lld m — muy impreciso. Prueba afuera."
+          }
+        }
+      }
+    },
+    "Bio": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bio"
+          }
+        }
+      }
+    },
+    "Biological Age": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edad biológica"
+          }
+        }
+      }
+    },
+    "Biological age": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edad biológica"
+          }
+        }
+      }
+    },
+    "Birth control": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anticonceptivo"
+          }
+        }
+      }
+    },
+    "Birthdate": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fecha de nacimiento"
+          }
+        }
+      }
+    },
+    "Bloodwork": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Análisis de sangre"
+          }
+        }
+      }
+    },
+    "Body & progress": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuerpo y progreso"
+          }
+        }
+      }
+    },
+    "Bodyweight only": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo peso corporal"
+          }
+        }
+      }
+    },
+    "Bottle": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Botella"
+          }
+        }
+      }
+    },
+    "Brutal session — you lived in the red zone.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesión brutal — viviste en la zona roja."
+          }
+        }
+      }
+    },
+    "Build muscle": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ganar músculo"
+          }
+        }
+      }
+    },
+    "Building through the day": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo sube durante el día"
+          }
+        }
+      }
+    },
+    "Building your Titan…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Armando tu Titan…"
+          }
+        }
+      }
+    },
+    "Building your baseline": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Creando tu línea base"
+          }
+        }
+      }
+    },
+    "CONNECTED": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CONECTADA"
+          }
+        }
+      }
+    },
+    "Calculating your sleep — hang tight.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calculando tu sueño — dame un momento."
+          }
+        }
+      }
+    },
+    "Calendar": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calendario"
+          }
+        }
+      }
+    },
+    "Calories": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calorías"
+          }
+        }
+      }
+    },
+    "Calories (kcal)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calorías (kcal)"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelar"
+          }
+        }
+      }
+    },
+    "Carbs": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carbohidratos"
+          }
+        }
+      }
+    },
+    "Carbs (g)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carbohidratos (g)"
+          }
+        }
+      }
+    },
+    "Chance of pregnancy today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probabilidad de embarazo hoy"
+          }
+        }
+      }
+    },
+    "Changes save automatically": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los cambios se guardan solos"
+          }
+        }
+      }
+    },
+    "Check your connection": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisa tu conexión"
+          }
+        }
+      }
+    },
+    "Cheered · %lld": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplaudido · %lld"
+          }
+        }
+      }
+    },
+    "Chest": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pecho"
+          }
+        }
+      }
+    },
+    "Choose from Library": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elegir de la galería"
+          }
+        }
+      }
+    },
+    "Choose your language": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige tu idioma"
+          }
+        }
+      }
+    },
+    "Coach": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coach"
+          }
+        }
+      }
+    },
+    "Coach tone": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tono del coach"
+          }
+        }
+      }
+    },
+    "Coaching intensity": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intensidad del coaching"
+          }
+        }
+      }
+    },
+    "Comments": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comentarios"
+          }
+        }
+      }
+    },
+    "Community": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comunidad"
+          }
+        }
+      }
+    },
+    "Community & sharing": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comunidad y compartir"
+          }
+        }
+      }
+    },
+    "Confidence": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confianza"
+          }
+        }
+      }
+    },
+    "Confirm": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmar"
+          }
+        }
+      }
+    },
+    "Confirm meal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmar comida"
+          }
+        }
+      }
+    },
+    "Connect": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectar"
+          }
+        }
+      }
+    },
+    "Connect Apple Health": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectar Apple Health"
+          }
+        }
+      }
+    },
+    "Connected": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectada"
+          }
+        }
+      }
+    },
+    "Consistency": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consistencia"
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuar"
+          }
+        }
+      }
+    },
+    "Copper IUD": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DIU de cobre"
+          }
+        }
+      }
+    },
+    "Core": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Core"
+          }
+        }
+      }
+    },
+    "Couldn't load cycle": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar el ciclo"
+          }
+        }
+      }
+    },
+    "Couldn't load heart rate": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar la frecuencia cardiaca"
+          }
+        }
+      }
+    },
+    "Couldn't load sleep": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar el sueño"
+          }
+        }
+      }
+    },
+    "Couldn't load strain": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar el esfuerzo"
+          }
+        }
+      }
+    },
+    "Couldn't load the feed": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar el feed"
+          }
+        }
+      }
+    },
+    "Couldn't load the leaderboard": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar la tabla de líderes"
+          }
+        }
+      }
+    },
+    "Couldn't load this athlete": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar este atleta"
+          }
+        }
+      }
+    },
+    "Couldn't load this run": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar esta carrera"
+          }
+        }
+      }
+    },
+    "Couldn't load this workout. It's saved — pull back and reopen.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cargar este entrenamiento. Está guardado; regresa y ábrelo de nuevo."
+          }
+        }
+      }
+    },
+    "Couldn't load workouts": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudieron cargar los entrenamientos"
+          }
+        }
+      }
+    },
+    "Couldn't reach your coach — please try again.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo conectar con tu coach. Inténtalo de nuevo."
+          }
+        }
+      }
+    },
+    "Couldn't sync": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo sincronizar"
+          }
+        }
+      }
+    },
+    "Couldn't sync recovery": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo sincronizar la recuperación"
+          }
+        }
+      }
+    },
+    "Couldn't sync today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo sincronizar hoy"
+          }
+        }
+      }
+    },
+    "Cycle": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ciclo"
+          }
+        }
+      }
+    },
+    "DIET": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DIETA"
+          }
+        }
+      }
+    },
+    "Daily": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A diario"
+          }
+        }
+      }
+    },
+    "Daily macros": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Macros diarios"
+          }
+        }
+      }
+    },
+    "Day %lld": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Día %lld"
+          }
+        }
+      }
+    },
+    "Day Strain": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esfuerzo del día"
+          }
+        }
+      }
+    },
+    "Days per week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Días por semana"
+          }
+        }
+      }
+    },
+    "Debt": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déficit"
+          }
+        }
+      }
+    },
+    "Decent night — a little short of your need.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noche decente — un poco por debajo de lo que necesitas."
+          }
+        }
+      }
+    },
+    "Deep": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profundo"
+          }
+        }
+      }
+    },
+    "Delete": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar"
+          }
+        }
+      }
+    },
+    "Delete meal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar comida"
+          }
+        }
+      }
+    },
+    "Diet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieta"
+          }
+        }
+      }
+    },
+    "Distance": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Distancia"
+          }
+        }
+      }
+    },
+    "Don't break the chain — train today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No rompas la racha — entrena hoy"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listo"
+          }
+        }
+      }
+    },
+    "Dose": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dosis"
+          }
+        }
+      }
+    },
+    "Double-tap the band button": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Doble toque al botón de la banda"
+          }
+        }
+      }
+    },
+    "ELAPSED": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TRANSCURRIDO"
+          }
+        }
+      }
+    },
+    "EXPERIENCE": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "EXPERIENCIA"
+          }
+        }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar"
+          }
+        }
+      }
+    },
+    "Edit profile": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar perfil"
+          }
+        }
+      }
+    },
+    "Efficiency": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eficiencia"
+          }
+        }
+      }
+    },
+    "Effort": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esfuerzo"
+          }
+        }
+      }
+    },
+    "Elev gain": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desnivel"
+          }
+        }
+      }
+    },
+    "Elevation": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elevación"
+          }
+        }
+      }
+    },
+    "Email": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Correo electrónico"
+          }
+        }
+      }
+    },
+    "Enable Location for Titan in Settings → Privacy → Location Services, then test again.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activa la Ubicación para Titan en Configuración → Privacidad → Localización, y prueba de nuevo."
+          }
+        }
+      }
+    },
+    "Enable the microphone in Settings to dictate messages to your coach.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activa el micrófono en Ajustes para dictarle mensajes a tu coach."
+          }
+        }
+      }
+    },
+    "End fast": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminar ayuno"
+          }
+        }
+      }
+    },
+    "End lift": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminar pesas"
+          }
+        }
+      }
+    },
+    "End run": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminar carrera"
+          }
+        }
+      }
+    },
+    "End this lift? This finishes it on your band too and saves the summary.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Terminar estas pesas? También las finaliza en tu banda y guarda el resumen."
+          }
+        }
+      }
+    },
+    "End this run? This finishes it on your band too and saves the summary.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Terminar esta carrera? También la finaliza en tu banda y guarda el resumen."
+          }
+        }
+      }
+    },
+    "Energy": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Energía"
+          }
+        }
+      }
+    },
+    "Estimated from your photo — confirm the amount": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimado desde tu foto — confirma la cantidad"
+          }
+        }
+      }
+    },
+    "Estimated from your steps — no GPS lock on this one": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimado desde tus pasos — sin señal de GPS en esta"
+          }
+        }
+      }
+    },
+    "Estimates for awareness — not a contraceptive method or medical advice.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimaciones informativas: no son un método anticonceptivo ni consejo médico."
+          }
+        }
+      }
+    },
+    "Estimating macros with AI": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimando macros con IA"
+          }
+        }
+      }
+    },
+    "Evening": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarde"
+          }
+        }
+      }
+    },
+    "Everyone": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos"
+          }
+        }
+      }
+    },
+    "Experience": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experiencia"
+          }
+        }
+      }
+    },
+    "FLOW": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FLUJO"
+          }
+        }
+      }
+    },
+    "FOR YOU": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PARA TI"
+          }
+        }
+      }
+    },
+    "Fasting": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayuno"
+          }
+        }
+      }
+    },
+    "Fat": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grasa"
+          }
+        }
+      }
+    },
+    "Fat (g)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grasa (g)"
+          }
+        }
+      }
+    },
+    "Favorite": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorito"
+          }
+        }
+      }
+    },
+    "Feed": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed"
+          }
+        }
+      }
+    },
+    "Female": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mujer"
+          }
+        }
+      }
+    },
+    "Fertile": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fértil"
+          }
+        }
+      }
+    },
+    "Find": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar"
+          }
+        }
+      }
+    },
+    "Find by name or @username": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Busca por nombre o @usuario"
+          }
+        }
+      }
+    },
+    "Find friends in the Find tab — their runs and rides will show up here.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encuentra amigos en la pestaña Buscar — sus carreras y rodadas aparecerán aquí."
+          }
+        }
+      }
+    },
+    "Finding your location…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Localizando tu ubicación…"
+          }
+        }
+      }
+    },
+    "Finding you… ±%lld m": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Localizándote… ±%lld m"
+          }
+        }
+      }
+    },
+    "Finish": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finalizar"
+          }
+        }
+      }
+    },
+    "First": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Primera"
+          }
+        }
+      }
+    },
+    "First day of last period": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Primer día del último periodo"
+          }
+        }
+      }
+    },
+    "First — what should I call you?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Primero, ¿cómo te digo?"
+          }
+        }
+      }
+    },
+    "Fitness age %lld · from VO₂max": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edad física %lld · según VO₂máx"
+          }
+        }
+      }
+    },
+    "Flights": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pisos"
+          }
+        }
+      }
+    },
+    "Floors": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pisos"
+          }
+        }
+      }
+    },
+    "Focus areas": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zonas de enfoque"
+          }
+        }
+      }
+    },
+    "Follow": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seguir"
+          }
+        }
+      }
+    },
+    "Follow friends and family, cheer each other on, and climb the leaderboard. You're invisible until you join — and you choose what you share.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sigue a amigos y familia, échense porras y sube en la tabla de líderes. Eres invisible hasta que te unes — y tú decides qué compartes."
+          }
+        }
+      }
+    },
+    "Followers": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seguidores"
+          }
+        }
+      }
+    },
+    "Following": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siguiendo"
+          }
+        }
+      }
+    },
+    "Food": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alimentos"
+          }
+        }
+      }
+    },
+    "Foods you won't eat": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alimentos que no comes"
+          }
+        }
+      }
+    },
+    "Foods you won't eat (optional)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alimentos que no comes (opcional)"
+          }
+        }
+      }
+    },
+    "Forget": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Olvidar"
+          }
+        }
+      }
+    },
+    "Forget band & re-pair": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Olvidar banda y volver a vincular"
+          }
+        }
+      }
+    },
+    "Forget strap": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Olvidar banda de pecho"
+          }
+        }
+      }
+    },
+    "Form": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forma"
+          }
+        }
+      }
+    },
+    "Found these on your shelf. Untick anything I misread — you can fine-tune doses & timing later.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encontré esto en tu estante. Desmarca lo que haya leído mal; luego puedes ajustar dosis y horarios."
+          }
+        }
+      }
+    },
+    "Free forever · no subscription": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gratis para siempre · sin suscripción"
+          }
+        }
+      }
+    },
+    "Front": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frente"
+          }
+        }
+      }
+    },
+    "Fuel": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nutrición"
+          }
+        }
+      }
+    },
+    "Fuel today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nutrición de hoy"
+          }
+        }
+      }
+    },
+    "Full gym": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gimnasio completo"
+          }
+        }
+      }
+    },
+    "GAP": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GAP"
+          }
+        }
+      }
+    },
+    "Gallery": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Galería"
+          }
+        }
+      }
+    },
+    "General health & energy": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salud y energía general"
+          }
+        }
+      }
+    },
+    "Gentle — warm + encouraging": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suave — cálido y motivador"
+          }
+        }
+      }
+    },
+    "Give kudos · %lld": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplaudir · %lld"
+          }
+        }
+      }
+    },
+    "Glass": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vaso"
+          }
+        }
+      }
+    },
+    "Glutes": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Glúteos"
+          }
+        }
+      }
+    },
+    "Goal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meta"
+          }
+        }
+      }
+    },
+    "Goal %@ kg": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meta %@ kg"
+          }
+        }
+      }
+    },
+    "Goal %lldh": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meta %lldh"
+          }
+        }
+      }
+    },
+    "Goal & coaching": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meta y coaching"
+          }
+        }
+      }
+    },
+    "Goal · coaching · diet · cycle": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meta · coaching · dieta · ciclo"
+          }
+        }
+      }
+    },
+    "Good afternoon": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buenas tardes"
+          }
+        }
+      }
+    },
+    "Good evening": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buenas noches"
+          }
+        }
+      }
+    },
+    "Good morning": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buenos días"
+          }
+        }
+      }
+    },
+    "Good to know": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bueno saberlo"
+          }
+        }
+      }
+    },
+    "Got it.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listo."
+          }
+        }
+      }
+    },
+    "Got your Titan band?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Ya tienes tu banda Titan?"
+          }
+        }
+      }
+    },
+    "Grounded in real nutrition data": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con base en datos nutricionales reales"
+          }
+        }
+      }
+    },
+    "HIGH": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ALTA"
+          }
+        }
+      }
+    },
+    "HRV": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HRV"
+          }
+        }
+      }
+    },
+    "HRV — 30 days": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HRV — 30 días"
+          }
+        }
+      }
+    },
+    "Halal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halal"
+          }
+        }
+      }
+    },
+    "Health": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salud"
+          }
+        }
+      }
+    },
+    "Heart": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Corazón"
+          }
+        }
+      }
+    },
+    "Heart-rate strap": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Banda de frecuencia cardíaca"
+          }
+        }
+      }
+    },
+    "Heart-rate zones": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zonas de frecuencia cardiaca"
+          }
+        }
+      }
+    },
+    "Height (%@)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estatura (%@)"
+          }
+        }
+      }
+    },
+    "Hip": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cadera"
+          }
+        }
+      }
+    },
+    "Home with weights": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Casa con pesas"
+          }
+        }
+      }
+    },
+    "Hormonal IUD": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DIU hormonal"
+          }
+        }
+      }
+    },
+    "Hours of Sleep": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Horas de sueño"
+          }
+        }
+      }
+    },
+    "How active are you?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué tan activo eres?"
+          }
+        }
+      }
+    },
+    "How did I sleep?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cómo dormí?"
+          }
+        }
+      }
+    },
+    "How many meals a day?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cuántas comidas al día?"
+          }
+        }
+      }
+    },
+    "How should I push you?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cómo quieres que te exija?"
+          }
+        }
+      }
+    },
+    "How you feel": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo te sientes"
+          }
+        }
+      }
+    },
+    "How's my recovery?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cómo va mi recuperación?"
+          }
+        }
+      }
+    },
+    "Hydration": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hidratación"
+          }
+        }
+      }
+    },
+    "I'll space your protein + calories across the day.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reparto tu proteína y calorías a lo largo del día."
+          }
+        }
+      }
+    },
+    "INTENT": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OBJETIVO"
+          }
+        }
+      }
+    },
+    "If it's in hand, we'll connect it right after setup.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si ya la tienes, la conectamos justo después de configurar."
+          }
+        }
+      }
+    },
+    "Imperial · lb / in": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imperial · lb / in"
+          }
+        }
+      }
+    },
+    "Implant": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Implante"
+          }
+        }
+      }
+    },
+    "In Settings → Titan → Location, turn ON “Precise Location”. Without it, runs map to the wrong block.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En Configuración → Titan → Ubicación, activa “Ubicación precisa”. Sin ella, las carreras se mapean a la cuadra equivocada."
+          }
+        }
+      }
+    },
+    "Informational, not medical advice — check with your pharmacist or clinician.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo informativo, no es consejo médico; consulta con tu farmacéutico o médico."
+          }
+        }
+      }
+    },
+    "Injection": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inyección"
+          }
+        }
+      }
+    },
+    "Injuries / areas to respect": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesiones / zonas a cuidar"
+          }
+        }
+      }
+    },
+    "Intent": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Objetivo"
+          }
+        }
+      }
+    },
+    "Intermediate": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intermedio"
+          }
+        }
+      }
+    },
+    "Join the community": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Únete a la comunidad"
+          }
+        }
+      }
+    },
+    "Just tracking": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo llevar registro"
+          }
+        }
+      }
+    },
+    "Keep going": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seguir"
+          }
+        }
+      }
+    },
+    "Keep logging — I’ll project your finish date.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sigue registrando — proyectaré tu fecha de meta."
+          }
+        }
+      }
+    },
+    "Keep pushing": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sigue dándole"
+          }
+        }
+      }
+    },
+    "Keep the streak alive": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantén viva la racha"
+          }
+        }
+      }
+    },
+    "Keto": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keto"
+          }
+        }
+      }
+    },
+    "Knee": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rodilla"
+          }
+        }
+      }
+    },
+    "LIVE": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "EN VIVO"
+          }
+        }
+      }
+    },
+    "LIVE LIFT": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PESAS EN VIVO"
+          }
+        }
+      }
+    },
+    "LIVE RUN": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CARRERA EN VIVO"
+          }
+        }
+      }
+    },
+    "LOGGED": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "REGISTRADO"
+          }
+        }
+      }
+    },
+    "LOW": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BAJA"
+          }
+        }
+      }
+    },
+    "Language": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idioma"
+          }
+        }
+      }
+    },
+    "Large": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grande"
+          }
+        }
+      }
+    },
+    "Last": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anoche"
+          }
+        }
+      }
+    },
+    "Last 5 weeks": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Últimas 5 semanas"
+          }
+        }
+      }
+    },
+    "Last night": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anoche"
+          }
+        }
+      }
+    },
+    "Last period": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Último periodo"
+          }
+        }
+      }
+    },
+    "Last synced %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Última sincronización %@"
+          }
+        }
+      }
+    },
+    "Late": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retraso"
+          }
+        }
+      }
+    },
+    "Latest": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Última"
+          }
+        }
+      }
+    },
+    "Lay the bottles out, take one photo — I'll read every label I can.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acomoda los frascos y toma una foto; leeré todas las etiquetas que pueda."
+          }
+        }
+      }
+    },
+    "Leaders": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Líderes"
+          }
+        }
+      }
+    },
+    "Leading the group 🏆": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liderando al grupo 🏆"
+          }
+        }
+      }
+    },
+    "Leaner window — 18 h fast": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ventana más estricta — 18 h de ayuno"
+          }
+        }
+      }
+    },
+    "Legs": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Piernas"
+          }
+        }
+      }
+    },
+    "Let's build your Titan.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vamos a armar tu Titan."
+          }
+        }
+      }
+    },
+    "Lift": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pesas"
+          }
+        }
+      }
+    },
+    "Light": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligero"
+          }
+        }
+      }
+    },
+    "Light on sleep. Prioritize an early night tonight.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dormiste poco. Prioriza acostarte temprano hoy."
+          }
+        }
+      }
+    },
+    "Light touch — stay out of my way": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligero — no te metas mucho"
+          }
+        }
+      }
+    },
+    "Lightly active — 1–3 days a week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poco activo — 1–3 días por semana"
+          }
+        }
+      }
+    },
+    "Live": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En vivo"
+          }
+        }
+      }
+    },
+    "Live now": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En vivo"
+          }
+        }
+      }
+    },
+    "Live signal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Señal en vivo"
+          }
+        }
+      }
+    },
+    "Live — syncing in real time.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En vivo — sincronizando en tiempo real."
+          }
+        }
+      }
+    },
+    "Loading today's fuel…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cargando tu comida de hoy…"
+          }
+        }
+      }
+    },
+    "Loading your lift…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cargando tu entrenamiento…"
+          }
+        }
+      }
+    },
+    "Locating…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Localizando…"
+          }
+        }
+      }
+    },
+    "Locating… (%lld/3)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Localizando… (%lld/3)"
+          }
+        }
+      }
+    },
+    "Location off": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ubicación desactivada"
+          }
+        }
+      }
+    },
+    "Locked in today — keep it rolling": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hoy quedó listo — sigue así"
+          }
+        }
+      }
+    },
+    "Log 1.5×": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrar 1.5×"
+          }
+        }
+      }
+    },
+    "Log a few weigh-ins and your smoothed “true weight” trend — and a projection to your goal — appears here.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registra algunas pesadas y aquí aparece tu tendencia de “peso real” suavizada — y una proyección hacia tu meta."
+          }
+        }
+      }
+    },
+    "Log an activity — or follow friends — to start competing.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registra una actividad — o sigue a amigos — para empezar a competir."
+          }
+        }
+      }
+    },
+    "Log meal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrar comida"
+          }
+        }
+      }
+    },
+    "Log my breakfast": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registra mi desayuno"
+          }
+        }
+      }
+    },
+    "Log my last period": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrar mi último periodo"
+          }
+        }
+      }
+    },
+    "Log period": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrar periodo"
+          }
+        }
+      }
+    },
+    "Log period start": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrar inicio del periodo"
+          }
+        }
+      }
+    },
+    "Log today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrar hoy"
+          }
+        }
+      }
+    },
+    "Log weigh-in": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrar peso"
+          }
+        }
+      }
+    },
+    "Log your day": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registra tu día"
+          }
+        }
+      }
+    },
+    "Log your period to begin": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registra tu periodo para empezar"
+          }
+        }
+      }
+    },
+    "Log ½×": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrar ½×"
+          }
+        }
+      }
+    },
+    "Logging…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrando…"
+          }
+        }
+      }
+    },
+    "Long one in the bank — huge aerobic work.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una larga en la bolsa — enorme trabajo aeróbico."
+          }
+        }
+      }
+    },
+    "Longest": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Más larga"
+          }
+        }
+      }
+    },
+    "Longevity & healthspan": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Longevidad y salud"
+          }
+        }
+      }
+    },
+    "Lose fat / get lean": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bajar grasa / marcarme"
+          }
+        }
+      }
+    },
+    "Lower back": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Espalda baja"
+          }
+        }
+      }
+    },
+    "MAX": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MÁX"
+          }
+        }
+      }
+    },
+    "MEDIUM": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MEDIA"
+          }
+        }
+      }
+    },
+    "Main goal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meta principal"
+          }
+        }
+      }
+    },
+    "Major": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importante"
+          }
+        }
+      }
+    },
+    "Male": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hombre"
+          }
+        }
+      }
+    },
+    "Mapping your route…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trazando tu ruta…"
+          }
+        }
+      }
+    },
+    "Mark taken": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marcar como tomado"
+          }
+        }
+      }
+    },
+    "Max": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Máx"
+          }
+        }
+      }
+    },
+    "Max HR": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FC máx"
+          }
+        }
+      }
+    },
+    "Meal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comida"
+          }
+        }
+      }
+    },
+    "Meal name": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nombre de la comida"
+          }
+        }
+      }
+    },
+    "Meals per day": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comidas al día"
+          }
+        }
+      }
+    },
+    "Medication": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medicamento"
+          }
+        }
+      }
+    },
+    "Medications": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medicamentos"
+          }
+        }
+      }
+    },
+    "Message": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensaje"
+          }
+        }
+      }
+    },
+    "Metric · kg / cm": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Métrico · kg / cm"
+          }
+        }
+      }
+    },
+    "Metrics": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Métricas"
+          }
+        }
+      }
+    },
+    "Microphone access needed": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se necesita acceso al micrófono"
+          }
+        }
+      }
+    },
+    "Midday": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mediodía"
+          }
+        }
+      }
+    },
+    "Min": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mín"
+          }
+        }
+      }
+    },
+    "Moderate": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moderado"
+          }
+        }
+      }
+    },
+    "Moderately active — 3–5 days": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moderadamente activo — 3–5 días"
+          }
+        }
+      }
+    },
+    "Month": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mes"
+          }
+        }
+      }
+    },
+    "Mood": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ánimo"
+          }
+        }
+      }
+    },
+    "Morning": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mañana"
+          }
+        }
+      }
+    },
+    "Morning sync": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronización matutina"
+          }
+        }
+      }
+    },
+    "Most popular — 16 h fast, 8 h eating": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El más popular — 16 h de ayuno, 8 h para comer"
+          }
+        }
+      }
+    },
+    "Motivation": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Motivación"
+          }
+        }
+      }
+    },
+    "Move": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Movimiento"
+          }
+        }
+      }
+    },
+    "My Titan band is in hand": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya tengo mi banda Titan"
+          }
+        }
+      }
+    },
+    "Name": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nombre"
+          }
+        }
+      }
+    },
+    "Neck": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuello"
+          }
+        }
+      }
+    },
+    "Need": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Necesidad"
+          }
+        }
+      }
+    },
+    "New / returning": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuevo / regresando"
+          }
+        }
+      }
+    },
+    "New meal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva comida"
+          }
+        }
+      }
+    },
+    "New progress photo": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva foto de progreso"
+          }
+        }
+      }
+    },
+    "Next period": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Próximo periodo"
+          }
+        }
+      }
+    },
+    "Nice run — every km counts. Well done.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buena carrera — cada km cuenta. Bien hecho."
+          }
+        }
+      }
+    },
+    "Nice work. Sealed from your band — GPS-grade estimates.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buen trabajo. Sellado desde tu banda — estimaciones tipo GPS."
+          }
+        }
+      }
+    },
+    "Night": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noche"
+          }
+        }
+      }
+    },
+    "Night logged — your recovery is being scored.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noche registrada — estamos calculando tu recuperación."
+          }
+        }
+      }
+    },
+    "No GPS route": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin ruta de GPS"
+          }
+        }
+      }
+    },
+    "No GPS route on this one": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin ruta de GPS en esta"
+          }
+        }
+      }
+    },
+    "No band yet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún sin banda"
+          }
+        }
+      }
+    },
+    "No band yet? No problem — log by photo + chat, and add a band anytime.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Aún sin banda? Sin problema: registra por foto y chat, y agrega una banda cuando quieras."
+          }
+        }
+      }
+    },
+    "No fix — try outside with a clear view of the sky.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin señal — prueba afuera con vista despejada al cielo."
+          }
+        }
+      }
+    },
+    "No heart rate yet today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay frecuencia cardiaca hoy"
+          }
+        }
+      }
+    },
+    "No one found for “%@”.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se encontró a nadie para “%@”."
+          }
+        }
+      }
+    },
+    "No pending requests.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No tienes solicitudes pendientes."
+          }
+        }
+      }
+    },
+    "No photos yet. Snap your first one — same lighting and pose each time makes the comparison honest. Your coach can render your dream physique from it.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay fotos. Toma la primera — misma luz y pose cada vez para una comparación honesta. Tu coach puede recrear el físico que sueñas a partir de ella."
+          }
+        }
+      }
+    },
+    "No sleep logged yet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay sueño registrado"
+          }
+        }
+      }
+    },
+    "No standings yet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay clasificación"
+          }
+        }
+      }
+    },
+    "No workouts yet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay entrenamientos"
+          }
+        }
+      }
+    },
+    "No workouts yet today — your strain is from daily movement.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay entrenamientos hoy — tu esfuerzo viene del movimiento diario."
+          }
+        }
+      }
+    },
+    "None": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguno"
+          }
+        }
+      }
+    },
+    "Not enough data to chart yet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay datos suficientes para graficar"
+          }
+        }
+      }
+    },
+    "Not enough data yet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay suficientes datos"
+          }
+        }
+      }
+    },
+    "Not now": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora no"
+          }
+        }
+      }
+    },
+    "Not paired": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin emparejar"
+          }
+        }
+      }
+    },
+    "Not tested yet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin probar aún"
+          }
+        }
+      }
+    },
+    "Note (optional)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nota (opcional)"
+          }
+        }
+      }
+    },
+    "Notes": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notas"
+          }
+        }
+      }
+    },
+    "Nothing here yet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay nada aquí"
+          }
+        }
+      }
+    },
+    "Nothing logged this month yet.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada registrado este mes todavía."
+          }
+        }
+      }
+    },
+    "Nothing logged this week yet — get after it.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada registrado esta semana todavía — ¡a darle!"
+          }
+        }
+      }
+    },
+    "Nothing logged yet. Snap your first meal — the macros land here and your coach sees them.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no registras nada. Toma tu primera comida — los macros aparecen aquí y tu coach los ve."
+          }
+        }
+      }
+    },
+    "Now": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora"
+          }
+        }
+      }
+    },
+    "Nutrition": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nutrición"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "Official label": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etiqueta oficial"
+          }
+        }
+      }
+    },
+    "Offline": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión"
+          }
+        }
+      }
+    },
+    "Omnivore": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Omnívoro"
+          }
+        }
+      }
+    },
+    "On the band, swipe to the Status face and click the button — it shows PAIR + a code.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En la banda, desliza a la pantalla Status y presiona el botón — mostrará PAIR y un código."
+          }
+        }
+      }
+    },
+    "On track → %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vas bien → %@"
+          }
+        }
+      }
+    },
+    "One meal a day — 24 h": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una comida al día — 24 h"
+          }
+        }
+      }
+    },
+    "Only me": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo yo"
+          }
+        }
+      }
+    },
+    "Open Settings": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Configuración"
+          }
+        }
+      }
+    },
+    "Open-source · free forever": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código abierto · gratis para siempre"
+          }
+        }
+      }
+    },
+    "Or just tell your coach — “set my protein to 180”, “target 7.5 hours of sleep.”": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O solo dile a tu coach — “pon mi proteína en 180”, “meta de 7.5 horas de sueño”."
+          }
+        }
+      }
+    },
+    "Or tell the coach": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O dile al coach"
+          }
+        }
+      }
+    },
+    "Other": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otro"
+          }
+        }
+      }
+    },
+    "Ovulation": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ovulación"
+          }
+        }
+      }
+    },
+    "Ovulation in": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ovulación en"
+          }
+        }
+      }
+    },
+    "PAUSED": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "EN PAUSA"
+          }
+        }
+      }
+    },
+    "PERFORMANCE": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RENDIMIENTO"
+          }
+        }
+      }
+    },
+    "POSE": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "POSE"
+          }
+        }
+      }
+    },
+    "Pace": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ritmo"
+          }
+        }
+      }
+    },
+    "Packaged food → exact macros, saved for your coach": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comida empaquetada → macros exactos, guardados para tu coach"
+          }
+        }
+      }
+    },
+    "Pair Titan band": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vincular banda Titan"
+          }
+        }
+      }
+    },
+    "Pair a strap": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vincular una banda de pecho"
+          }
+        }
+      }
+    },
+    "Pair your Titan band to begin.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vincula tu banda Titan para empezar."
+          }
+        }
+      }
+    },
+    "Pair your band": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vincula tu banda"
+          }
+        }
+      }
+    },
+    "Paired": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Emparejada"
+          }
+        }
+      }
+    },
+    "Password": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraseña"
+          }
+        }
+      }
+    },
+    "Patch": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parche"
+          }
+        }
+      }
+    },
+    "Pause": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pausar"
+          }
+        }
+      }
+    },
+    "Peak": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pico"
+          }
+        }
+      }
+    },
+    "Peak recovery night — you're fully charged.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recuperación máxima — estás a tope."
+          }
+        }
+      }
+    },
+    "Period": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periodo"
+          }
+        }
+      }
+    },
+    "Period in": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periodo en"
+          }
+        }
+      }
+    },
+    "Pescatarian": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pescetariano"
+          }
+        }
+      }
+    },
+    "Phase, predictions & symptom log": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fase, predicciones y registro de síntomas"
+          }
+        }
+      }
+    },
+    "Photo ready — add a note or send": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto lista: agrega una nota o envía"
+          }
+        }
+      }
+    },
+    "Pick the areas you care about most. Optional.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige las zonas que más te importan. Opcional."
+          }
+        }
+      }
+    },
+    "Pick your band": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige tu banda"
+          }
+        }
+      }
+    },
+    "Pick your strap": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige tu banda de pecho"
+          }
+        }
+      }
+    },
+    "Pill": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pastilla"
+          }
+        }
+      }
+    },
+    "Plan today's workout": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Planea el entrenamiento de hoy"
+          }
+        }
+      }
+    },
+    "Point at a barcode": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apunta a un código de barras"
+          }
+        }
+      }
+    },
+    "Points": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puntos"
+          }
+        }
+      }
+    },
+    "Power-saving": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahorro de energía"
+          }
+        }
+      }
+    },
+    "Precise Location off": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ubicación precisa desactivada"
+          }
+        }
+      }
+    },
+    "Private": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privada"
+          }
+        }
+      }
+    },
+    "Private account — review each follow request.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuenta privada — revisa cada solicitud de seguimiento."
+          }
+        }
+      }
+    },
+    "Private. Front, side & back over time.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privado. Frente, perfil y espalda con el tiempo."
+          }
+        }
+      }
+    },
+    "Profile": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil"
+          }
+        }
+      }
+    },
+    "Protein": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proteína"
+          }
+        }
+      }
+    },
+    "Protein (g)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proteína (g)"
+          }
+        }
+      }
+    },
+    "Protocol": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protocolo"
+          }
+        }
+      }
+    },
+    "Public": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pública"
+          }
+        }
+      }
+    },
+    "Put it on (wet electrodes) — it connects automatically.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Póntela (moja los electrodos) — se conecta automáticamente."
+          }
+        }
+      }
+    },
+    "Put the strap on (wet the electrodes) so it powers up, then tap it below.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ponte la banda de pecho (moja los electrodos) para que encienda, luego tócala abajo."
+          }
+        }
+      }
+    },
+    "Quality": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calidad"
+          }
+        }
+      }
+    },
+    "Quick tempo run — that was moving.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carrera de ritmo rápido — ibas volando."
+          }
+        }
+      }
+    },
+    "REM": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "REM"
+          }
+        }
+      }
+    },
+    "RUN": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CARRERA"
+          }
+        }
+      }
+    },
+    "Ran %@ at %@ — tracked on Titan 🏃": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Corrí %@ a %@ — registrado en Titan 🏃"
+          }
+        }
+      }
+    },
+    "Ran %@ — tracked on Titan 🏃": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Corrí %@ — registrado en Titan 🏃"
+          }
+        }
+      }
+    },
+    "Range": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periodo"
+          }
+        }
+      }
+    },
+    "Rank #%lld": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puesto #%lld"
+          }
+        }
+      }
+    },
+    "Read straight from the label": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leído directo de la etiqueta"
+          }
+        }
+      }
+    },
+    "Reading your plate…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leyendo tu plato…"
+          }
+        }
+      }
+    },
+    "Ready to run": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listo para correr"
+          }
+        }
+      }
+    },
+    "Recalculate from my bodyweight": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recalcular según mi peso"
+          }
+        }
+      }
+    },
+    "Recent": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reciente"
+          }
+        }
+      }
+    },
+    "Recomposition (lean + strong)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recomposición (marcado + fuerte)"
+          }
+        }
+      }
+    },
+    "Reconnect": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconectar"
+          }
+        }
+      }
+    },
+    "Reconnects automatically when it's near.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se reconecta automáticamente cuando está cerca."
+          }
+        }
+      }
+    },
+    "Recording… tap stop when you're done": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grabando… toca detener cuando termines"
+          }
+        }
+      }
+    },
+    "Recovery": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recuperación"
+          }
+        }
+      }
+    },
+    "Recovery breakdown": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desglose de recuperación"
+          }
+        }
+      }
+    },
+    "Recovery, sleep, and workouts sync on their own.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La recuperación, el sueño y los entrenamientos se sincronizan solos."
+          }
+        }
+      }
+    },
+    "Remove it and its history": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminarlo junto con su historial"
+          }
+        }
+      }
+    },
+    "Repeat": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repetir"
+          }
+        }
+      }
+    },
+    "Requested": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solicitado"
+          }
+        }
+      }
+    },
+    "Requests": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solicitudes"
+          }
+        }
+      }
+    },
+    "Respiration": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Respiración"
+          }
+        }
+      }
+    },
+    "Resting": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reposo"
+          }
+        }
+      }
+    },
+    "Resting HR": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FC en reposo"
+          }
+        }
+      }
+    },
+    "Resting Heart Rate": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frecuencia cardiaca en reposo"
+          }
+        }
+      }
+    },
+    "Restorative": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reparador"
+          }
+        }
+      }
+    },
+    "Resume": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reanudar"
+          }
+        }
+      }
+    },
+    "Retry": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reintentar"
+          }
+        }
+      }
+    },
+    "Right on pace": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Justo en ritmo"
+          }
+        }
+      }
+    },
+    "Ring": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anillo"
+          }
+        }
+      }
+    },
+    "Run": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carrera"
+          }
+        }
+      }
+    },
+    "Run GPS (phone)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GPS de carrera (teléfono)"
+          }
+        }
+      }
+    },
+    "Run all of Titan from here.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controla todo Titan desde aquí."
+          }
+        }
+      }
+    },
+    "Run or lift — your streak starts on day one": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Corre o levanta pesas — tu racha arranca el día uno"
+          }
+        }
+      }
+    },
+    "SEALING": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SELLANDO"
+          }
+        }
+      }
+    },
+    "SEX": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SEXO"
+          }
+        }
+      }
+    },
+    "SLEEP": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SUEÑO"
+          }
+        }
+      }
+    },
+    "SLEEPING": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DURMIENDO"
+          }
+        }
+      }
+    },
+    "STRENGTH": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FUERZA"
+          }
+        }
+      }
+    },
+    "SYMPTOMS": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SÍNTOMAS"
+          }
+        }
+      }
+    },
+    "Save": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar"
+          }
+        }
+      }
+    },
+    "Save changes": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar cambios"
+          }
+        }
+      }
+    },
+    "Save photo": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar foto"
+          }
+        }
+      }
+    },
+    "Save targets": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar metas"
+          }
+        }
+      }
+    },
+    "Saved on your band · last synced %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado en tu banda · sincronizado %@"
+          }
+        }
+      }
+    },
+    "Saved on your band · syncs when you reconnect": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado en tu banda · se sincroniza al reconectar"
+          }
+        }
+      }
+    },
+    "Saved — the full breakdown appears in Daily shortly.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado — el desglose completo aparecerá en Diario en un momento."
+          }
+        }
+      }
+    },
+    "Saving…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardando…"
+          }
+        }
+      }
+    },
+    "Scan a barcode": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escanea un código de barras"
+          }
+        }
+      }
+    },
+    "Scan packaged food for exact macros": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escanea comida empaquetada para obtener macros exactos"
+          }
+        }
+      }
+    },
+    "Scanned": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escaneado"
+          }
+        }
+      }
+    },
+    "Sealed from your band": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrado desde tu banda"
+          }
+        }
+      }
+    },
+    "Sealing the full breakdown…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrando el desglose completo…"
+          }
+        }
+      }
+    },
+    "Searching for GPS… your phone maps the route once it gets a lock.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando GPS… tu teléfono traza la ruta en cuanto haya señal."
+          }
+        }
+      }
+    },
+    "Searching for heart-rate straps…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando bandas de frecuencia cardíaca…"
+          }
+        }
+      }
+    },
+    "Searching…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando…"
+          }
+        }
+      }
+    },
+    "Searching… make sure the band shows a code (swipe to the Status face, then click the button).": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando… asegúrate de que la banda muestre un código (desliza a la pantalla Status y presiona el botón)."
+          }
+        }
+      }
+    },
+    "Sedentary — desk job, little exercise": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sedentario — trabajo de oficina, poco ejercicio"
+          }
+        }
+      }
+    },
+    "Serving: %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Porción: %@"
+          }
+        }
+      }
+    },
+    "Session logged. Consistency is how you build.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesión registrada. La constancia es como te construyes."
+          }
+        }
+      }
+    },
+    "Set my last period start": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Definir el inicio de mi último periodo"
+          }
+        }
+      }
+    },
+    "Set the first day of your last period and I'll map your phases, predict your next one, and show your daily pregnancy chance.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marca el primer día de tu último periodo y trazaré tus fases, predeciré el siguiente y te mostraré tu probabilidad de embarazo diaria."
+          }
+        }
+      }
+    },
+    "Sets": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Series"
+          }
+        }
+      }
+    },
+    "Sets · %lld sets, %lld reps": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Series · %lld series, %lld reps"
+          }
+        }
+      }
+    },
+    "Settings": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes"
+          }
+        }
+      }
+    },
+    "Sex": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sexo"
+          }
+        }
+      }
+    },
+    "Share this lift": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comparte tu entrenamiento"
+          }
+        }
+      }
+    },
+    "Share this night": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartir esta noche"
+          }
+        }
+      }
+    },
+    "Share this run": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comparte tu carrera"
+          }
+        }
+      }
+    },
+    "Shoulder": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hombro"
+          }
+        }
+      }
+    },
+    "Shoulders": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hombros"
+          }
+        }
+      }
+    },
+    "Side": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil"
+          }
+        }
+      }
+    },
+    "Sign in": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar sesión"
+          }
+        }
+      }
+    },
+    "Sign out": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar sesión"
+          }
+        }
+      }
+    },
+    "Sign out?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cerrar sesión?"
+          }
+        }
+      }
+    },
+    "Signing in…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciando sesión…"
+          }
+        }
+      }
+    },
+    "Simulate live run": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simular carrera en vivo"
+          }
+        }
+      }
+    },
+    "Skip today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Omitir hoy"
+          }
+        }
+      }
+    },
+    "Sleep": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sueño"
+          }
+        }
+      }
+    },
+    "Sleep Performance": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rendimiento de sueño"
+          }
+        }
+      }
+    },
+    "Sleep debt": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deuda de sueño"
+          }
+        }
+      }
+    },
+    "Sleep need": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Necesidad de sueño"
+          }
+        }
+      }
+    },
+    "Sleep stages": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fases del sueño"
+          }
+        }
+      }
+    },
+    "Sleep target": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meta de sueño"
+          }
+        }
+      }
+    },
+    "Sleep timeline": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cronología del sueño"
+          }
+        }
+      }
+    },
+    "Slept": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dormido"
+          }
+        }
+      }
+    },
+    "Slept %@ — %lld% sleep performance on Titan 😴": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dormí %@ — %lld% de rendimiento de sueño en Titan 😴"
+          }
+        }
+      }
+    },
+    "Slept %@ — tracked on Titan 😴": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dormí %@ — registrado en Titan 😴"
+          }
+        }
+      }
+    },
+    "Snap a meal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto a tu comida"
+          }
+        }
+      }
+    },
+    "Snap a meal — today's macros land here.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toma una foto de tu comida — tus macros de hoy aparecen aquí."
+          }
+        }
+      }
+    },
+    "Snap it, tell me what it is → accurate macros": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tómala, dime qué es → macros precisos"
+          }
+        }
+      }
+    },
+    "Snap the nutrition label instead.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mejor toma una foto de la etiqueta nutricional."
+          }
+        }
+      }
+    },
+    "So your scores, macros and bio-age are tuned to you.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para ajustar tus puntajes, macros y edad biológica a ti."
+          }
+        }
+      }
+    },
+    "Solid distance. Great endurance day.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buena distancia. Gran día de resistencia."
+          }
+        }
+      }
+    },
+    "Soreness": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dolor muscular"
+          }
+        }
+      }
+    },
+    "Source: %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fuente: %@"
+          }
+        }
+      }
+    },
+    "Specific days": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Días específicos"
+          }
+        }
+      }
+    },
+    "Splits": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parciales"
+          }
+        }
+      }
+    },
+    "Splits · per %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parciales · por %@"
+          }
+        }
+      }
+    },
+    "Staging your night…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analizando tu noche…"
+          }
+        }
+      }
+    },
+    "Start a fast": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar ayuno"
+          }
+        }
+      }
+    },
+    "Start a streak today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empieza una racha hoy"
+          }
+        }
+      }
+    },
+    "Start a workout": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar un entrenamiento"
+          }
+        }
+      }
+    },
+    "Starts a session (engages workout HR) — double-tap again to end it.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inicia una sesión (activa el ritmo cardíaco de entreno) — doble toque otra vez para terminarla."
+          }
+        }
+      }
+    },
+    "Stays synced even when the app is closed.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se mantiene sincronizada aunque la app esté cerrada."
+          }
+        }
+      }
+    },
+    "Step outside with a clear view of the sky and test again — walls and roofs block GPS.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sal a un lugar con vista despejada al cielo y prueba de nuevo — las paredes y techos bloquean el GPS."
+          }
+        }
+      }
+    },
+    "Steps": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pasos"
+          }
+        }
+      }
+    },
+    "Still learning your baseline": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún aprendiendo tu línea base"
+          }
+        }
+      }
+    },
+    "Stop": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detener"
+          }
+        }
+      }
+    },
+    "Stop taking %@?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Dejar de tomar %@?"
+          }
+        }
+      }
+    },
+    "Stop taking this": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dejar de tomar esto"
+          }
+        }
+      }
+    },
+    "Strain": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esfuerzo"
+          }
+        }
+      }
+    },
+    "Strength session — logged on Titan 💪": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesión de fuerza — registrada en Titan 💪"
+          }
+        }
+      }
+    },
+    "Stress": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estrés"
+          }
+        }
+      }
+    },
+    "Strong lift. Real time at high intensity.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buen entrenamiento de fuerza. Tiempo real a alta intensidad."
+          }
+        }
+      }
+    },
+    "Strong sleep. You banked real recovery.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buen sueño. Ganaste recuperación de verdad."
+          }
+        }
+      }
+    },
+    "Supplement": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suplemento"
+          }
+        }
+      }
+    },
+    "Supplements": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suplementos"
+          }
+        }
+      }
+    },
+    "Symptoms": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Síntomas"
+          }
+        }
+      }
+    },
+    "Sync now": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizar ahora"
+          }
+        }
+      }
+    },
+    "Sync steps, sleep & heart from your iPhone and Apple Watch — recovery, insights & trends, no band needed.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincroniza pasos, sueño y ritmo cardiaco desde tu iPhone y Apple Watch — recuperación, insights y tendencias, sin banda."
+          }
+        }
+      }
+    },
+    "Synced": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizado"
+          }
+        }
+      }
+    },
+    "Syncing your band…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizando tu banda…"
+          }
+        }
+      }
+    },
+    "System": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistema"
+          }
+        }
+      }
+    },
+    "TESTING": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PROBANDO"
+          }
+        }
+      }
+    },
+    "Take Photo": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tomar foto"
+          }
+        }
+      }
+    },
+    "Take with food": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tomar con alimentos"
+          }
+        }
+      }
+    },
+    "Tap Pair below, then pick that code in the app.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca Vincular abajo y luego elige ese código en la app."
+          }
+        }
+      }
+    },
+    "Tap the Run or Lift face on your band — runs land here with your route + splits, lifts with your HR zones + sets.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca la cara de Carrera o Pesas en tu banda — las carreras llegan aquí con tu ruta + parciales, y las de pesas con tus zonas de FC + series."
+          }
+        }
+      }
+    },
+    "Tap to confirm a run will track before you go.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca para confirmar que una carrera se registrará antes de salir."
+          }
+        }
+      }
+    },
+    "Tap to retry": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca para reintentar"
+          }
+        }
+      }
+    },
+    "Tap to set your photo": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca para poner tu foto"
+          }
+        }
+      }
+    },
+    "Tap what happened today. Titan learns what actually moves your recovery & sleep — then tells you.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca lo que pasó hoy. Titan aprende qué mueve de verdad tu recuperación y sueño, y te lo dice."
+          }
+        }
+      }
+    },
+    "Test again": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probar de nuevo"
+          }
+        }
+      }
+    },
+    "Test location": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probar ubicación"
+          }
+        }
+      }
+    },
+    "The night": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La noche"
+          }
+        }
+      }
+    },
+    "Then → now": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antes → ahora"
+          }
+        }
+      }
+    },
+    "This device can't scan barcodes. Snap the nutrition label instead.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este dispositivo no puede escanear códigos de barras. Mejor toma una foto de la tabla nutricional."
+          }
+        }
+      }
+    },
+    "This month": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este mes"
+          }
+        }
+      }
+    },
+    "This permanently removes it and your logged history. To keep the record, choose Pause instead.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esto lo elimina de forma permanente junto con tu historial. Para conservar el registro, mejor elige Pausar."
+          }
+        }
+      }
+    },
+    "This permanently removes it and your logged history. To keep the record, close this and Pause it instead.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esto lo elimina de forma permanente junto con tu historial. Para conservar el registro, cierra esto y mejor Pausa."
+          }
+        }
+      }
+    },
+    "This week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta semana"
+          }
+        }
+      }
+    },
+    "Time at each intensity": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiempo en cada intensidad"
+          }
+        }
+      }
+    },
+    "Time in each stage": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiempo en cada fase"
+          }
+        }
+      }
+    },
+    "Timing": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Horario"
+          }
+        }
+      }
+    },
+    "Tip: enable Health → Heart → AFib History to record HRV through the night — it makes your recovery score far more accurate.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tip: activa Salud → Corazón → Historial de fibrilación auricular para registrar tu HRV durante la noche — hace que tu puntaje de recuperación sea mucho más preciso."
+          }
+        }
+      }
+    },
+    "Titan is a subscription-free recovery OS. Your data is yours, always.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Titan es un OS de recuperación sin suscripción. Tus datos son tuyos, siempre."
+          }
+        }
+      }
+    },
+    "Titan user": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usuario Titan"
+          }
+        }
+      }
+    },
+    "Today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hoy"
+          }
+        }
+      }
+    },
+    "Today's fuel": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu comida de hoy"
+          }
+        }
+      }
+    },
+    "Today's meals": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comidas de hoy"
+          }
+        }
+      }
+    },
+    "Today's target": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meta de hoy"
+          }
+        }
+      }
+    },
+    "Tough love — push me, no excuses": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mano dura — exígeme, sin excusas"
+          }
+        }
+      }
+    },
+    "Track a fasting window and watch your body shift into fat-burning.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registra una ventana de ayuno y observa cómo tu cuerpo cambia a quemar grasa."
+          }
+        }
+      }
+    },
+    "Track my cycle": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rastrear mi ciclo"
+          }
+        }
+      }
+    },
+    "Track what you take": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registra lo que tomas"
+          }
+        }
+      }
+    },
+    "Track your cycle?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Rastrear tu ciclo?"
+          }
+        }
+      }
+    },
+    "Tracking live from your band. Keep going — it seals to a full run summary when you finish.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrando en vivo desde tu banda. Sigue así: se cierra en un resumen completo de la carrera cuando termines."
+          }
+        }
+      }
+    },
+    "Tracking your lift from the band. Keep going — it seals to a strength summary when you finish.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrando tus pesas desde la banda. Sigue así: se cierra en un resumen de fuerza cuando termines."
+          }
+        }
+      }
+    },
+    "Tracking your night": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrando tu noche"
+          }
+        }
+      }
+    },
+    "Tracking your night · streaming live": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrando tu noche · en vivo"
+          }
+        }
+      }
+    },
+    "Train together": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrenen juntos"
+          }
+        }
+      }
+    },
+    "Training": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrenamiento"
+          }
+        }
+      }
+    },
+    "Trends": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tendencias"
+          }
+        }
+      }
+    },
+    "Trying to conceive": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando embarazo"
+          }
+        }
+      }
+    },
+    "Turn on Precise Location for run mapping.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activa la Ubicación precisa para mapear carreras."
+          }
+        }
+      }
+    },
+    "Type": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tipo"
+          }
+        }
+      }
+    },
+    "UNITS": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UNIDADES"
+          }
+        }
+      }
+    },
+    "Undo": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deshacer"
+          }
+        }
+      }
+    },
+    "Unfavorite": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitar de favoritos"
+          }
+        }
+      }
+    },
+    "Unit": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unidad"
+          }
+        }
+      }
+    },
+    "Units": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unidades"
+          }
+        }
+      }
+    },
+    "Use the band's Stopwatch face — double-click to log a night.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa la cara de Cronómetro de la banda: doble clic para registrar una noche."
+          }
+        }
+      }
+    },
+    "Used for workout HR. Wrist stays on recovery.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se usa para la FC del entrenamiento. La muñeca sigue en recuperación."
+          }
+        }
+      }
+    },
+    "Username": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usuario"
+          }
+        }
+      }
+    },
+    "VO₂max": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VO₂máx"
+          }
+        }
+      }
+    },
+    "Vegan": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vegano"
+          }
+        }
+      }
+    },
+    "Vegetarian": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vegetariano"
+          }
+        }
+      }
+    },
+    "Very active — 6–7 days": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muy activo — 6–7 días"
+          }
+        }
+      }
+    },
+    "Vitals": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signos vitales"
+          }
+        }
+      }
+    },
+    "WHAT YOU TAKE": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LO QUE TOMAS"
+          }
+        }
+      }
+    },
+    "Waiting for signal…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esperando señal…"
+          }
+        }
+      }
+    },
+    "Waiting for strap": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esperando la banda"
+          }
+        }
+      }
+    },
+    "Warrior — 20 h fast": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warrior — 20 h de ayuno"
+          }
+        }
+      }
+    },
+    "We bind to the exact band you pick — so two bands side by side never cross-connect.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nos vinculamos exactamente a la banda que elijas — así dos bandas juntas nunca se cruzan."
+          }
+        }
+      }
+    },
+    "We'll head to pairing right after this so your coach reads recovery from night one.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iremos al emparejamiento justo después para que tu coach lea tu recuperación desde la primera noche."
+          }
+        }
+      }
+    },
+    "Weak signal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Señal débil"
+          }
+        }
+      }
+    },
+    "Wear it 24/7": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Úsala 24/7"
+          }
+        }
+      }
+    },
+    "Wear it overnight, then tap to pull your night in the morning.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Úsala toda la noche y en la mañana toca para traer tu noche."
+          }
+        }
+      }
+    },
+    "Wear the band — it tracks HR 24/7 and syncs the whole day when your phone's near.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa la banda: mide tu FC 24/7 y sincroniza todo el día cuando tu teléfono está cerca."
+          }
+        }
+      }
+    },
+    "Week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Semana"
+          }
+        }
+      }
+    },
+    "Weigh in at the same time each day (mornings are best) — the trend smooths out the daily noise.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pésate a la misma hora cada día (mejor en la mañana) — la tendencia suaviza el ruido diario."
+          }
+        }
+      }
+    },
+    "Weight": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peso"
+          }
+        }
+      }
+    },
+    "Weight (%@)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peso (%@)"
+          }
+        }
+      }
+    },
+    "Weight (kg, optional)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peso (kg, opcional)"
+          }
+        }
+      }
+    },
+    "Weight trend · progress photos": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tendencia de peso · fotos de progreso"
+          }
+        }
+      }
+    },
+    "What drove it": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qué lo generó"
+          }
+        }
+      }
+    },
+    "What is this?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué es esto?"
+          }
+        }
+      }
+    },
+    "What you take": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que tomas"
+          }
+        }
+      }
+    },
+    "What's driving you? (optional)": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué te motiva? (opcional)"
+          }
+        }
+      }
+    },
+    "What's your main goal?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cuál es tu meta principal?"
+          }
+        }
+      }
+    },
+    "When": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuándo"
+          }
+        }
+      }
+    },
+    "When did your period start?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cuándo empezó tu periodo?"
+          }
+        }
+      }
+    },
+    "Where do you want change?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Dónde quieres ver cambios?"
+          }
+        }
+      }
+    },
+    "Who sees new activities": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quién ve tus nuevas actividades"
+          }
+        }
+      }
+    },
+    "Work out today to light the flame": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrena hoy para encender la llama"
+          }
+        }
+      }
+    },
+    "Workout": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrenamiento"
+          }
+        }
+      }
+    },
+    "Workouts": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrenamientos"
+          }
+        }
+      }
+    },
+    "Worth knowing": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vale la pena saber"
+          }
+        }
+      }
+    },
+    "Wrist": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muñeca"
+          }
+        }
+      }
+    },
+    "Wrist HR is great for rest and sleep, but a chest strap (Polar H10, Garmin, Wahoo…) is far more accurate for running and lifting. Pair one and Titan uses it automatically during workouts.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La FC de muñeca es genial para descanso y sueño, pero una banda de pecho (Polar H10, Garmin, Wahoo…) es mucho más precisa para correr y levantar. Vincula una y Titan la usa automáticamente en los entrenamientos."
+          }
+        }
+      }
+    },
+    "Writing your story…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribiendo tu historia…"
+          }
+        }
+      }
+    },
+    "YOU TRAIN AT": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ENTRENAS EN"
+          }
+        }
+      }
+    },
+    "You": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tú"
+          }
+        }
+      }
+    },
+    "You can change this anytime in Settings.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puedes cambiarlo cuando quieras en Ajustes."
+          }
+        }
+      }
+    },
+    "You haven't trained yet today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no entrenas hoy"
+          }
+        }
+      }
+    },
+    "You train at": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrenas en"
+          }
+        }
+      }
+    },
+    "You're leading the group this week 🏆": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vas liderando al grupo esta semana 🏆"
+          }
+        }
+      }
+    },
+    "Your 24/7 heart-rate graph — building today's trend": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu gráfica de frecuencia cardíaca 24/7 — creando la tendencia de hoy"
+          }
+        }
+      }
+    },
+    "Your Titan band": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu banda Titan"
+          }
+        }
+      }
+    },
+    "Your all-day heart rate. Resting HR is your daily floor — it trends down as you get fitter.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu frecuencia cardiaca de todo el día. La FC en reposo es tu piso diario: baja conforme mejoras tu condición."
+          }
+        }
+      }
+    },
+    "Your band has no GPS, so runs are mapped by your iPhone. This checks the exact conditions a run needs — permission, Precise Location, and a steady signal — so you never waste a run.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu banda no tiene GPS, así que las carreras se mapean con tu iPhone. Esto revisa justo lo que una carrera necesita — permiso, Ubicación precisa y señal estable — para que nunca desperdicies una carrera."
+          }
+        }
+      }
+    },
+    "Your band is showing a 4-character code. Tap the matching one below — this binds the app to YOUR band only.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu banda muestra un código de 4 caracteres. Toca el que coincida abajo — esto vincula la app solo a TU banda."
+          }
+        }
+      }
+    },
+    "Your coach": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu coach"
+          }
+        }
+      }
+    },
+    "Your coach, all day?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Tu coach todo el día?"
+          }
+        }
+      }
+    },
+    "Your feed is quiet": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu feed está tranquilo"
+          }
+        }
+      }
+    },
+    "Your meals": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus comidas"
+          }
+        }
+      }
+    },
+    "Your name": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu nombre"
+          }
+        }
+      }
+    },
+    "Your nutrition style.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu estilo de nutrición."
+          }
+        }
+      }
+    },
+    "Your open-source recovery OS": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu SO de recuperación de código abierto"
+          }
+        }
+      }
+    },
+    "Your real age is %lld": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu edad real es %lld"
+          }
+        }
+      }
+    },
+    "Your route": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu ruta"
+          }
+        }
+      }
+    },
+    "Your runs will map. Locked to ±%lld m.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus carreras se mapearán. Fijado a ±%lld m."
+          }
+        }
+      }
+    },
+    "Your shelf": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu estante"
+          }
+        }
+      }
+    },
+    "Your standing": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu posición"
+          }
+        }
+      }
+    },
+    "Your targets": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus metas"
+          }
+        }
+      }
+    },
+    "Your training profile.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu perfil de entrenamiento."
+          }
+        }
+      }
+    },
+    "Your unique handle — friends find you by this. Letters, numbers, underscore.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu identificador único — así te encuentran tus amigos. Letras, números y guion bajo."
+          }
+        }
+      }
+    },
+    "Your usual — your saved macros": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu de siempre — tus macros guardados"
+          }
+        }
+      }
+    },
+    "Your week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu semana"
+          }
+        }
+      }
+    },
+    "Your whole night uploads in seconds when you wake.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toda tu noche se sube en segundos al despertar."
+          }
+        }
+      }
+    },
+    "Z1 · Recovery": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Z1 · Recuperación"
+          }
+        }
+      }
+    },
+    "Z2 · Easy": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Z2 · Fácil"
+          }
+        }
+      }
+    },
+    "Z3 · Aerobic": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Z3 · Aeróbico"
+          }
+        }
+      }
+    },
+    "Z4 · Threshold": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Z4 · Umbral"
+          }
+        }
+      }
+    },
+    "Z5 · Max": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Z5 · Máx"
+          }
+        }
+      }
+    },
+    "a run": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "una carrera"
+          }
+        }
+      }
+    },
+    "as needed": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "según se necesite"
+          }
+        }
+      }
+    },
+    "asleep": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dormido"
+          }
+        }
+      }
+    },
+    "avg": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "prom"
+          }
+        }
+      }
+    },
+    "avg hr": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "fc prom"
+          }
+        }
+      }
+    },
+    "band": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "banda"
+          }
+        }
+      }
+    },
+    "band · live": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "banda · en vivo"
+          }
+        }
+      }
+    },
+    "bedtime": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "acostarse"
+          }
+        }
+      }
+    },
+    "bpm": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bpm"
+          }
+        }
+      }
+    },
+    "bpm resting": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bpm en reposo"
+          }
+        }
+      }
+    },
+    "br/m": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "resp/min"
+          }
+        }
+      }
+    },
+    "calm": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "en calma"
+          }
+        }
+      }
+    },
+    "calories": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "calorías"
+          }
+        }
+      }
+    },
+    "carbs": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "carbohidratos"
+          }
+        }
+      }
+    },
+    "code on screen": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "código en pantalla"
+          }
+        }
+      }
+    },
+    "consistency": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "consistencia"
+          }
+        }
+      }
+    },
+    "daily": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a diario"
+          }
+        }
+      }
+    },
+    "day": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "día"
+          }
+        }
+      }
+    },
+    "days": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "días"
+          }
+        }
+      }
+    },
+    "distance": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "distancia"
+          }
+        }
+      }
+    },
+    "e.g. grilled chicken & rice, ~200g chicken": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ej. pollo a la plancha con arroz, ~200g de pollo"
+          }
+        }
+      }
+    },
+    "efficiency": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "eficiencia"
+          }
+        }
+      }
+    },
+    "effort": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "esfuerzo"
+          }
+        }
+      }
+    },
+    "fat": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "grasa"
+          }
+        }
+      }
+    },
+    "g": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "g"
+          }
+        }
+      }
+    },
+    "hours": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "horas"
+          }
+        }
+      }
+    },
+    "in bed": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "en cama"
+          }
+        }
+      }
+    },
+    "just now": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "justo ahora"
+          }
+        }
+      }
+    },
+    "kcal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kcal"
+          }
+        }
+      }
+    },
+    "kcal left": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kcal restantes"
+          }
+        }
+      }
+    },
+    "km": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "km"
+          }
+        }
+      }
+    },
+    "live": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "en vivo"
+          }
+        }
+      }
+    },
+    "load": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "carga"
+          }
+        }
+      }
+    },
+    "max": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "máx"
+          }
+        }
+      }
+    },
+    "max hr": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "fc máx"
+          }
+        }
+      }
+    },
+    "ms": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ms"
+          }
+        }
+      }
+    },
+    "of %@L": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "de %@L"
+          }
+        }
+      }
+    },
+    "of %lld": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "de %lld"
+          }
+        }
+      }
+    },
+    "optional": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opcional"
+          }
+        }
+      }
+    },
+    "or": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "o"
+          }
+        }
+      }
+    },
+    "peak hr": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "fc máx"
+          }
+        }
+      }
+    },
+    "per km": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "por km"
+          }
+        }
+      }
+    },
+    "per mile": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "por milla"
+          }
+        }
+      }
+    },
+    "protein": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "proteína"
+          }
+        }
+      }
+    },
+    "quality": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "calidad"
+          }
+        }
+      }
+    },
+    "respiratory": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "respiración"
+          }
+        }
+      }
+    },
+    "resting bpm": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bpm en reposo"
+          }
+        }
+      }
+    },
+    "restless": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "inquieto"
+          }
+        }
+      }
+    },
+    "restorative": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "reparador"
+          }
+        }
+      }
+    },
+    "samples": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "muestras"
+          }
+        }
+      }
+    },
+    "searching": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "buscando"
+          }
+        }
+      }
+    },
+    "signal gap": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sin señal"
+          }
+        }
+      }
+    },
+    "some days": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "algunos días"
+          }
+        }
+      }
+    },
+    "stages unavailable — low signal this night": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "fases no disponibles — poca señal esta noche"
+          }
+        }
+      }
+    },
+    "steps": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pasos"
+          }
+        }
+      }
+    },
+    "steps today": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pasos hoy"
+          }
+        }
+      }
+    },
+    "strap": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "banda de pecho"
+          }
+        }
+      }
+    },
+    "take": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tomar"
+          }
+        }
+      }
+    },
+    "tap to log": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "toca para registrar"
+          }
+        }
+      }
+    },
+    "this": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "esto"
+          }
+        }
+      }
+    },
+    "time": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tiempo"
+          }
+        }
+      }
+    },
+    "time in bed": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "en cama"
+          }
+        }
+      }
+    },
+    "trend": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tendencia"
+          }
+        }
+      }
+    },
+    "uploaded": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "subidas"
+          }
+        }
+      }
+    },
+    "wake": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "despertar"
+          }
+        }
+      }
+    },
+    "±%lld m": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "±%lld m"
+          }
+        }
+      }
+    },
+    "“starting a run” · “log my lift”": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“voy a correr” · “registra mi pesas”"
+          }
+        }
+      }
     }
   }
 }

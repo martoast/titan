@@ -53,16 +53,16 @@ struct StreakHero: View {
         }
     }
 
-    private var subtitle: String {
+    private var subtitle: LocalizedStringKey {
         if streak.current == 0 { return "Work out today to light the flame" }
         if streak.worked_out_today == true { return "Locked in today — keep it rolling" }
         return "Don't break the chain — train today"
     }
 
-    private func stat(_ value: String, _ label: String) -> some View {
+    private func stat(_ value: String, _ label: LocalizedStringKey) -> some View {
         VStack(spacing: 3) {
             Text(value).font(Theme.Font.num(22)).foregroundStyle(Theme.Palette.text).monospacedDigit()
-            Text(label.uppercased()).font(Theme.Font.micro).tracking(0.6).foregroundStyle(Theme.Palette.textDim)
+            Text(label).font(Theme.Font.micro).tracking(0.6).textCase(.uppercase).foregroundStyle(Theme.Palette.textDim)
         }.frame(maxWidth: .infinity)
     }
 
@@ -176,8 +176,8 @@ struct TodayTrainingCard: View {
     }
 
     private func headline(_ run: RunSummary) -> String {
-        if run.isLift { return run.duration_min.map { RunFmt.dur($0 * 60) } ?? "Lift" }
-        return run.distance_km.map { String(format: "%.2f km", $0) } ?? "Run"
+        if run.isLift { return run.duration_min.map { RunFmt.dur($0 * 60) } ?? String(localized: "Lift") }
+        return run.distance_km.map { String(format: "%.2f km", $0) } ?? String(localized: "Run")
     }
 
     private func icon(_ run: RunSummary) -> String {

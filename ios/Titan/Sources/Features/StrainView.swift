@@ -85,7 +85,7 @@ struct StrainView: View {
                             HStack(spacing: Theme.Space.m) {
                                 Image(systemName: icon(c.activity_type)).foregroundStyle(strainColor).frame(width: 24)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(c.title ?? (c.activity_type?.capitalized ?? "Workout")).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                    Text(c.title ?? (c.activity_type?.capitalized ?? String(localized: "Workout"))).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                                     Text(subtitle(c)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                                 }
                                 Spacer()
@@ -124,8 +124,8 @@ struct StrainView: View {
     }
     private func subtitle(_ c: StrainResponse.Contribution) -> String {
         var bits: [String] = []
-        if let m = c.duration_min { bits.append("\(m) min") }
-        if let hr = c.avg_hr { bits.append("\(hr) bpm avg") }
+        if let m = c.duration_min { bits.append(String(localized: "\(m) min")) }
+        if let hr = c.avg_hr { bits.append(String(localized: "\(hr) bpm avg")) }
         return bits.joined(separator: " · ")
     }
 }

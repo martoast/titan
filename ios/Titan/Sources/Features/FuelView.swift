@@ -28,9 +28,9 @@ struct FuelSection: View {
                                 .symbolEffect(.pulse, options: model.scanning ? .repeating : .nonRepeating)
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(model.scanning ? "Reading your plate…" : "Snap a meal")
+                            (model.scanning ? Text("Reading your plate…") : Text("Snap a meal"))
                                 .font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
-                            Text(model.scanning ? "Estimating macros with AI" : "Snap it, tell me what it is → accurate macros")
+                            (model.scanning ? Text("Estimating macros with AI") : Text("Snap it, tell me what it is → accurate macros"))
                                 .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                         }
                         Spacer()
@@ -102,7 +102,7 @@ struct FuelSection: View {
                                     Button { Task { await model.relogMeal(t, portion: 1.5) } } label: { Label("Log 1.5×", systemImage: "plus.circle") }
                                     Button { Task { await model.relogMeal(t, portion: 0.5) } } label: { Label("Log ½×", systemImage: "minus.circle") }
                                     Button { Task { await model.toggleFavoriteMeal(t) } } label: {
-                                        Label(t.favorite ? "Unfavorite" : "Favorite", systemImage: t.favorite ? "star.slash" : "star")
+                                        Label { t.favorite ? Text("Unfavorite") : Text("Favorite") } icon: { Image(systemName: t.favorite ? "star.slash" : "star") }
                                     }
                                     Button(role: .destructive) { Task { await model.forgetMeal(t) } } label: { Label("Forget", systemImage: "trash") }
                                 }
@@ -170,7 +170,7 @@ struct FuelSection: View {
                     .frame(width: 50, height: 50).clipShape(RoundedRectangle(cornerRadius: 11))
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(meal.name ?? "Meal").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
+                (meal.name.map { Text($0) } ?? Text("Meal")).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
                 Text("\(meal.calories) kcal · \(Int(meal.protein_g))P · \(Int(meal.carbs_g))C · \(Int(meal.fat_g))F")
                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
             }
@@ -232,7 +232,7 @@ private struct YourMealCard: View {
 
 private struct MacroRing: View {
     let line: MacroLine
-    let label: String
+    let label: LocalizedStringKey
     let unit: String
     let color: Color
     var size: CGFloat = 86
@@ -251,7 +251,7 @@ private struct MacroRing: View {
                 }
             }
             .frame(width: size, height: size)
-            Text(label.uppercased()).font(Theme.Font.micro).tracking(0.6).foregroundStyle(Theme.Palette.textDim)
+            Text(label).font(Theme.Font.micro).tracking(0.6).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }
         .frame(maxWidth: .infinity)
         .onAppear { withAnimation(Theme.Motion.ring) { progress = CGFloat(line.fraction) } }
@@ -304,7 +304,7 @@ struct MealCaptionSheet: View {
                             onAnalyze(note.isEmpty ? nil : note)
                             dismiss()
                         } label: {
-                            Text(caption.trimmingCharacters(in: .whitespaces).isEmpty ? "Analyze photo" : "Analyze with note")
+                            (caption.trimmingCharacters(in: .whitespaces).isEmpty ? Text("Analyze photo") : Text("Analyze with note"))
                                 .font(Theme.Font.body.weight(.bold))
                                 .frame(maxWidth: .infinity).padding(.vertical, 14)
                                 .background(Theme.Palette.amber, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
@@ -353,7 +353,7 @@ struct ScanResultSheet: View {
                                 VStack(spacing: Theme.Space.s) {
                                     Image(systemName: result.kind == "physique" ? "figure.stand" : "info.circle")
                                         .font(.system(size: 30)).foregroundStyle(Theme.Palette.violet)
-                                    Text(result.message ?? "Got it.").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                    (result.message.map { Text($0) } ?? Text("Got it.")).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                                         .multilineTextAlignment(.center)
                                 }.frame(maxWidth: .infinity)
                             }
@@ -361,9 +361,9 @@ struct ScanResultSheet: View {
                     }.padding(Theme.Space.m)
                 }
             }
-            .navigationTitle(draft != nil ? "Confirm meal" : "Scanned")
+            .navigationTitle(draft != nil ? Text("Confirm meal") : Text("Scanned"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(draft != nil ? "Cancel" : "Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { draft != nil ? Text("Cancel") : Text("Done") } } }
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear { if name.isEmpty { name = draft?.name ?? "" } }
         }
@@ -414,7 +414,7 @@ struct ScanResultSheet: View {
         } label: {
             HStack(spacing: Theme.Space.s) {
                 if logging { ProgressView().tint(.black) }
-                Text(logging ? "Logging…" : "Log meal").font(Theme.Font.body.weight(.bold))
+                (logging ? Text("Logging…") : Text("Log meal")).font(Theme.Font.body.weight(.bold))
             }
             .frame(maxWidth: .infinity).padding(.vertical, 14)
             .background(Theme.Palette.amber, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
@@ -424,18 +424,19 @@ struct ScanResultSheet: View {
     }
 
     private func sourceBadge(_ d: MealDraft) -> some View {
-        let (icon, text, color): (String, String, Color) = {
+        let brand = d.brand.map { " · \($0)" } ?? ""
+        let (icon, label, color): (String, Text, Color) = {
             switch d.source {
-            case "label": return ("doc.text.magnifyingglass", "Read straight from the label" + (d.brand.map { " · \($0)" } ?? ""), Theme.Palette.mint)
-            case "your_meals": return ("star.fill", "Your usual — your saved macros", Theme.Palette.mint)
-            case "brand": return ("checkmark.seal.fill", "Official label" + (d.brand.map { " · \($0)" } ?? ""), Theme.Palette.cyan)
-            case "web": return ("globe", "Grounded in real nutrition data", Theme.Palette.cyan)
-            default: return ("sparkles", "Estimated from your photo — confirm the amount", Theme.Palette.amber)
+            case "label": return ("doc.text.magnifyingglass", Text("Read straight from the label") + Text(brand), Theme.Palette.mint)
+            case "your_meals": return ("star.fill", Text("Your usual — your saved macros"), Theme.Palette.mint)
+            case "brand": return ("checkmark.seal.fill", Text("Official label") + Text(brand), Theme.Palette.cyan)
+            case "web": return ("globe", Text("Grounded in real nutrition data"), Theme.Palette.cyan)
+            default: return ("sparkles", Text("Estimated from your photo — confirm the amount"), Theme.Palette.amber)
             }
         }()
         return HStack(spacing: 6) {
             Image(systemName: icon).font(.system(size: 11, weight: .bold))
-            Text(text).font(Theme.Font.micro.weight(.semibold)).lineLimit(1)
+            label.font(Theme.Font.micro.weight(.semibold)).lineLimit(1)
         }
         .foregroundStyle(color)
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -451,10 +452,10 @@ struct ScanResultSheet: View {
         }.buttonStyle(.plain)
     }
 
-    private func macroStat(_ v: String, _ l: String, _ c: Color) -> some View {
+    private func macroStat(_ v: String, _ l: LocalizedStringKey, _ c: Color) -> some View {
         VStack(spacing: 3) {
             Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
-            Text(l.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(l).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }.frame(maxWidth: .infinity)
     }
 }
@@ -523,9 +524,9 @@ private struct EditMealSheet: View {
         }
     }
 
-    private func field(_ label: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+    private func field(_ label: LocalizedStringKey, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
             TextField("", text: text)
                 .font(Theme.Font.body).foregroundStyle(Theme.Palette.text).keyboardType(keyboard)
                 .padding(12).background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
@@ -623,7 +624,7 @@ struct TargetsSheet: View {
         }
     }
 
-    private func row(_ label: String, _ unit: String, _ text: Binding<String>, decimal: Bool = false) -> some View {
+    private func row(_ label: LocalizedStringKey, _ unit: LocalizedStringKey, _ text: Binding<String>, decimal: Bool = false) -> some View {
         HStack {
             Text(label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
             Spacer()

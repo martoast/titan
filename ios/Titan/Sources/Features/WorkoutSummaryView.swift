@@ -40,7 +40,7 @@ struct WorkoutSummaryView: View {
                             if let s = detail?.strength, let ex = s.exercises, !ex.isEmpty {
                                 setsCard(s, ex).stagger(appeared, 0.2)
                             } else if summary.loading {
-                                loadingNote("Analyzing your sets…").stagger(appeared, 0.2)
+                                loadingNote(String(localized: "Analyzing your sets…")).stagger(appeared, 0.2)
                             }
                         } else {
                             if let prof = detail?.elevation_profile, prof.count >= 2 {
@@ -137,9 +137,9 @@ struct WorkoutSummaryView: View {
                 Text("STRENGTH").font(Theme.Font.micro).tracking(2).foregroundStyle(.white.opacity(0.6))
                 HStack(spacing: Theme.Space.s) {
                     if let hr = detail?.max_hr ?? (summary.maxBpm > 0 ? summary.maxBpm : nil) {
-                        heroPill("heart.fill", "\(hr) peak")
+                        heroPill("heart.fill", String(localized: "\(hr) peak"))
                     }
-                    if let red = redMinutes, red >= 1 { heroPill("flame.fill", "\(red)m in red") }
+                    if let red = redMinutes, red >= 1 { heroPill("flame.fill", String(localized: "\(red)m in red")) }
                 }
                 .padding(.top, 2)
             }
@@ -200,7 +200,7 @@ struct WorkoutSummaryView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).strokeBorder(accent.opacity(0.18)))
     }
 
-    private var verdict: (icon: String, text: String) {
+    private var verdict: (icon: String, text: LocalizedStringKey) {
         if isLift {
             let red = redMinutes ?? 0
             if red >= 8 { return ("flame.fill", "Brutal session — you lived in the red zone.") }
@@ -230,25 +230,25 @@ struct WorkoutSummaryView: View {
     private var tiles: [Tile] {
         var t: [Tile] = []
         if isLift {
-            if let hr = detail?.avg_hr { t.append(.init("heart.fill", "\(hr)", "bpm", "avg hr", Theme.Palette.pink)) }
-            t.append(.init("waveform.path.ecg", "\(detail?.max_hr ?? summary.maxBpm)", "bpm", "peak hr", Theme.Palette.pink))
-            if let load = detail?.trimp { t.append(.init("bolt.fill", "\(Int(load.rounded()))", nil, "load", Theme.Palette.cyan)) }
-            if let c = detail?.calories_kcal { t.append(.init("flame.fill", "\(c)", "kcal", "calories", Theme.Palette.amber)) }
-            if let v = detail?.vo2max { t.append(.init("lungs.fill", String(format: "%.1f", v), nil, "VO₂max", Theme.Palette.mint)) }
-            if let hrv = detail?.workout_hrv_ms { t.append(.init("heart.text.square.fill", "\(Int(hrv.rounded()))", "ms", "HRV", Theme.Palette.cyan)) }
+            if let hr = detail?.avg_hr { t.append(.init("heart.fill", "\(hr)", "bpm", String(localized: "avg hr"), Theme.Palette.pink)) }
+            t.append(.init("waveform.path.ecg", "\(detail?.max_hr ?? summary.maxBpm)", "bpm", String(localized: "peak hr"), Theme.Palette.pink))
+            if let load = detail?.trimp { t.append(.init("bolt.fill", "\(Int(load.rounded()))", nil, String(localized: "load"), Theme.Palette.cyan)) }
+            if let c = detail?.calories_kcal { t.append(.init("flame.fill", "\(c)", "kcal", String(localized: "calories"), Theme.Palette.amber)) }
+            if let v = detail?.vo2max { t.append(.init("lungs.fill", String(format: "%.1f", v), nil, String(localized: "VO₂max"), Theme.Palette.mint)) }
+            if let hrv = detail?.workout_hrv_ms { t.append(.init("heart.text.square.fill", "\(Int(hrv.rounded()))", "ms", String(localized: "HRV"), Theme.Palette.cyan)) }
         } else {
-            if let hr = detail?.avg_hr { t.append(.init("heart.fill", "\(hr)", "bpm", "avg hr", Theme.Palette.pink)) }
-            t.append(.init("waveform.path.ecg", "\(detail?.max_hr ?? summary.maxBpm)", "bpm", "peak hr", Theme.Palette.pink))
-            if let g = detail?.gap_s_per_km, g > 0 { t.append(.init("arrow.up.forward", paceString(g), imperial ? "/mi" : "/km", "GAP", Theme.Palette.mint)) }
-            if let c = detail?.calories_kcal { t.append(.init("flame.fill", "\(c)", "kcal", "calories", Theme.Palette.amber)) }
-            if let v = detail?.vo2max { t.append(.init("lungs.fill", String(format: "%.1f", v), nil, "VO₂max", Theme.Palette.mint)) }
-            if let re = detail?.relative_effort, re > 0 { t.append(.init("chart.bar.fill", "\(re)", nil, "effort", Theme.Palette.violet)) }
+            if let hr = detail?.avg_hr { t.append(.init("heart.fill", "\(hr)", "bpm", String(localized: "avg hr"), Theme.Palette.pink)) }
+            t.append(.init("waveform.path.ecg", "\(detail?.max_hr ?? summary.maxBpm)", "bpm", String(localized: "peak hr"), Theme.Palette.pink))
+            if let g = detail?.gap_s_per_km, g > 0 { t.append(.init("arrow.up.forward", paceString(g), imperial ? "/mi" : "/km", String(localized: "GAP"), Theme.Palette.mint)) }
+            if let c = detail?.calories_kcal { t.append(.init("flame.fill", "\(c)", "kcal", String(localized: "calories"), Theme.Palette.amber)) }
+            if let v = detail?.vo2max { t.append(.init("lungs.fill", String(format: "%.1f", v), nil, String(localized: "VO₂max"), Theme.Palette.mint)) }
+            if let re = detail?.relative_effort, re > 0 { t.append(.init("chart.bar.fill", "\(re)", nil, String(localized: "effort"), Theme.Palette.violet)) }
         }
         // Before the seal lands, show what we have from live stats so the grid is never empty.
         if t.count < 2 {
-            t = [.init("waveform.path.ecg", "\(summary.maxBpm)", "bpm", "peak hr", Theme.Palette.pink)]
-            if isLift { t.append(.init("clock.fill", durationText, nil, "time", Theme.Palette.cyan)) }
-            else { t.append(.init("figure.run", distanceValue, distanceUnit, "distance", Theme.Palette.cyan)) }
+            t = [.init("waveform.path.ecg", "\(summary.maxBpm)", "bpm", String(localized: "peak hr"), Theme.Palette.pink)]
+            if isLift { t.append(.init("clock.fill", durationText, nil, String(localized: "time"), Theme.Palette.cyan)) }
+            else { t.append(.init("figure.run", distanceValue, distanceUnit, String(localized: "distance"), Theme.Palette.cyan)) }
         }
         return t
     }
@@ -294,7 +294,7 @@ struct WorkoutSummaryView: View {
         }
     }
 
-    private func zoneName(_ z: String) -> String {
+    private func zoneName(_ z: String) -> LocalizedStringKey {
         switch z { case "Z1": return "Z1 · Recovery"; case "Z2": return "Z2 · Easy"; case "Z3": return "Z3 · Aerobic"
         case "Z4": return "Z4 · Threshold"; default: return "Z5 · Max" }
     }
@@ -327,7 +327,7 @@ struct WorkoutSummaryView: View {
     private func splitsCard(_ splits: [RunSplit]) -> some View {
         let paces = splits.compactMap { $0.pace_s_per_unit }.filter { $0 > 0 }
         let pMin = paces.min() ?? 1, pMax = paces.max() ?? 1
-        return card("Splits", "per \(imperial ? "mile" : "km")") {
+        return card("Splits", imperial ? "per mile" : "per km") {
             VStack(spacing: Theme.Space.xs) {
                 ForEach(splits) { sp in
                     let p = sp.pace_s_per_unit ?? 0
@@ -350,7 +350,7 @@ struct WorkoutSummaryView: View {
         let alts = prof.map(\.alt_m)
         let lo = alts.min() ?? 0, hi = alts.max() ?? 1
         let span = max(1, hi - lo)
-        return card("Elevation", detail?.elevation_gain_m.map { "\(elevText($0)) gain" } ?? "") {
+        return card("Elevation", detail?.elevation_gain_m.map { "\(elevText($0)) gain" }) {
             GeometryReader { geo in
                 let pts = prof.enumerated().map { i, pt in
                     CGPoint(x: geo.size.width * CGFloat(i) / CGFloat(max(1, prof.count - 1)),
@@ -381,7 +381,7 @@ struct WorkoutSummaryView: View {
                 ShareLink(item: url, subject: Text(shareCaption), message: Text(shareCaption)) {
                     HStack(spacing: Theme.Space.s) {
                         Image(systemName: "square.and.arrow.up.fill")
-                        Text("Share this \(isLift ? "lift" : "run")").font(Theme.Font.body.weight(.semibold))
+                        Text(isLift ? "Share this lift" : "Share this run").font(Theme.Font.body.weight(.semibold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.m)
@@ -392,10 +392,11 @@ struct WorkoutSummaryView: View {
     }
 
     private var shareCaption: String {
-        if isLift { return "Strength session — logged on Titan 💪" }
+        if isLift { return String(localized: "Strength session — logged on Titan 💪") }
         let d = distanceValue + " " + distanceUnit
-        let p = paceText == "—" ? "" : " at \(paceText)\(imperial ? "/mi" : "/km")"
-        return "Ran \(d)\(p) — tracked on Titan 🏃"
+        if paceText == "—" { return String(localized: "Ran \(d) — tracked on Titan 🏃") }
+        let pace = "\(paceText)\(imperial ? "/mi" : "/km")"
+        return String(localized: "Ran \(d) at \(pace) — tracked on Titan 🏃")
     }
 
     private var statusFooter: some View {
@@ -410,12 +411,12 @@ struct WorkoutSummaryView: View {
 
     // MARK: - Card shell + helpers
 
-    private func card<Content: View>(_ title: String, _ subtitle: String = "", @ViewBuilder _ content: () -> Content) -> some View {
+    private func card<Content: View>(_ title: LocalizedStringKey, _ subtitle: LocalizedStringKey? = nil, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title.uppercased()).font(Theme.Font.label).tracking(0.8).foregroundStyle(Theme.Palette.textDim)
+                Text(title).font(Theme.Font.label).tracking(0.8).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
                 Spacer()
-                if !subtitle.isEmpty { Text(subtitle).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+                if let subtitle { Text(subtitle).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
             }
             content()
         }

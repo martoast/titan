@@ -108,7 +108,7 @@ struct SleepSummaryView: View {
                 if summary.bedtime != nil || summary.wake != nil {
                     HStack(spacing: Theme.Space.s) {
                         heroPill("bed.double.fill", clock(summary.bedtime) + " → " + clock(summary.wake))
-                        if let e = detail?.efficiency_pct { heroPill("checkmark.seal.fill", "\(e)% efficient") }
+                        if let e = detail?.efficiency_pct { heroPill("checkmark.seal.fill", String(localized: "\(e)% efficient")) }
                     }
                     .padding(.top, 2)
                 }
@@ -168,16 +168,16 @@ struct SleepSummaryView: View {
     private var verdict: (icon: String, text: String) {
         // While staging, don't declare a quantity verdict off the in-bed envelope — it would flip when the
         // real asleep time / performance lands on finalize.
-        if summary.loading { return ("moon.stars.fill", "Calculating your sleep — hang tight.") }
+        if summary.loading { return ("moon.stars.fill", String(localized: "Calculating your sleep — hang tight.")) }
         let p = detail?.performance_pct
         if let p {
-            if p >= 90 { return ("crown.fill", "Peak recovery night — you're fully charged.") }
-            if p >= 75 { return ("checkmark.seal.fill", "Strong sleep. You banked real recovery.") }
-            if p >= 55 { return ("moon.fill", "Decent night — a little short of your need.") }
-            return ("battery.25", "Light on sleep. Prioritize an early night tonight.") }
+            if p >= 90 { return ("crown.fill", String(localized: "Peak recovery night — you're fully charged.")) }
+            if p >= 75 { return ("checkmark.seal.fill", String(localized: "Strong sleep. You banked real recovery.")) }
+            if p >= 55 { return ("moon.fill", String(localized: "Decent night — a little short of your need.")) }
+            return ("battery.25", String(localized: "Light on sleep. Prioritize an early night tonight.")) }
         let h = Double(asleepSec) / 3600
-        if h >= 7.5 { return ("checkmark.seal.fill", "A full night in the bank. Well rested.") }
-        return ("moon.stars.fill", "Night logged — your recovery is being scored.")
+        if h >= 7.5 { return ("checkmark.seal.fill", String(localized: "A full night in the bank. Well rested.")) }
+        return ("moon.stars.fill", String(localized: "Night logged — your recovery is being scored."))
     }
 
     // MARK: - Big stats
@@ -194,17 +194,17 @@ struct SleepSummaryView: View {
 
     private var tiles: [Tile] {
         var t: [Tile] = []
-        if let e = detail?.efficiency_pct { t.append(.init("checkmark.seal.fill", "\(e)", "%", "efficiency", Theme.Palette.mint)) }
-        if let r = detail?.restorative_min { t.append(.init("sparkles", hm(r), nil, "restorative", Theme.Palette.violet)) }
-        if let rr = detail?.respiratory_rate { t.append(.init("wind", String(format: "%.1f", rr), "rpm", "respiratory", Theme.Palette.cyan)) }
-        if let c = detail?.consistency_pct { t.append(.init("repeat", "\(c)", "%", "consistency", Theme.Palette.amber)) }
-        if let ib = detail?.in_bed_min { t.append(.init("bed.double.fill", hm(ib), nil, "time in bed", Theme.Palette.indigo)) }
-        if let q = detail?.quality { t.append(.init("star.fill", "\(q)", nil, "quality", Theme.Palette.amber)) }
+        if let e = detail?.efficiency_pct { t.append(.init("checkmark.seal.fill", "\(e)", "%", String(localized: "efficiency"), Theme.Palette.mint)) }
+        if let r = detail?.restorative_min { t.append(.init("sparkles", hm(r), nil, String(localized: "restorative"), Theme.Palette.violet)) }
+        if let rr = detail?.respiratory_rate { t.append(.init("wind", String(format: "%.1f", rr), "rpm", String(localized: "respiratory"), Theme.Palette.cyan)) }
+        if let c = detail?.consistency_pct { t.append(.init("repeat", "\(c)", "%", String(localized: "consistency"), Theme.Palette.amber)) }
+        if let ib = detail?.in_bed_min { t.append(.init("bed.double.fill", hm(ib), nil, String(localized: "time in bed"), Theme.Palette.indigo)) }
+        if let q = detail?.quality { t.append(.init("star.fill", "\(q)", nil, String(localized: "quality"), Theme.Palette.amber)) }
         // Before the seal lands, show what the watch markers give so the grid is never empty.
         if t.count < 2 {
-            t = [.init("bed.double.fill", hm(summary.inBedSec / 60), nil, "time in bed", Theme.Palette.indigo)]
-            if summary.bedtime != nil { t.append(.init("moon.fill", clock(summary.bedtime), nil, "bedtime", Theme.Palette.violet)) }
-            if summary.wake != nil { t.append(.init("sunrise.fill", clock(summary.wake), nil, "wake", Theme.Palette.amber)) }
+            t = [.init("bed.double.fill", hm(summary.inBedSec / 60), nil, String(localized: "time in bed"), Theme.Palette.indigo)]
+            if summary.bedtime != nil { t.append(.init("moon.fill", clock(summary.bedtime), nil, String(localized: "bedtime"), Theme.Palette.violet)) }
+            if summary.wake != nil { t.append(.init("sunrise.fill", clock(summary.wake), nil, String(localized: "wake"), Theme.Palette.amber)) }
         }
         return t
     }
@@ -219,7 +219,7 @@ struct SleepSummaryView: View {
     /// so NODATA renders as an honest hatched gap. While the night is still sealing (`summary.loading`
     /// with no stages yet) it shows the computing skeleton ribbon.
     private func timelineCard(_ hyp: [String]) -> some View {
-        card("The night", clock(summary.bedtime) + " – " + clock(summary.wake)) {
+        card(String(localized: "The night"), clock(summary.bedtime) + " – " + clock(summary.wake)) {
             VStack(spacing: Theme.Space.s) {
                 SleepTimeline(stages: hyp,
                               epochSec: detail?.epoch_sec,
@@ -245,7 +245,7 @@ struct SleepSummaryView: View {
 
     private func stagesCard(_ stages: [SleepResponse.Detail.Stage]) -> some View {
         let total = max(1, stages.reduce(0) { $0 + $1.min })
-        return card("Time in each stage", "\(stages.count) stages") {
+        return card(String(localized: "Time in each stage"), String(localized: "\(stages.count) stages")) {
             VStack(spacing: Theme.Space.m) {
                 GeometryReader { geo in
                     HStack(spacing: 2) {
@@ -277,14 +277,14 @@ struct SleepSummaryView: View {
     private var needCard: some View {
         let need = detail?.need_h ?? assess?.need_h
         let debt = detail?.debt_h ?? assess?.debt_h
-        return card("Sleep need", assess?.label ?? "") {
+        return card(String(localized: "Sleep need"), assess?.label ?? "") {
             VStack(spacing: Theme.Space.m) {
                 HStack {
-                    needStat("Slept", asleepText, accent)
+                    needStat(String(localized: "Slept"), asleepText, accent)
                     Divider().frame(height: 30).overlay(Theme.Palette.cardStroke)
-                    needStat("Need", need.map { hoursText($0) } ?? "—", Theme.Palette.cyan)
+                    needStat(String(localized: "Need"), need.map { hoursText($0) } ?? "—", Theme.Palette.cyan)
                     Divider().frame(height: 30).overlay(Theme.Palette.cardStroke)
-                    needStat("Debt", debt.map { hoursText($0) } ?? "—", (debt ?? 0) > 0.5 ? Theme.Palette.amber : Theme.Palette.mint)
+                    needStat(String(localized: "Debt"), debt.map { hoursText($0) } ?? "—", (debt ?? 0) > 0.5 ? Theme.Palette.amber : Theme.Palette.mint)
                 }
                 if let need, need > 0 {
                     let frac = min(1, Double(asleepSec) / 3600 / need)
@@ -336,8 +336,8 @@ struct SleepSummaryView: View {
     }
 
     private var shareCaption: String {
-        if let p = detail?.performance_pct { return "Slept \(asleepText) — \(p)% sleep performance on Titan 😴" }
-        return "Slept \(asleepText) — tracked on Titan 😴"
+        if let p = detail?.performance_pct { return String(localized: "Slept \(asleepText) — \(p)% sleep performance on Titan 😴") }
+        return String(localized: "Slept \(asleepText) — tracked on Titan 😴")
     }
 
     private var statusFooter: some View {
@@ -377,7 +377,7 @@ struct SleepSummaryView: View {
         return (detail?.duration_min ?? detail?.asleep_min).map { $0 * 60 } ?? summary.inBedSec
     }
     private var asleepText: String { hm(asleepSec / 60) }
-    private var asleepLabel: String { (summary.loading || detail?.duration_min == nil) ? "in bed" : "asleep" }
+    private var asleepLabel: String { (summary.loading || detail?.duration_min == nil) ? String(localized: "in bed") : String(localized: "asleep") }
     private var performanceFraction: Double { detail?.performance_pct.map { min(1, Double($0) / 100) } ?? 0 }
 
     private func hm(_ minutes: Int) -> String {

@@ -119,7 +119,7 @@ struct StackSection: View {
         NavigationLink { StackView() } label: {
             HStack(spacing: 8) {
                 Image(systemName: "info.circle.fill").font(.system(size: 13)).foregroundStyle(Theme.Palette.indigo)
-                Text("\(n) thing\(n == 1 ? "" : "s") worth knowing")
+                (n == 1 ? Text("1 thing worth knowing") : Text("\(n) things worth knowing"))
                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.text)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.Palette.textFaint)
@@ -177,8 +177,8 @@ struct StackView: View {
                 if model.stackItems.isEmpty {
                     emptyState
                 } else {
-                    if !supps.isEmpty { group("Supplements", supps) }
-                    if !meds.isEmpty { group("Medications", meds) }
+                    if !supps.isEmpty { group(String(localized: "Supplements"), supps) }
+                    if !meds.isEmpty { group(String(localized: "Medications"), meds) }
                 }
                 if !model.stackFlags.isEmpty { worthKnowing }
                 disclaimer
@@ -199,7 +199,7 @@ struct StackView: View {
         .task { await model.loadStack() }
         .sheet(isPresented: $showAdd) { AddToStackSheet() }
         .sheet(item: $editing) { EditStackItemSheet(item: $0) }
-        .confirmationDialog("Stop taking \(pendingDelete?.name ?? "this")?",
+        .confirmationDialog("Stop taking \(pendingDelete?.name ?? String(localized: "this"))?",
                             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                             titleVisibility: .visible) {
             Button("Remove it and its history", role: .destructive) {
@@ -221,7 +221,8 @@ struct StackView: View {
                         .contextMenu {
                             Button { Haptic.tap(); editing = item } label: { Label("Edit", systemImage: "slider.horizontal.3") }
                             Button { Task { await model.updateStackItem(item.id, fields: ["active": !item.active]) } } label: {
-                                Label(item.active ? "Pause" : "Resume", systemImage: item.active ? "pause.circle" : "play.circle")
+                                if item.active { Label("Pause", systemImage: "pause.circle") }
+                                else { Label("Resume", systemImage: "play.circle") }
                             }
                             Button(role: .destructive) { Haptic.tap(); pendingDelete = item } label: {
                                 Label("Stop", systemImage: "stop.circle")
@@ -269,7 +270,7 @@ struct StackView: View {
     private var worthKnowing: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                SectionHeader(title: "Worth knowing")
+                SectionHeader(title: String(localized: "Worth knowing"))
                 ForEach(model.stackFlags) { flag in flagRow(flag) }
             }
         }
@@ -298,7 +299,7 @@ struct StackView: View {
     private var disclaimer: some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "info.circle").font(.system(size: 11)).foregroundStyle(Theme.Palette.textFaint)
-            Text(model.stackDisclaimer ?? "Informational, not medical advice — check with your pharmacist or clinician.")
+            Text(model.stackDisclaimer ?? String(localized: "Informational, not medical advice — check with your pharmacist or clinician."))
                 .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
@@ -369,7 +370,7 @@ struct AddToStackSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationDestination(isPresented: Binding(get: { draft != nil }, set: { if !$0 { draft = nil } })) {
                 if let d = draft {
-                    StackEditor(draft: d, title: "Confirm", saveLabel: "Add",
+                    StackEditor(draft: d, title: String(localized: "Confirm"), saveLabel: String(localized: "Add"),
                                 onSave: { fields in if await model.addStackItem(fields) { dismiss() } }, onDelete: nil)
                 }
             }
@@ -495,7 +496,7 @@ private struct ShelfReview: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Space.m) {
-                Text(note ?? "Found these on your shelf. Untick anything I misread — you can fine-tune doses & timing later.")
+                Text(note ?? String(localized: "Found these on your shelf. Untick anything I misread — you can fine-tune doses & timing later."))
                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -508,7 +509,7 @@ private struct ShelfReview: View {
                 Button(action: addAll) {
                     HStack {
                         if adding { ProgressView().tint(.white) }
-                        Text(adding ? "Adding…" : "Add \(included.count) to what you take").font(Theme.Font.body.weight(.semibold))
+                        (adding ? Text("Adding…") : Text("Add \(included.count) to what you take")).font(Theme.Font.body.weight(.semibold))
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 14)
                     .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip)).foregroundStyle(.white)
@@ -570,8 +571,8 @@ struct EditStackItemSheet: View {
         NavigationStack {
             StackEditor(
                 draft: StackDraft(item: item),
-                title: "Edit",
-                saveLabel: "Save changes",
+                title: String(localized: "Edit"),
+                saveLabel: String(localized: "Save changes"),
                 onSave: { fields in await model.updateStackItem(item.id, fields: fields); dismiss() },
                 onDelete: { await model.deleteStackItem(item.id); dismiss() }
             )
@@ -602,7 +603,7 @@ private struct StackEditor: View {
         }.tint(Theme.Palette.indigo)
     }
 
-    private let slots: [(String, String)] = [("morning", "Morning"), ("midday", "Midday"), ("evening", "Evening"), ("night", "Night")]
+    private let slots: [(String, String)] = [("morning", String(localized: "Morning")), ("midday", String(localized: "Midday")), ("evening", String(localized: "Evening")), ("night", String(localized: "Night"))]
     private let weekdays: [(String, String)] = [("mon", "M"), ("tue", "T"), ("wed", "W"), ("thu", "T"), ("fri", "F"), ("sat", "S"), ("sun", "S")]
 
     var body: some View {
@@ -610,20 +611,20 @@ private struct StackEditor: View {
             Theme.Palette.bg.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: Theme.Space.m) {
-                    field("Name", text: $draft.name, keyboard: .default)
+                    field(String(localized: "Name"), text: $draft.name, keyboard: .default)
                     HStack(spacing: Theme.Space.s) {
-                        field("Dose", text: $draft.doseAmount, keyboard: .decimalPad)
-                        field("Unit", text: $draft.doseUnit, keyboard: .default)
-                        field("Form", text: $draft.form, keyboard: .default)
+                        field(String(localized: "Dose"), text: $draft.doseAmount, keyboard: .decimalPad)
+                        field(String(localized: "Unit"), text: $draft.doseUnit, keyboard: .default)
+                        field(String(localized: "Form"), text: $draft.form, keyboard: .default)
                     }
 
-                    card("When") {
+                    card(String(localized: "When")) {
                         FlowChips(items: slots, isOn: { draft.slots.contains($0) }) { key in
                             Haptic.tap(); if draft.slots.contains(key) { draft.slots.remove(key) } else { draft.slots.insert(key) }
                         }
                     }
 
-                    card("Repeat") {
+                    card(String(localized: "Repeat")) {
                         Picker("", selection: $draft.frequency) {
                             Text("Daily").tag("daily"); Text("Specific days").tag("specific"); Text("As needed").tag("as_needed")
                         }.pickerStyle(.segmented)
@@ -643,20 +644,20 @@ private struct StackEditor: View {
                     }
 
                     if showType {
-                        card("Type") {
+                        card(String(localized: "Type")) {
                             Picker("", selection: $draft.kind) {
                                 Text("Supplement").tag("supplement"); Text("Medication").tag("medication"); Text("Other").tag("other")
                             }.pickerStyle(.segmented)
                             foodToggle.padding(.top, 4)
                         }
                     } else {
-                        card("Food") { foodToggle }
+                        card(String(localized: "Food")) { foodToggle }
                     }
 
                     Button(action: save) {
                         HStack {
                             if saving { ProgressView().tint(.white) }
-                            Text(saving ? "Saving…" : saveLabel).font(Theme.Font.body.weight(.semibold))
+                            (saving ? Text("Saving…") : Text(saveLabel)).font(Theme.Font.body.weight(.semibold))
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 14)
                         .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip)).foregroundStyle(.white)
@@ -677,7 +678,7 @@ private struct StackEditor: View {
             .scrollIndicators(.hidden)
         }
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("Stop taking \(draft.name.isEmpty ? "this" : draft.name)?",
+        .confirmationDialog("Stop taking \(draft.name.isEmpty ? String(localized: "this") : draft.name)?",
                             isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Remove it and its history", role: .destructive) {
                 Haptic.warning(); Task { await onDelete?() }
@@ -862,9 +863,9 @@ private func slotClosureGlyph(_ key: String) -> String {
 
 private func freqLabel(_ f: String) -> String {
     switch f.lowercased() {
-    case "daily": return "daily"
-    case "specific": return "some days"
-    case "as_needed", "as needed": return "as needed"
+    case "daily": return String(localized: "daily")
+    case "specific": return String(localized: "some days")
+    case "as_needed", "as needed": return String(localized: "as needed")
     default: return f
     }
 }
@@ -881,10 +882,10 @@ private func severityColor(_ s: String?) -> Color {
 
 private func severityLabel(_ s: String) -> String {
     switch s.lowercased() {
-    case "info": return "Good to know"
-    case "timing": return "Timing"
-    case "moderate": return "Moderate"
-    case "major": return "Major"
+    case "info": return String(localized: "Good to know")
+    case "timing": return String(localized: "Timing")
+    case "moderate": return String(localized: "Moderate")
+    case "major": return String(localized: "Major")
     default: return s.capitalized
     }
 }

@@ -18,7 +18,7 @@ struct ProfileView: View {
                         Text(initials).font(Theme.Font.num(22)).foregroundStyle(.white)
                     }
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(model.user?.name ?? "Titan user").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                        Text(model.user?.name ?? String(localized: "Titan user")).font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
                         if let email = model.user?.email { Text(email).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
                     }
                     Spacer()
@@ -158,7 +158,7 @@ struct ProfileView: View {
             }
             Color.clear.frame(height: 8)
         }
-        .titanScreen("You")
+        .titanScreen(String(localized: "You"))
     }
 
     private var initials: String {

@@ -244,7 +244,7 @@ struct SyncErrorRow: View {
                 Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
                     .font(.title3).foregroundStyle(Theme.Palette.amber)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(message).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    Text(LocalizedStringKey(message)).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                     Text("Check your connection").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                 }
                 Spacer()
@@ -650,9 +650,9 @@ struct SleepTimeline: View {
         let hr = hrByIndex[index]
         let motion = motionByIndex[index]
         if let hr { label += " · HR \(Int(hr.rounded()))" }
-        if let motion { label += motion >= restlessThreshold ? " · restless" : " · calm" }
+        if let motion { label += " · " + (motion >= restlessThreshold ? String(localized: "restless") : String(localized: "calm")) }
         // Only when the night HAS these channels but this epoch measured neither — honest gap, not silence.
-        if hr == nil, motion == nil, hasHR || hasMotion { label += " · signal gap" }
+        if hr == nil, motion == nil, hasHR || hasMotion { label += " · " + String(localized: "signal gap") }
         return ZStack(alignment: .topLeading) {
             Rectangle().fill(Theme.Palette.text.opacity(0.35)).frame(width: 1, height: height)
                 .position(x: x, y: height / 2)

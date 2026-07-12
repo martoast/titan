@@ -71,13 +71,13 @@ private struct ProgressSection: View {
         }
     }
 
-    private func comparePane(_ p: ProgressPhoto, tag: String) -> some View {
+    private func comparePane(_ p: ProgressPhoto, tag: LocalizedStringKey) -> some View {
         VStack(spacing: 6) {
             RemoteImage(url: p.photo_url)
                 .frame(height: 200).frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip))
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
-            Text("\(tag) · \(photoDate(p.taken_at))").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            (Text(tag) + Text(" · \(photoDate(p.taken_at))")).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
         }
     }
 
@@ -171,9 +171,9 @@ private struct AddProgressSheet: View {
         }
     }
 
-    private func labeledField(_ label: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+    private func labeledField(_ label: LocalizedStringKey, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(label).textCase(.uppercase).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
             TextField("", text: text)
                 .font(Theme.Font.body).foregroundStyle(Theme.Palette.text).keyboardType(keyboard)
                 .padding(12).background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))

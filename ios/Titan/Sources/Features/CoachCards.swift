@@ -51,8 +51,24 @@ func coachFlagColor(_ flag: String?) -> Color {
     }
 }
 
-private func cardTitle(_ text: String) -> some View {
+private func cardTitle(_ text: LocalizedStringKey) -> some View {
     Text(text).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+}
+
+/// Same title chrome, but for dynamic (coach-supplied) strings that must render verbatim.
+private func cardTitle(verbatim text: String) -> some View {
+    Text(text).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+}
+
+/// Localized display name for a sleep-stage key (the ribbon legend).
+private func sleepStageName(_ key: String) -> Text {
+    switch key {
+    case "deep": return Text("Deep")
+    case "rem": return Text("REM")
+    case "light": return Text("Light")
+    case "awake": return Text("Awake")
+    default: return Text(verbatim: key.capitalized)
+    }
 }
 
 private func cardCaption(_ text: String?) -> some View {
@@ -167,7 +183,7 @@ struct SleepCard: View {
                 ForEach(mins.filter { $0.2 > 0 }, id: \.0) { st in
                     HStack(spacing: 4) {
                         Circle().fill(st.1).frame(width: 6, height: 6)
-                        Text("\(st.0.capitalized) \(Int(st.2))m").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        (sleepStageName(st.0) + Text(" \(Int(st.2))m")).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     }
                 }
             }
@@ -289,7 +305,7 @@ struct StatsCard: View {
     private var items: [[String: Any]] { json["items"] as? [[String: Any]] ?? [] }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let title = json["title"] as? String, !title.isEmpty { cardTitle(title) }
+            if let title = json["title"] as? String, !title.isEmpty { cardTitle(verbatim: title) }
             let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
             LazyVGrid(columns: cols, alignment: .leading, spacing: 10) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, it in
@@ -318,7 +334,7 @@ struct MarkersCard: View {
     private var items: [[String: Any]] { json["items"] as? [[String: Any]] ?? [] }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            cardTitle((json["title"] as? String) ?? "Bloodwork")
+            if let t = json["title"] as? String, !t.isEmpty { cardTitle(verbatim: t) } else { cardTitle("Bloodwork") }
             ForEach(Array(items.enumerated()), id: \.offset) { _, it in
                 HStack(spacing: 8) {
                     Circle().fill(coachFlagColor(it["flag"] as? String)).frame(width: 7, height: 7)
@@ -447,7 +463,7 @@ struct ProtocolCard: View {
     private var items: [Any] { (json["items"] as? [Any]) ?? [] }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            cardTitle((json["title"] as? String) ?? "Protocol")
+            if let t = json["title"] as? String, !t.isEmpty { cardTitle(verbatim: t) } else { cardTitle("Protocol") }
             if let sub = json["subtitle"] as? String, !sub.isEmpty {
                 Text(sub).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
             }
