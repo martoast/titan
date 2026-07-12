@@ -99,10 +99,52 @@ private struct SleepSection: View {
                     }
                 }
             }
+
+            // Sleep debt ledger — balance + payback plan.
+            if let debt = model.sleepDetail?.debt {
+                debtCard(debt)
+            }
+
+            // Week at a glance — the 7-night row + streak + heat strip + weekly tip.
+            if let week = model.sleepDetail?.week {
+                NavigationLink { SleepWeekView(week: week).environmentObject(model) } label: {
+                    GlassCard {
+                        HStack {
+                            Label("See your sleep week", systemImage: "calendar").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            Spacer()
+                            if let s = week.week_score { Text("\(s)").font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.indigo) }
+                            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+                        }
+                    }
+                }.buttonStyle(PressCard())
+            }
             }
         }
         .animation(Theme.Motion.snappy, value: model.sleepPhase)
         .task { await model.loadSleepDetail() }
+    }
+
+    private func debtCard(_ debt: SleepDebtInfo) -> some View {
+        let color: Color = debt.band == "heavy" ? Theme.Palette.pink : (debt.band == "moderate" ? Theme.Palette.amber : (debt.band == "light" ? Theme.Palette.cyan : Theme.Palette.mint))
+        return GlassCard {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                HStack {
+                    SectionHeader(title: "Sleep debt")
+                    Spacer()
+                    if debt.balance_h <= 0 { Text("Rested").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.mint) }
+                    else { Text(String(format: "%.1fh", debt.balance_h)).font(Theme.Font.num(20)).foregroundStyle(color) }
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08)).frame(height: 7)
+                        Capsule().fill(color).frame(width: max(debt.balance_h <= 0 ? 0 : 4, geo.size.width * CGFloat(min(1, debt.balance_h / 6))), height: 7)
+                    }
+                }.frame(height: 7)
+                if let plan = debt.payback?.plan, !plan.isEmpty {
+                    Text(plan).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+            }
+        }
     }
 
     private func stagesBar(_ n: SleepResponse.Night) -> some View {

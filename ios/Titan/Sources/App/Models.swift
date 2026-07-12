@@ -161,6 +161,9 @@ struct SleepResponse: Codable {
     /// The most recent night's compute state: "computing" while it's still being staged (show the loading
     /// card), "final" once settled. nil on an older server → treat as final. See docs/PROGRESSIVE_SUMMARY.md.
     let last_status: String?
+    /// Sleep-debt ledger (balance + trend + payback) and the week-at-a-glance. nil on an older server.
+    var debt: SleepDebtInfo? = nil
+    var week: SleepWeekInfo? = nil
     struct Assess: Codable {
         let need_h: Double?; let debt_h: Double?; let last_h: Double?
         let performance_pct: Int?; let band: String?; let label: String?; let advice: String?
@@ -223,6 +226,43 @@ struct SleepResponse: Codable {
     }
     /// The latest night is still being calculated — render the loading card, not a half-empty "done" one.
     var isComputing: Bool { last_status == "computing" }
+}
+
+// MARK: - Sleep debt ledger + week-at-a-glance
+
+struct SleepDebtInfo: Codable, Equatable {
+    let balance_h: Double
+    let band: String
+    let trend: String?
+    let paid_back_last_night_h: Double?
+    let added_last_night_h: Double?
+    var history: [Point] = []
+    let payback: Payback?
+    let explainer: String?
+    struct Point: Codable, Equatable { let date: String?; let balance_h: Double? }
+    struct Payback: Codable, Equatable {
+        let clearable: Bool?; let plan: String?
+        let extra_min_per_night: Int?; let nights: Int?; let tonight_target_h: Double?
+    }
+}
+
+struct SleepWeekInfo: Codable, Equatable {
+    let week_score: Int?
+    let week_label: String?
+    let week_band: String?
+    let trend: String?
+    let nights_logged: Int?
+    let streak: Streak?
+    let days: [Day]
+    var strip: [String] = []
+    let tip: Tip?
+    struct Streak: Codable, Equatable { let current: Int?; let longest: Int?; let slept_well_last_night: Bool? }
+    struct Day: Codable, Equatable, Identifiable {
+        var id: String { date ?? "" }
+        let date: String?; let weekday: String?; let score: Int?; let duration_min: Int?
+        let hit_need: Bool?; let low_confidence: Bool?; let logged: Bool?
+    }
+    struct Tip: Codable, Equatable { let headline: String?; let insight: String?; let action: String?; let domain: String? }
 }
 
 /// The Whoop-style Overview history: a daily series of the three rings + HRV/RHR/sleep, with averages.

@@ -153,6 +153,16 @@
         }
       }
     },
+    "%@ of 7 nights scored": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ de 7 noches con puntaje"
+          }
+        }
+      }
+    },
     "%@ things worth knowing": {
       "localizations": {
         "es-MX": {
@@ -267,6 +277,16 @@
         }
       }
     },
+    "%@-night streak": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "racha de %@ noches"
+          }
+        }
+      }
+    },
     "%@.": {},
     "%@/%@h": {
       "localizations": {
@@ -279,6 +299,16 @@
       }
     },
     "%@/3": {},
+    "%@h %@m": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@h %2$@m"
+          }
+        }
+      }
+    },
     "%@h debt": {
       "localizations": {
         "es-MX": {
@@ -432,6 +462,16 @@
         }
       }
     },
+    "%lld of 7 nights scored": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld de 7 noches con puntaje"
+          }
+        }
+      }
+    },
     "%lld peak": {
       "extractionState": "stale",
       "localizations": {
@@ -498,6 +538,16 @@
         }
       }
     },
+    "%lld-night streak": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "racha de %lld noches"
+          }
+        }
+      }
+    },
     "%lld/3": {
       "extractionState": "stale",
       "localizations": {
@@ -527,6 +577,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lldd de retraso"
+          }
+        }
+      }
+    },
+    "%lldh %lldm": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldh %lldm"
           }
         }
       }
@@ -6524,6 +6584,16 @@
         }
       }
     },
+    "See your sleep week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mira tu semana de sueño"
+          }
+        }
+      }
+    },
     "Serving: %@": {
       "localizations": {
         "es-MX": {
@@ -6823,6 +6893,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cronología del sueño"
+          }
+        }
+      }
+    },
+    "Sleep week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Semana de sueño"
           }
         }
       }
@@ -8677,6 +8757,7 @@
       }
     },
     "added %.1fh": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8790,6 +8871,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "acostarse"
+          }
+        }
+      }
+    },
+    "best": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mejor"
+          }
+        }
+      }
+    },
+    "better than last week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mejor que la semana pasada"
           }
         }
       }
@@ -8924,6 +9025,16 @@
         }
       }
     },
+    "down from last week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "por debajo de la semana pasada"
+          }
+        }
+      }
+    },
     "e.g. grilled chicken & rice, ~200g chicken": {
       "extractionState": "stale",
       "localizations": {
@@ -8975,6 +9086,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "g"
+          }
+        }
+      }
+    },
+    "hitting your sleep need": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cumpliendo tu necesidad de sueño"
           }
         }
       }
@@ -9109,6 +9230,16 @@
         }
       }
     },
+    "no night": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sin noche"
+          }
+        }
+      }
+    },
     "of %@": {
       "localizations": {
         "es-MX": {
@@ -9162,6 +9293,7 @@
       }
     },
     "paid back %.1fh": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -9434,6 +9566,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "despertar"
+          }
+        }
+      }
+    },
+    "week": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "semana"
+          }
+        }
+      }
+    },
+    "~ estimate": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "~ estimado"
           }
         }
       }

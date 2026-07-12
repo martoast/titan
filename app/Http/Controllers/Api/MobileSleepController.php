@@ -54,6 +54,11 @@ class MobileSleepController extends Controller
             // The sleep-debt ledger (accrues + pays down) — the Debt card's balance gauge, trend line, and
             // payback plan. One source of truth (same SleepDebt the coach + week view read).
             'debt' => class_exists(\App\Support\SleepDebt::class) ? \App\Support\SleepDebt::forProfile($profile) : null,
+            // The week-at-a-glance: 7-night row + cumulative score + streak + heat strip + the weekly tip.
+            // Resilient — a week-agg failure must never blank the Sleep screen.
+            'week' => class_exists(\App\Support\SleepWeek::class)
+                ? rescue(fn () => \App\Support\SleepWeek::forProfile($profile, (string) $request->query('tz', config('app.timezone', 'UTC'))), null, false)
+                : null,
         ]);
     }
 }

@@ -170,7 +170,7 @@ final class APIClient {
     }
 
     func sleepDetail() async throws -> SleepResponse {
-        try await send(request("api/me/sleep"), as: SleepResponse.self)
+        try await send(request("api/me/sleep?tz=\(Self.localTZ)"), as: SleepResponse.self)
     }
 
     func hr() async throws -> HrResponse {
