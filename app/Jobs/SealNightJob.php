@@ -65,6 +65,11 @@ class SealNightJob implements ShouldQueue
      *  staged night — write the honest duration-only row instead of stages built on mostly-hole coverage. */
     private const MIN_COVERAGE = 0.30;
 
+    /** Between MIN_COVERAGE and this, a night still STAGES but is flagged `low_confidence` — the read is an
+     *  honest ESTIMATE the app/coach caveat ("we could only confirm ~4h — sensor contact was low"), never a
+     *  confident fact. A DIY optical band loses contact often; the honest failure mode builds trust. */
+    private const LOW_COVERAGE_CONFIDENCE = 0.5;
+
     /** A "sleep" longer than this (min) is someone who forgot to end the session on the band — cap it and
      *  flag it rather than writing a 17-hour night into recovery/debt math. */
     private const MAX_SESSION_MIN = 16 * 60;
@@ -85,6 +90,13 @@ class SealNightJob implements ShouldQueue
      *  workout / a daytime nap cluster separately. This gap-clustering REPLACES the old calendar-date
      *  heuristics (nightOf + span=nap), which mis-split nights and mis-dated evening windows. */
     private const SESSION_GAP_S = 150 * 60;
+
+    /** The largest NODATA hole (seconds) that may sit BETWEEN two overnight sleep fragments and still be
+     *  bridged into ONE night by mergeOvernightSleepFragments. A DIY optical band can lose PPG contact for
+     *  a long stretch mid-night (poor fit) → the auto seal would otherwise split the night at that hole and
+     *  seal only the cleanest cluster as the whole night (Tester B's "4h 11m" when she slept ~8h). Bounded well
+     *  under a real inter-sleep gap so a genuine nap / second sleep never merges. */
+    private const NIGHT_MERGE_GAP_MAX_S = 4 * 3600;
 
     /** Store-and-forward (S-3): a window whose SAMPLE is more than this older than its INGEST time is a
      *  buffered REPLAY (the band held it offline and dumped it later), not a live sample. */
@@ -211,7 +223,10 @@ class SealNightJob implements ShouldQueue
             // nightOf/span heuristics that mis-split nights, mis-dated evening windows, and mislabelled a
             // charge-split night half as a nap.
             $todayLocal = now()->setTimezone($tz)->toDateString();
-            foreach ($this->clusterSessions($unsealed) as $windows) {
+            // Bridge overnight fragments a big NODATA hole split apart back into one night BEFORE sealing,
+            // so a poor-contact night spans its real bed→wake instead of sealing the cleanest cluster as
+            // the whole night (the low coverage that results is flagged low_confidence downstream).
+            foreach ($this->mergeOvernightSleepFragments($this->clusterSessions($unsealed), $tz) as $windows) {
                 // The session's date = its WAKE (last window end) local date. No forward-shift, so evening
                 // windows never leak into tomorrow's readiness.
                 $wake = CarbonImmutable::createFromTimestamp($windows->max(fn ($i) => $this->winEnd($i)), 'UTC')->setTimezone($tz);
@@ -304,6 +319,57 @@ class SealNightJob implements ShouldQueue
         }
 
         return $sessions;
+    }
+
+    /**
+     * Bridge overnight sleep FRAGMENTS that clusterSessions split at a big NODATA hole back into ONE night,
+     * so the seal spans the real bed→wake instead of sealing the cleanest ~4h cluster as the whole night
+     * (Tester B's first night: band on all night, PPG contact poor → ~60% NODATA → truncated "4h 11m").
+     *
+     * SAFE by construction — it only ever UNDER-merges (I2/I7): two adjacent clusters merge only when
+     *   1. the running group already ANCHORS to a real night (its span touches core sleep hours), AND
+     *   2. the NODATA hole between them is ≤ NIGHT_MERGE_GAP_MAX_S (a fit-loss stretch, not a day apart), AND
+     *   3. the combined span stays ≤ MAX_SESSION_MIN (never a forgot-to-mark 17h blob).
+     * An evening workout / afternoon nap never anchors to core sleep hours, so it can't absorb the night;
+     * two genuinely separate sleeps sit a full day (>4h) apart, so they stay distinct. The holes remain
+     * NODATA (the stager already renders them honestly); this only fixes the SPAN, and the low coverage that
+     * results then trips the low_confidence flag — the number is presented as an estimate, not a fact.
+     *
+     * @param  array<int,\Illuminate\Support\Collection<int,DeviceIngestion>>  $sessions  (start-ordered)
+     * @return array<int,\Illuminate\Support\Collection<int,DeviceIngestion>>
+     */
+    private function mergeOvernightSleepFragments(array $sessions, string $tz): array
+    {
+        if (count($sessions) < 2) {
+            return $sessions;
+        }
+
+        $tzZone = fn (int $ts) => CarbonImmutable::createFromTimestamp($ts, 'UTC')->setTimezone($tz);
+        $out = [];
+        foreach ($sessions as $session) {
+            if ($out === []) {
+                $out[] = $session;
+
+                continue;
+            }
+            $group = end($out);
+            $groupStart = $group->min(fn (DeviceIngestion $i) => $this->winStart($i));
+            $groupEnd = $group->max(fn (DeviceIngestion $i) => $this->winEnd($i));
+            $sessStart = $session->min(fn (DeviceIngestion $i) => $this->winStart($i));
+            $sessEnd = $session->max(fn (DeviceIngestion $i) => $this->winEnd($i));
+
+            $anchored = $this->touchesSleepHours($tzZone($groupStart), $tzZone($groupEnd));
+            $hole = $sessStart - $groupEnd;
+            $combinedMin = ($sessEnd - $groupStart) / 60;
+
+            if ($anchored && $hole > 0 && $hole <= self::NIGHT_MERGE_GAP_MAX_S && $combinedMin <= self::MAX_SESSION_MIN) {
+                $out[count($out) - 1] = $group->concat($session)->values();
+            } else {
+                $out[] = $session;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -784,6 +850,7 @@ class SealNightJob implements ShouldQueue
                 'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
                 'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                 'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
+                'low_confidence' => $this->isLowConfidence($metrics),
                 'stage_status' => 'final',
                 'finalized_at' => now(),
                 'updated_via' => 'biosignal:sealed-session',
@@ -794,6 +861,7 @@ class SealNightJob implements ShouldQueue
                 'duration_min' => $durMin,
                 'bedtime' => $bedDt->setTimezone($tz)->format('H:i:s'),
                 'wake_time' => $wakeDt->setTimezone($tz)->format('H:i:s'),
+                'low_confidence' => true,
                 'stage_status' => 'final',
                 'finalized_at' => now(),
                 'updated_via' => 'biosignal:sealed-session-marker',
@@ -1218,6 +1286,23 @@ class SealNightJob implements ShouldQueue
     }
 
     /**
+     * Is this night an honest ESTIMATE the app/coach must caveat rather than a confident fact? True when
+     * there are no stages at all (duration-only), when coverage is low (mostly NODATA — poor band contact),
+     * or when the stager judged the stage split physiologically implausible (d85f377). The `low_confidence`
+     * flag it feeds is the trust line: "we could only confirm ~4h — sensor contact was low, check your fit."
+     */
+    private function isLowConfidence(?array $metrics): bool
+    {
+        if ($metrics === null) {
+            return true;   // duration-only: no hypnogram to trust
+        }
+        $cov = $this->clampCoverage($metrics['coverage'] ?? null);
+
+        return ($cov !== null && $cov < self::LOW_COVERAGE_CONFIDENCE)
+            || (bool) ($metrics['stages_low_confidence'] ?? false);
+    }
+
+    /**
      * Write the instant COMPUTING placeholder for a confirmed session (Phase 1, docs/PROGRESSIVE_SUMMARY.md):
      * the envelope's duration/bed/wake with stages still null, so the app can render a loading card the moment
      * you end on the watch — before the (deferred) stage pass finishes. Never downgrades an already-FINAL row
@@ -1303,6 +1388,7 @@ class SealNightJob implements ShouldQueue
                     'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
                     'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
+                    'low_confidence' => $this->isLowConfidence($metrics),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed-ppg',
@@ -1397,6 +1483,7 @@ class SealNightJob implements ShouldQueue
                     'hr_series' => $this->seriesAttr($metrics['hr_series'] ?? null),
                     'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
+                    'low_confidence' => $this->isLowConfidence($metrics),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed',

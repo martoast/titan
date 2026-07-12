@@ -197,6 +197,7 @@ struct SleepResponse: Codable {
         let hypnogram: [String]?         // per-30s stage codes: wake/light/deep/rem
         let epoch_sec: Int?
         let stage_status: String?        // "computing" while still sealing, else "final" — drives the timeline skeleton
+        var low_confidence: Bool? = nil  // poor sensor coverage → show the read as an estimate + fit-check hint
         // Two SPARSE per-epoch series (SLEEP TIMELINE v2), aligned to the SAME epoch_sec + 30s grid as
         // `hypnogram`: epoch i's clock = epoch_sec + i·30. Only MEASURED epochs are present — a missing
         // index is a real signal gap (band duty-cycles), rendered as a gap, never interpolated. nil on
@@ -218,6 +219,7 @@ struct SleepResponse: Codable {
         let date: String?; let duration_min: Int?; let quality: Int?
         let deep_min: Int?; let rem_min: Int?; let light_min: Int?; let awake_min: Int?
         let stage_status: String?; let coverage: Double?
+        var low_confidence: Bool? = nil
     }
     /// The latest night is still being calculated — render the loading card, not a half-empty "done" one.
     var isComputing: Bool { last_status == "computing" }

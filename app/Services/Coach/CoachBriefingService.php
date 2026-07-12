@@ -325,6 +325,10 @@ class CoachBriefingService
             'rem_min' => $s->rem_min,
             'bedtime' => $s->bedtime,
             'wake_time' => $s->wake_time,
+            // A low-signal night (poor band contact → mostly NODATA): the briefing must caveat it as an
+            // estimate and nudge a fit check, not lead with a confident-but-wrong short duration.
+            'low_confidence' => (bool) $s->low_confidence ?: null,
+            'coverage_pct' => $s->low_confidence && $s->coverage !== null ? round($s->coverage * 100) : null,
         ], fn ($v) => $v !== null);
     }
 

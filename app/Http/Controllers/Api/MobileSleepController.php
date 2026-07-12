@@ -30,6 +30,9 @@ class MobileSleepController extends Controller
                 // real; stages fill in when it flips to 'final'). coverage = how complete the sampling was.
                 'stage_status' => $s->stage_status,
                 'coverage' => $s->coverage,
+                // Low-signal night (mostly-NODATA coverage or an implausible stage split): the app shows this
+                // as an ESTIMATE + a fit-check hint, never a confident number.
+                'low_confidence' => (bool) $s->low_confidence,
                 'bedtime' => $s->bedtime,
                 'wake_time' => $s->wake_time,
             ])->values();

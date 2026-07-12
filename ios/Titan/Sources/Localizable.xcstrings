@@ -667,6 +667,7 @@
       }
     },
     "A little stress": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1477,6 +1478,7 @@
       }
     },
     "Begin": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1629,6 +1631,7 @@
       }
     },
     "Box breathing": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1639,6 +1642,7 @@
       }
     },
     "Breathe in": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1649,6 +1653,7 @@
       }
     },
     "Breathe out": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1747,6 +1752,7 @@
       }
     },
     "Calm": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3441,6 +3447,7 @@
       }
     },
     "High stress": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3462,6 +3469,7 @@
       }
     },
     "Hold": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3659,6 +3667,7 @@
       }
     },
     "In, hold, out, hold — even and steady. Settles a racing mind.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4368,6 +4377,7 @@
       }
     },
     "Long breath out": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4417,6 +4427,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bajar grasa / marcarme"
+          }
+        }
+      }
+    },
+    "Low signal night — this is an estimate": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noche de señal baja — esto es un estimado"
           }
         }
       }
@@ -4583,6 +4603,7 @@
       }
     },
     "Medium stress": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4757,6 +4778,7 @@
       }
     },
     "Moving — that's your workout, not stress": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4876,6 +4898,7 @@
       }
     },
     "Nice.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5565,6 +5588,7 @@
       }
     },
     "Physiological sigh": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5897,6 +5921,7 @@
       }
     },
     "Ready?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6664,6 +6689,7 @@
       }
     },
     "Sip more in": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7072,6 +7098,7 @@
       }
     },
     "Stress now": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7682,6 +7709,7 @@
       }
     },
     "Two breaths in through the nose, one long breath out. The fastest way to calm down.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8316,6 +8344,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tu banda muestra un código de 4 caracteres. Toca el que coincida abajo — esto vincula la app solo a TU banda."
+          }
+        }
+      }
+    },
+    "Your band lost skin contact for much of the night, so we could only confirm part of it. Wear it snug, a finger-width above the wrist bone, and tonight will read cleanly.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu banda perdió contacto con la piel gran parte de la noche, así que solo pudimos confirmar una parte. Úsala ajustada, a un dedo por encima del hueso de la muñeca, y esta noche se leerá bien."
           }
         }
       }

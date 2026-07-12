@@ -35,6 +35,8 @@ struct SleepSummaryView: View {
 
                         verdictRow.stagger(appeared, 0.05)
 
+                        if detail?.low_confidence == true { lowSignalBanner.stagger(appeared, 0.07) }
+
                         bigStats.stagger(appeared, 0.10)
 
                         if let hyp = detail?.hypnogram, hyp.count >= 4 {
@@ -242,6 +244,20 @@ struct SleepSummaryView: View {
     }
 
     // MARK: - Stage breakdown (stacked bar + legend)
+
+    /// Honesty banner for a poor-contact night — the read is an estimate, and the fix is a fit check.
+    private var lowSignalBanner: some View {
+        GlassCard {
+            HStack(alignment: .top, spacing: Theme.Space.s) {
+                Image(systemName: "waveform.badge.exclamationmark").foregroundStyle(Theme.Palette.amber)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Low signal night — this is an estimate").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    Text("Your band lost skin contact for much of the night, so we could only confirm part of it. Wear it snug, a finger-width above the wrist bone, and tonight will read cleanly.")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+            }
+        }
+    }
 
     private func stagesCard(_ stages: [SleepResponse.Detail.Stage]) -> some View {
         let total = max(1, stages.reduce(0) { $0 + $1.min })

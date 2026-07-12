@@ -59,10 +59,19 @@ class ReactToSleepConfirmed implements ShouldQueue
                 'deep' => $log->deep_min, 'rem' => $log->rem_min,
                 'light' => $log->light_min, 'awake' => $log->awake_min,
             ], fn ($v) => $v !== null),
+            'low_confidence' => (bool) $log->low_confidence ?: null,
         ], fn ($v) => $v !== null && $v !== []);
 
         $facts = 'Confirmed night. '.trim(($msg['push'] ?? '')).' Assessment: '.($assess['label'] ?? 'n/a')
             .(($assess['advice'] ?? '') !== '' ? ' — '.$assess['advice'] : '');
+
+        // Low-signal night (poor PPG contact → mostly NODATA): be honest that the read is an ESTIMATE and
+        // proactively suggest a fit check — the #1 cause and it's user-fixable. Don't state a confident number.
+        if ($log->low_confidence) {
+            $cov = $log->coverage !== null ? ' (only ~'.round($log->coverage * 100).'% of the night had a clean signal)' : '';
+            $facts .= " IMPORTANT: this was a LOW-SIGNAL night{$cov} — present the duration/stages as a rough ESTIMATE,"
+                .' not a confident number, and gently suggest they check the band fit (snug, above the wrist bone) so tonight reads cleanly.';
+        }
         $body = CoachReaction::ground($profile, "last night's sleep", $facts, $msg['body'], $card);
 
         $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);

@@ -147,6 +147,8 @@ class SleepDetail
             // Progressive summary: expose the compute state so any consumer can tell a still-`computing`
             // placeholder (real duration/times, but stages/quality NULL → 0% here) from a settled `final` night.
             'stage_status' => $last->stage_status,
+            // Low-signal night → the app shows the read as an estimate + a fit-check hint, not a hard number.
+            'low_confidence' => (bool) $last->low_confidence,
             'finalized_at' => $last->finalized_at?->toIso8601String(),
         ];
     }
