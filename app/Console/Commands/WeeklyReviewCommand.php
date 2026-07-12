@@ -34,6 +34,8 @@ class WeeklyReviewCommand extends Command
                 if (! Reminders::enabled($profile, 'review')) {
                     continue;
                 }
+                // Everything below (compile()'s prose, the push copy) renders in the athlete's language.
+                \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
                 $review = WeeklyReview::compile($profile);
                 if (! $review) {
                     continue;
@@ -50,20 +52,20 @@ class WeeklyReviewCommand extends Command
                 $score = $review['score'];
                 $delta = $review['score_delta'];
                 $lead = $score !== null
-                    ? 'Week score '.$score.($delta ? ' ('.($delta > 0 ? '+' : '').$delta.' vs last week)' : '').'. '
+                    ? __('Week score :score', ['score' => $score]).($delta ? ' '.__('(:delta vs last week)', ['delta' => ($delta > 0 ? '+' : '').$delta]) : '').'. '
                     : '';
                 // Lead the physique north star -- staying on track to the dream physique is the point.
                 $phys = '';
                 if (! empty($review['physique'])) {
                     $p = $review['physique'];
-                    $phys = " You're {$p['step_pct']}% to your physique";
-                    $phys .= (! empty($p['step_delta']) && $p['step_delta'] > 0) ? " (+{$p['step_delta']}% this week)." : '.';
+                    $phys = ' '.__("You're :pct% to your physique", ['pct' => $p['step_pct']]);
+                    $phys .= (! empty($p['step_delta']) && $p['step_delta'] > 0) ? __(' (+:pct% this week).', ['pct' => $p['step_delta']]) : '.';
                 }
-                $streak = $review['streak'] >= 2 ? " · {$review['streak']}-week streak 🔥" : '';
+                $streak = $review['streak'] >= 2 ? ' · '.__(':count-week streak 🔥', ['count' => $review['streak']]) : '';
                 $bits = collect($review['metrics'])->take(2)->map(fn ($m) => $m['label'].' '.$m['value'])->implode(' · ');
-                $body = trim($lead.$review['headline'].'.'.$phys.' '.$bits.$streak.' Tap for the full review.');
+                $body = trim($lead.$review['headline'].'.'.$phys.' '.$bits.$streak.' '.__('Tap for the full review.'));
 
-                $notifications->notify($profile, '📊 Your week in review', Str::limit($body, 200), '/coach', 'review');
+                $notifications->notify($profile, __('📊 Your week in review'), Str::limit($body, 200), '/coach', 'review');
 
                 // Email the full review too (reaches you even without push enabled).
                 if ($email = $profile->user?->email) {

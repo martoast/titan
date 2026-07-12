@@ -126,6 +126,14 @@ class CoachBriefingService
             $system .= "\n\n--- HER CYCLE TODAY (work it into the briefing -- phase shapes energy, training & nutrition) ---\n".$cycle;
         }
 
+        if (($profile->primary_language ?? 'en') === 'es-MX') {
+            $system .= "\n\n--- LANGUAGE: WRITE IN MEXICAN SPANISH ---\n"
+                ."{$name} uses Titan in Spanish. Write this ENTIRE briefing in natural MEXICAN Spanish "
+                ."(español de México) — warm, direct, Tijuana-friendly, Mexican vocabulary and the informal "
+                ."\"tú\". Everything they read must be Spanish. Keep it plain (no markdown). Units and metric "
+                ."names stay as-is (HRV, bpm, g de proteína), but every sentence around them is Spanish.";
+        }
+
         $dataBlock = "Here is {$name}'s real data right now:\n".json_encode(
             $facts,
             JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,

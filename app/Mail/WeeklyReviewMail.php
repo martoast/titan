@@ -18,13 +18,18 @@ class WeeklyReviewMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public Profile $profile, public array $review) {}
+    public function __construct(public Profile $profile, public array $review)
+    {
+        // Render subject + chrome in the athlete's chosen language. (The metric labels/wins/headline
+        // inside $review are already localized by WeeklyReview::compile() at build time.)
+        $this->locale(\App\Support\Lang::locale($profile->primary_language));
+    }
 
     public function envelope(): Envelope
     {
         $name = $this->profile->display_name ?: ($this->profile->user?->name ?? 'athlete');
 
-        return new Envelope(subject: "Titan · Your week in review, {$name}");
+        return new Envelope(subject: __('Titan · Your week in review, :name', ['name' => $name]));
     }
 
     public function content(): Content

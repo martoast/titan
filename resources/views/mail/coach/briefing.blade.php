@@ -8,25 +8,25 @@
 </td></tr>
 </table>
 
-# Hey {{ $name }} 👋
+# {{ __('Hey :name 👋', ['name' => $name]) }}
 
 {{ $body }}
 
 <x-mail::button :url="$coachUrl" color="primary">
-Open your coach
+{{ __('Open your coach') }}
 </x-mail::button>
 
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:8px;border-top:1px solid #e5e7eb;padding-top:16px;">
 <tr><td style="font-family:'Manrope',Arial,sans-serif;font-size:12px;color:#9ca3af;line-height:1.5;">
-This is coaching grounded in your logged data — not medical advice. For clinical concerns, see a qualified physician.
+{{ __('This is coaching grounded in your logged data — not medical advice. For clinical concerns, see a qualified physician.') }}
 @if ($kind === 'morning')
-<br>You get this each morning. Turn briefings off anytime in your coach settings.
+<br>{{ __('You get this each morning. Turn briefings off anytime in your coach settings.') }}
 @elseif ($kind === 'evening')
-<br>You get this each evening. Turn nudges off anytime in your coach settings.
+<br>{{ __('You get this each evening. Turn nudges off anytime in your coach settings.') }}
 @endif
 </td></tr>
 </table>
 
-Stay consistent,<br>
+{{ __('Stay consistent,') }}<br>
 **— Titan**
 </x-mail::message>

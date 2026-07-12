@@ -67,9 +67,10 @@ class EveningNudge extends Command
 
             // Surface the nudge as an in-app notification + Web Push (best-effort). The
             // research report's evening "behavior-triggered push" lands here.
+            \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
             $notifications->notify(
                 $profile,
-                'Evening check-in',
+                __('Evening check-in'),
                 Str::limit($message, 140),
                 '/coach',
                 'nudge',

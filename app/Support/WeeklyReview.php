@@ -206,44 +206,49 @@ class WeeklyReview
         $rows = [];
 
         if ($t = $m['training']) {
+            $value = trans_choice(':count session|:count sessions', $t['sessions'], ['count' => $t['sessions']]);
+            if ($t['sets'] > 0) {
+                $value .= " · {$t['sets']} ".__('sets');
+            }
             $rows[] = [
-                'key' => 'training', 'label' => 'Training',
-                'value' => $t['sessions'].' session'.($t['sessions'] === 1 ? '' : 's').($t['sets'] > 0 ? " · {$t['sets']} sets" : ''),
-                'sub' => $t['target'] ? "of {$t['target']}/wk plan" : '',
+                'key' => 'training', 'label' => __('Training'),
+                'value' => $value,
+                'sub' => $t['target'] ? __('of :count/wk plan', ['count' => $t['target']]) : '',
                 'state' => $t['state'],
-                'delta' => self::delta($t['sets'], $prev['training']['sets'] ?? null, 'sets'),
+                'delta' => self::delta($t['sets'], $prev['training']['sets'] ?? null, __('sets')),
             ];
         }
         if ($n = $m['nutrition']) {
             $rows[] = [
-                'key' => 'nutrition', 'label' => 'Nutrition',
-                'value' => number_format($n['avg_cal']).' kcal · '.$n['avg_pro'].'g protein',
-                'sub' => "avg/day · logged {$n['days']}/7",
+                'key' => 'nutrition', 'label' => __('Nutrition'),
+                'value' => __(':cal kcal · :pro g protein', ['cal' => number_format($n['avg_cal']), 'pro' => $n['avg_pro']]),
+                'sub' => __('avg/day · logged :days/7', ['days' => $n['days']]),
                 'state' => $n['state'],
-                'delta' => self::delta($n['avg_pro'], $prev['nutrition']['avg_pro'] ?? null, 'g protein'),
+                'delta' => self::delta($n['avg_pro'], $prev['nutrition']['avg_pro'] ?? null, __('g protein')),
             ];
         }
         if ($s = $m['sleep']) {
             $rows[] = [
-                'key' => 'sleep', 'label' => 'Sleep',
-                'value' => $s['avg_h'].'h avg', 'sub' => 'need ~'.rtrim(rtrim(number_format($s['need'], 1), '0'), '.').'h',
+                'key' => 'sleep', 'label' => __('Sleep'),
+                'value' => __(':hours h avg', ['hours' => $s['avg_h']]),
+                'sub' => __('need ~:hours h', ['hours' => rtrim(rtrim(number_format($s['need'], 1), '0'), '.')]),
                 'state' => $s['state'],
-                'delta' => self::delta($s['avg_h'], $prev['sleep']['avg_h'] ?? null, 'h', 1),
+                'delta' => self::delta($s['avg_h'], $prev['sleep']['avg_h'] ?? null, __('h'), 1),
             ];
         }
         if ($r = $m['recovery']) {
             $rows[] = [
-                'key' => 'recovery', 'label' => 'Recovery',
-                'value' => 'readiness '.$r['readiness'], 'sub' => 'right now',
+                'key' => 'recovery', 'label' => __('Recovery'),
+                'value' => __('readiness :score', ['score' => $r['readiness']]), 'sub' => __('right now'),
                 'state' => $r['state'],
                 'delta' => self::delta($r['readiness'], $prev['recovery']['readiness'] ?? null, ''),
             ];
         }
         if ($w = $m['weight']) {
             $rows[] = [
-                'key' => 'weight', 'label' => 'Bodyweight',
+                'key' => 'weight', 'label' => __('Bodyweight'),
                 'value' => $w['kg'].' kg',
-                'sub' => $w['delta'] !== null ? sprintf('%+.1f kg vs last wk', $w['delta']) : 'first reading',
+                'sub' => $w['delta'] !== null ? __(':delta kg vs last wk', ['delta' => sprintf('%+.1f', $w['delta'])]) : __('first reading'),
                 'state' => 'neutral', 'delta' => null,
             ];
         }
@@ -273,29 +278,29 @@ class WeeklyReview
         $watch = [];
         if ($t = $m['training']) {
             if ($t['target'] && $t['sessions'] >= $t['target']) {
-                $wins[] = "Hit all {$t['target']} training sessions";
+                $wins[] = __('Hit all :count training sessions', ['count' => $t['target']]);
             } elseif ($t['target'] && $t['sessions'] < ceil($t['target'] * 0.6)) {
-                $watch[] = "Only {$t['sessions']} of {$t['target']} planned sessions";
+                $watch[] = __('Only :sessions of :target planned sessions', ['sessions' => $t['sessions'], 'target' => $t['target']]);
             }
             if ($m['lifts_improving']) {
-                $wins[] = 'Lifts trending up -- real progressive overload';
+                $wins[] = __('Lifts trending up -- real progressive overload');
             }
         }
         if ($n = $m['nutrition']) {
             if ($n['pro_t'] && $n['avg_pro'] >= $n['pro_t'] * 0.95) {
-                $wins[] = "Protein dialed in (~{$n['avg_pro']}g/day)";
+                $wins[] = __('Protein dialed in (~:grams g/day)', ['grams' => $n['avg_pro']]);
             }
             if ($n['days'] < 4) {
-                $watch[] = "Only logged food {$n['days']} of 7 days";
+                $watch[] = __('Only logged food :days of 7 days', ['days' => $n['days']]);
             } elseif ($n['cal_t'] && $n['avg_cal'] > $n['cal_t'] * 1.15) {
-                $watch[] = 'Calories ran above target most days';
+                $watch[] = __('Calories ran above target most days');
             }
         }
         if ($s = $m['sleep']) {
             if ($s['state'] === 'good') {
-                $wins[] = 'Sleep held strong all week';
+                $wins[] = __('Sleep held strong all week');
             } elseif ($s['state'] === 'low') {
-                $watch[] = 'Sleep ran short -- it drags everything';
+                $watch[] = __('Sleep ran short -- it drags everything');
             }
         }
 
@@ -349,10 +354,10 @@ class WeeklyReview
     private static function headline(?int $score): string
     {
         return match (true) {
-            $score === null => 'Your week so far',
-            $score >= 75 => "Strong week -- momentum's with you",
-            $score >= 50 => 'Solid week, with room to sharpen',
-            default => "A tougher week -- let's reset and rebuild",
+            $score === null => __('Your week so far'),
+            $score >= 75 => __("Strong week -- momentum's with you"),
+            $score >= 50 => __('Solid week, with room to sharpen'),
+            default => __("A tougher week -- let's reset and rebuild"),
         };
     }
 

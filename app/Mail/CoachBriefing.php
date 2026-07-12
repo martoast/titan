@@ -28,15 +28,18 @@ class CoachBriefing extends Mailable
         public Profile $profile,
         public string $body,
         public string $kind = 'morning',
-    ) {}
+    ) {
+        // Render the whole email (subject + body chrome) in the athlete's chosen language.
+        $this->locale(\App\Support\Lang::locale($profile->primary_language));
+    }
 
     public function envelope(): Envelope
     {
         $name = $this->profile->display_name ?: ($this->profile->user?->name ?? 'athlete');
 
         $subject = $this->kind === 'evening'
-            ? "Titan · Evening check-in for {$name}"
-            : "Titan · Your morning briefing, {$name}";
+            ? __('Titan · Evening check-in for :name', ['name' => $name])
+            : __('Titan · Your morning briefing, :name', ['name' => $name]);
 
         return new Envelope(subject: $subject);
     }
@@ -49,7 +52,7 @@ class CoachBriefing extends Mailable
                 'name' => $this->profile->display_name ?: ($this->profile->user?->name ?? 'athlete'),
                 'body' => $this->body,
                 'kind' => $this->kind,
-                'heading' => $this->kind === 'evening' ? 'Evening check-in' : 'Your morning briefing',
+                'heading' => $this->kind === 'evening' ? __('Evening check-in') : __('Your morning briefing'),
                 'coachUrl' => rtrim((string) config('app.url'), '/').'/coach',
             ],
         );

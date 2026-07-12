@@ -3,52 +3,73 @@
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom:24px;">
 <tr><td>
 <span style="font-family:'Archivo','Helvetica Neue',Arial,sans-serif;font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#6366f1;">TITAN</span>
-<div style="font-family:'Manrope',Arial,sans-serif;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#9ca3af;margin-top:4px;">Your week in review · {{ $review['range'] ?? '' }}</div>
+<div style="font-family:'Manrope',Arial,sans-serif;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#9ca3af;margin-top:4px;">{{ __('Your week in review · :range', ['range' => $review['range'] ?? '']) }}</div>
 </td></tr>
 </table>
 
-# Hey {{ $name }} 👋
+# {{ __('Hey :name 👋', ['name' => $name]) }}
 
 @if (!is_null($review['score'] ?? null))
-**Week score: {{ $review['score'] }}/100**@if (!empty($review['score_delta'])) ({{ $review['score_delta'] > 0 ? '+' : '' }}{{ $review['score_delta'] }} vs last week)@endif@if (($review['streak'] ?? 0) >= 2) · 🔥 {{ $review['streak'] }}-week streak@endif
+@php
+    $scoreLine = __('Week score: :score/100', ['score' => $review['score']]);
+    if (!empty($review['score_delta'])) {
+        $scoreLine .= ' ('.($review['score_delta'] > 0 ? '+' : '').$review['score_delta'].' '.__('vs last week').')';
+    }
+    if (($review['streak'] ?? 0) >= 2) {
+        $scoreLine .= ' · 🔥 '.__(':count-week streak', ['count' => $review['streak']]);
+    }
+@endphp
+**{{ $scoreLine }}**
 @endif
 
 {{ $review['headline'] ?? '' }}
 
 @if (!empty($review['physique']))
+@php
+    $ph = $review['physique'];
+    $physLine = __('Toward your dream physique:').' '.__("you're :pct% of the way there", ['pct' => $ph['step_pct']]);
+    if (!empty($ph['step_delta']) && $ph['step_delta'] > 0) {
+        $physLine .= ' — **'.__('+:pct% this week', ['pct' => $ph['step_delta']]).'**';
+    }
+    $physLine .= '. '.($ph['verdict_label'] ?? '');
+    if (!is_null($ph['eta_weeks'] ?? null)) {
+        $physLine .= ', '.trans_choice('~:count week to go at this pace|~:count weeks to go at this pace', (int) $ph['eta_weeks'], ['count' => $ph['eta_weeks']]);
+    }
+    $physLine .= '. '.__('Stay on it.');
+@endphp
 <x-mail::panel>
-**Toward your dream physique:** you're **{{ $review['physique']['step_pct'] }}%** of the way there@if (!empty($review['physique']['step_delta']) && $review['physique']['step_delta'] > 0) — **+{{ $review['physique']['step_delta'] }}% this week**@endif. {{ $review['physique']['verdict_label'] ?? '' }}@if (!is_null($review['physique']['eta_weeks'] ?? null)), ~{{ $review['physique']['eta_weeks'] }} week{{ $review['physique']['eta_weeks'] === 1 ? '' : 's' }} to go at this pace@endif. Stay on it.
+{{ $physLine }}
 </x-mail::panel>
 @endif
 
 @if (!empty($review['metrics']))
-**This week**
+**{{ __('This week') }}**
 @foreach ($review['metrics'] as $m)
 - **{{ $m['label'] }}:** {{ $m['value'] }}@if (!empty($m['delta']['text'])) ({{ $m['delta']['good'] ? '▲' : '▼' }} {{ $m['delta']['text'] }})@endif
 @endforeach
 @endif
 
 @if (!empty($review['wins']))
-**Wins**
+**{{ __('Wins') }}**
 @foreach ($review['wins'] as $w)
 - {{ $w }}
 @endforeach
 @endif
 
 @if (!empty($review['next']['text']))
-**Next week:** {{ $review['next']['text'] }}
+**{{ __('Next week:') }}** {{ $review['next']['text'] }}
 @endif
 
 <x-mail::button :url="$progressUrl" color="primary">
-See your progress
+{{ __('See your progress') }}
 </x-mail::button>
 
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:8px;border-top:1px solid #e5e7eb;padding-top:16px;">
 <tr><td style="font-family:'Manrope',Arial,sans-serif;font-size:12px;color:#9ca3af;line-height:1.5;">
-Coaching grounded in your logged data — not medical advice. You get this each week; turn the weekly review off anytime in your notification settings.
+{{ __('Coaching grounded in your logged data — not medical advice. You get this each week; turn the weekly review off anytime in your notification settings.') }}
 </td></tr>
 </table>
 
-Keep building,<br>
+{{ __('Keep building,') }}<br>
 **— Titan**
 </x-mail::message>

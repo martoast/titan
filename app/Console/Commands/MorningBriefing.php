@@ -68,10 +68,11 @@ class MorningBriefing extends Command
 
             $this->line("  <info>✓</info> profile #{$profile->id} -- ".\Illuminate\Support\Str::limit($message, 70));
 
-            // Surface the briefing as an in-app notification + Web Push (best-effort).
+            // Surface the briefing as an in-app notification + Web Push (best-effort), in their language.
+            \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
             $notifications->notify(
                 $profile,
-                'Your morning briefing',
+                __('Your morning briefing'),
                 \Illuminate\Support\Str::limit($message, 140),
                 '/coach',
                 'briefing',
