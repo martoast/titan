@@ -1,7 +1,26 @@
 # STRESS MONITOR — real-time stress from the signal we already stream
 
-**Spec for the dev agent · from Alex + Henry · 2026-07-11 · Whoop-parity feature**
-**Status: BUILD. Highest-value gap that needs NO new hardware.**
+**Spec for the dev agent · from Alex + Henry · 2026-07-11 (refreshed 2026-07-12) · Whoop-parity**
+**Status: BUILD NOW — Alex's chosen next feature. Highest-value gap with NO new hardware.**
+
+## ⚡ Current-state update (2026-07-12) — the ground this now stands on is PROVEN
+Since this spec was first written, the exact infrastructure it depends on shipped and was verified on
+Alex's real data — so v1 is now mostly wiring, not new plumbing:
+- **`hr_samples`** (T5 HR trend) — continuous all-day on-chip HR, populating and verified. This is the
+  stress monitor's primary daytime input; no new firmware needed for v1.
+- **`motion_samples`** (T10 dense motion) — dense per-epoch movement, proven (~full-night coverage on a
+  real night). Use it for the motion-gate (reject exercise as stress) AND as the template for the new
+  `stress_samples` table (same `insertOrIgnore` + **app-tz `recorded_at`** convention — that tz detail is
+  load-bearing; the T10 seal already paid for that lesson).
+- **Coach v2 widgets are LIVE** (P2 shipped) — the `stress_now` card must be a first-class native widget in
+  that existing registry (not the generic key/value fallback), same as the sleep/strain cards.
+- **Coach trajectory digest is LIVE** (P1) — add the stress line to it (`CoachTrajectory`), and mirror the
+  `strain_status` tool for a `stress_status` tool.
+- **LAB fidelity gate exists** — add a stress-monitor acceptance the same way: a scripted high-HR-while-
+  STILL window must read as stress; a high-HR-while-MOVING window must NOT (the one correctness invariant).
+
+Build v1 from `hr_samples` + `motion_samples` + the existing baseline machinery; the firmware daytime-HRV
+micro-burst (§1 v2) is a later sharpening, not a blocker. Everything below still holds.
 
 ## The idea
 
