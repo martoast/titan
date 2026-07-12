@@ -1308,11 +1308,27 @@ class SealNightJob implements ShouldQueue
         if ($validFraction !== null && $validFraction < self::MIN_VALID_WINDOW_FRAC) {
             return true;   // the band barely got a clean pulse read — an estimate, whatever the coverage says
         }
+        // NULL/absent coverage is ITSELF a low-confidence signal — a staged night should carry one, so a
+        // missing value must not slip the `< 0.5` gate (review: a 7-min sliver with coverage=NULL poisoned
+        // the debt ledger because NULL isn't < 0.5). Flag null OR low.
         $cov = $this->clampCoverage($metrics['coverage'] ?? null);
+        if ($cov === null || $cov < self::LOW_COVERAGE_CONFIDENCE) {
+            return true;
+        }
 
-        return ($cov !== null && $cov < self::LOW_COVERAGE_CONFIDENCE)
-            || (bool) ($metrics['stages_low_confidence'] ?? false)
+        return (bool) ($metrics['stages_low_confidence'] ?? false)
+            || $this->degenerateNight($metrics)
             || $this->stageSplitImplausible($metrics);
+    }
+
+    /** A degenerate "night": almost no sleep but sealed as a full night (a 6-min wrist-on sliver — 7 min
+     *  asleep, 21h awake — must never read as a real, confident night, regardless of coverage/stages). */
+    private function degenerateNight(array $metrics): bool
+    {
+        $asleep = (float) ($metrics['deep_min'] ?? 0) + (float) ($metrics['rem_min'] ?? 0) + (float) ($metrics['light_min'] ?? 0);
+        $awake = (float) ($metrics['awake_min'] ?? 0);
+
+        return $asleep > 0 && $asleep < self::MIN_SLEEP_MIN && $awake >= $asleep;
     }
 
     /**

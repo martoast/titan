@@ -76,6 +76,21 @@ class SleepDebtTest extends TestCase
         $this->assertStringContainsString('rested', strtolower($ledger['payback']['plan']));
     }
 
+    public function test_a_sub_hour_fragment_does_not_poison_the_ledger(): void
+    {
+        // Review 2026-07-12: a 7-min "night" (unflagged, pre-fix) dumped ~8h of debt in one step. A sub-1h
+        // fragment must be skipped by the ledger even when low_confidence wasn't set.
+        $p = $this->profile();
+        for ($d = 8; $d >= 2; $d--) {
+            $this->night($p, $d, 9.0);   // rested → balance 0
+        }
+        $this->night($p, 1, 7 / 60.0);   // a 7-MINUTE degenerate sliver, NOT flagged low_confidence
+
+        $ledger = SleepDebt::forProfile($p);
+        $this->assertSame(0.0, $ledger['balance_h'], 'a sub-1h fragment adds no debt');
+        $this->assertTrue(collect($ledger['history'])->contains(fn ($h) => $h['unmeasured'] === true));
+    }
+
     public function test_a_low_confidence_night_does_not_move_the_ledger(): void
     {
         $p = $this->profile();

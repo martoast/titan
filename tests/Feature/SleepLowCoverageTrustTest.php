@@ -126,4 +126,15 @@ class SleepLowCoverageTrustTest extends TestCase
         // A healthy split does not.
         $this->assertFalse($this->isLowConfidence(['coverage' => 0.99, 'deep_min' => 90, 'rem_min' => 100, 'light_min' => 250], 0.9));
     }
+
+    public function test_null_coverage_and_degenerate_sliver_flag_low_confidence(): void
+    {
+        // Review 2026-07-12: a staged night with NULL coverage must flag (NULL slipped the < 0.5 gate and
+        // poisoned the debt ledger). A missing coverage is itself a low-confidence signal.
+        $this->assertTrue($this->isLowConfidence(['deep_min' => 90, 'rem_min' => 100, 'light_min' => 250]));
+
+        // A 7-min "night" (7 asleep, 1280 awake) sealed as a full night is degenerate — must flag even
+        // though it has "coverage" and too little sleep to judge a stage split.
+        $this->assertTrue($this->isLowConfidence(['coverage' => 0.99, 'deep_min' => 0, 'rem_min' => 0, 'light_min' => 7, 'awake_min' => 1280], 0.9));
+    }
 }

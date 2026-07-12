@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
 class SleepDebt
 {
     private const WINDOW_NIGHTS = 14;               // the recoverable horizon (~2 weeks)
+    private const MIN_NIGHT_MIN = 60;               // a sub-1h "night" is a fragment, not a night — skip it
     private const MAX_PAYBACK_PER_NIGHT = 1.5;       // a great night pays back at most this much
     private const DEBT_CAP_H = 10.0;                 // never runaway
     private const NIGHTLY_DECAY = 0.95;              // old debt is biologically written off
@@ -44,8 +45,10 @@ class SleepDebt
 
         foreach ($nights as $n) {
             $date = $n->slept_at?->toDateString();
-            // Honesty: an unmeasured / low-signal night doesn't move the ledger.
-            if ($n->low_confidence || ! $n->duration_min) {
+            // Honesty: an unmeasured / low-signal night doesn't move the ledger. Also skip a degenerate
+            // sub-1h fragment even if it wasn't flagged (defends against pre-flag-fix rows — a 7-min sliver
+            // sealed as a "night" must not dump ~8h of debt; see review 2026-07-12 debt-ledger-poisoned).
+            if ($n->low_confidence || ! $n->duration_min || $n->duration_min < self::MIN_NIGHT_MIN) {
                 $history[] = ['date' => $date, 'unmeasured' => true, 'balance_h' => round($balance, 1), 'delta_h' => 0.0];
 
                 continue;

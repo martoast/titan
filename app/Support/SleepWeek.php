@@ -20,7 +20,8 @@ class SleepWeek
     /** A night "hit need" (counts for the streak + strip) at ≥ this % of need. One place, tunable. */
     public const NEED_THRESHOLD = 85;
 
-    private const STRIP_DAYS = 35;   // 5-week heat strip
+    private const STRIP_DAYS = 35;      // 5-week heat strip
+    private const MIN_NIGHT_MIN = 60;   // a sub-1h fragment isn't a night — don't score it (matches SleepDebt)
 
     public static function forProfile(Profile $profile, string $tz = 'UTC'): array
     {
@@ -41,7 +42,9 @@ class SleepWeek
             if ($date === null) {
                 continue;
             }
-            $low = (bool) $l->low_confidence;
+            // A low_confidence night OR a sub-1h fragment (a degenerate sliver, possibly pre-flag-fix) is
+            // shown but not scored — never drags the week down or advances the streak.
+            $low = (bool) $l->low_confidence || (int) ($l->duration_min ?? 0) < self::MIN_NIGHT_MIN;
             $score = ($low || ! $l->duration_min)
                 ? null
                 : (int) round(min(100, ($l->duration_min / 60.0) / max(0.1, $baseline) * 100));
