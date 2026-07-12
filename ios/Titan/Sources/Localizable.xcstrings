@@ -1,7 +1,8 @@
 {
   "sourceLanguage": "en",
-  "version": "1.0",
   "strings": {
+    " %@m": {},
+    " / 21": {},
     " · %@": {
       "localizations": {
         "es-MX": {
@@ -13,6 +14,7 @@
       }
     },
     " · %lldd early": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -22,7 +24,9 @@
         }
       }
     },
+    "#%@": {},
     "%.1f yrs older": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -33,11 +37,23 @@
       }
     },
     "%.1f yrs younger": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
             "state": "translated",
             "value": "%.1f años más joven"
+          }
+        }
+      }
+    },
+    "%@": {},
+    "%@ / %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ / %2$@"
           }
         }
       }
@@ -52,7 +68,19 @@
         }
       }
     },
+    "%@ Hz": {},
+    "%@ activities": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ actividades"
+          }
+        }
+      }
+    },
     "%@ confidence": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -63,6 +91,7 @@
       }
     },
     "%@ gain": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -72,7 +101,18 @@
         }
       }
     },
+    "%@ is leading the group this week — %@ effort.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ va liderando al grupo esta semana — %@ de esfuerzo."
+          }
+        }
+      }
+    },
     "%@ is leading the group this week — %lld effort.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -82,7 +122,58 @@
         }
       }
     },
+    "%@ kcal · %@P": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ kcal · %@P"
+          }
+        }
+      }
+    },
+    "%@ kcal · %@P · %@C · %@F": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ kcal · %@P · %@C · %@G"
+          }
+        }
+      }
+    },
+    "%@ nights of baseline": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ noches de referencia"
+          }
+        }
+      }
+    },
+    "%@ things worth knowing": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ cosas que vale la pena saber"
+          }
+        }
+      }
+    },
+    "%@ · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ · %2$@"
+          }
+        }
+      }
+    },
     "%@ · %@ km": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -93,6 +184,7 @@
       }
     },
     "%@ · lifting": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -112,12 +204,44 @@
         }
       }
     },
+    "%@%%": {},
+    "%@%% performance": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@%% de rendimiento"
+          }
+        }
+      }
+    },
     "%@%.1f kg/wk": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
             "state": "translated",
             "value": "%@%.1f kg/sem"
+          }
+        }
+      }
+    },
+    "%@%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@%2$@"
+          }
+        }
+      }
+    },
+    "%@%@ kcal": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@%@ kcal"
           }
         }
       }
@@ -132,6 +256,28 @@
         }
       }
     },
+    "%@%@g": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@%2$@g"
+          }
+        }
+      }
+    },
+    "%@.": {},
+    "%@/%@h": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@/%2$@h"
+          }
+        }
+      }
+    },
+    "%@/3": {},
     "%@h debt": {
       "localizations": {
         "es-MX": {
@@ -142,7 +288,9 @@
         }
       }
     },
+    "%@m": {},
     "%lld Hz": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -153,6 +301,7 @@
       }
     },
     "%lld activities": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -163,6 +312,7 @@
       }
     },
     "%lld bpm avg": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -173,6 +323,7 @@
       }
     },
     "%lld day%@": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -183,6 +334,7 @@
       }
     },
     "%lld earned": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -193,6 +345,7 @@
       }
     },
     "%lld fixes": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -203,6 +356,7 @@
       }
     },
     "%lld follow requests": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -213,6 +367,7 @@
       }
     },
     "%lld kcal · %lldP": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -223,6 +378,7 @@
       }
     },
     "%lld kcal · %lldP · %lldC · %lldF": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -233,6 +389,7 @@
       }
     },
     "%lld logged today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -243,6 +400,7 @@
       }
     },
     "%lld min": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -253,6 +411,7 @@
       }
     },
     "%lld nights of baseline": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -263,6 +422,7 @@
       }
     },
     "%lld peak": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -273,6 +433,7 @@
       }
     },
     "%lld sets · %lld reps": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -283,6 +444,7 @@
       }
     },
     "%lld stages": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -293,6 +455,7 @@
       }
     },
     "%lld things worth knowing": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -303,6 +466,7 @@
       }
     },
     "%lld% efficient": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -313,6 +477,7 @@
       }
     },
     "%lld% performance": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -323,6 +488,7 @@
       }
     },
     "%lld/3": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -333,6 +499,7 @@
       }
     },
     "%lldd ago": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -343,6 +510,7 @@
       }
     },
     "%lldd late": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -353,6 +521,7 @@
       }
     },
     "%lldh %lldm asleep": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -363,6 +532,7 @@
       }
     },
     "%lldh ago": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -373,6 +543,7 @@
       }
     },
     "%lldm": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -383,6 +554,7 @@
       }
     },
     "%lldm ago": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -393,6 +565,7 @@
       }
     },
     "%lldm asleep": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -403,6 +576,7 @@
       }
     },
     "%lldm in red": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -413,6 +587,7 @@
       }
     },
     "%llds ago": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -422,6 +597,7 @@
         }
       }
     },
+    "+%@": {},
     "/ %@ needed": {
       "localizations": {
         "es-MX": {
@@ -432,7 +608,10 @@
         }
       }
     },
+    "/%@": {},
+    "/%@g": {},
     "/km": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -443,6 +622,7 @@
       }
     },
     "1 activity": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -453,6 +633,7 @@
       }
     },
     "1 follow request": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -472,7 +653,9 @@
         }
       }
     },
+    "@%@": {},
     "A full night in the bank. Well rested.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -483,6 +666,7 @@
       }
     },
     "A mix": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -502,7 +686,18 @@
         }
       }
     },
+    "A ~%@-min %@ (%@) session gets you there — %@ to go.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una sesión de ~%@ min %@ (%@) te lleva ahí — te faltan %@."
+          }
+        }
+      }
+    },
     "A ~%lld-min %@ (%@) session gets you there — %@ to go.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -513,6 +708,7 @@
       }
     },
     "About you": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -523,6 +719,7 @@
       }
     },
     "About you.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -543,6 +740,7 @@
       }
     },
     "Active": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -553,6 +751,7 @@
       }
     },
     "Activities": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -563,6 +762,7 @@
       }
     },
     "Activity": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -583,6 +783,7 @@
       }
     },
     "Add": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -592,7 +793,18 @@
         }
       }
     },
+    "Add %@ to what you take": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agrega %@ a lo que tomas"
+          }
+        }
+      }
+    },
     "Add %lld to what you take": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -603,6 +815,7 @@
       }
     },
     "Add a comment…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -613,6 +826,7 @@
       }
     },
     "Add a heart-rate strap": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -623,6 +837,7 @@
       }
     },
     "Add a note…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -633,6 +848,7 @@
       }
     },
     "Add a photo": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -693,6 +909,7 @@
       }
     },
     "Add to what you take": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -703,6 +920,7 @@
       }
     },
     "Add your first": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -713,6 +931,7 @@
       }
     },
     "Add your own…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -733,6 +952,7 @@
       }
     },
     "Adjust meal": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -743,6 +963,7 @@
       }
     },
     "Advanced": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -753,6 +974,7 @@
       }
     },
     "Alcohol, caffeine, stress… learn what moves your recovery": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -763,6 +985,7 @@
       }
     },
     "All": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -773,6 +996,7 @@
       }
     },
     "All optional — but it makes your coach sharper.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -783,6 +1007,7 @@
       }
     },
     "All time": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -793,6 +1018,7 @@
       }
     },
     "All-in — coach me all day": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -803,6 +1029,7 @@
       }
     },
     "Allergies / intolerances": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -813,6 +1040,7 @@
       }
     },
     "Allergies / intolerances (optional)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -823,6 +1051,7 @@
       }
     },
     "Allow location so runs can map.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -833,6 +1062,7 @@
       }
     },
     "Always-on sync": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -873,6 +1103,7 @@
       }
     },
     "Analyzing your sets…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -883,6 +1114,7 @@
       }
     },
     "Anything else I should know? (optional)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -893,6 +1125,7 @@
       }
     },
     "Anything to work around?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -903,6 +1136,7 @@
       }
     },
     "Apple Health": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -923,6 +1157,7 @@
       }
     },
     "Arms": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -943,6 +1178,7 @@
       }
     },
     "Athlete": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -953,6 +1189,7 @@
       }
     },
     "Athletic performance": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -963,6 +1200,7 @@
       }
     },
     "Average cycle length": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -972,7 +1210,18 @@
         }
       }
     },
+    "Average cycle length: %@ days": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duración promedio del ciclo: %@ días"
+          }
+        }
+      }
+    },
     "Average cycle length: %lld days": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -983,6 +1232,7 @@
       }
     },
     "Avg": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -993,6 +1243,7 @@
       }
     },
     "Avg HR": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1003,6 +1254,7 @@
       }
     },
     "Avoiding pregnancy": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1023,6 +1275,7 @@
       }
     },
     "BIRTH CONTROL": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1063,6 +1316,7 @@
       }
     },
     "Background connection": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1073,6 +1327,7 @@
       }
     },
     "Badges": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1083,6 +1338,7 @@
       }
     },
     "Balanced — a few daily nudges": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1093,6 +1349,7 @@
       }
     },
     "Balanced — honest + supportive": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1103,6 +1360,7 @@
       }
     },
     "Band": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1113,6 +1371,7 @@
       }
     },
     "Band connected": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1123,6 +1382,7 @@
       }
     },
     "Band offline": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1133,6 +1393,7 @@
       }
     },
     "Band streaming": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1143,6 +1404,7 @@
       }
     },
     "Band's on its own, saving battery. It syncs in bursts and the moment you open the app.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1173,6 +1435,7 @@
       }
     },
     "Barcode scanning unavailable": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1203,6 +1466,7 @@
       }
     },
     "Behind → %@ · %lldd late": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1213,6 +1477,7 @@
       }
     },
     "Belly": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1223,6 +1488,7 @@
       }
     },
     "Best efforts": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1233,6 +1499,7 @@
       }
     },
     "Best was ±%lld m — too coarse. Try outside.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1243,6 +1510,7 @@
       }
     },
     "Bio": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1253,6 +1521,7 @@
       }
     },
     "Biological Age": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1273,6 +1542,7 @@
       }
     },
     "Birth control": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1283,6 +1553,7 @@
       }
     },
     "Birthdate": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1293,6 +1564,7 @@
       }
     },
     "Bloodwork": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1303,6 +1575,7 @@
       }
     },
     "Body & progress": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1313,6 +1586,7 @@
       }
     },
     "Bodyweight only": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1323,6 +1597,7 @@
       }
     },
     "Bottle": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1333,6 +1608,7 @@
       }
     },
     "Brutal session — you lived in the red zone.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1343,6 +1619,7 @@
       }
     },
     "Build muscle": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1353,6 +1630,7 @@
       }
     },
     "Building through the day": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1363,6 +1641,7 @@
       }
     },
     "Building your Titan…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1373,6 +1652,7 @@
       }
     },
     "Building your baseline": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1383,6 +1663,7 @@
       }
     },
     "CONNECTED": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1393,6 +1674,7 @@
       }
     },
     "Calculating your sleep — hang tight.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1403,6 +1685,7 @@
       }
     },
     "Calendar": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1423,6 +1706,7 @@
       }
     },
     "Calories (kcal)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1443,6 +1727,7 @@
       }
     },
     "Carbs": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1453,6 +1738,7 @@
       }
     },
     "Carbs (g)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1473,6 +1759,7 @@
       }
     },
     "Changes save automatically": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1493,6 +1780,7 @@
       }
     },
     "Cheered · %lld": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1503,6 +1791,7 @@
       }
     },
     "Chest": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1513,6 +1802,7 @@
       }
     },
     "Choose from Library": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1523,6 +1813,7 @@
       }
     },
     "Choose your language": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1533,6 +1824,7 @@
       }
     },
     "Coach": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1543,6 +1835,7 @@
       }
     },
     "Coach tone": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1553,6 +1846,7 @@
       }
     },
     "Coaching intensity": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1563,6 +1857,7 @@
       }
     },
     "Comments": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1573,6 +1868,7 @@
       }
     },
     "Community": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1583,6 +1879,7 @@
       }
     },
     "Community & sharing": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1603,6 +1900,7 @@
       }
     },
     "Confirm": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1623,6 +1921,7 @@
       }
     },
     "Connect": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1643,6 +1942,7 @@
       }
     },
     "Connected": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1653,6 +1953,7 @@
       }
     },
     "Consistency": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1663,6 +1964,7 @@
       }
     },
     "Continue": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1673,6 +1975,7 @@
       }
     },
     "Copper IUD": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1683,6 +1986,7 @@
       }
     },
     "Core": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1693,6 +1997,7 @@
       }
     },
     "Couldn't load cycle": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1703,6 +2008,7 @@
       }
     },
     "Couldn't load heart rate": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1713,6 +2019,7 @@
       }
     },
     "Couldn't load sleep": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1723,6 +2030,7 @@
       }
     },
     "Couldn't load strain": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1733,6 +2041,7 @@
       }
     },
     "Couldn't load the feed": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1743,6 +2052,7 @@
       }
     },
     "Couldn't load the leaderboard": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1753,6 +2063,7 @@
       }
     },
     "Couldn't load this athlete": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1783,6 +2094,7 @@
       }
     },
     "Couldn't load workouts": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1793,6 +2105,7 @@
       }
     },
     "Couldn't reach your coach — please try again.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1803,6 +2116,7 @@
       }
     },
     "Couldn't sync": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1813,6 +2127,7 @@
       }
     },
     "Couldn't sync recovery": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1823,6 +2138,7 @@
       }
     },
     "Couldn't sync today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1843,6 +2159,7 @@
       }
     },
     "DIET": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1863,6 +2180,7 @@
       }
     },
     "Daily macros": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1873,6 +2191,7 @@
       }
     },
     "Day %lld": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1883,6 +2202,7 @@
       }
     },
     "Day Strain": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1893,6 +2213,7 @@
       }
     },
     "Days per week": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1903,6 +2224,7 @@
       }
     },
     "Debt": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1913,6 +2235,7 @@
       }
     },
     "Decent night — a little short of your need.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1933,6 +2256,7 @@
       }
     },
     "Delete": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1953,6 +2277,7 @@
       }
     },
     "Diet": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1963,6 +2288,7 @@
       }
     },
     "Distance": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1973,6 +2299,7 @@
       }
     },
     "Don't break the chain — train today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -1993,6 +2320,7 @@
       }
     },
     "Dose": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2003,6 +2331,7 @@
       }
     },
     "Double-tap the band button": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2023,6 +2352,7 @@
       }
     },
     "EXPERIENCE": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2033,6 +2363,7 @@
       }
     },
     "Edit": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2043,6 +2374,7 @@
       }
     },
     "Edit profile": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2053,6 +2385,7 @@
       }
     },
     "Efficiency": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2063,6 +2396,7 @@
       }
     },
     "Effort": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2073,6 +2407,7 @@
       }
     },
     "Elev gain": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2083,6 +2418,7 @@
       }
     },
     "Elevation": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2093,6 +2429,7 @@
       }
     },
     "Email": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2103,6 +2440,7 @@
       }
     },
     "Enable Location for Titan in Settings → Privacy → Location Services, then test again.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2133,6 +2471,7 @@
       }
     },
     "End lift": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2143,6 +2482,7 @@
       }
     },
     "End run": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2153,6 +2493,7 @@
       }
     },
     "End this lift? This finishes it on your band too and saves the summary.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2163,6 +2504,7 @@
       }
     },
     "End this run? This finishes it on your band too and saves the summary.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2173,6 +2515,7 @@
       }
     },
     "Energy": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2193,6 +2536,7 @@
       }
     },
     "Estimated from your steps — no GPS lock on this one": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2223,6 +2567,7 @@
       }
     },
     "Evening": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2233,6 +2578,7 @@
       }
     },
     "Everyone": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2243,6 +2589,7 @@
       }
     },
     "Experience": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2273,6 +2620,7 @@
       }
     },
     "Fasting": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2283,6 +2631,7 @@
       }
     },
     "Fat": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2293,6 +2642,7 @@
       }
     },
     "Fat (g)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2313,6 +2663,7 @@
       }
     },
     "Feed": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2323,6 +2674,7 @@
       }
     },
     "Female": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2333,6 +2685,7 @@
       }
     },
     "Fertile": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2343,6 +2696,7 @@
       }
     },
     "Find": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2353,6 +2707,7 @@
       }
     },
     "Find by name or @username": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2373,6 +2728,7 @@
       }
     },
     "Finding your location…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2383,6 +2739,7 @@
       }
     },
     "Finding you… ±%lld m": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2393,6 +2750,7 @@
       }
     },
     "Finish": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2403,6 +2761,7 @@
       }
     },
     "First": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2413,6 +2772,7 @@
       }
     },
     "First day of last period": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2423,6 +2783,7 @@
       }
     },
     "First — what should I call you?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2433,6 +2794,7 @@
       }
     },
     "Fitness age %lld · from VO₂max": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2443,6 +2805,7 @@
       }
     },
     "Flights": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2453,6 +2816,7 @@
       }
     },
     "Floors": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2463,6 +2827,7 @@
       }
     },
     "Focus areas": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2473,6 +2838,7 @@
       }
     },
     "Follow": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2493,6 +2859,7 @@
       }
     },
     "Followers": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2503,6 +2870,7 @@
       }
     },
     "Following": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2513,6 +2881,7 @@
       }
     },
     "Food": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2523,6 +2892,7 @@
       }
     },
     "Foods you won't eat": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2533,6 +2903,7 @@
       }
     },
     "Foods you won't eat (optional)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2543,6 +2914,7 @@
       }
     },
     "Forget": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2573,6 +2945,7 @@
       }
     },
     "Form": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2583,6 +2956,7 @@
       }
     },
     "Found these on your shelf. Untick anything I misread — you can fine-tune doses & timing later.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2593,6 +2967,7 @@
       }
     },
     "Free forever · no subscription": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2613,6 +2988,7 @@
       }
     },
     "Fuel": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2623,6 +2999,7 @@
       }
     },
     "Fuel today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2633,6 +3010,7 @@
       }
     },
     "Full gym": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2643,6 +3021,7 @@
       }
     },
     "GAP": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2653,6 +3032,7 @@
       }
     },
     "Gallery": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2663,6 +3043,7 @@
       }
     },
     "General health & energy": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2673,6 +3054,7 @@
       }
     },
     "Gentle — warm + encouraging": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2683,6 +3065,7 @@
       }
     },
     "Give kudos · %lld": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2693,6 +3076,7 @@
       }
     },
     "Glass": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2703,6 +3087,7 @@
       }
     },
     "Glutes": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2713,6 +3098,7 @@
       }
     },
     "Goal": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2723,6 +3109,7 @@
       }
     },
     "Goal %@ kg": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2733,6 +3120,7 @@
       }
     },
     "Goal %lldh": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2743,6 +3131,7 @@
       }
     },
     "Goal & coaching": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2763,6 +3152,7 @@
       }
     },
     "Good afternoon": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2773,6 +3163,7 @@
       }
     },
     "Good evening": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2783,6 +3174,7 @@
       }
     },
     "Good morning": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2793,6 +3185,7 @@
       }
     },
     "Good to know": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2813,6 +3206,7 @@
       }
     },
     "Got your Titan band?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2833,6 +3227,7 @@
       }
     },
     "HIGH": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2843,6 +3238,7 @@
       }
     },
     "HRV": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2853,6 +3249,7 @@
       }
     },
     "HRV — 30 days": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2863,6 +3260,7 @@
       }
     },
     "Halal": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2873,6 +3271,7 @@
       }
     },
     "Health": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2893,6 +3292,7 @@
       }
     },
     "Heart-rate strap": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2903,6 +3303,7 @@
       }
     },
     "Heart-rate zones": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2913,6 +3314,7 @@
       }
     },
     "Height (%@)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2923,6 +3325,7 @@
       }
     },
     "Hip": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2933,6 +3336,7 @@
       }
     },
     "Home with weights": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2943,6 +3347,7 @@
       }
     },
     "Hormonal IUD": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2953,6 +3358,7 @@
       }
     },
     "Hours of Sleep": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2963,6 +3369,7 @@
       }
     },
     "How active are you?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2973,6 +3380,7 @@
       }
     },
     "How did I sleep?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2983,6 +3391,7 @@
       }
     },
     "How many meals a day?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -2993,6 +3402,7 @@
       }
     },
     "How should I push you?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3003,6 +3413,7 @@
       }
     },
     "How you feel": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3013,6 +3424,7 @@
       }
     },
     "How's my recovery?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3023,6 +3435,7 @@
       }
     },
     "Hydration": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3033,6 +3446,7 @@
       }
     },
     "I'll space your protein + calories across the day.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3043,6 +3457,7 @@
       }
     },
     "INTENT": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3053,6 +3468,7 @@
       }
     },
     "If it's in hand, we'll connect it right after setup.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3063,6 +3479,7 @@
       }
     },
     "Imperial · lb / in": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3073,6 +3490,7 @@
       }
     },
     "Implant": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3083,6 +3501,7 @@
       }
     },
     "In Settings → Titan → Location, turn ON “Precise Location”. Without it, runs map to the wrong block.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3093,6 +3512,7 @@
       }
     },
     "Informational, not medical advice — check with your pharmacist or clinician.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3103,6 +3523,7 @@
       }
     },
     "Injection": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3113,6 +3534,7 @@
       }
     },
     "Injuries / areas to respect": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3123,6 +3545,7 @@
       }
     },
     "Intent": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3133,6 +3556,7 @@
       }
     },
     "Intermediate": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3153,6 +3577,7 @@
       }
     },
     "Just tracking": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3163,6 +3588,7 @@
       }
     },
     "Keep going": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3173,6 +3599,7 @@
       }
     },
     "Keep logging — I’ll project your finish date.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3183,6 +3610,7 @@
       }
     },
     "Keep pushing": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3193,6 +3621,7 @@
       }
     },
     "Keep the streak alive": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3203,6 +3632,7 @@
       }
     },
     "Keto": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3213,6 +3643,7 @@
       }
     },
     "Knee": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3233,6 +3664,7 @@
       }
     },
     "LIVE LIFT": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3243,6 +3675,7 @@
       }
     },
     "LIVE RUN": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3253,6 +3686,7 @@
       }
     },
     "LOGGED": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3263,6 +3697,7 @@
       }
     },
     "LOW": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3273,6 +3708,7 @@
       }
     },
     "Language": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3283,6 +3719,7 @@
       }
     },
     "Large": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3293,6 +3730,7 @@
       }
     },
     "Last": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3313,6 +3751,7 @@
       }
     },
     "Last night": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3323,6 +3762,7 @@
       }
     },
     "Last period": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3343,6 +3783,7 @@
       }
     },
     "Late": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3353,6 +3794,7 @@
       }
     },
     "Latest": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3373,6 +3815,7 @@
       }
     },
     "Leaders": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3383,6 +3826,7 @@
       }
     },
     "Leading the group 🏆": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3393,6 +3837,7 @@
       }
     },
     "Leaner window — 18 h fast": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3403,6 +3848,7 @@
       }
     },
     "Legs": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3413,6 +3859,7 @@
       }
     },
     "Let's build your Titan.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3423,6 +3870,7 @@
       }
     },
     "Lift": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3443,6 +3891,7 @@
       }
     },
     "Light on sleep. Prioritize an early night tonight.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3453,6 +3902,7 @@
       }
     },
     "Light touch — stay out of my way": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3463,6 +3913,7 @@
       }
     },
     "Lightly active — 1–3 days a week": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3473,6 +3924,7 @@
       }
     },
     "Live": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3493,6 +3945,7 @@
       }
     },
     "Live signal": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3503,6 +3956,7 @@
       }
     },
     "Live — syncing in real time.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3523,6 +3977,7 @@
       }
     },
     "Loading your lift…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3533,6 +3988,7 @@
       }
     },
     "Locating…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3543,6 +3999,7 @@
       }
     },
     "Locating… (%lld/3)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3553,6 +4010,7 @@
       }
     },
     "Location off": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3563,6 +4021,7 @@
       }
     },
     "Locked in today — keep it rolling": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3573,6 +4032,7 @@
       }
     },
     "Log 1.5×": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3613,6 +4073,7 @@
       }
     },
     "Log my breakfast": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3623,6 +4084,7 @@
       }
     },
     "Log my last period": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3633,6 +4095,7 @@
       }
     },
     "Log period": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3653,6 +4116,7 @@
       }
     },
     "Log today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3663,6 +4127,7 @@
       }
     },
     "Log weigh-in": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3693,6 +4158,7 @@
       }
     },
     "Log ½×": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3713,6 +4179,7 @@
       }
     },
     "Long one in the bank — huge aerobic work.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3723,6 +4190,7 @@
       }
     },
     "Longest": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3733,6 +4201,7 @@
       }
     },
     "Longevity & healthspan": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3743,6 +4212,7 @@
       }
     },
     "Lose fat / get lean": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3753,6 +4223,7 @@
       }
     },
     "Lower back": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3773,6 +4244,7 @@
       }
     },
     "MEDIUM": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3783,6 +4255,7 @@
       }
     },
     "Main goal": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3793,6 +4266,7 @@
       }
     },
     "Major": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3803,6 +4277,7 @@
       }
     },
     "Male": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3823,6 +4298,7 @@
       }
     },
     "Mark taken": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3833,6 +4309,7 @@
       }
     },
     "Max": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3843,6 +4320,7 @@
       }
     },
     "Max HR": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3863,6 +4341,7 @@
       }
     },
     "Meal name": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3873,6 +4352,7 @@
       }
     },
     "Meals per day": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3893,6 +4373,7 @@
       }
     },
     "Medications": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3903,6 +4384,7 @@
       }
     },
     "Message": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3913,6 +4395,7 @@
       }
     },
     "Metric · kg / cm": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3923,6 +4406,7 @@
       }
     },
     "Metrics": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3933,6 +4417,7 @@
       }
     },
     "Microphone access needed": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3943,6 +4428,7 @@
       }
     },
     "Midday": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3953,6 +4439,7 @@
       }
     },
     "Min": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3963,6 +4450,7 @@
       }
     },
     "Moderate": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3973,6 +4461,7 @@
       }
     },
     "Moderately active — 3–5 days": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -3993,6 +4482,7 @@
       }
     },
     "Mood": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4003,6 +4493,7 @@
       }
     },
     "Morning": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4013,6 +4504,7 @@
       }
     },
     "Morning sync": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4023,6 +4515,7 @@
       }
     },
     "Most popular — 16 h fast, 8 h eating": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4033,6 +4526,7 @@
       }
     },
     "Motivation": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4043,6 +4537,7 @@
       }
     },
     "Move": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4053,6 +4548,7 @@
       }
     },
     "My Titan band is in hand": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4063,6 +4559,7 @@
       }
     },
     "Name": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4073,6 +4570,7 @@
       }
     },
     "Neck": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4083,6 +4581,7 @@
       }
     },
     "Need": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4093,6 +4592,7 @@
       }
     },
     "New / returning": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4103,6 +4603,7 @@
       }
     },
     "New meal": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4113,6 +4614,7 @@
       }
     },
     "New progress photo": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4123,6 +4625,7 @@
       }
     },
     "Next period": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4133,6 +4636,7 @@
       }
     },
     "Nice run — every km counts. Well done.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4153,6 +4657,7 @@
       }
     },
     "Night": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4163,6 +4668,7 @@
       }
     },
     "Night logged — your recovery is being scored.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4183,6 +4689,7 @@
       }
     },
     "No GPS route on this one": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4193,6 +4700,7 @@
       }
     },
     "No band yet": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4203,6 +4711,7 @@
       }
     },
     "No band yet? No problem — log by photo + chat, and add a band anytime.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4213,6 +4722,7 @@
       }
     },
     "No fix — try outside with a clear view of the sky.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4303,6 +4813,7 @@
       }
     },
     "None": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4333,6 +4844,7 @@
       }
     },
     "Not now": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4343,6 +4855,7 @@
       }
     },
     "Not paired": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4353,6 +4866,7 @@
       }
     },
     "Not tested yet": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4363,6 +4877,7 @@
       }
     },
     "Note (optional)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4373,6 +4888,7 @@
       }
     },
     "Notes": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4393,6 +4909,7 @@
       }
     },
     "Nothing logged this month yet.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4403,6 +4920,7 @@
       }
     },
     "Nothing logged this week yet — get after it.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4423,6 +4941,7 @@
       }
     },
     "Now": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4433,6 +4952,7 @@
       }
     },
     "Nutrition": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4443,6 +4963,7 @@
       }
     },
     "OK": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4463,6 +4984,7 @@
       }
     },
     "Offline": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4473,6 +4995,7 @@
       }
     },
     "Omnivore": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4483,6 +5006,7 @@
       }
     },
     "On the band, swipe to the Status face and click the button — it shows PAIR + a code.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4493,6 +5017,7 @@
       }
     },
     "On track → %@": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4503,6 +5028,7 @@
       }
     },
     "One meal a day — 24 h": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4513,6 +5039,7 @@
       }
     },
     "Only me": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4533,6 +5060,7 @@
       }
     },
     "Open-source · free forever": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4553,6 +5081,7 @@
       }
     },
     "Or tell the coach": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4573,6 +5102,7 @@
       }
     },
     "Ovulation": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4583,6 +5113,7 @@
       }
     },
     "Ovulation in": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4623,6 +5154,7 @@
       }
     },
     "Pace": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4663,6 +5195,7 @@
       }
     },
     "Pair your Titan band to begin.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4673,6 +5206,7 @@
       }
     },
     "Pair your band": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4683,6 +5217,7 @@
       }
     },
     "Paired": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4693,6 +5228,7 @@
       }
     },
     "Password": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4703,6 +5239,7 @@
       }
     },
     "Patch": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4713,6 +5250,7 @@
       }
     },
     "Pause": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4723,6 +5261,7 @@
       }
     },
     "Peak": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4733,6 +5272,7 @@
       }
     },
     "Peak recovery night — you're fully charged.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4743,6 +5283,7 @@
       }
     },
     "Period": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4753,6 +5294,7 @@
       }
     },
     "Period in": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4763,6 +5305,7 @@
       }
     },
     "Pescatarian": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4793,6 +5336,7 @@
       }
     },
     "Pick the areas you care about most. Optional.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4803,6 +5347,7 @@
       }
     },
     "Pick your band": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4813,6 +5358,7 @@
       }
     },
     "Pick your strap": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4823,6 +5369,7 @@
       }
     },
     "Pill": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4833,6 +5380,7 @@
       }
     },
     "Plan today's workout": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4853,6 +5401,7 @@
       }
     },
     "Points": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4863,6 +5412,7 @@
       }
     },
     "Power-saving": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4873,6 +5423,7 @@
       }
     },
     "Precise Location off": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4883,6 +5434,7 @@
       }
     },
     "Private": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4913,6 +5465,7 @@
       }
     },
     "Profile": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4923,6 +5476,7 @@
       }
     },
     "Protein": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4933,6 +5487,7 @@
       }
     },
     "Protein (g)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4943,6 +5498,7 @@
       }
     },
     "Protocol": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4953,6 +5509,7 @@
       }
     },
     "Public": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4963,6 +5520,7 @@
       }
     },
     "Put it on (wet electrodes) — it connects automatically.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4983,6 +5541,7 @@
       }
     },
     "Quality": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -4993,6 +5552,7 @@
       }
     },
     "Quick tempo run — that was moving.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5023,6 +5583,7 @@
       }
     },
     "Ran %@ at %@ — tracked on Titan 🏃": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5033,6 +5594,7 @@
       }
     },
     "Ran %@ — tracked on Titan 🏃": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5043,6 +5605,7 @@
       }
     },
     "Range": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5053,6 +5616,7 @@
       }
     },
     "Rank #%lld": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5083,6 +5647,7 @@
       }
     },
     "Ready to run": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5093,6 +5658,7 @@
       }
     },
     "Recalculate from my bodyweight": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5103,6 +5669,7 @@
       }
     },
     "Recent": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5113,6 +5680,7 @@
       }
     },
     "Recomposition (lean + strong)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5133,6 +5701,7 @@
       }
     },
     "Reconnects automatically when it's near.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5153,6 +5722,7 @@
       }
     },
     "Recovery": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5163,6 +5733,7 @@
       }
     },
     "Recovery breakdown": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5173,6 +5744,7 @@
       }
     },
     "Recovery, sleep, and workouts sync on their own.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5183,6 +5755,7 @@
       }
     },
     "Remove it and its history": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5193,6 +5766,7 @@
       }
     },
     "Repeat": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5203,6 +5777,7 @@
       }
     },
     "Requested": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5213,6 +5788,7 @@
       }
     },
     "Requests": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5223,6 +5799,7 @@
       }
     },
     "Respiration": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5233,6 +5810,7 @@
       }
     },
     "Resting": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5243,6 +5821,7 @@
       }
     },
     "Resting HR": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5253,6 +5832,7 @@
       }
     },
     "Resting Heart Rate": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5263,6 +5843,7 @@
       }
     },
     "Restorative": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5273,6 +5854,7 @@
       }
     },
     "Resume": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5293,6 +5875,7 @@
       }
     },
     "Right on pace": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5303,6 +5886,7 @@
       }
     },
     "Ring": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5313,6 +5897,7 @@
       }
     },
     "Run": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5323,6 +5908,7 @@
       }
     },
     "Run GPS (phone)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5343,6 +5929,7 @@
       }
     },
     "Run or lift — your streak starts on day one": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5353,6 +5940,7 @@
       }
     },
     "SEALING": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5363,6 +5951,7 @@
       }
     },
     "SEX": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5423,6 +6012,7 @@
       }
     },
     "Save changes": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5433,6 +6023,7 @@
       }
     },
     "Save photo": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5453,6 +6044,7 @@
       }
     },
     "Saved on your band · last synced %@": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5463,6 +6055,7 @@
       }
     },
     "Saved on your band · syncs when you reconnect": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5473,6 +6066,7 @@
       }
     },
     "Saved — the full breakdown appears in Daily shortly.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5523,6 +6117,7 @@
       }
     },
     "Sealed from your band": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5533,6 +6128,7 @@
       }
     },
     "Sealing the full breakdown…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5583,6 +6179,7 @@
       }
     },
     "Sedentary — desk job, little exercise": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5603,6 +6200,7 @@
       }
     },
     "Session logged. Consistency is how you build.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5613,6 +6211,7 @@
       }
     },
     "Set my last period start": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5633,6 +6232,7 @@
       }
     },
     "Sets": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5643,6 +6243,7 @@
       }
     },
     "Sets · %lld sets, %lld reps": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5653,6 +6254,7 @@
       }
     },
     "Settings": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5663,6 +6265,7 @@
       }
     },
     "Sex": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5673,6 +6276,7 @@
       }
     },
     "Share this lift": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5693,6 +6297,7 @@
       }
     },
     "Share this run": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5703,6 +6308,7 @@
       }
     },
     "Shoulder": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5713,6 +6319,7 @@
       }
     },
     "Shoulders": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5733,6 +6340,7 @@
       }
     },
     "Sign in": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5753,6 +6361,7 @@
       }
     },
     "Sign out?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5763,6 +6372,7 @@
       }
     },
     "Signing in…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5773,6 +6383,7 @@
       }
     },
     "Simulate live run": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5783,6 +6394,7 @@
       }
     },
     "Skip today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5793,6 +6405,7 @@
       }
     },
     "Sleep": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5803,6 +6416,7 @@
       }
     },
     "Sleep Performance": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5813,6 +6427,7 @@
       }
     },
     "Sleep debt": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5823,6 +6438,7 @@
       }
     },
     "Sleep need": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5833,6 +6449,7 @@
       }
     },
     "Sleep stages": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5843,6 +6460,7 @@
       }
     },
     "Sleep target": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5853,6 +6471,7 @@
       }
     },
     "Sleep timeline": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5863,6 +6482,7 @@
       }
     },
     "Slept": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5873,6 +6493,7 @@
       }
     },
     "Slept %@ — %lld% sleep performance on Titan 😴": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5883,6 +6504,7 @@
       }
     },
     "Slept %@ — tracked on Titan 😴": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5933,6 +6555,7 @@
       }
     },
     "So your scores, macros and bio-age are tuned to you.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5943,6 +6566,7 @@
       }
     },
     "Solid distance. Great endurance day.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5953,6 +6577,7 @@
       }
     },
     "Soreness": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5983,6 +6608,7 @@
       }
     },
     "Splits": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -5993,6 +6619,7 @@
       }
     },
     "Splits · per %@": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6003,6 +6630,7 @@
       }
     },
     "Staging your night…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6023,6 +6651,7 @@
       }
     },
     "Start a streak today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6043,6 +6672,7 @@
       }
     },
     "Starts a session (engages workout HR) — double-tap again to end it.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6053,6 +6683,7 @@
       }
     },
     "Stays synced even when the app is closed.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6063,6 +6694,7 @@
       }
     },
     "Step outside with a clear view of the sky and test again — walls and roofs block GPS.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6073,6 +6705,7 @@
       }
     },
     "Steps": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6083,6 +6716,7 @@
       }
     },
     "Still learning your baseline": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6093,6 +6727,7 @@
       }
     },
     "Stop": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6103,6 +6738,7 @@
       }
     },
     "Stop taking %@?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6123,6 +6759,7 @@
       }
     },
     "Strain": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6133,6 +6770,7 @@
       }
     },
     "Strength session — logged on Titan 💪": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6143,6 +6781,7 @@
       }
     },
     "Stress": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6153,6 +6792,7 @@
       }
     },
     "Strong lift. Real time at high intensity.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6163,6 +6803,7 @@
       }
     },
     "Strong sleep. You banked real recovery.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6183,6 +6824,7 @@
       }
     },
     "Supplements": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6193,6 +6835,7 @@
       }
     },
     "Symptoms": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6203,6 +6846,7 @@
       }
     },
     "Sync now": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6223,6 +6867,7 @@
       }
     },
     "Synced": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6233,6 +6878,7 @@
       }
     },
     "Syncing your band…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6243,6 +6889,7 @@
       }
     },
     "System": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6253,6 +6900,7 @@
       }
     },
     "TESTING": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6263,6 +6911,7 @@
       }
     },
     "Take Photo": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6283,6 +6932,7 @@
       }
     },
     "Tap Pair below, then pick that code in the app.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6303,6 +6953,7 @@
       }
     },
     "Tap to confirm a run will track before you go.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6343,6 +6994,7 @@
       }
     },
     "Test again": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6353,6 +7005,7 @@
       }
     },
     "Test location": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6363,6 +7016,7 @@
       }
     },
     "The night": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6373,6 +7027,7 @@
       }
     },
     "Then → now": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6393,6 +7048,7 @@
       }
     },
     "This month": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6423,6 +7079,7 @@
       }
     },
     "This week": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6433,6 +7090,7 @@
       }
     },
     "Time at each intensity": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6443,6 +7101,7 @@
       }
     },
     "Time in each stage": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6453,6 +7112,7 @@
       }
     },
     "Timing": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6472,6 +7132,7 @@
         }
       }
     },
+    "Titan": {},
     "Titan is a subscription-free recovery OS. Your data is yours, always.": {
       "localizations": {
         "es-MX": {
@@ -6483,6 +7144,7 @@
       }
     },
     "Titan user": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6493,6 +7155,7 @@
       }
     },
     "Today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6503,6 +7166,7 @@
       }
     },
     "Today's fuel": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6513,6 +7177,7 @@
       }
     },
     "Today's meals": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6523,6 +7188,7 @@
       }
     },
     "Today's target": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6533,6 +7199,7 @@
       }
     },
     "Tough love — push me, no excuses": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6553,6 +7220,7 @@
       }
     },
     "Track my cycle": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6573,6 +7241,7 @@
       }
     },
     "Track your cycle?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6583,6 +7252,7 @@
       }
     },
     "Tracking live from your band. Keep going — it seals to a full run summary when you finish.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6593,6 +7263,7 @@
       }
     },
     "Tracking your lift from the band. Keep going — it seals to a strength summary when you finish.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6603,6 +7274,7 @@
       }
     },
     "Tracking your night": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6613,6 +7285,7 @@
       }
     },
     "Tracking your night · streaming live": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6633,6 +7306,7 @@
       }
     },
     "Training": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6643,6 +7317,7 @@
       }
     },
     "Trends": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6653,6 +7328,7 @@
       }
     },
     "Trying to conceive": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6663,6 +7339,7 @@
       }
     },
     "Turn on Precise Location for run mapping.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6673,6 +7350,7 @@
       }
     },
     "Type": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6683,6 +7361,7 @@
       }
     },
     "UNITS": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6693,6 +7372,7 @@
       }
     },
     "Undo": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6713,6 +7393,7 @@
       }
     },
     "Unit": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6723,6 +7404,7 @@
       }
     },
     "Units": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6743,6 +7425,7 @@
       }
     },
     "Used for workout HR. Wrist stays on recovery.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6753,6 +7436,7 @@
       }
     },
     "Username": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6773,6 +7457,7 @@
       }
     },
     "Vegan": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6783,6 +7468,7 @@
       }
     },
     "Vegetarian": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6793,6 +7479,7 @@
       }
     },
     "Very active — 6–7 days": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6803,6 +7490,7 @@
       }
     },
     "Vitals": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6833,6 +7521,7 @@
       }
     },
     "Waiting for strap": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6843,6 +7532,7 @@
       }
     },
     "Warrior — 20 h fast": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6863,6 +7553,7 @@
       }
     },
     "We'll head to pairing right after this so your coach reads recovery from night one.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6873,6 +7564,7 @@
       }
     },
     "Weak signal": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6883,6 +7575,7 @@
       }
     },
     "Wear it 24/7": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6933,6 +7626,7 @@
       }
     },
     "Weight": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6943,6 +7637,7 @@
       }
     },
     "Weight (%@)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6953,6 +7648,7 @@
       }
     },
     "Weight (kg, optional)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6973,6 +7669,7 @@
       }
     },
     "What drove it": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -6993,6 +7690,7 @@
       }
     },
     "What you take": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7003,6 +7701,7 @@
       }
     },
     "What's driving you? (optional)": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7013,6 +7712,7 @@
       }
     },
     "What's your main goal?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7023,6 +7723,7 @@
       }
     },
     "When": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7043,6 +7744,7 @@
       }
     },
     "Where do you want change?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7063,6 +7765,7 @@
       }
     },
     "Work out today to light the flame": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7073,6 +7776,7 @@
       }
     },
     "Workout": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7083,6 +7787,7 @@
       }
     },
     "Workouts": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7093,6 +7798,7 @@
       }
     },
     "Worth knowing": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7103,6 +7809,7 @@
       }
     },
     "Wrist": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7123,6 +7830,7 @@
       }
     },
     "Writing your story…": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7133,6 +7841,7 @@
       }
     },
     "YOU TRAIN AT": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7143,6 +7852,7 @@
       }
     },
     "You": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7153,6 +7863,7 @@
       }
     },
     "You can change this anytime in Settings.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7163,6 +7874,7 @@
       }
     },
     "You haven't trained yet today": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7173,6 +7885,7 @@
       }
     },
     "You train at": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7203,6 +7916,7 @@
       }
     },
     "Your Titan band": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7253,6 +7967,7 @@
       }
     },
     "Your coach, all day?": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7273,6 +7988,7 @@
       }
     },
     "Your meals": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7283,6 +7999,7 @@
       }
     },
     "Your name": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7293,6 +8010,7 @@
       }
     },
     "Your nutrition style.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7312,7 +8030,18 @@
         }
       }
     },
+    "Your real age is %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu edad real es %@"
+          }
+        }
+      }
+    },
     "Your real age is %lld": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7323,6 +8052,7 @@
       }
     },
     "Your route": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7333,6 +8063,7 @@
       }
     },
     "Your runs will map. Locked to ±%lld m.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7343,6 +8074,7 @@
       }
     },
     "Your shelf": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7363,6 +8095,7 @@
       }
     },
     "Your targets": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7373,6 +8106,7 @@
       }
     },
     "Your training profile.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7403,6 +8137,7 @@
       }
     },
     "Your week": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7413,6 +8148,7 @@
       }
     },
     "Your whole night uploads in seconds when you wake.": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7423,6 +8159,7 @@
       }
     },
     "Z1 · Recovery": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7433,6 +8170,7 @@
       }
     },
     "Z2 · Easy": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7443,6 +8181,7 @@
       }
     },
     "Z3 · Aerobic": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7453,6 +8192,7 @@
       }
     },
     "Z4 · Threshold": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7463,6 +8203,7 @@
       }
     },
     "Z5 · Max": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7473,6 +8214,7 @@
       }
     },
     "a run": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7483,6 +8225,7 @@
       }
     },
     "as needed": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7493,6 +8236,7 @@
       }
     },
     "asleep": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7513,6 +8257,7 @@
       }
     },
     "avg hr": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7533,6 +8278,7 @@
       }
     },
     "band · live": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7543,6 +8289,7 @@
       }
     },
     "bedtime": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7573,6 +8320,7 @@
       }
     },
     "br/m": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7583,6 +8331,7 @@
       }
     },
     "calm": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7593,6 +8342,7 @@
       }
     },
     "calories": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7603,6 +8353,7 @@
       }
     },
     "carbs": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7613,6 +8364,7 @@
       }
     },
     "code on screen": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7623,6 +8375,7 @@
       }
     },
     "consistency": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7633,6 +8386,7 @@
       }
     },
     "daily": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7643,6 +8397,7 @@
       }
     },
     "day": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7653,6 +8408,7 @@
       }
     },
     "days": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7663,6 +8419,7 @@
       }
     },
     "distance": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7673,6 +8430,7 @@
       }
     },
     "e.g. grilled chicken & rice, ~200g chicken": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7683,6 +8441,7 @@
       }
     },
     "efficiency": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7693,6 +8452,7 @@
       }
     },
     "effort": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7703,6 +8463,7 @@
       }
     },
     "fat": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7713,6 +8474,7 @@
       }
     },
     "g": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7723,6 +8485,7 @@
       }
     },
     "hours": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7733,6 +8496,7 @@
       }
     },
     "in bed": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7743,6 +8507,7 @@
       }
     },
     "just now": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7753,6 +8518,7 @@
       }
     },
     "kcal": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7772,6 +8538,7 @@
         }
       }
     },
+    "kg": {},
     "km": {
       "localizations": {
         "es-MX": {
@@ -7783,6 +8550,7 @@
       }
     },
     "live": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7793,6 +8561,7 @@
       }
     },
     "load": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7803,6 +8572,7 @@
       }
     },
     "max": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7813,6 +8583,7 @@
       }
     },
     "max hr": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7823,11 +8594,22 @@
       }
     },
     "ms": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
             "state": "translated",
             "value": "ms"
+          }
+        }
+      }
+    },
+    "of %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "de %@"
           }
         }
       }
@@ -7843,6 +8625,7 @@
       }
     },
     "of %lld": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7853,6 +8636,7 @@
       }
     },
     "optional": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7873,6 +8657,7 @@
       }
     },
     "peak hr": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7883,6 +8668,7 @@
       }
     },
     "per km": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7893,6 +8679,7 @@
       }
     },
     "per mile": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7903,6 +8690,7 @@
       }
     },
     "protein": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7913,6 +8701,7 @@
       }
     },
     "quality": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7923,6 +8712,7 @@
       }
     },
     "respiratory": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7943,6 +8733,7 @@
       }
     },
     "restless": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7953,6 +8744,7 @@
       }
     },
     "restorative": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7963,6 +8755,7 @@
       }
     },
     "samples": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7973,6 +8766,7 @@
       }
     },
     "searching": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7983,6 +8777,7 @@
       }
     },
     "signal gap": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -7993,6 +8788,7 @@
       }
     },
     "some days": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8053,6 +8849,7 @@
       }
     },
     "tap to log": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8063,6 +8860,7 @@
       }
     },
     "this": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8083,6 +8881,7 @@
       }
     },
     "time in bed": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8103,6 +8902,7 @@
       }
     },
     "uploaded": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8113,6 +8913,7 @@
       }
     },
     "wake": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8122,7 +8923,9 @@
         }
       }
     },
+    "±%@ m": {},
     "±%lld m": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8132,7 +8935,12 @@
         }
       }
     },
+    "· %@": {},
+    "· %@%%": {},
+    "×%@": {},
+    "—": {},
     "“starting a run” · “log my lift”": {
+      "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
@@ -8141,6 +8949,9 @@
           }
         }
       }
-    }
-  }
+    },
+    "•": {},
+    "℞": {}
+  },
+  "version": "1.0"
 }

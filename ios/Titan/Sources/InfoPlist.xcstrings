@@ -1,0 +1,166 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Titan"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Titan"
+          }
+        }
+      }
+    },
+    "NSBluetoothAlwaysUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan connects to your recovery band and an optional heart-rate chest strap to sync your biosignals in the background."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan se conecta a tu banda de recuperación y a una correa de pecho opcional para sincronizar tus bioseñales en segundo plano."
+          }
+        }
+      }
+    },
+    "NSCameraUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan uses your camera to snap meals for instant macros and to capture progress photos."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan usa tu cámara para tomar fotos de tus comidas y obtener macros al instante, y para capturar fotos de progreso."
+          }
+        }
+      }
+    },
+    "NSHealthShareUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan reads your steps, sleep, heart rate and workouts to compute your recovery, insights and trends — no wearable required."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan lee tus pasos, sueño, frecuencia cardiaca y entrenamientos para calcular tu recuperación, descubrimientos y tendencias — sin necesidad de wearable."
+          }
+        }
+      }
+    },
+    "NSHealthUpdateUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan does not write to Apple Health; it only reads your data to power your coaching."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan no escribe en Apple Health; solo lee tus datos para potenciar tu coaching."
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan uses your location during a run to map your route and measure distance and pace. The band has no GPS, so your phone does it."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan usa tu ubicación durante una carrera para trazar tu ruta y medir la distancia y el ritmo. La banda no tiene GPS, así que lo hace tu teléfono."
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan uses your microphone so you can dictate messages to your coach by voice."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan usa tu micrófono para que puedas dictarle mensajes a tu coach por voz."
+          }
+        }
+      }
+    },
+    "NSMotionUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan uses motion data to count your steps, distance and flights climbed — live, with no wearable."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan usa los datos de movimiento para contar tus pasos, distancia y pisos subidos — en vivo, sin wearable."
+          }
+        }
+      }
+    },
+    "NSPhotoLibraryUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan lets you choose meal and progress photos from your library."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titan te deja elegir fotos de comidas y de progreso desde tu biblioteca."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
