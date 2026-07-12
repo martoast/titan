@@ -7,12 +7,12 @@ use App\Support\SleepStory;
 use Tests\TestCase;
 
 /**
- * "The story of your night" — derived from the hypnogram + metrics. Pure (no DB): builds a SleepLog in
- * memory with a crafted hypnogram and checks the structured bits + the honesty framing.
+ * "The story of your night" — must judge SUFFICIENCY (duration vs need) + stage ADEQUACY, not just
+ * architecture, so it agrees with the debt ledger + Sleep Week (review fefbd4a). Pure (no DB).
  */
 class SleepStoryTest extends TestCase
 {
-    /** @param array<int,array{0:string,1:int}> $runs stage → epoch count */
+    /** @param array<int,array{0:string,1:int}> $runs */
     private function hyp(array $runs): array
     {
         $out = [];
@@ -23,58 +23,71 @@ class SleepStoryTest extends TestCase
         return $out;
     }
 
-    private function night(array $hyp, bool $low = false): SleepLog
+    private function night(array $hyp, int $deep, int $rem, int $light, bool $low = false): SleepLog
     {
-        return new SleepLog(['hypnogram' => $hyp, 'bedtime' => '23:00:00', 'low_confidence' => $low]);
-    }
-
-    public function test_narrates_a_front_loaded_night(): void
-    {
-        // 2 min onset, front-loaded deep, one 5-min wake mid-night, 3 REM runs.
-        $hyp = $this->hyp([
-            ['wake', 4], ['deep', 30], ['light', 30], ['rem', 20], ['light', 30],
-            ['wake', 10], ['light', 20], ['rem', 20], ['light', 20], ['deep', 8], ['rem', 12], ['wake', 4],
+        return new SleepLog([
+            'hypnogram' => $hyp, 'bedtime' => '23:00:00', 'low_confidence' => $low,
+            'deep_min' => $deep, 'rem_min' => $rem, 'light_min' => $light,
         ]);
-        $story = SleepStory::forNight($this->night($hyp));
-
-        $this->assertNotNull($story);
-        $this->assertSame(2, $story['onset_min']);
-        $this->assertSame('front', $story['deep_distribution']);
-        $this->assertSame(3, $story['rem_cycles']);
-        $this->assertCount(1, $story['awakenings']);
-        $this->assertSame(5, $story['awakenings'][0]['min']);
-        $this->assertStringContainsStringIgnoringCase('REM', $story['text']);
-        $this->assertNotEmpty($story['takeaway']);
-        $this->assertFalse($story['low_confidence']);
     }
 
-    public function test_low_confidence_night_reads_as_an_estimate_and_stays_qualitative(): void
+    public function test_a_short_but_well_built_night_reads_as_SHORT_not_textbook(): void
     {
-        $hyp = $this->hyp([['wake', 4], ['deep', 30], ['light', 40], ['rem', 20], ['light', 40], ['wake', 6]]);
-        $story = SleepStory::forNight($this->night($hyp, low: true));
+        // Alex's real 07-12: 5.6h asleep, front-loaded, good stages — but well under an 8h need.
+        $hyp = $this->hyp([['wake', 4], ['deep', 30], ['light', 60], ['rem', 20], ['light', 60], ['rem', 20], ['light', 40]]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 77, rem: 71, light: 185), 8.0);
 
-        $this->assertTrue($story['low_confidence']);
+        $this->assertSame(5.6, $story['asleep_h']);
+        $this->assertSame(2.4, $story['short_by_h']);
+        // The takeaway must name the shortfall + tie it to debt — NOT celebrate.
+        $this->assertStringContainsStringIgnoringCase('5.6h', $story['takeaway']);
+        $this->assertStringContainsStringIgnoringCase('debt', $story['takeaway']);
+        $this->assertStringNotContainsStringIgnoringCase('textbook', $story['takeaway']);
+        $this->assertStringContainsString('5.6h', $story['text']);
+    }
+
+    public function test_deep_deficient_night_flags_the_deep_not_a_win(): void
+    {
+        // Enough hours (~7.9h) but only 27 min deep (< 11%) — a real gap, must not read "solid".
+        $hyp = $this->hyp([['wake', 4], ['light', 120], ['deep', 20], ['light', 200], ['rem', 60], ['light', 100]]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 27, rem: 100, light: 350), 8.0);
+
+        $this->assertNull($story['short_by_h']);   // not short
+        $this->assertStringContainsStringIgnoringCase('deep sleep came up light', $story['takeaway']);
+        $this->assertStringContainsString('27 min', $story['takeaway']);
+    }
+
+    public function test_rem_periods_are_capped_to_physiology(): void
+    {
+        // Six REM runs but only ~4.5h asleep → capped at floor(270/80)=3 REM periods, not 6.
+        $hyp = $this->hyp([
+            ['wake', 4], ['light', 30], ['rem', 8], ['light', 30], ['rem', 8], ['light', 30], ['rem', 8],
+            ['light', 30], ['rem', 8], ['light', 30], ['rem', 8], ['light', 30], ['rem', 8], ['light', 30],
+        ]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 60, rem: 48, light: 180), 8.0);
+        $this->assertLessThanOrEqual(3, $story['rem_periods']);
+    }
+
+    public function test_a_full_well_built_night_is_the_win(): void
+    {
+        $hyp = $this->hyp([['wake', 4], ['deep', 40], ['light', 80], ['rem', 30], ['light', 80], ['rem', 30], ['light', 60], ['deep', 10]]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 95, rem: 105, light: 280), 8.0);   // 8h, adequate
+
+        $this->assertNull($story['short_by_h']);
+        $this->assertStringContainsStringIgnoringCase('well-built', $story['takeaway']);
+    }
+
+    public function test_low_confidence_stays_an_estimate(): void
+    {
+        $hyp = $this->hyp([['wake', 4], ['deep', 30], ['light', 60], ['rem', 20], ['light', 40], ['wake', 6]]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 40, rem: 30, light: 90, low: true), 8.0);
+
         $this->assertStringContainsStringIgnoringCase('estimate', $story['text']);
         $this->assertStringContainsStringIgnoringCase('fit', $story['takeaway']);
-        // No precise deep-distribution framing on a thin night.
-        $this->assertStringNotContainsStringIgnoringCase('deep sleep came', $story['text']);
-    }
-
-    public function test_back_loaded_deep_is_the_soft_spot(): void
-    {
-        // Deep concentrated in the LAST third → back-loaded → the takeaway flags it.
-        $hyp = $this->hyp([
-            ['wake', 4], ['light', 60], ['rem', 20], ['light', 40], ['rem', 20], ['light', 20], ['deep', 40], ['wake', 4],
-        ]);
-        $story = SleepStory::forNight($this->night($hyp));
-
-        $this->assertSame('back', $story['deep_distribution']);
-        $this->assertStringContainsStringIgnoringCase('deep sleep skewed late', $story['takeaway']);
     }
 
     public function test_no_hypnogram_returns_null(): void
     {
-        $this->assertNull(SleepStory::forNight($this->night([])));
-        $this->assertNull(SleepStory::forNight($this->night(array_fill(0, 20, 'wake'))));   // never asleep
+        $this->assertNull(SleepStory::forNight($this->night([], 0, 0, 0), 8.0));
     }
 }

@@ -207,7 +207,10 @@ struct SleepResponse: Codable {
             let takeaway: String?
             let onset_min: Int?
             let deep_distribution: String?
-            let rem_cycles: Int?
+            let rem_periods: Int?
+            let asleep_h: Double?
+            let need_h: Double?
+            let short_by_h: Double?
             let low_confidence: Bool?
             var awakenings: [Wake] = []
             struct Wake: Codable, Equatable { let at: String?; let min: Int? }
