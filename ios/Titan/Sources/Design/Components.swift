@@ -722,6 +722,65 @@ struct SleepTimeline: View {
     }
 }
 
+/// "The story of your night" — the narrative that frames the hypnogram (server-derived, shared across the
+/// summary sheet + the detail screen + the coach). The takeaway leads (bold), the read follows.
+struct SleepStoryCard: View {
+    let story: SleepResponse.Detail.Story
+    var body: some View {
+        let low = story.low_confidence == true
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: low ? "waveform.badge.exclamationmark" : "text.alignleft")
+                    .foregroundStyle(low ? Theme.Palette.amber : Theme.Palette.indigo)
+                Text("Your night").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            }
+            if let text = story.text, !text.isEmpty {
+                Text(text).font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// The stacked stage %/minutes breakdown — ONE shared component (was duplicated in the summary sheet and
+/// the detail screen). Palette matches the timeline via SleepStage.
+struct StageBreakdown: View {
+    let stages: [SleepResponse.Detail.Stage]
+    var body: some View {
+        let total = max(1, stages.reduce(0) { $0 + $1.min })
+        return VStack(spacing: Theme.Space.m) {
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(stages) { s in
+                        if s.min > 0 {
+                            Capsule().fill(SleepStage.color(forCode: s.key))
+                                .frame(width: max(3, geo.size.width * CGFloat(Double(s.min) / Double(total))))
+                        }
+                    }
+                }
+            }.frame(height: 16)
+            VStack(spacing: Theme.Space.xs) {
+                ForEach(stages) { s in
+                    HStack(spacing: Theme.Space.s) {
+                        Circle().fill(SleepStage.color(forCode: s.key)).frame(width: 8, height: 8)
+                        Text(s.label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                        Spacer()
+                        Text("\(s.pct)%").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 40, alignment: .trailing)
+                        Text(SleepFmt.hm(s.min)).font(Theme.Font.num(14)).foregroundStyle(Theme.Palette.text).frame(width: 52, alignment: .trailing)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Shared h/m formatting for sleep minutes.
+enum SleepFmt {
+    static func hm(_ minutes: Int) -> String {
+        let h = minutes / 60, m = minutes % 60
+        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+    }
+}
+
 /// Drag/tap scrubbing for the timeline, gated by `enabled` so the mini/non-interactive variants ignore
 /// touches. Reports the touch position as a 0…1 fraction of the ribbon width.
 private struct ScrubGesture: ViewModifier {

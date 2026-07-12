@@ -37,6 +37,11 @@ struct SleepSummaryView: View {
 
                         if detail?.low_confidence == true { lowSignalBanner.stagger(appeared, 0.07) }
 
+                        // The story of the night — frames the hypnogram (the hero order: story → timeline → …).
+                        if let story = detail?.story, let text = story.text, !text.isEmpty {
+                            GlassCard { SleepStoryCard(story: story) }.stagger(appeared, 0.08)
+                        }
+
                         bigStats.stagger(appeared, 0.10)
 
                         if let hyp = detail?.hypnogram, hyp.count >= 4 {
@@ -260,31 +265,8 @@ struct SleepSummaryView: View {
     }
 
     private func stagesCard(_ stages: [SleepResponse.Detail.Stage]) -> some View {
-        let total = max(1, stages.reduce(0) { $0 + $1.min })
-        return card(String(localized: "Time in each stage"), String(localized: "\(stages.count) stages")) {
-            VStack(spacing: Theme.Space.m) {
-                GeometryReader { geo in
-                    HStack(spacing: 2) {
-                        ForEach(stages) { s in
-                            if s.min > 0 {
-                                Capsule().fill(SleepStage.color(forCode: s.key))
-                                    .frame(width: max(3, geo.size.width * CGFloat(Double(s.min) / Double(total))))
-                            }
-                        }
-                    }
-                }.frame(height: 16)
-                VStack(spacing: Theme.Space.xs) {
-                    ForEach(stages) { s in
-                        HStack(spacing: Theme.Space.s) {
-                            Circle().fill(SleepStage.color(forCode: s.key)).frame(width: 8, height: 8)
-                            Text(s.label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
-                            Spacer()
-                            Text("\(s.pct)%").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 40, alignment: .trailing)
-                            Text(hm(s.min)).font(Theme.Font.num(14)).foregroundStyle(Theme.Palette.text).frame(width: 52, alignment: .trailing)
-                        }
-                    }
-                }
-            }
+        card(String(localized: "Time in each stage"), String(localized: "\(stages.count) stages")) {
+            StageBreakdown(stages: stages)   // shared component (also used by the detail screen)
         }
     }
 

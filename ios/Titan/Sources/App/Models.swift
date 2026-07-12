@@ -201,6 +201,17 @@ struct SleepResponse: Codable {
         let epoch_sec: Int?
         let stage_status: String?        // "computing" while still sealing, else "final" — drives the timeline skeleton
         var low_confidence: Bool? = nil  // poor sensor coverage → show the read as an estimate + fit-check hint
+        var story: Story? = nil          // "the story of your night" — the narrative that frames the hypnogram
+        struct Story: Codable, Equatable {
+            let text: String?
+            let takeaway: String?
+            let onset_min: Int?
+            let deep_distribution: String?
+            let rem_cycles: Int?
+            let low_confidence: Bool?
+            var awakenings: [Wake] = []
+            struct Wake: Codable, Equatable { let at: String?; let min: Int? }
+        }
         // Two SPARSE per-epoch series (SLEEP TIMELINE v2), aligned to the SAME epoch_sec + 30s grid as
         // `hypnogram`: epoch i's clock = epoch_sec + i·30. Only MEASURED epochs are present — a missing
         // index is a real signal gap (band duty-cycles), rendered as a gap, never interpolated. nil on

@@ -153,6 +153,11 @@ struct SleepView: View {
                 }
             }.frame(maxWidth: .infinity)
 
+            // The story of the night — frames the hypnogram (the hero order: story → timeline → breakdown).
+            if let story = d?.story, let text = story.text, !text.isEmpty {
+                GlassCard { SleepStoryCard(story: story) }
+            }
+
             // HERO: the full interactive stage timeline — the night as a story (spec §2.2). Scrub for a
             // "3:12 AM · Deep sleep" tooltip; NODATA renders as honest hatched gaps. Totals live below.
             if d != nil {
@@ -169,31 +174,11 @@ struct SleepView: View {
                 }
             }
 
-            // Stages — a proportional bar + per-stage minutes & %. Colors route through the shared enum.
+            // Stages — the shared breakdown component (one source of truth with the summary sheet).
             GlassCard {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
                     SectionHeader(title: "Sleep stages")
-                    let stages = d?.stages ?? fallbackStages(fallback)
-                    GeometryReader { geo in
-                        let total = max(1, stages.reduce(0) { $0 + $1.min })
-                        HStack(spacing: 2) {
-                            ForEach(stages) { st in
-                                Capsule().fill(SleepStage.color(forCode: st.key))
-                                    .frame(width: max(2, geo.size.width * CGFloat(st.min) / CGFloat(total)))
-                            }
-                        }
-                    }.frame(height: 14)
-                    VStack(spacing: Theme.Space.s) {
-                        ForEach(stages) { st in
-                            HStack(spacing: Theme.Space.s) {
-                                Circle().fill(SleepStage.color(forCode: st.key)).frame(width: 8, height: 8)
-                                Text(st.label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
-                                Spacer()
-                                Text("\(st.pct)%").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).frame(width: 40, alignment: .trailing)
-                                Text(minToHrs(st.min)).font(Theme.Font.body).foregroundStyle(Theme.Palette.text).frame(width: 56, alignment: .trailing)
-                            }
-                        }
-                    }
+                    StageBreakdown(stages: d?.stages ?? fallbackStages(fallback))
                 }
             }
 

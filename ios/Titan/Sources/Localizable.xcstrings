@@ -8541,6 +8541,16 @@
         }
       }
     },
+    "Your night": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu noche"
+          }
+        }
+      }
+    },
     "Your nutrition style.": {
       "extractionState": "stale",
       "localizations": {
