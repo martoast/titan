@@ -22,6 +22,10 @@ use Illuminate\Support\Facades\DB;
  */
 class StressMonitor
 {
+    /** The stress scale ceiling — the 0–3 score the card shows. The day strip persists this as a 0–100
+     *  percent of MAX so the stored column is unambiguous (see sample()). */
+    public const MAX = 3.0;
+
     /** Minutes of recent samples that define "right now". */
     private const WINDOW_MIN = 10;
 
@@ -100,7 +104,9 @@ class StressMonitor
             return null;
         }
 
-        $value = (int) round($read['stress'] * 100);   // 0..300
+        // Store the strip as a 0–100 PERCENT of the 0–3 max (calm 0.39 → 13, high 2.4 → 80) — one
+        // unambiguous scale the sparkline reads directly, never stress×100 (which reads as a bogus %).
+        $value = (int) round($read['stress'] / self::MAX * 100);   // 0..100
         StressSample::insertOrIgnore([[
             'profile_id' => $profile->id,
             'recorded_at' => $at->toDateTimeString(),
@@ -136,7 +142,8 @@ class StressMonitor
         $peak = 0.0;
         $highMinutes = 0;
         foreach ($rows as $r) {
-            $s = round($r->stress / 100, 2);
+            // Column is 0–100 percent of MAX → back to the 0–3 the card uses, so strip and card agree.
+            $s = round($r->stress / 100 * self::MAX, 2);
             $peak = max($peak, $s);
             if ($s >= 1.5) {
                 $highMinutes++;
@@ -171,7 +178,7 @@ class StressMonitor
             ->groupBy(fn ($r) => Carbon::parse($r->getRawOriginal('recorded_at'), $tz)->toDateString())
             ->map(fn ($g) => $g->max('stress'));
 
-        return round($peaks->avg() / 100, 1);
+        return round($peaks->avg() / 100 * self::MAX, 1);   // percent-of-MAX → 0–3
     }
 
     /**
@@ -190,12 +197,12 @@ class StressMonitor
         if ($rows->count() < 2) {
             return null;
         }
-        // Every recent read at/above medium (150 = 1.5 ×100) → genuinely sustained, not a blip.
-        if ($rows->min() < 150) {
+        // Every recent read at/above medium (1.5 on 0–3 = 50 on the 0–100 strip) → sustained, not a blip.
+        if ($rows->min() < 50) {
             return null;
         }
 
-        return round($rows->avg() / 100, 2);
+        return round($rows->avg() / 100 * self::MAX, 2);   // percent-of-MAX → 0–3
     }
 
     /** Shape the return + attach confidence, level and human drivers. */

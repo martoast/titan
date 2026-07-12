@@ -22,7 +22,7 @@ class StressNudgeTest extends TestCase
         // 'stress' is default-on only at the all-in tier.
         $p->update(['settings' => ['coaching_intensity' => $stressRemindersOn ? 'intense' : 'balanced']]);
         foreach ([10, 30, 45] as $ago) {
-            StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes($ago), 'stress' => 200, 'source' => 'derived']);
+            StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes($ago), 'stress' => 70, 'source' => 'derived']);
         }
 
         return $p->refresh();
@@ -53,8 +53,8 @@ class StressNudgeTest extends TestCase
         $p = User::factory()->create()->ensureProfile();
         $p->update(['settings' => ['coaching_intensity' => 'intense']]);
         // A single high spike among calm — not sustained.
-        StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes(10), 'stress' => 210, 'source' => 'derived']);
-        StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes(30), 'stress' => 30, 'source' => 'derived']);
+        StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes(10), 'stress' => 70, 'source' => 'derived']);
+        StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes(30), 'stress' => 15, 'source' => 'derived']);
 
         $this->artisan('stress:nudge')->assertSuccessful();
         $this->assertSame(0, Notification::where('profile_id', $p->refresh()->id)->count());

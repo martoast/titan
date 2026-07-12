@@ -161,14 +161,36 @@ class StressMonitorTest extends TestCase
     public function test_sustained_high_needs_consistent_elevation_not_a_spike(): void
     {
         $p = $this->profileWithBaseline();
-        // Three recent samples, all ≥ medium (150 = 1.5) → sustained.
-        foreach ([10, 30, 45] as $i => $ago) {
-            \App\Models\StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes($ago), 'stress' => 180, 'source' => 'derived']);
+        // Three recent samples, all ≥ medium (50 on the 0–100 strip = 1.5 on 0–3) → sustained.
+        foreach ([10, 30, 45] as $ago) {
+            \App\Models\StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes($ago), 'stress' => 70, 'source' => 'derived']);
         }
         $this->assertNotNull(StressMonitor::sustainedHigh($p));
 
         // One calm sample in the window breaks it — a single spike must NOT trigger.
-        \App\Models\StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes(20), 'stress' => 40, 'source' => 'derived']);
+        \App\Models\StressSample::create(['profile_id' => $p->id, 'recorded_at' => now()->subMinutes(20), 'stress' => 15, 'source' => 'derived']);
         $this->assertNull(StressMonitor::sustainedHigh($p));
+    }
+
+    public function test_strip_and_card_share_one_scale_calm_is_a_low_point(): void
+    {
+        // Henry's regression: the live read (0–3) and the persisted strip must be the SAME stress. A calm
+        // read must persist as a LOW strip value, not a mid-looking one.
+        $p = $this->profileWithBaseline();
+        $this->seedHr($p, 78);       // mildly above rest → a small, calm-ish read
+        $this->seedMotion($p, 12);
+
+        $read = StressMonitor::assess($p);
+        StressMonitor::sample($p);
+        $row = \App\Models\StressSample::where('profile_id', $p->id)->firstOrFail();
+
+        // Stored as a 0–100 PERCENT of the 0–3 max — NOT stress×100.
+        $this->assertSame((int) round($read['stress'] / StressMonitor::MAX * 100), (int) $row->stress);
+        $this->assertLessThan(34, (int) $row->stress);   // a calm read sits in the low third of the strip
+
+        // …and the strip reads back to the exact 0–3 the card shows, same level.
+        $strip = StressMonitor::dayStrip($p);
+        $this->assertEqualsWithDelta($read['stress'], $strip['points'][0]['stress'], 0.02);
+        $this->assertSame($read['level'], $strip['points'][0]['level']);
     }
 }
