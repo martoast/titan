@@ -78,6 +78,7 @@ final class AppModel: ObservableObject {
     // Body + intake
     @Published var weightCard: WeightCard?
     @Published var hydration: HydrationToday?
+    @Published var stress: StressResponse?
     @Published var fasting: FastingStatus?
 
     // What you take (supplements & medications)
@@ -687,6 +688,7 @@ final class AppModel: ObservableObject {
     }
 
     func loadHydration() async { if let h = try? await api.hydration() { hydration = h } }
+    func loadStress() async { if let s = try? await api.stress() { stress = s } }
     func addWater(_ ml: Int) async {
         Haptic.soft()
         if let h = try? await api.logWater(ml: ml) { hydration = h }

@@ -547,6 +547,33 @@ struct HydrationToday: Codable, Equatable {
     var targetLitres: Double { Double(target_ml) / 1000 }
 }
 
+// MARK: - Stress (real-time 0–3 + day strip)
+
+struct StressNow: Codable, Equatable {
+    let stress: Double
+    let level: String
+    let moving: Bool
+    let drivers: String?
+    let confidence: String?
+    let note: String?
+    let hr: Int?
+    let rest: Int?
+}
+
+struct StressPoint: Codable, Equatable, Identifiable {
+    let t: String
+    let stress: Double
+    let level: String
+    var id: String { t }
+}
+
+struct StressResponse: Codable, Equatable {
+    let now: StressNow
+    let strip: [StressPoint]
+    let peak: Double
+    let high_minutes: Int
+}
+
 /// `GET /api/me/fasting`, `POST /api/me/fasting/{start,end}`
 struct FastingStatus: Codable, Equatable {
     let active: Bool

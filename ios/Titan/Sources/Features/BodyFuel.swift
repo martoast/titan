@@ -151,6 +151,93 @@ struct HydrationCard: View {
     }
 }
 
+/// Today's stress at a glance — the live 0–3 level, a mini day-strip, and a one-tap breathing minute.
+/// Self-loads /me/stress; stays hidden until there's a real read (no band data → no clutter).
+struct StressTodayCard: View {
+    @EnvironmentObject var model: AppModel
+    @State private var breathe: BreathPattern?
+
+    private func color(_ level: String) -> Color {
+        switch level {
+        case "high": return Theme.Palette.pink
+        case "medium": return Theme.Palette.amber
+        case "low": return Theme.Palette.cyan
+        default: return Theme.Palette.mint
+        }
+    }
+    private func label(_ level: String) -> LocalizedStringKey {
+        switch level {
+        case "high": return "High stress"
+        case "medium": return "Medium stress"
+        case "low": return "A little stress"
+        default: return "Calm"
+        }
+    }
+
+    var body: some View {
+        Group {
+            if let s = model.stress, s.now.hr != nil || !s.strip.isEmpty {
+                let now = s.now
+                let c = color(now.level)
+                GlassCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        SectionHeader(title: String(localized: "Stress"), trailing: String(format: "%.1f / 3", now.stress))
+                        HStack(spacing: 6) {
+                            Circle().fill(c).frame(width: 8, height: 8)
+                            Text(now.moving ? "Moving — that's your workout, not stress" : label(now.level))
+                                .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                        }
+                        if let drivers = now.drivers, !now.moving { Text(drivers).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+                        if s.strip.count > 1 { StressStrip(points: s.strip) }
+                        if !now.moving && (now.level == "medium" || now.level == "high") {
+                            Button { Haptic.tap(); breathe = .physiologicalSigh } label: {
+                                HStack(spacing: 7) {
+                                    Image(systemName: "wind")
+                                    Text("Take a minute to breathe").font(Theme.Font.micro.weight(.semibold))
+                                }
+                                .foregroundStyle(Theme.Palette.bg)
+                                .frame(maxWidth: .infinity).padding(.vertical, 11)
+                                .background(c, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+                .fullScreenCover(item: $breathe) { p in BreathingView(pattern: p) }
+            }
+        }
+        .task { await model.loadStress() }
+    }
+}
+
+/// A compact stress-over-day sparkline (0–3), coloured by level per point.
+private struct StressStrip: View {
+    let points: [StressPoint]
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let n = max(1, points.count)
+            HStack(alignment: .bottom, spacing: 1) {
+                ForEach(points) { p in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(color(p.level))
+                        .frame(width: max(1, (w - CGFloat(n)) / CGFloat(n)),
+                               height: max(3, 34 * CGFloat(min(1, p.stress / 3))))
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        }
+        .frame(height: 34)
+    }
+    private func color(_ level: String) -> Color {
+        switch level {
+        case "high": return Theme.Palette.pink
+        case "medium": return Theme.Palette.amber
+        case "low": return Theme.Palette.cyan
+        default: return Theme.Palette.mint
+        }
+    }
+}
+
 // MARK: - Fasting
 
 struct FastingCard: View {

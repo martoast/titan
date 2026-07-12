@@ -106,6 +106,9 @@ struct DashboardView: View {
             // the Today glance (it lives in the full Fuel world too; the component is shared).
             HydrationCard()
 
+            // Stress — the live 0–3 read + day strip + a one-tap breathing minute. Self-hides without data.
+            StressTodayCard()
+
             // Training today — what you did today + your day streak, one tap from the full Workouts screen.
             if let w = d?.workout {
                 NavigationLink { TrainScreen() } label: {

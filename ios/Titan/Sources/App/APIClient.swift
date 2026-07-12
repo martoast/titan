@@ -291,6 +291,11 @@ final class APIClient {
         try await send(request("api/me/weight", method: "POST", json: ["weight_kg": kg]), as: WeightCard.self)
     }
 
+    /// Real-time stress (0–3, motion-gated) + the stress-over-day strip.
+    func stress() async throws -> StressResponse {
+        try await send(request("api/me/stress?tz=\(Self.localTZ)"), as: StressResponse.self)
+    }
+
     func hydration() async throws -> HydrationToday {
         try await send(request("api/me/hydration"), as: HydrationToday.self)
     }
