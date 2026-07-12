@@ -442,6 +442,9 @@ class CoachTools
         if (class_exists(\App\Support\LongevityIndex::class)) {
             $tools[] = $this->fn('longevity_status', "The user's Titan Age + pace-of-aging as a ready-made `longevity` card (biological age vs calendar, aging faster/slower than the clock, the top levers pulling them younger/older). Lead any 'how old am I biologically / longevity / am I aging well / Titan Age' question with it; teach the top lever to improve.", [], []);
         }
+        if (class_exists(\App\Support\SleepPlanner::class)) {
+            $tools[] = $this->fn('sleep_plan', "Tonight's recommended BEDTIME as a ready-made `sleep_plan` card (a bed-by window + the reason: sleep need after today's strain/debt, target wake). Lead any 'what time should I go to bed / when should I sleep' question with it.", [], []);
+        }
         if (class_exists(\App\Models\BiomarkerReading::class)) {
             $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
         }
@@ -560,6 +563,7 @@ class CoachTools
             'strain_status' => 'Checking your strain',
             'stress_status' => 'Reading your stress',
             'longevity_status' => 'Computing your Titan Age',
+            'sleep_plan' => 'Planning your bedtime',
             'bloodwork_panel' => 'Pulling your bloodwork',
             'macros_today' => 'Tallying your macros',
             'set_targets' => 'Updating your targets',
@@ -695,6 +699,7 @@ class CoachTools
             'strain_status' => $this->strainStatus(),
             'stress_status' => $this->stressStatus(),
             'longevity_status' => $this->longevityStatus(),
+            'sleep_plan' => $this->sleepPlan(),
             'bloodwork_panel' => $this->bloodworkPanel(),
             'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
@@ -2074,6 +2079,29 @@ class CoachTools
         ], fn ($v) => $v !== null && $v !== []);
 
         return ['card' => $card, '_show' => 'Open with this `longevity` card inside a ```titan-card fence, then TEACH: name the top lever pulling them younger and the top one pulling them older, and the single highest-leverage thing to improve the number. If partial (no bloodwork), say the estimate is fitness-based and a lab panel would sharpen it. Never state a confident age off thin data.'];
+    }
+
+    private function sleepPlan(): mixed
+    {
+        if (! class_exists(\App\Support\SleepPlanner::class)) {
+            return ['error' => 'The sleep planner is not available.'];
+        }
+        $p = \App\Support\SleepPlanner::plan($this->profile);
+        if ($p === null) {
+            return ['_show' => "Not enough sleep history yet to plan a bedtime — log a few nights first, then I can tell you when to be in bed."];
+        }
+        $card = array_filter([
+            'type' => 'sleep_plan',
+            'bedtime' => $p['bedtime'],
+            'window_start' => $p['window'][0] ?? null,
+            'window_end' => $p['window'][1] ?? null,
+            'target_wake' => $p['target_wake'],
+            'need_h' => $p['need_h'],
+            'debt_h' => $p['debt_h'],
+            'reason' => $p['reason'],
+        ], fn ($v) => $v !== null);
+
+        return ['card' => $card, '_show' => 'Open with this `sleep_plan` card inside a ```titan-card fence, then a one-line why (need after today + target wake), and — if they carry debt — encourage the earlier end of the window.'];
     }
 
     private function bloodworkPanel(): mixed

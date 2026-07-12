@@ -222,6 +222,53 @@ struct StressCard: View {
     }
 }
 
+// MARK: - Sleep plan (tonight's recommended bedtime)
+
+struct SleepPlanCard: View {
+    let json: [String: Any]
+    var body: some View {
+        let bed = (json["bedtime"] as? String) ?? "–"
+        let ws = json["window_start"] as? String
+        let we = json["window_end"] as? String
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                cardTitle("Tonight's bedtime")
+                Spacer()
+                Image(systemName: "moon.stars.fill").foregroundStyle(Theme.Palette.indigo)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(pretty(bed)).font(Theme.Font.num(26)).foregroundStyle(Theme.Palette.text)
+                if let ws, let we { Text("\(pretty(ws))–\(pretty(we))").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+            }
+            HStack(spacing: 12) {
+                if let wake = json["target_wake"] as? String {
+                    stat("Up at", pretty(wake))
+                }
+                if let need = jsonNum(json["need_h"]) {
+                    stat("Need", String(format: "%.1fh", need))
+                }
+            }
+            cardCaption(json["reason"] as? String)
+        }
+        .coachCard()
+    }
+
+    private func stat(_ label: LocalizedStringKey, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Text(value).font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.text)
+        }
+    }
+
+    /// "22:40" → "10:40 PM" in the device locale.
+    private func pretty(_ hhmm: String) -> String {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"
+        guard let d = f.date(from: String(hhmm.prefix(5))) else { return hhmm }
+        let o = DateFormatter(); o.timeStyle = .short; o.locale = .current
+        return o.string(from: d)
+    }
+}
+
 // MARK: - Sleep (headline + stage breakdown)
 
 struct SleepCard: View {
