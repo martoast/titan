@@ -439,6 +439,9 @@ class CoachTools
         if (class_exists(\App\Support\StressMonitor::class)) {
             $tools[] = $this->fn('stress_status', "The user's real-time stress right now as a ready-made `stress_now` card (0–3, motion-gated so a workout isn't stress) with the HR/HRV drivers. Lead any 'am I stressed / how's my stress' question with it, and offer a breathing minute when it's medium/high.", [], []);
         }
+        if (class_exists(\App\Support\LongevityIndex::class)) {
+            $tools[] = $this->fn('longevity_status', "The user's Titan Age + pace-of-aging as a ready-made `longevity` card (biological age vs calendar, aging faster/slower than the clock, the top levers pulling them younger/older). Lead any 'how old am I biologically / longevity / am I aging well / Titan Age' question with it; teach the top lever to improve.", [], []);
+        }
         if (class_exists(\App\Models\BiomarkerReading::class)) {
             $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
         }
@@ -556,6 +559,7 @@ class CoachTools
             'sleep_detail' => 'Reading last night',
             'strain_status' => 'Checking your strain',
             'stress_status' => 'Reading your stress',
+            'longevity_status' => 'Computing your Titan Age',
             'bloodwork_panel' => 'Pulling your bloodwork',
             'macros_today' => 'Tallying your macros',
             'set_targets' => 'Updating your targets',
@@ -690,6 +694,7 @@ class CoachTools
             'sleep_detail' => $this->sleepDetail(),
             'strain_status' => $this->strainStatus(),
             'stress_status' => $this->stressStatus(),
+            'longevity_status' => $this->longevityStatus(),
             'bloodwork_panel' => $this->bloodworkPanel(),
             'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
@@ -2042,6 +2047,33 @@ class CoachTools
         ];
 
         return ['card' => $card, '_show' => 'Open with this `stress_now` card inside a ```titan-card fence. If level is medium/high, offer a 90-second physiological sigh; if moving, note that elevated HR is their workout, not stress; if confidence is low, hedge ("still learning your calm baseline").'];
+    }
+
+    private function longevityStatus(): mixed
+    {
+        if (! class_exists(\App\Support\LongevityIndex::class)) {
+            return ['error' => 'The longevity index is not available.'];
+        }
+        $l = \App\Support\LongevityIndex::assess($this->profile);
+        if ($l === null) {
+            return ['_show' => "Not enough data yet for a Titan Age — needs bloodwork or a VO₂max/fitness read. Say what's missing and how to unlock it (a lab panel, or a hard run so the band can estimate VO₂max)."];
+        }
+        $card = array_filter([
+            'type' => 'longevity',
+            'titan_age' => round($l['titan_age'], 1),
+            'chronological_age' => round($l['chronological_age'], 1),
+            'delta' => round($l['delta'], 1),
+            'band' => $l['band'] ?? null,
+            'label' => $l['label'] ?? null,
+            'pace' => $l['pace']['value'] ?? null,
+            'pace_label' => $l['pace']['label'] ?? null,
+            'confidence' => $l['confidence'] ?? null,
+            'partial' => (bool) ($l['partial'] ?? false),
+            'younger' => $l['younger_levers'] ?? [],
+            'older' => $l['older_levers'] ?? [],
+        ], fn ($v) => $v !== null && $v !== []);
+
+        return ['card' => $card, '_show' => 'Open with this `longevity` card inside a ```titan-card fence, then TEACH: name the top lever pulling them younger and the top one pulling them older, and the single highest-leverage thing to improve the number. If partial (no bloodwork), say the estimate is fitness-based and a lab panel would sharpen it. Never state a confident age off thin data.'];
     }
 
     private function bloodworkPanel(): mixed

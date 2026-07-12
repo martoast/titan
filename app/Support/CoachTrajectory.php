@@ -104,6 +104,18 @@ class CoachTrajectory
             $lines[] = $body;
         }
 
+        // --- Longevity: Titan Age vs calendar + pace-of-aging direction. The north-star framing.
+        if (class_exists(\App\Support\LongevityIndex::class)) {
+            $lon = rescue(fn () => \App\Support\LongevityIndex::assess($profile), null, false);
+            if (is_array($lon)) {
+                $line = 'Longevity: Titan Age '.round($lon['titan_age']).' vs '.round($lon['chronological_age']).' calendar';
+                if (($lon['pace']['value'] ?? null) !== null && ($lon['pace']['direction'] ?? null) !== 'even') {
+                    $line .= ', '.$lon['pace']['label'];
+                }
+                $lines[] = $line.'. conf: '.self::conf(($lon['confidence'] ?? 'low') === 'high' ? 5 : (($lon['confidence'] ?? '') === 'medium' ? 3 : 1));
+            }
+        }
+
         if ($lines === []) {
             return '';
         }

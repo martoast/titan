@@ -510,6 +510,7 @@ private struct TitanCardView: View {
             case "markers":               MarkersCard(json: json)
             case "weight":                WeightTrendCard(json: json)
             case "bioage":                BioAgeCard(json: json)
+            case "longevity":             LongevityCard(json: json)
             case "fitness":               FitnessCard(json: json)
             case "protocol", "plan":      ProtocolCard(json: json)
             default:                      GenericCard(json: json)

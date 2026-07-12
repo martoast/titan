@@ -491,6 +491,73 @@ struct BioAgeCard: View {
     }
 }
 
+// MARK: - Longevity (Titan Age + pace-of-aging + levers)
+
+struct LongevityCard: View {
+    let json: [String: Any]
+    private var younger: [[String: Any]] { json["younger"] as? [[String: Any]] ?? [] }
+    private var older: [[String: Any]] { json["older"] as? [[String: Any]] ?? [] }
+
+    var body: some View {
+        let titan = jsonNum(json["titan_age"])
+        let chrono = jsonNum(json["chronological_age"])
+        let color = ageColor(titan: titan, chrono: chrono)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Titan Age").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    Text(titan.map { String(Int($0.rounded())) } ?? "–").font(Theme.Font.num(26)).foregroundStyle(color)
+                }
+                Spacer()
+                if let chrono {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("Actual").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        Text(String(Int(chrono.rounded()))).font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.text)
+                    }
+                }
+            }
+            // Pace label is computed on-device (localizable) rather than shown from the server string.
+            if json["pace"] != nil {
+                HStack(spacing: 6) {
+                    Image(systemName: pace <= 0.85 ? "arrow.down.right" : (pace >= 1.15 ? "arrow.up.right" : "arrow.right"))
+                        .font(.caption2).foregroundStyle(color)
+                    Text(paceLabel).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                }
+            } else {
+                Text("Building your aging trend").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+            }
+            // Top levers pulling younger (mint) / older (amber) — the actionable "why".
+            ForEach(Array(younger.prefix(2).enumerated()), id: \.offset) { _, l in leverRow(l, good: true) }
+            ForEach(Array(older.prefix(2).enumerated()), id: \.offset) { _, l in leverRow(l, good: false) }
+            if json["partial"] as? Bool == true {
+                Text("Fitness-based estimate — a blood panel would sharpen it.")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+            }
+        }
+        .coachCard()
+    }
+
+    private var pace: Double { jsonNum(json["pace"]) ?? 1.0 }
+    private var paceLabel: LocalizedStringKey {
+        pace <= 0.85 ? "aging slower than the clock" : (pace >= 1.15 ? "aging faster than the clock" : "aging with the clock")
+    }
+
+    private func leverRow(_ l: [String: Any], good: Bool) -> some View {
+        let years = jsonNum(l["years"]) ?? 0
+        return HStack(spacing: 8) {
+            Circle().fill(good ? Theme.Palette.mint : Theme.Palette.amber).frame(width: 6, height: 6)
+            Text((l["label"] as? String) ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Spacer()
+            Text(String(format: "%+.1f yr", years)).font(Theme.Font.num(12)).foregroundStyle(Theme.Palette.text)
+        }
+    }
+
+    private func ageColor(titan: Double?, chrono: Double?) -> Color {
+        guard let titan, let chrono else { return Theme.Palette.text }
+        return titan < chrono ? Theme.Palette.mint : (titan > chrono ? Theme.Palette.amber : Theme.Palette.text)
+    }
+}
+
 // MARK: - Fitness (score + pillars)
 
 struct FitnessCard: View {

@@ -1707,6 +1707,16 @@
         }
       }
     },
+    "Building your aging trend": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Construyendo tu tendencia de envejecimiento"
+          }
+        }
+      }
+    },
     "Building your baseline": {
       "extractionState": "stale",
       "localizations": {
@@ -2900,6 +2910,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Edad física %lld · según VO₂máx"
+          }
+        }
+      }
+    },
+    "Fitness-based estimate — a blood panel would sharpen it.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimado basado en tu condición física — un análisis de sangre lo afinaría."
           }
         }
       }
@@ -7492,6 +7512,16 @@
       }
     },
     "Titan": {},
+    "Titan Age": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edad Titan"
+          }
+        }
+      }
+    },
     "Titan is a subscription-free recovery OS. Your data is yours, always.": {
       "localizations": {
         "es-MX": {
@@ -8622,6 +8652,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "una carrera"
+          }
+        }
+      }
+    },
+    "aging faster than the clock": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "envejeciendo más rápido que el reloj"
+          }
+        }
+      }
+    },
+    "aging slower than the clock": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "envejeciendo más lento que el reloj"
+          }
+        }
+      }
+    },
+    "aging with the clock": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "envejeciendo al ritmo del reloj"
           }
         }
       }

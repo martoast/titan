@@ -49,6 +49,8 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/hr', [\App\Http\Controllers\Api\MobileHrController::class, 'show']);
     // Real-time stress (0–3, motion-gated) + the stress-over-day strip.
     Route::get('/stress', [\App\Http\Controllers\Api\MobileStressController::class, 'show']);
+    // Titan Longevity Index — biological age + pace of aging + levers.
+    Route::get('/longevity', [\App\Http\Controllers\Api\MobileLongevityController::class, 'show']);
     Route::get('/cycle', [\App\Http\Controllers\Api\MobileCycleController::class, 'show']);
     Route::get('/cycle/calendar', [\App\Http\Controllers\Api\MobileCycleController::class, 'calendar']);
     Route::post('/cycle/period', [\App\Http\Controllers\Api\MobileCycleController::class, 'period']);
