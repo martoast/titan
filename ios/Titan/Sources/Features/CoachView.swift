@@ -505,6 +505,7 @@ private struct TitanCardView: View {
             case "stress_now":            StressCard(json: json)
             case "sleep":                 SleepCard(json: json)
             case "sleep_plan":            SleepPlanCard(json: json)
+            case "sleep_debt":            SleepDebtCard(json: json)
             case "sparkline", "trend":    SparklineCard(json: json)
             case "stat":                  StatCard(json: json)
             case "stats", "vitals":       StatsCard(json: json)

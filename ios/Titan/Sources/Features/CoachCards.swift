@@ -222,6 +222,85 @@ struct StressCard: View {
     }
 }
 
+// MARK: - Sleep debt (the ledger — balance + trend + payback plan)
+
+struct SleepDebtCard: View {
+    let json: [String: Any]
+    private var history: [[String: Any]] { json["history"] as? [[String: Any]] ?? [] }
+
+    private var band: String { (json["band"] as? String) ?? "none" }
+    private var color: Color {
+        switch band {
+        case "heavy": return Theme.Palette.pink
+        case "moderate": return Theme.Palette.amber
+        case "light": return Theme.Palette.cyan
+        default: return Theme.Palette.mint
+        }
+    }
+
+    var body: some View {
+        let balance = jsonNum(json["balance"]) ?? 0
+        let paid = jsonNum(json["paid_back"]) ?? 0
+        let added = jsonNum(json["added"]) ?? 0
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                cardTitle("Sleep debt")
+                Spacer()
+                if balance <= 0 {
+                    Text("Rested").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.mint)
+                } else {
+                    Text(String(format: "%.1fh", balance)).font(Theme.Font.num(22)).foregroundStyle(color)
+                }
+            }
+            // Balance "battery" — fuller = more debt (drains as you catch up). Capped display at 6h.
+            GeometryReader { geo in
+                let frac = min(1, balance / 6)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08)).frame(height: 8)
+                    Capsule().fill(color).frame(width: max(balance <= 0 ? 0 : 4, geo.size.width * frac), height: 8)
+                }
+            }.frame(height: 8)
+
+            // Last night's ± and the trend.
+            HStack(spacing: 8) {
+                if paid > 0 {
+                    Label(String(format: "paid back %.1fh", paid), systemImage: "arrow.down").font(Theme.Font.micro).foregroundStyle(Theme.Palette.mint)
+                } else if added > 0 {
+                    Label(String(format: "added %.1fh", added), systemImage: "arrow.up").font(Theme.Font.micro).foregroundStyle(Theme.Palette.amber)
+                }
+                Spacer()
+                if let trend = json["trend"] as? String, trend != "steady" {
+                    Text(trend).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+            }
+            if history.count > 1 { DebtTrend(history: history, color: color) }
+            cardCaption(json["plan"] as? String)
+        }
+        .coachCard()
+    }
+}
+
+/// A 14-night debt trend line (higher = more debt).
+private struct DebtTrend: View {
+    let history: [[String: Any]]
+    let color: Color
+    var body: some View {
+        let vals = history.compactMap { jsonNum($0["balance"]) }
+        let maxV = max(1, vals.max() ?? 1)
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height, n = max(1, vals.count - 1)
+            Path { p in
+                for (i, v) in vals.enumerated() {
+                    let x = w * CGFloat(i) / CGFloat(n)
+                    let y = h * (1 - CGFloat(v / maxV))
+                    i == 0 ? p.move(to: .init(x: x, y: y)) : p.addLine(to: .init(x: x, y: y))
+                }
+            }.stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+        }
+        .frame(height: 28)
+    }
+}
+
 // MARK: - Sleep plan (tonight's recommended bedtime)
 
 struct SleepPlanCard: View {

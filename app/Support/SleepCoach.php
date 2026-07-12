@@ -89,21 +89,17 @@ class SleepCoach
 
         $baseline = self::baselineFor($profile);
 
-        // Sleep debt: recent deficits vs baseline, weighted toward recent nights, capped.
-        $debt = 0.0;
-        $w = 1.0;
-        foreach ($nights as $n) {
-            $h = $n->duration_min / 60.0;
-            $debt += max(0.0, $baseline - $h) * $w;
-            $w *= 0.7;                                       // older nights matter less
-        }
-        $debt = min($debt, self::DEBT_CAP_H);
+        // Sleep debt is now a proper LEDGER (accrues AND pays down over ~2 weeks) owned by SleepDebt —
+        // delegate so one number lives everywhere. debt_h stays in the payload for every existing caller.
+        $debt = class_exists(SleepDebt::class)
+            ? (float) (SleepDebt::forProfile($profile, $day)['balance_h'] ?? 0.0)
+            : self::legacyDebt($nights, $baseline);
 
         // Today's strain raises tonight's need a little (hard day → more sleep).
         $strain = Strain::assess($profile, $day)['strain'];
         $strainBump = round(($strain / 21.0) * 0.75, 2);
 
-        $need = min(self::NEED_CAP_H, $baseline + min($debt * 0.5, 1.5) + $strainBump);
+        $need = self::needFor($profile, $baseline, $debt, $day, $strainBump);
 
         // Last night's raw duration…
         $last = $nights->first();
@@ -156,6 +152,34 @@ class SleepCoach
             $age >= 65 => 7.5,
             default => self::BASELINE_H,
         };
+    }
+
+    /**
+     * Tonight's sleep NEED = baseline + a slice of current debt + today's strain bump, capped. Pure (does
+     * not fetch debt), so both assess() and SleepDebt can call it with the same debt balance and AGREE on
+     * the number (planner + debt card must match). Pass $strainBump to skip a second Strain::assess.
+     */
+    public static function needFor(Profile $profile, float $baseline, float $debt, ?Carbon $day = null, ?float $strainBump = null): float
+    {
+        if ($strainBump === null) {
+            $strain = class_exists(Strain::class) ? (float) (Strain::assess($profile, $day)['strain'] ?? 0) : 0.0;
+            $strainBump = round(($strain / 21.0) * 0.75, 2);
+        }
+
+        return round(min(self::NEED_CAP_H, $baseline + min($debt * 0.5, 1.5) + $strainBump), 1);
+    }
+
+    /** Legacy deficit-only debt — the fallback if the SleepDebt ledger class isn't present. */
+    private static function legacyDebt(\Illuminate\Support\Collection $nights, float $baseline): float
+    {
+        $debt = 0.0;
+        $w = 1.0;
+        foreach ($nights as $n) {
+            $debt += max(0.0, $baseline - $n->duration_min / 60.0) * $w;
+            $w *= 0.7;
+        }
+
+        return min($debt, self::DEBT_CAP_H);
     }
 
     /** @return array{0:string,1:string,2:string} [band, label, advice] */

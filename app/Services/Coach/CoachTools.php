@@ -445,6 +445,9 @@ class CoachTools
         if (class_exists(\App\Support\SleepPlanner::class)) {
             $tools[] = $this->fn('sleep_plan', "Tonight's recommended BEDTIME as a ready-made `sleep_plan` card (a bed-by window + the reason: sleep need after today's strain/debt, target wake). Lead any 'what time should I go to bed / when should I sleep' question with it.", [], []);
         }
+        if (class_exists(\App\Support\SleepDebt::class)) {
+            $tools[] = $this->fn('sleep_debt', "The user's sleep-debt LEDGER as a ready-made `sleep_debt` card (current balance, band, rising/easing trend, last night's paid-back/added, and a realistic payback plan). Lead any 'how's my sleep debt / am I caught up' question with it; teach the mechanism (owe from recent short nights, payable over ~2 weeks, can't bank ahead).", [], []);
+        }
         if (class_exists(\App\Models\BiomarkerReading::class)) {
             $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
         }
@@ -564,6 +567,7 @@ class CoachTools
             'stress_status' => 'Reading your stress',
             'longevity_status' => 'Computing your Titan Age',
             'sleep_plan' => 'Planning your bedtime',
+            'sleep_debt' => 'Tallying your sleep debt',
             'bloodwork_panel' => 'Pulling your bloodwork',
             'macros_today' => 'Tallying your macros',
             'set_targets' => 'Updating your targets',
@@ -700,6 +704,7 @@ class CoachTools
             'stress_status' => $this->stressStatus(),
             'longevity_status' => $this->longevityStatus(),
             'sleep_plan' => $this->sleepPlan(),
+            'sleep_debt' => $this->sleepDebt(),
             'bloodwork_panel' => $this->bloodworkPanel(),
             'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
@@ -2102,6 +2107,27 @@ class CoachTools
         ], fn ($v) => $v !== null);
 
         return ['card' => $card, '_show' => 'Open with this `sleep_plan` card inside a ```titan-card fence, then a one-line why (need after today + target wake), and — if they carry debt — encourage the earlier end of the window.'];
+    }
+
+    private function sleepDebt(): mixed
+    {
+        if (! class_exists(\App\Support\SleepDebt::class)) {
+            return ['error' => 'The sleep-debt ledger is not available.'];
+        }
+        $d = \App\Support\SleepDebt::forProfile($this->profile);
+        $card = array_filter([
+            'type' => 'sleep_debt',
+            'balance' => $d['balance_h'],
+            'band' => $d['band'] ?? null,
+            'trend' => $d['trend'] ?? null,
+            'paid_back' => $d['paid_back_last_night_h'] ?? 0,
+            'added' => $d['added_last_night_h'] ?? 0,
+            'plan' => $d['payback']['plan'] ?? null,
+            'tonight_target_h' => $d['payback']['tonight_target_h'] ?? null,
+            'history' => collect($d['history'] ?? [])->map(fn ($h) => ['date' => $h['date'], 'balance' => $h['balance_h']])->values()->all(),
+        ], fn ($v) => $v !== null && $v !== []);
+
+        return ['card' => $card, '_show' => 'Open with this `sleep_debt` card inside a ```titan-card fence, then TEACH from the mechanism (owe from recent short nights, payable over ~2 weeks at ~an hour a night, can\'t bank ahead or clear it all at once) and give the ONE next night to chip at it. If balance is 0, celebrate "rested — no debt".'];
     }
 
     private function bloodworkPanel(): mixed

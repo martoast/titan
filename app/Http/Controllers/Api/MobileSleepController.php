@@ -51,6 +51,9 @@ class MobileSleepController extends Controller
             // and swaps to the full stats in place when it becomes 'final'.
             'last_status' => $nights->first()['stage_status'] ?? null,
             'nights' => $nights,
+            // The sleep-debt ledger (accrues + pays down) — the Debt card's balance gauge, trend line, and
+            // payback plan. One source of truth (same SleepDebt the coach + week view read).
+            'debt' => class_exists(\App\Support\SleepDebt::class) ? \App\Support\SleepDebt::forProfile($profile) : null,
         ]);
     }
 }
