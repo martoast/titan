@@ -60,6 +60,9 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/runs', [\App\Http\Controllers\Api\MobileRunsController::class, 'index']);
     Route::get('/runs/{session}', [\App\Http\Controllers\Api\MobileRunsController::class, 'show']);
 
+    // Manually log a workout you did without the band (type + duration + optional when/intensity).
+    Route::post('/workouts', [\App\Http\Controllers\Api\MobileWorkoutsController::class, 'store']);
+
     // Community — opt-in social: the followed-athletes feed, leaderboard, settings, requests,
     // recap, badges, athlete discovery + profiles, follow graph, and per-activity kudos/comments.
     Route::get('/community/feed', [\App\Http\Controllers\Api\CommunityController::class, 'feed']);

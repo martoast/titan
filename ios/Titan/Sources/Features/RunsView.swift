@@ -50,6 +50,7 @@ struct RunsSection: View {
     @State private var loading = true
     @State private var failed = false
     @State private var selected: RunSummary?
+    @State private var showLog = false
 
     private var filtered: [RunSummary] { runs.filter(inRange) }
 
@@ -71,6 +72,13 @@ struct RunsSection: View {
                     HStack {
                         SectionHeader(title: "Workouts")
                         if !runs.isEmpty { Text("\(filtered.count)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).monospacedDigit() }
+                        Spacer()
+                        Button { Haptic.tap(); showLog = true } label: {
+                            Label("Log", systemImage: "plus")
+                                .font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.bg)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .background(Capsule().fill(Theme.Palette.text))
+                        }.buttonStyle(.plain)
                     }
                     if !runs.isEmpty { filterBar }
 
@@ -80,7 +88,7 @@ struct RunsSection: View {
                         VStack(spacing: 6) {
                             Image(systemName: "figure.run").font(.system(size: 30)).foregroundStyle(Theme.Palette.textFaint)
                             Text("No workouts yet").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
-                            Text("Tap the Run or Lift face on your band — runs land here with your route + splits, lifts with your HR zones + sets.")
+                            Text("Tap the Run or Lift face on your band — runs land here with your route + splits, lifts with your HR zones + sets. Did one without the band? Tap Log.")
                                 .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).multilineTextAlignment(.center)
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
@@ -108,6 +116,9 @@ struct RunsSection: View {
             } else {
                 RunDetailView(runId: run.id, fallback: run).environmentObject(model)
             }
+        }
+        .sheet(isPresented: $showLog) {
+            LogWorkoutSheet { await load() }.environmentObject(model)
         }
     }
 

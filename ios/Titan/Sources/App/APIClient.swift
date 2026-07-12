@@ -140,6 +140,16 @@ final class APIClient {
         TimeZone.current.identifier.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "UTC"
     }
 
+    /// Manually log a workout the band didn't record (gym session, a run without the watch). Type +
+    /// duration are required; `startedAt` defaults server-side to now, `intensity` to moderate.
+    @discardableResult
+    func logWorkout(type: String, durationMin: Int, startedAt: Date?, intensity: String?) async throws -> LoggedWorkout {
+        var body: [String: Any] = ["activity_type": type, "duration_min": durationMin]
+        if let startedAt { body["started_at"] = ISO8601DateFormatter().string(from: startedAt) }
+        if let intensity { body["perceived_intensity"] = intensity }
+        return try await send(request("api/me/workouts", method: "POST", json: body), as: LoggedWorkout.self)
+    }
+
     func runDetail(_ id: Int) async throws -> RunDetail {
         try await send(request("api/me/runs/\(id)"), as: RunDetail.self)
     }

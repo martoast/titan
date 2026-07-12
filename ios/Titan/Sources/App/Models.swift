@@ -722,6 +722,14 @@ struct RunsResponse: Codable, Equatable {
     var active_days: [String]? = nil   // 'yyyy-MM-dd' local days lit on the calendar strip
 }
 
+/// The created row returned by a manual workout log (POST /me/workouts).
+struct LoggedWorkout: Codable, Equatable, Identifiable {
+    let id: Int
+    let title: String
+    let activity_type: String?
+    let duration_min: Int?
+}
+
 /// The consistency numbers behind the Workouts screen header + the Today streak badge.
 /// Week/month counts are only present on the `/runs` payload (nil on the dashboard block).
 struct WorkoutStreakInfo: Codable, Equatable {
