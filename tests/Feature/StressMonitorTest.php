@@ -120,4 +120,41 @@ class StressMonitorTest extends TestCase
         $this->assertSame(0.0, $r['stress']);
         $this->assertNull($r['hr']);
     }
+
+    public function test_sample_persists_a_strip_point_when_still_and_elevated(): void
+    {
+        $p = $this->profileWithBaseline();
+        $this->seedHr($p, 112);
+        $this->seedMotion($p, 15);
+
+        $value = StressMonitor::sample($p);
+
+        $this->assertNotNull($value);
+        $this->assertGreaterThan(0, $value);
+        $this->assertSame(1, \App\Models\StressSample::where('profile_id', $p->id)->count());
+    }
+
+    public function test_sample_writes_nothing_while_moving(): void
+    {
+        $p = $this->profileWithBaseline();
+        $this->seedHr($p, 112);
+        $this->seedMotion($p, 130);   // moving
+
+        $this->assertNull(StressMonitor::sample($p));
+        $this->assertSame(0, \App\Models\StressSample::where('profile_id', $p->id)->count());
+    }
+
+    public function test_day_strip_reads_back_persisted_samples(): void
+    {
+        $p = $this->profileWithBaseline();
+        $this->seedHr($p, 112);
+        $this->seedMotion($p, 15);
+        StressMonitor::sample($p);
+
+        $strip = StressMonitor::dayStrip($p);
+
+        $this->assertCount(1, $strip['points']);
+        $this->assertGreaterThan(0.0, $strip['peak']);
+        $this->assertContains($strip['points'][0]['level'], ['low', 'medium', 'high']);
+    }
 }

@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\MotionSample;
 use App\Models\Profile;
+use App\Models\StressSample;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -83,6 +84,71 @@ class StressMonitor
         $stress = round(min(3.0, max(0.0, 3.0 * $arousal)), 2);
 
         return self::result($stress, false, $profile, $hr, $rest, $hrv, $hrvBaseline, $hrvSuppression, $at, $tz);
+    }
+
+    /**
+     * Persist one strip point for `now` — the sampler's per-run write. Only writes a REAL read (HR
+     * present and the user still): a moving/no-HR minute carries no stress signal, so we skip it rather
+     * than paint a misleading zero. insertOrIgnore on (profile_id, minute) so overlapping runs are safe.
+     * Returns the stored 0..300 value, or null when nothing was written.
+     */
+    public static function sample(Profile $profile, ?Carbon $at = null): ?int
+    {
+        $at = ($at ? $at->copy() : Carbon::now())->startOfMinute();
+        $read = self::assess($profile, $at);
+        if ($read['hr'] === null || $read['moving']) {
+            return null;
+        }
+
+        $value = (int) round($read['stress'] * 100);   // 0..300
+        StressSample::insertOrIgnore([[
+            'profile_id' => $profile->id,
+            'recorded_at' => $at->toDateTimeString(),
+            'stress' => $value,
+            'source' => 'derived',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]]);
+
+        return $value;
+    }
+
+    /**
+     * The stress-over-day strip for the app + the nudge's "held high" check. Reads persisted
+     * stress_samples for the local day (recorded_at is app-tz wall-clock, same as motion_samples), newest
+     * last. Each point: {t: ISO8601, stress: 0..3, level}. Also returns the day's peak + the sustained
+     * high-stress minutes (samples ≥ `medium`), which the proactive nudge keys on.
+     *
+     * @return array{points: array<int,array{t:string,stress:float,level:string}>, peak: float, high_minutes: int}
+     */
+    public static function dayStrip(Profile $profile, ?Carbon $day = null, ?string $tz = null): array
+    {
+        $tz = $tz ?: config('app.timezone', 'UTC');
+        $dayStart = ($day ? $day->copy() : Carbon::now($tz))->setTimezone($tz)->startOfDay();
+
+        $rows = StressSample::query()
+            ->where('profile_id', $profile->id)
+            ->whereBetween('recorded_at', [$dayStart->copy(), $dayStart->copy()->endOfDay()])
+            ->orderBy('recorded_at')
+            ->get(['recorded_at', 'stress']);
+
+        $points = [];
+        $peak = 0.0;
+        $highMinutes = 0;
+        foreach ($rows as $r) {
+            $s = round($r->stress / 100, 2);
+            $peak = max($peak, $s);
+            if ($s >= 1.5) {
+                $highMinutes++;
+            }
+            $points[] = [
+                't' => Carbon::parse($r->getRawOriginal('recorded_at'), $tz)->toIso8601String(),
+                'stress' => $s,
+                'level' => self::level($s),
+            ];
+        }
+
+        return ['points' => $points, 'peak' => $peak, 'high_minutes' => $highMinutes];
     }
 
     /** Shape the return + attach confidence, level and human drivers. */
