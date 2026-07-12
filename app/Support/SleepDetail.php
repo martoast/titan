@@ -149,6 +149,11 @@ class SleepDetail
             'stage_status' => $last->stage_status,
             // Low-signal night → the app shows the read as an estimate + a fit-check hint, not a hard number.
             'low_confidence' => (bool) $last->low_confidence,
+            // "The story of your night" — the per-night narrative (onset, deep distribution, wakes, REM
+            // cycles, one takeaway) that frames the hypnogram. Shared by app + web + coach. Null while
+            // computing or without a hypnogram.
+            'story' => (! $computing && class_exists(\App\Support\SleepStory::class))
+                ? \App\Support\SleepStory::forNight($last) : null,
             'finalized_at' => $last->finalized_at?->toIso8601String(),
         ];
     }

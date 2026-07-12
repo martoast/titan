@@ -65,6 +65,13 @@ class ReactToSleepConfirmed implements ShouldQueue
         $facts = 'Confirmed night. '.trim(($msg['push'] ?? '')).' Assessment: '.($assess['label'] ?? 'n/a')
             .(($assess['advice'] ?? '') !== '' ? ' — '.$assess['advice'] : '');
 
+        // The story of the night (onset, deep distribution, wakes, REM cycles) — so the coach's read
+        // matches what the app shows on the timeline. One narrative, both surfaces.
+        $story = rescue(fn () => class_exists(\App\Support\SleepStory::class) ? \App\Support\SleepStory::forNight($log) : null, null, false);
+        if (is_array($story) && ! empty($story['text'])) {
+            $facts .= ' STORY OF THE NIGHT (weave this in, teach the why briefly): '.$story['text'];
+        }
+
         // Low-signal night (poor PPG contact → mostly NODATA): be honest that the read is an ESTIMATE and
         // proactively suggest a fit check — the #1 cause and it's user-fixable. Don't state a confident number.
         if ($log->low_confidence) {
