@@ -525,6 +525,7 @@ private struct TitanCardView: View {
             switch json["type"] as? String {
             case "macros":                MacrosCard(json: json)
             case "meal":                  MealCard(json: json)
+            case "fasting":               FastingCoachCard(json: json)
             case "readiness":             ReadinessCard(json: json)
             case "strain":                StrainCard(json: json)
             case "stress_now":            StressCard(json: json)

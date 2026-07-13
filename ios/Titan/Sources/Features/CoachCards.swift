@@ -1006,6 +1006,62 @@ private struct MacroShareBar: View {
     }
 }
 
+// MARK: - Fasting (stage + pathway + honesty · FASTING v2)
+
+/// The fasting card in chat — glanceable, and it TEACHES: elapsed vs goal, the current metabolic stage +
+/// the survival pathway engaging, a one-line "why", and an honest caveat where the human evidence is thin.
+/// A small disclaimer keeps it from overstating the science. (Was falling through to the generic dump.)
+struct FastingCoachCard: View {
+    let json: [String: Any]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if json["active"] as? Bool == true {
+                HStack(alignment: .firstTextBaseline) {
+                    cardTitle("Fasting")
+                    Spacer()
+                    if let el = jsonNum(json["elapsed_h"]), let goal = jsonNum(json["goal_h"]) {
+                        Text(String(format: "%.1f / %gh", el, goal)).font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.text)
+                    }
+                }
+                HStack(spacing: 6) {
+                    Text((json["stage"] as? String) ?? "").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.violet)
+                    if let pathway = json["pathway"] as? String, !pathway.isEmpty {
+                        Text(verbatim: pathway).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                            .padding(.horizontal, 8).padding(.vertical, 3).background(Theme.Palette.violet.opacity(0.14), in: Capsule())
+                    }
+                }
+                if let blurb = json["stage_blurb"] as? String, !blurb.isEmpty {
+                    Text(blurb).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).fixedSize(horizontal: false, vertical: true)
+                }
+                if let why = json["stage_why"] as? String, !why.isEmpty {
+                    Label { Text(why).font(Theme.Font.micro).foregroundStyle(Theme.Palette.text) }
+                        icon: { Image(systemName: "lightbulb.fill").font(.caption2).foregroundStyle(Theme.Palette.amber) }
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let honesty = json["stage_honesty"] as? String, !honesty.isEmpty {
+                    Label { Text(honesty).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+                        icon: { Image(systemName: "info.circle").font(.caption2).foregroundStyle(Theme.Palette.textFaint) }
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let next = json["next_stage"] as? String, let inH = jsonNum(json["next_stage_in_h"]) {
+                    Text("Next: \(next) in \(String(format: "%.1f", inH))h").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+            } else {
+                cardTitle("Not fasting")
+                Text("Start a fasting window and I'll show your body's stages as you go.")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+            if let disclaimer = json["disclaimer"] as? String, !disclaimer.isEmpty {
+                Text(disclaimer).font(.system(size: 10, design: .rounded)).foregroundStyle(Theme.Palette.textFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            CardActionsRow(json: json)
+        }
+        .coachCard()
+    }
+}
+
 // MARK: - Weight (trend + rate)
 
 struct WeightTrendCard: View {

@@ -272,6 +272,11 @@ struct FastingCard: View {
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Text(f.stage ?? String(localized: "Fasting")).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.violet)
+                        if let pathway = f.pathway, !pathway.isEmpty {
+                            Text(verbatim: pathway).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Theme.Palette.violet.opacity(0.14), in: Capsule())
+                        }
                         if let blurb = f.stage_blurb {
                             Text(blurb).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -280,11 +285,30 @@ struct FastingCard: View {
                     Spacer(minLength: 0)
                 }
             }
+            // Teach the WHY (the mechanism), then the honesty caveat where the human evidence is thin.
+            if let why = f.stage_why, !why.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "lightbulb.fill").font(.caption2).foregroundStyle(Theme.Palette.amber)
+                    Text(why).font(Theme.Font.micro).foregroundStyle(Theme.Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let honesty = f.stage_honesty, !honesty.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "info.circle").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+                    Text(honesty).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
             Button { Task { await model.endFast() } } label: {
                 Text("End fast").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                     .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
                     .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+            }
+            if let disclaimer = f.disclaimer, !disclaimer.isEmpty {
+                Text(disclaimer).font(.system(size: 10, design: .rounded)).foregroundStyle(Theme.Palette.textFaint)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

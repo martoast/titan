@@ -653,7 +653,12 @@ struct FastingStatus: Codable, Equatable {
     let pct: Int?
     let stage: String?
     let stage_blurb: String?
+    var pathway: String? = nil        // the survival pathway engaging now (mTOR / AMPK / autophagy…)
+    var stage_why: String? = nil      // one plain mechanism line — teach the why
+    var stage_honesty: String? = nil  // caveat where the human evidence is thin (nullable)
+    var next_stage: String? = nil
     let next_stage_in_h: Double?
+    var disclaimer: String? = nil     // the non-negotiable honest framing
 }
 
 /// `GET /api/me/health` · result of `POST /api/me/health/ingest`
