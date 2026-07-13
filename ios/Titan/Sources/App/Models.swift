@@ -451,12 +451,18 @@ struct MacroCard: Codable, Equatable {
     let protein: MacroLine
     let carbs: MacroLine
     let fat: MacroLine
+    var remaining_line: String? = nil   // "1,240 kcal · 63 g protein left" / "320 kcal over"
+    var over_budget: Bool? = nil
     let footer: String?
 }
 struct MacroLine: Codable, Equatable {
     let value: Int
     let target: Int
+    var remaining: Int? = nil           // server-computed "left" (nil on older payloads → fall back below)
+    var over: Bool? = nil
     var fraction: Double { target > 0 ? min(1, Double(value) / Double(target)) : 0 }
+    var left: Int { remaining ?? (target - value) }
+    var isOver: Bool { over ?? (value > target) }
 }
 
 struct Meal: Codable, Identifiable, Equatable {

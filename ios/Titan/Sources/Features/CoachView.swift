@@ -578,6 +578,11 @@ private struct MacrosCard: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(json["title"] as? String ?? String(localized: "Today's fuel"))
                 .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            // Lead with what's left (the daily glance), red once over budget.
+            if let line = json["remaining_line"] as? String, !line.isEmpty {
+                Text(verbatim: line).font(Theme.Font.micro.weight(.semibold))
+                    .foregroundStyle(json["over_budget"] as? Bool == true ? Theme.Palette.pink : Theme.Palette.mint)
+            }
             VStack(alignment: .leading, spacing: 5) {
                 HStack {
                     Text("Calories").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)

@@ -120,6 +120,12 @@ struct FuelSection: View {
             GlassCard {
                 VStack(spacing: Theme.Space.m) {
                     SectionHeader(title: m.title ?? "Today's fuel", trailing: m.footer)
+                    // The "what's left" glance — the highest-frequency thing a daily user checks.
+                    if let line = m.remaining_line, !line.isEmpty {
+                        Text(verbatim: line).font(Theme.Font.body.weight(.semibold))
+                            .foregroundStyle(m.over_budget == true ? Theme.Palette.pink : Theme.Palette.text)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     MacroRing(line: m.calories, label: "Calories", unit: "kcal", color: Theme.Palette.cyan, size: 132)
                     HStack(spacing: Theme.Space.m) {
                         MacroRing(line: m.protein, label: "Protein", unit: "g", color: Theme.Palette.mint, size: 86)
@@ -239,12 +245,14 @@ private struct MacroRing: View {
     @State private var progress: CGFloat = 0
 
     var body: some View {
+        // Over budget → the ring + readout flip to a warning tint (honesty: don't hide going over).
+        let ringColor = line.isOver ? Theme.Palette.pink : color
         VStack(spacing: 6) {
             ZStack {
                 Circle().stroke(Color.white.opacity(0.07), lineWidth: size * 0.085)
                 Circle().trim(from: 0, to: progress)
-                    .stroke(Theme.Grad.ring(color), style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round))
-                    .rotationEffect(.degrees(-90)).shadow(color: color.opacity(0.5), radius: 6)
+                    .stroke(Theme.Grad.ring(ringColor), style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round))
+                    .rotationEffect(.degrees(-90)).shadow(color: ringColor.opacity(0.5), radius: 6)
                 VStack(spacing: 0) {
                     Text("\(line.value)").font(Theme.Font.num(size * 0.26)).foregroundStyle(.white).monospacedDigit()
                     Text("/\(line.target)").font(Theme.Font.num(size * 0.12)).foregroundStyle(Theme.Palette.textFaint)
@@ -252,6 +260,9 @@ private struct MacroRing: View {
             }
             .frame(width: size, height: size)
             Text(label).font(Theme.Font.micro).tracking(0.6).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
+            // What's left (or how far over) — the glance a daily user actually wants.
+            Text(line.isOver ? "\(-line.left) \(unit) over" : "\(line.left) \(unit) left")
+                .font(Theme.Font.micro).foregroundStyle(line.isOver ? Theme.Palette.pink : Theme.Palette.textFaint)
         }
         .frame(maxWidth: .infinity)
         .onAppear { withAnimation(Theme.Motion.ring) { progress = CGFloat(line.fraction) } }

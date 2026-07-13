@@ -122,15 +122,41 @@ class Macros
             };
         }
 
+        $cal = (int) $meals->sum('calories');
+        $pro = (int) round((float) $meals->sum('protein_g'));
+        $carb = (int) round((float) $meals->sum('carbs_g'));
+        $fat = (int) round((float) $meals->sum('fat_g'));
+
         return [
             'type' => 'macros',
             'title' => "Today's fuel",
-            'calories' => ['value' => (int) $meals->sum('calories'), 'target' => $calT],
-            'protein' => ['value' => (int) round((float) $meals->sum('protein_g')), 'target' => $proT],
-            'carbs' => ['value' => (int) round((float) $meals->sum('carbs_g')), 'target' => $carbT],
-            'fat' => ['value' => (int) round((float) $meals->sum('fat_g')), 'target' => $fatT],
+            'calories' => self::macroLine($cal, $calT),
+            'protein' => self::macroLine($pro, $proT),
+            'carbs' => self::macroLine($carb, $carbT),
+            'fat' => self::macroLine($fat, $fatT),
+            // What's LEFT is the highest-frequency glance — lead with it; flip to over-budget when past target.
+            'remaining_line' => self::remainingLine($cal, $calT, $pro, $proT),
+            'over_budget' => $cal > $calT,
             'footer' => $logged.' meal'.($logged === 1 ? '' : 's').' logged'.($next ? ' · '.$next : ''),
         ];
+    }
+
+    /** One macro's consumed/target pair + what's left and whether it's over (MEAL_LOGGING_REVISION 1.2). */
+    private static function macroLine(int $value, int $target): array
+    {
+        return ['value' => $value, 'target' => $target, 'remaining' => $target - $value, 'over' => $value > $target];
+    }
+
+    /** "1,240 kcal · 63 g protein left" — or "320 kcal over" once past the calorie budget. */
+    private static function remainingLine(int $cal, int $calT, int $pro, int $proT): string
+    {
+        if ($cal > $calT) {
+            return number_format($cal - $calT).' kcal over';
+        }
+        $calLeft = number_format(max(0, $calT - $cal));
+        $proLeft = max(0, $proT - $pro);
+
+        return $proLeft > 0 ? "{$calLeft} kcal · {$proLeft} g protein left" : "{$calLeft} kcal left";
     }
 
     /** A `macros` card as a ready-to-embed titan-card fenced block. */
