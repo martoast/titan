@@ -469,6 +469,7 @@ struct LessonCard: View {
 
 struct SleepWeekCard: View {
     let json: [String: Any]
+    @Environment(\.cardAction) private var run
     private var days: [[String: Any]] { json["days"] as? [[String: Any]] ?? [] }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -486,20 +487,28 @@ struct SleepWeekCard: View {
                     }
                 }
             }
-            // The 7-night bar row.
+            // The 7-night bar row. Tap a logged night → open that night's hero timeline.
             HStack(alignment: .bottom, spacing: 5) {
                 ForEach(Array(days.enumerated()), id: \.offset) { _, d in
                     let score = jsonNum(d["score"]) ?? 0
                     let hit = d["hit"] as? Bool ?? false
                     let low = d["low"] as? Bool ?? false
                     let logged = d["logged"] as? Bool ?? false
-                    VStack(spacing: 4) {
-                        Spacer(minLength: 0)
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(!logged ? Color.white.opacity(0.06) : (low ? Theme.Palette.textFaint : (hit ? Theme.Palette.indigo : Theme.Palette.indigo.opacity(0.35))))
-                            .frame(height: max(logged ? 5 : 3, 44 * CGFloat(min(1, score / 100))))
-                        Text((d["weekday"] as? String)?.prefix(1).uppercased() ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-                    }.frame(maxWidth: .infinity, minHeight: 56)
+                    let date = d["date"] as? String
+                    Button {
+                        guard logged, let date else { return }
+                        Haptic.tap(); run(.intent("open_sleep_night", ["date": date]))
+                    } label: {
+                        VStack(spacing: 4) {
+                            Spacer(minLength: 0)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(!logged ? Color.white.opacity(0.06) : (low ? Theme.Palette.textFaint : (hit ? Theme.Palette.indigo : Theme.Palette.indigo.opacity(0.35))))
+                                .frame(height: max(logged ? 5 : 3, 44 * CGFloat(min(1, score / 100))))
+                            Text((d["weekday"] as? String)?.prefix(1).uppercased() ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        }.frame(maxWidth: .infinity, minHeight: 56)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!logged || date == nil)
                 }
             }
             if let streak = jsonNum(json["streak"]), streak > 0 {

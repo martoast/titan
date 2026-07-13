@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\SleepCoach;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 /**
  * The native Sleep view: last night's stages + the need/debt/performance read (SleepCoach) and a
@@ -59,6 +60,25 @@ class MobileSleepController extends Controller
             'week' => class_exists(\App\Support\SleepWeek::class)
                 ? rescue(fn () => \App\Support\SleepWeek::forProfile($profile, (string) $request->query('tz', config('app.timezone', 'UTC'))), null, false)
                 : null,
+        ]);
+    }
+
+    /**
+     * One night's full detail by local date (the Sleep Week per-night tap → the hero timeline). Reuses the
+     * same SleepDetail the main screen renders — story (with cycle_boundaries), hypnogram, and the v2 HR /
+     * motion series — so the tapped night looks identical to "last night". `SleepDetail::forProfile` picks
+     * the most recent night on/before the date, which for a real logged night IS that night.
+     */
+    public function night(Request $request): JsonResponse
+    {
+        $profile = $request->user()->profile ?? $request->user()->ensureProfile();
+        $day = null;
+        if ($date = $request->query('date')) {
+            $day = rescue(fn () => Carbon::parse($date), null, false);
+        }
+
+        return response()->json([
+            'detail' => \App\Support\SleepDetail::forProfile($profile, $day),
         ]);
     }
 }

@@ -46,6 +46,9 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
 
     // "Daily" hub: sleep breakdown + the women's cycle view (phase, fertile window, pregnancy chance).
     Route::get('/sleep', [\App\Http\Controllers\Api\MobileSleepController::class, 'show']);
+    // One specific night's full detail (story + hypnogram + v2 series) by local date — the Sleep Week
+    // per-night tap opens this in the hero timeline.
+    Route::get('/sleep/night', [\App\Http\Controllers\Api\MobileSleepController::class, 'night']);
     Route::get('/hr', [\App\Http\Controllers\Api\MobileHrController::class, 'show']);
     // Real-time stress (0–3, motion-gated) + the stress-over-day strip.
     Route::get('/stress', [\App\Http\Controllers\Api\MobileStressController::class, 'show']);

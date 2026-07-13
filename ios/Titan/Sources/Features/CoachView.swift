@@ -179,6 +179,7 @@ struct CoachView: View {
     @FocusState private var focused: Bool
     @State private var pulse = false
     @State private var cardBreathe: BreathPattern?   // a card tap that launches the breathing intervention
+    @State private var cardNight: SleepNightRef?     // a Sleep Week night tap → that night's hero
     @Environment(\.scenePhase) private var scenePhase
 
     /// Dispatch a tap on an interactive card (COACH CARDS v2). Prompt → a canned coach turn; intent →
@@ -190,6 +191,7 @@ struct CoachView: View {
         case .intent(let name, let args):
             switch name {
             case "breathe": cardBreathe = (args["pattern"] as? String == "box") ? .box : .physiologicalSigh
+            case "open_sleep_night": if let date = args["date"] as? String { cardNight = SleepNightRef(date: date) }
             default: break
             }
         case .tool(let name, _, _):
@@ -233,6 +235,7 @@ struct CoachView: View {
             .navigationTitle("Coach")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .fullScreenCover(item: $cardBreathe) { BreathingView(pattern: $0) }
+            .fullScreenCover(item: $cardNight) { SleepNightSheet(date: $0.date) }
             // Surface a reply that generated while away: reload the thread on open, resume any
             // still-cooking reply when returning to the foreground, pause polling in the background.
             .task { vm.reconcile(api: model.api) }

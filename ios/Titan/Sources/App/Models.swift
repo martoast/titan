@@ -151,6 +151,9 @@ struct PairResponse: Codable {
 }
 
 /// `GET /api/me/sleep`
+/// The `/me/sleep/night?date=` payload — just one night's detail (the Sleep Week per-night tap target).
+struct SleepNightResponse: Codable { let detail: SleepResponse.Detail? }
+
 struct SleepResponse: Codable {
     let assess: Assess?
     let detail: Detail?

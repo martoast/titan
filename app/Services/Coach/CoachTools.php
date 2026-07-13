@@ -2179,6 +2179,7 @@ class CoachTools
             'trend' => $w['trend'] ?? null,
             'streak' => $w['streak']['current'] ?? null,
             'days' => collect($w['days'] ?? [])->map(fn ($d) => array_filter([
+                'date' => $d['date'] ?? null,   // the per-night tap target (opens that night's hero)
                 'weekday' => $d['weekday'], 'score' => $d['score'], 'hit' => $d['hit_need'],
                 'low' => $d['low_confidence'], 'logged' => $d['logged'],
             ], fn ($v) => $v !== null))->values()->all(),

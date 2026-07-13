@@ -173,6 +173,11 @@ final class APIClient {
         try await send(request("api/me/sleep?tz=\(Self.localTZ)"), as: SleepResponse.self)
     }
 
+    /// One night's full detail by local date (yyyy-MM-dd) — the Sleep Week per-night tap opens this.
+    func sleepNight(date: String) async throws -> SleepResponse.Detail? {
+        try await send(request("api/me/sleep/night?date=\(date)"), as: SleepNightResponse.self).detail
+    }
+
     func hr() async throws -> HrResponse {
         try await send(request("api/me/hr"), as: HrResponse.self)
     }
