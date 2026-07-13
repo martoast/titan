@@ -2027,7 +2027,7 @@ class CoachTools
         // "How did I sleep?" gets the richer `nightstory` card (COACH CARDS v2): the mini hypnogram + the
         // story-of-your-night + its one takeaway, not a bare stat card. Falls back to `sleep` without a story.
         $story = rescue(fn () => class_exists(\App\Support\SleepStory::class)
-            ? \App\Support\SleepStory::forNight($last, $coach['need_h'] ?? null) : null, null, false);
+            ? \App\Support\SleepStory::forNight($last, $coach['baseline_h'] ?? null) : null, null, false);
         if (is_array($story) && ! empty($story['text'])) {
             $night = array_filter([
                 'type' => 'nightstory',

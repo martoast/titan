@@ -43,6 +43,9 @@ class SleepStoryTest extends TestCase
         $this->assertStringContainsStringIgnoringCase('5.6h', $story['takeaway']);
         $this->assertStringContainsStringIgnoringCase('debt', $story['takeaway']);
         $this->assertStringNotContainsStringIgnoringCase('textbook', $story['takeaway']);
+        // Uses the BASELINE need (8h) passed in — never a debt-inflated ~10h (review c683a67).
+        $this->assertStringContainsString('8h need', $story['takeaway']);
+        $this->assertStringNotContainsString('10h', $story['takeaway']);
         $this->assertStringContainsString('5.6h', $story['text']);
     }
 

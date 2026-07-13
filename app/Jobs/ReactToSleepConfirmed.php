@@ -67,7 +67,7 @@ class ReactToSleepConfirmed implements ShouldQueue
 
         // The story of the night (onset, deep distribution, wakes, REM cycles) — so the coach's read
         // matches what the app shows on the timeline. One narrative, both surfaces.
-        $story = rescue(fn () => class_exists(\App\Support\SleepStory::class) ? \App\Support\SleepStory::forNight($log, $assess['need_h'] ?? null) : null, null, false);
+        $story = rescue(fn () => class_exists(\App\Support\SleepStory::class) ? \App\Support\SleepStory::forNight($log, $assess['baseline_h'] ?? null) : null, null, false);
         if (is_array($story) && ! empty($story['text'])) {
             $facts .= ' STORY OF THE NIGHT (weave this in, teach the why briefly): '.$story['text'];
         }

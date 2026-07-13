@@ -153,7 +153,7 @@ class SleepDetail
             // cycles, one takeaway) that frames the hypnogram. Shared by app + web + coach. Null while
             // computing or without a hypnogram.
             'story' => (! $computing && ! $isNap && class_exists(\App\Support\SleepStory::class))
-                ? \App\Support\SleepStory::forNight($last, $assess['need_h'] ?? null) : null,
+                ? \App\Support\SleepStory::forNight($last, $assess['baseline_h'] ?? null) : null,
             'finalized_at' => $last->finalized_at?->toIso8601String(),
         ];
     }

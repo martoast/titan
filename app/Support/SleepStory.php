@@ -20,15 +20,18 @@ class SleepStory
     private const WAKE_RUN_EPOCHS = 10;   // a "wake" of ≥5 min is a real awakening; shorter is normal noise
 
     /**
-     * @param  ?float  $needH  tonight's sleep need (hours) — so the story judges SUFFICIENCY, not just
-     *                         architecture, and agrees with the debt ledger + Sleep Week (review fefbd4a).
+     * @param  ?float  $baselineH  the user's STABLE sleep need (baseline_h, ~8h) — NOT the debt-inflated,
+     *                             capped need_h. Sufficiency is "was this night enough vs your baseline",
+     *                             and debt is built by falling short of BASELINE, not of a target that's
+     *                             high because you're already in debt (review c683a67 — that was circular
+     *                             and told the user "you need 10h"). Tonight's elevated target is advice.
      * @return array{
      *   onset_min: ?int, deep_distribution: ?string, awakenings: array<int,array{at:string,min:int}>,
      *   rem_periods: int, asleep_h: float, need_h: ?float, short_by_h: ?float,
      *   takeaway: string, text: string, low_confidence: bool
      * }|null  null when there's no hypnogram to read
      */
-    public static function forNight(SleepLog $log, ?float $needH = null): ?array
+    public static function forNight(SleepLog $log, ?float $baselineH = null): ?array
     {
         $hyp = is_array($log->hypnogram) ? array_values($log->hypnogram) : [];
         if (count($hyp) < 4) {
@@ -42,7 +45,8 @@ class SleepStory
         $lightMin = (float) ($log->light_min ?? 0);
         $asleepMin = $deepMin + $remMin + $lightMin ?: (float) ($log->duration_min ?? 0);
         $asleepH = round($asleepMin / 60, 1);
-        $needH = $needH ?? self::needFor($log);
+        // The stable BASELINE need — falling short of THIS is what builds debt (not the debt-inflated need).
+        $needH = $baselineH ?? self::needFor($log);
         $shortBy = $needH !== null ? round($needH - $asleepH, 1) : null;
         // Healthy stage fractions: deep ~13–23%, REM ~20–25% of sleep. Below the floor = deficient.
         $deepLow = $asleepMin > 60 && ($deepMin / $asleepMin) < 0.11;
