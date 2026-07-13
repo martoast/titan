@@ -23,6 +23,75 @@ extension View {
     func coachCard() -> some View { modifier(CoachCardChrome()) }
 }
 
+// MARK: - Interactive card actions (COACH CARDS v2 · Thrust A2)
+
+/// A tap action a card can carry. The card is a shortcut — every action has a typed-text equivalent.
+/// `prompt` sends a canned coach turn; `tool` calls a coach tool directly (a write, with confirm/undo);
+/// `intent` is a client-side move (launch breathing, open the night, jump to a tab).
+enum CardAction: Equatable {
+    case prompt(String)
+    case tool(name: String, args: [String: Any], confirm: String)
+    case intent(String, [String: Any])
+
+    static func == (l: CardAction, r: CardAction) -> Bool { l.label == r.label }
+    var label: String {
+        switch self {
+        case .prompt(let p): return p
+        case .tool(let n, _, _): return n
+        case .intent(let i, _): return i
+        }
+    }
+
+    /// Decode the card JSON's `actions[]` into typed actions (ignores malformed entries).
+    static func list(from json: [String: Any]) -> [(label: String, action: CardAction)] {
+        guard let raw = json["actions"] as? [[String: Any]] else { return [] }
+        return raw.compactMap { a in
+            guard let label = a["label"] as? String else { return nil }
+            if let prompt = a["prompt"] as? String { return (label, .prompt(prompt)) }
+            if let tool = a["tool"] as? String {
+                return (label, .tool(name: tool, args: a["args"] as? [String: Any] ?? [:], confirm: (a["confirm"] as? String) ?? ""))
+            }
+            if let intent = a["intent"] as? String { return (label, .intent(intent, a["args"] as? [String: Any] ?? [:])) }
+            return nil
+        }
+    }
+}
+
+/// The environment hook every card's action row calls — CoachView provides it (send / tool / navigate).
+struct CardActionKey: EnvironmentKey {
+    static let defaultValue: (CardAction) -> Void = { _ in }
+}
+extension EnvironmentValues {
+    var cardAction: (CardAction) -> Void {
+        get { self[CardActionKey.self] }
+        set { self[CardActionKey.self] = newValue }
+    }
+}
+
+/// The row of tap targets rendered under any card that carries `actions[]`. One shared look + haptic.
+struct CardActionsRow: View {
+    let json: [String: Any]
+    @Environment(\.cardAction) private var run
+    var body: some View {
+        let actions = CardAction.list(from: json)
+        if !actions.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(Array(actions.enumerated()), id: \.offset) { _, a in
+                    Button { Haptic.tap(); run(a.action) } label: {
+                        Text(verbatim: a.label).font(Theme.Font.micro.weight(.semibold))
+                            .foregroundStyle(Theme.Palette.text)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(Theme.Palette.card, in: Capsule())
+                            .overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
+                    }.buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 8)
+        }
+    }
+}
+
 /// A thin progress capsule (value toward target). Shared by macros + the new widgets.
 struct CardBar: View {
     let value: Double

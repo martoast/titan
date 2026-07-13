@@ -706,7 +706,7 @@ class CoachTools
             'sleep_plan' => $this->sleepPlan(),
             'sleep_debt' => $this->sleepDebt(),
             'bloodwork_panel' => $this->bloodworkPanel(),
-            'macros_today' => ['card' => $this->macrosCard(), '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
+            'macros_today' => ['card' => $this->macrosCard() + ['actions' => [['label' => '＋ Log food', 'prompt' => 'I want to log a meal — help me add it.']]], '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
             'update_food' => $this->updateFood($args),
             'log_behavior' => $this->logBehavior($args),
@@ -1436,7 +1436,7 @@ class CoachTools
         }
 
         return [
-            'card' => \App\Support\Stack::today($this->profile),
+            'card' => \App\Support\Stack::today($this->profile) + ['actions' => [['label' => '✓ Log a dose', 'prompt' => 'Log the supplement I just took.']]],
             '_show' => 'Emit this `stack` card inside a ```titan-card fence, then one short, calm line on what is left today. Never nag about a missed dose.',
         ];
     }
@@ -2125,6 +2125,10 @@ class CoachTools
             'plan' => $d['payback']['plan'] ?? null,
             'tonight_target_h' => $d['payback']['tonight_target_h'] ?? null,
             'history' => collect($d['history'] ?? [])->map(fn ($h) => ['date' => $h['date'], 'balance' => $h['balance_h']])->values()->all(),
+            // Interactive (COACH CARDS v2): tap to act from the card.
+            'actions' => ($d['balance_h'] ?? 0) > 0
+                ? [['label' => '🌙 Plan an earlier night', 'prompt' => 'Help me plan an earlier bedtime tonight to pay down my sleep debt.']]
+                : null,
         ], fn ($v) => $v !== null && $v !== []);
 
         return ['card' => $card, '_show' => 'Open with this `sleep_debt` card inside a ```titan-card fence, then TEACH from the mechanism (owe from recent short nights, payable over ~2 weeks at ~an hour a night, can\'t bank ahead or clear it all at once) and give the ONE next night to chip at it. If balance is 0, celebrate "rested — no debt".'];

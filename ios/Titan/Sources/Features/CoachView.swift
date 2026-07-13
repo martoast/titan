@@ -178,7 +178,25 @@ struct CoachView: View {
     @StateObject private var recorder = AudioRecorder()
     @FocusState private var focused: Bool
     @State private var pulse = false
+    @State private var cardBreathe: BreathPattern?   // a card tap that launches the breathing intervention
     @Environment(\.scenePhase) private var scenePhase
+
+    /// Dispatch a tap on an interactive card (COACH CARDS v2). Prompt → a canned coach turn; intent →
+    /// a client move (launch breathing); every action also has a typed-text path, so this is a shortcut.
+    private func runCardAction(_ action: CardAction) {
+        switch action {
+        case .prompt(let text):
+            vm.send(api: model.api, text: text)
+        case .intent(let name, let args):
+            switch name {
+            case "breathe": cardBreathe = (args["pattern"] as? String == "box") ? .box : .physiologicalSigh
+            default: break
+            }
+        case .tool(let name, _, _):
+            // v1: route a write through the coach (it confirms) rather than a silent direct call.
+            vm.send(api: model.api, text: "Use \(name).")
+        }
+    }
 
     private let suggestions = ["How's my recovery?", "Plan today's workout", "How did I sleep?", "Log my breakfast"]
 
@@ -199,6 +217,7 @@ struct CoachView: View {
                             }
                             .padding(Theme.Space.m)
                         }
+                        .environment(\.cardAction, runCardAction)   // interactive coach cards
                         .scrollIndicators(.hidden)
                         .scrollDismissesKeyboard(.interactively)
                         // Tap anywhere in the conversation to dismiss the keyboard (buttons/chips
@@ -213,6 +232,7 @@ struct CoachView: View {
             }
             .navigationTitle("Coach")
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .fullScreenCover(item: $cardBreathe) { BreathingView(pattern: $0) }
             // Surface a reply that generated while away: reload the thread on open, resume any
             // still-cooking reply when returning to the foreground, pause polling in the background.
             .task { vm.reconcile(api: model.api) }
@@ -497,6 +517,7 @@ func jsonNum(_ any: Any?) -> Double? {
 private struct TitanCardView: View {
     let json: [String: Any]
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
         Group {
             switch json["type"] as? String {
             case "macros":                MacrosCard(json: json)
@@ -517,6 +538,9 @@ private struct TitanCardView: View {
             case "protocol", "plan":      ProtocolCard(json: json)
             default:                      GenericCard(json: json)
             }
+        }
+        // COACH CARDS v2: any card carrying `actions[]` gets a tap-target row — act from the chat.
+        CardActionsRow(json: json)
         }
         .frame(maxWidth: 300, alignment: .leading)
     }
