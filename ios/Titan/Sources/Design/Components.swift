@@ -363,6 +363,10 @@ struct SleepTimeline: View {
     // epochSec + i·30). Only measured epochs are present; missing indices are honest gaps, never drawn.
     var hrSeries: [SleepResponse.Detail.EpochPoint]? = nil      // top HR-peaks overlay
     var motionSeries: [SleepResponse.Detail.EpochPoint]? = nil  // bottom restlessness strip
+    // Ultradian cycle-boundary epoch indices from SleepStory (server) — the SAME filtered+capped set behind
+    // the story's REM-period count, so the marker count on the graph matches the sentence. When nil (naps /
+    // older nights with no story) the hero falls back to a local REM-run scan.
+    var cycleBoundaries: [Int]? = nil
 
     private static let epochLen = 30
     private var parsed: [SleepStage] { stages.map(SleepStage.parse) }
@@ -572,8 +576,8 @@ struct SleepTimeline: View {
 
         // Faint ultradian cycle boundaries behind the ribbon (end of each completed REM period).
         if emphasize {
-            for b in cycleBoundaries {
-                let x = CGFloat(b) * colW
+            for b in cycleMarkers {
+                let x = min(size.width - 1, CGFloat(b) * colW)   // a tail boundary (b == n) sits at the edge
                 var line = Path()
                 line.move(to: CGPoint(x: x, y: 0)); line.addLine(to: CGPoint(x: x, y: size.height))
                 ctx.stroke(line, with: .color(Theme.Palette.textFaint.opacity(0.35)),
@@ -624,9 +628,13 @@ struct SleepTimeline: View {
         }
     }
 
-    /// Epoch indices where a sleep cycle completes — the end of each REM run (the classic ultradian
-    /// marker). Skips a REM run that butts against the very end (a partial cycle isn't a boundary).
-    private var cycleBoundaries: [Int] {
+    /// Epoch indices where a sleep cycle completes. Prefer the server's `cycleBoundaries` (the SAME
+    /// filtered+capped set behind the story's REM-period count, so the marker count == the narrated count).
+    /// Only when it's absent (naps / older nights with no story) fall back to a local REM-run scan that
+    /// mirrors SleepStory's rules — REM runs ≥6 epochs (≥3 min), capped at ~one per 80 min asleep — so even
+    /// the fallback can't reintroduce the micro-REM over-count (review 04e14c5).
+    private var cycleMarkers: [Int] {
+        if let server = cycleBoundaries { return server }
         let p = parsed
         guard p.count > 6 else { return [] }
         var out: [Int] = []
@@ -635,11 +643,14 @@ struct SleepTimeline: View {
             if p[i] == .rem {
                 var j = i
                 while j < p.count && p[j] == .rem { j += 1 }
-                if j < p.count - 2 { out.append(j) }   // boundary at REM-run end, unless it's the tail
+                if j - i >= 6 { out.append(j == p.count ? p.count : j) }   // ≥3-min REM run only
                 i = j
             } else { i += 1 }
         }
-        return out
+        // Cap at the physiological max for the sleep time (asleep = non-hole epochs), earliest kept.
+        let asleepMin = Double(p.filter { !$0.isHole }.count) * Double(Self.epochLen) / 60
+        let cap = max(1, Int(asleepMin / 80))
+        return Array(out.prefix(cap))
     }
 
     /// The contiguous run (same stage) containing `index`, as [start, endExclusive).

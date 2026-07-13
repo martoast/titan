@@ -208,6 +208,9 @@ struct SleepResponse: Codable {
             let onset_min: Int?
             let deep_distribution: String?
             let rem_periods: Int?
+            var cycle_boundaries: [Int] = []   // epoch indices where each counted REM period ends — the
+                                               // timeline draws cycle markers here so the graph's marker
+                                               // count matches the story's narrated REM-period count
             let asleep_h: Double?
             let need_h: Double?
             let short_by_h: Double?

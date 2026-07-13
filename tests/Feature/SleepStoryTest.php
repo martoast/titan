@@ -69,6 +69,25 @@ class SleepStoryTest extends TestCase
         ]);
         $story = SleepStory::forNight($this->night($hyp, deep: 60, rem: 48, light: 180), 8.0);
         $this->assertLessThanOrEqual(3, $story['rem_periods']);
+        // The timeline draws markers from cycle_boundaries — its count MUST equal the narrated REM-period
+        // count (review 04e14c5: the graph and the sentence must agree), and the kept set is the earliest.
+        $this->assertCount($story['rem_periods'], $story['cycle_boundaries']);
+        $this->assertSame([42, 80, 118], $story['cycle_boundaries']);
+    }
+
+    public function test_cycle_boundaries_match_rem_count_and_filter_microREM(): void
+    {
+        // Two real REM runs (≥3 min) with a 1-min micro-REM between them that must NOT become a boundary.
+        $hyp = $this->hyp([
+            ['wake', 4], ['deep', 30], ['light', 40], ['rem', 12], ['light', 40],
+            ['rem', 2],  // micro-REM (1 min) — filtered, no boundary
+            ['light', 40], ['rem', 10], ['light', 30],
+        ]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 90, rem: 90, light: 180), 8.0);
+
+        $this->assertSame(2, $story['rem_periods']);
+        $this->assertSame([86, 178], $story['cycle_boundaries']);   // the two real runs' ends, micro excluded
+        $this->assertCount($story['rem_periods'], $story['cycle_boundaries']);
     }
 
     public function test_a_full_well_built_night_is_the_win(): void

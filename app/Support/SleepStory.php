@@ -27,7 +27,7 @@ class SleepStory
      *                             and told the user "you need 10h"). Tonight's elevated target is advice.
      * @return array{
      *   onset_min: ?int, deep_distribution: ?string, awakenings: array<int,array{at:string,min:int}>,
-     *   rem_periods: int, asleep_h: float, need_h: ?float, short_by_h: ?float,
+     *   rem_periods: int, cycle_boundaries: array<int,int>, asleep_h: float, need_h: ?float, short_by_h: ?float,
      *   takeaway: string, text: string, low_confidence: bool
      * }|null  null when there's no hypnogram to read
      */
@@ -84,8 +84,10 @@ class SleepStory
         $awakenings = self::awakenings($hyp, $onsetIdx, $lastSleep, $clock);
 
         // REM PERIODS (not "cycles") — real ~90-min NREM→REM completions, capped by the time asleep so a
-        // fragmented 4.5h night can't report 6 (micro-REM runs filtered; review finding #3).
-        [$remPeriods, $lastRemLong] = self::remPeriods($hyp, $asleepMin);
+        // fragmented 4.5h night can't report 6 (micro-REM runs filtered; review finding #3). The boundary
+        // epoch indices come from the SAME pass so the hero timeline's cycle markers match this count
+        // exactly (review 04e14c5 — the raw REM-run scan on the graph double-counted vs this sentence).
+        [$remPeriods, $lastRemLong, $cycleBoundaries] = self::remPeriods($hyp, $asleepMin);
 
         $ctx = compact('low', 'onsetMin', 'deepDist', 'awakenings', 'remPeriods', 'lastRemLong',
             'asleepH', 'needH', 'shortBy', 'deepLow', 'remLow', 'deepMin', 'remMin');
@@ -96,6 +98,7 @@ class SleepStory
             'deep_distribution' => $deepDist,
             'awakenings' => $awakenings,
             'rem_periods' => $remPeriods,
+            'cycle_boundaries' => $cycleBoundaries,
             'asleep_h' => $asleepH,
             'need_h' => $needH,
             'short_by_h' => $shortBy !== null && $shortBy > 0 ? $shortBy : null,
@@ -165,29 +168,36 @@ class SleepStory
 
     /** REM periods = ~90-min NREM→REM completions. Count only REM runs ≥3 min (micro-REM filtered) and cap
      *  at the physiological max for the time asleep (~one per 80 min), so a fragmented short night can't
-     *  report an implausible 6. @return array{0:int,1:bool} [periods, last-run-was-long] */
+     *  report an implausible 6. Also returns the epoch index where each COUNTED period ends (the transition
+     *  out of the REM run; a REM run touching the tail ends at `count` — the very end/wake), so the timeline
+     *  can draw cycle markers whose count == this narrated count. @return array{0:int,1:bool,2:array<int,int>}
+     *  [periods, last-run-was-long, cycle-boundary-epoch-indices] */
     private static function remPeriods(array $hyp, float $asleepMin): array
     {
-        $periods = 0;
+        $boundaries = [];
         $run = 0;
         $lastRun = 0;
-        foreach ($hyp as $c) {
-            if ($c === 'rem') {
+        $n = count($hyp);
+        for ($i = 0; $i < $n; $i++) {
+            if (($hyp[$i] ?? null) === 'rem') {
                 $run++;
                 $lastRun = $run;
             } else {
-                if ($run >= 6) {   // ≥3 min → a real REM period, not micro-REM
-                    $periods++;
+                if ($run >= 6) {          // ≥3 min → a real REM period, not micro-REM
+                    $boundaries[] = $i;   // period ends at the first non-REM epoch after the run
                 }
                 $run = 0;
             }
         }
         if ($run >= 6) {
-            $periods++;
+            $boundaries[] = $n;   // a REM run that runs to the record's end → boundary at wake/the end
         }
+        // The cap truncates from the front so the KEPT boundaries are the earliest (real) cycles, matching
+        // the count `min($periods, $cap)` the narrative uses.
         $cap = max(1, (int) floor($asleepMin / 80));
+        $boundaries = array_slice($boundaries, 0, $cap);
 
-        return [min($periods, $cap), $lastRun >= 20];
+        return [count($boundaries), $lastRun >= 20, $boundaries];
     }
 
     /** Weave the bits into ONE narrative with a single takeaway. @return array{0:string,1:string} */

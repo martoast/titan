@@ -169,7 +169,8 @@ struct SleepView: View {
                                       bedtime: d?.bedtime, wakeTime: d?.wake_time,
                                       computing: d?.stage_status == "computing",
                                       interactive: true,
-                                      hrSeries: d?.hr_series, motionSeries: d?.motion_series)
+                                      hrSeries: d?.hr_series, motionSeries: d?.motion_series,
+                                      cycleBoundaries: d?.story?.cycle_boundaries)
                     }
                 }
             }
