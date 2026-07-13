@@ -370,6 +370,51 @@ private struct DebtTrend: View {
     }
 }
 
+// MARK: - Night story (the story of your night as a card)
+
+struct NightStoryCard: View {
+    let json: [String: Any]
+    private var hypnogram: [String] { json["hypnogram"] as? [String] ?? [] }
+    var body: some View {
+        let low = json["low_confidence"] as? Bool == true
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                cardTitle("Last night")
+                if let h = jsonNum(json["hours"]) {
+                    Text(String(format: "%.1fh", h)).font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.text)
+                }
+                if let p = jsonNum(json["performance"]) { Text("· \(Int(p))%").font(Theme.Font.micro).foregroundStyle(Theme.Palette.indigo) }
+                Spacer()
+                if low { EstimateChip() }
+            }
+            if hypnogram.count > 4 {
+                SleepTimeline(stages: hypnogram, epochSec: json["epoch_sec"] as? Int,
+                              bedtime: json["bedtime"] as? String, interactive: false, mini: true)
+            }
+            if let text = json["story"] as? String, !text.isEmpty {
+                Text(text).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).fixedSize(horizontal: false, vertical: true)
+            }
+            if let takeaway = json["takeaway"] as? String, !takeaway.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "lightbulb.fill").font(.caption2).foregroundStyle(Theme.Palette.amber)
+                    Text(takeaway).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .coachCard()
+    }
+}
+
+/// The honesty chip (COACH CARDS v2 · A1) — an estimate/low-confidence card reads as an estimate, never a
+/// confident number. Same rule as the timeline + debt ledger.
+struct EstimateChip: View {
+    var body: some View {
+        Text("~ estimate").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.amber)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Theme.Palette.amber.opacity(0.14), in: Capsule())
+    }
+}
+
 // MARK: - Sleep plan (tonight's recommended bedtime)
 
 struct SleepPlanCard: View {

@@ -2019,6 +2019,28 @@ class CoachTools
             ], fn ($v) => $v !== null),
         ];
 
+        // "How did I sleep?" gets the richer `nightstory` card (COACH CARDS v2): the mini hypnogram + the
+        // story-of-your-night + its one takeaway, not a bare stat card. Falls back to `sleep` without a story.
+        $story = rescue(fn () => class_exists(\App\Support\SleepStory::class)
+            ? \App\Support\SleepStory::forNight($last, $coach['need_h'] ?? null) : null, null, false);
+        if (is_array($story) && ! empty($story['text'])) {
+            $night = array_filter([
+                'type' => 'nightstory',
+                'hours' => $card['hours'],
+                'performance' => $card['performance'],
+                'status' => $card['status'],
+                'low_confidence' => (bool) $last->low_confidence,
+                'bedtime' => $last->bedtime ? \Illuminate\Support\Carbon::parse($last->bedtime)->format('H:i') : null,
+                'epoch_sec' => rescue(fn () => \App\Support\SleepDetail::forProfile($this->profile)['epoch_sec'] ?? null, null, false),
+                'hypnogram' => is_array($last->hypnogram) && count($last->hypnogram) ? $last->hypnogram : null,
+                'story' => $story['text'],
+                'takeaway' => $story['takeaway'],
+                'actions' => [['label' => 'How do I improve this?', 'prompt' => 'How can I improve my sleep, based on last night?']],
+            ], fn ($v) => $v !== null && $v !== []);
+
+            return ['card' => $night, '_show' => 'Emit this `nightstory` card inside a ```titan-card fence. The card carries the full read + takeaway, so keep your text to ONE short, warm line — don\'t restate the story.'];
+        }
+
         return ['card' => $card, '_show' => 'Open with this `sleep` card inside a ```titan-card fence, then one short read of the night.'];
     }
 
