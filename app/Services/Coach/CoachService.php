@@ -680,6 +680,12 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
                 ."\nKeep this goal front and centre: connect your advice back to it, frame progress against it, and when they ask how they're doing / if they're on track, call physique_progress. This is the whole point -- make every week move them toward it.";
         }
 
+        // Longevity/fasting honesty guardrails — the shared source of truth so the coach's answers agree
+        // with the fasting card copy and never overstate the science (FASTING_EVIDENCE T3).
+        if (class_exists(\App\Support\LongevityKnowledge::class)) {
+            $prompt .= "\n\n".\App\Support\LongevityKnowledge::coachGuardrails();
+        }
+
         $cycle = class_exists(\App\Support\Cycle::class) ? \App\Support\Cycle::coachDigest($profile) : '';
         if ($cycle !== '') {
             $prompt .= "\n\n--- HER CYCLE TODAY (factor this into EVERYTHING) ---\n".$cycle

@@ -39,6 +39,7 @@ class CoachTools
         'set_goal_weight' => 'weight', 'weight_progress' => 'weight',
         'log_water' => 'hydration', 'hydration_today' => 'hydration',
         'start_fast' => 'fasting', 'end_fast' => 'fasting', 'fasting_status' => 'fasting',
+        'set_eating_window' => 'fasting', 'longevity_knowledge' => 'fasting',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
         'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device', 'spot_reading' => 'device',
@@ -57,7 +58,10 @@ class CoachTools
         'journal' => ['drink', 'drank', 'alcohol', 'beer', 'wine', 'hungover', 'caffeine', 'coffee late', 'stayed up', 'stress', 'anxious', 'meditat', 'sauna', 'cold plunge', 'ice bath', 'journal', 'late meal', 'late dinner', 'ate out', 'takeout', 'screens', 'magnesium', 'napped', 'what affects my', 'what hurts my', 'what helps my', 'my impacts', 'my discoveries', 'how was my day', 'log my day', 'insight', 'what should i know', 'anything i should know', 'my feed'],
         'weight' => ['weigh', 'weight', 'lose', 'losing', 'lost', 'lbs', 'pounds', ' kg', 'goal weight', 'target weight', 'trend', 'scale', 'cut', 'bulk', 'slim', 'get lean', 'leaner', 'drop', 'on track', 'how am i doing'],
         'hydration' => ['water', 'hydrate', 'hydration', 'thirsty', 'glass of', 'bottle of', 'how much water', ' oz ', 'fluids', 'drank water'],
-        'fasting' => ['fast', 'fasting', 'eating window', '16:8', '18:6', 'omad', 'broke my fast', 'break my fast', 'started fasting', 'intermittent'],
+        'fasting' => ['fast', 'fasting', 'eating window', '16:8', '18:6', 'omad', 'broke my fast', 'break my fast', 'started fasting', 'intermittent',
+            // longevity/CR questions load the same group (longevity_knowledge lives here)
+            'longevity', 'anti-aging', 'anti aging', 'reverse aging', 'live longer', 'healthspan', 'lifespan', 'biological age',
+            'autophagy', 'sirtuin', 'nad', 'nmn', 'resveratrol', 'metformin', 'rapamycin', 'spermidine', 'senolytic', 'caloric restriction', 'calorie restriction', 'time-restricted', 'time restricted'],
         'research' => ['research', 'look into', 'deep dive', 'learn about', 'find out about', 'studies on'],
         'reminders' => ['remind', 'notification', 'nudge', 'be more on me', 'less on me', 'stop reminding'],
         'device' => ['buzz', 'find my band', 'find my watch', "where's my band", 'where is my band', 'ping my band', 'sync now', 'lost my band', 'locate my band', 'make my band', 'make it buzz', 'pair', 'connect my band', 'connect my watch', 'set up my band', 'setup my band', 'link my band', 'got my band', 'new band', 'take a reading', 'spot reading', 'spot check', 'check my hrv', 'read my hrv', 'my hrv now', 'how recovered am i', 'recovered right now', 'live reading', 'check my heart rate', 'take a measurement'],
@@ -515,6 +519,7 @@ class CoachTools
             'plan' => ['type' => 'string', 'enum' => ['12:12', '14:10', '16:8', '18:6', 'omad'], 'description' => 'Window ratio (fast:eat). omad = one meal a day.'],
             'start' => ['type' => 'string', 'description' => "When the eating window OPENS, 'HH:MM' 24h (e.g. 12:00)."],
         ], ['plan', 'start']);
+        $tools[] = $this->fn('longevity_knowledge', "The calibrated longevity/fasting knowledge pack — the survival pathways (mTOR/AMPK/sirtuins/autophagy) and the honest human evidence. Call it when the user asks WHY fasting/CR helps, about a longevity supplement (NMN, resveratrol, metformin, rapamycin…), or 'does fasting reverse aging'. Answer from it (calibrated, never hype) and teach a `lesson` card.", [], []);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -611,6 +616,7 @@ class CoachTools
             'end_fast' => 'Ending your fast',
             'fasting_status' => 'Checking your fast',
             'set_eating_window' => 'Setting your eating window',
+            'longevity_knowledge' => 'Checking the longevity research',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -752,6 +758,7 @@ class CoachTools
             'start_fast' => $this->startFast($args),
             'end_fast' => $this->endFast(),
             'set_eating_window' => $this->setEatingWindow($args),
+            'longevity_knowledge' => ['knowledge' => \App\Support\LongevityKnowledge::pack(), '_show' => 'Answer their question from this pack, CALIBRATED to the human evidence (animal-vs-human explicit, never "reverse aging" or a supplement lifespan claim). Teach the mechanism as a `lesson` card, then one honest takeaway.'],
             'fasting_status' => \App\Support\Fasting::card($this->profile) + ['_show' => 'Emit this `fasting` card in a ```titan-card fence; one line on elapsed vs goal + the current stage. If not active, suggest starting one. If the card has a `protein_flag`, raise it: their eating window is too short to fit the protein they still need — protein protects muscle (elders/lifters need MORE), so nudge them to front-load protein or widen the window, not fast harder.'],
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
