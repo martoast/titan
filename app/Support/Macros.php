@@ -90,14 +90,21 @@ class Macros
         return ['calories' => $cal, 'protein_g' => round($p, 1), 'carbs_g' => round($c, 1), 'fat_g' => round($f, 1)];
     }
 
-    /** @return array<string,mixed> the `macros` titan-card payload */
-    public static function today(Profile $profile): array
+    /**
+     * The macro-ring card for a day (today by default). `$date` (yyyy-MM-dd, profile-local) scopes it to
+     * a past day for the Fuel history pager (MEAL_LOGGING_REVISION 2.1).
+     *
+     * @return array<string,mixed> the `macros` titan-card payload
+     */
+    public static function today(Profile $profile, ?string $date = null): array
     {
-        // The user's local "today", expressed in the storage (app) timezone so it matches
-        // how meals are saved (Eloquent stores the wall-clock in the app timezone).
+        // The user's local day, expressed in the storage (app) timezone so it matches how meals are
+        // saved (Eloquent stores the wall-clock in the app timezone).
         $appTz = config('app.timezone', 'UTC');
         $tz = $profile->settings['timezone'] ?? $appTz;
-        $start = Carbon::now($tz)->startOfDay()->setTimezone($appTz);
+        $isToday = $date === null;
+        $start = ($isToday ? Carbon::now($tz)->startOfDay() : Carbon::parse($date, $tz)->startOfDay())
+            ->setTimezone($appTz);
         $end = $start->copy()->addDay();
         $meals = $profile->meals()->where('eaten_at', '>=', $start)->where('eaten_at', '<', $end)->get();
 
@@ -111,7 +118,7 @@ class Macros
 
         $logged = $meals->count();
         $next = null;
-        if (class_exists(MealCoach::class)) {
+        if ($isToday && class_exists(MealCoach::class)) {   // "next meal" only makes sense for today
             $mc = rescue(fn () => MealCoach::assess($profile), null, false);
             $next = match ($mc['status'] ?? null) {
                 'done' => 'all meals in',
@@ -129,7 +136,7 @@ class Macros
 
         return [
             'type' => 'macros',
-            'title' => "Today's fuel",
+            'title' => $isToday ? "Today's fuel" : Carbon::parse($date, $tz)->isoFormat('ddd, MMM D'),
             'calories' => self::macroLine($cal, $calT),
             'protein' => self::macroLine($pro, $proT),
             'carbs' => self::macroLine($carb, $carbT),

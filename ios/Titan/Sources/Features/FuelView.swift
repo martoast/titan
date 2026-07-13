@@ -16,40 +16,25 @@ struct FuelSection: View {
     @State private var showQuickAdd = false
     @AppStorage("barcodeScanEnabled") private var barcodeEnabled = true
 
+    private var isToday: Bool { Calendar.current.isDateInToday(model.fuelDate) }
+
     var body: some View {
         VStack(spacing: Theme.Space.m) {
-            // Hero: snap a meal, then tell the AI what it is (a note makes the macros far more accurate).
-            PhotoSourceButton(onImage: { data in staged = StagedMealPhoto(data: data) }) {
-                GlassCard(padding: Theme.Space.l) {
-                    HStack(spacing: Theme.Space.m) {
-                        ZStack {
-                            Circle().fill(Theme.Palette.amber.opacity(0.16)).frame(width: 52, height: 52)
-                            Image(systemName: model.scanning ? "sparkles" : "camera.fill")
-                                .font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.Palette.amber)
-                                .symbolEffect(.pulse, options: model.scanning ? .repeating : .nonRepeating)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            (model.scanning ? Text("Reading your plate…") : Text("Snap a meal"))
-                                .font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
-                            (model.scanning ? Text("Estimating macros with AI") : Text("Snap it, tell me what it is → accurate macros"))
-                                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                        }
-                        Spacer()
-                        if model.scanning { ProgressView().tint(Theme.Palette.amber) }
-                        else { Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint) }
-                    }
-                }
+            datePager
+            if isToday {
+                snapHero
+                if barcodeEnabled { barcodeButton }
+                manualAddButton
+                yourMealsCard
+                macrosCard
+                HydrationCard()
+                FastingCard()
+                mealsList
+            } else {
+                // A past day is review-only — the "log now" actions belong to today. Just the day's totals + meals.
+                macrosCard
+                mealsList
             }
-            .buttonStyle(PressCard())
-            .disabled(model.scanning)
-
-            if barcodeEnabled { barcodeButton }
-            manualAddButton
-            yourMealsCard
-            macrosCard
-            HydrationCard()
-            FastingCard()
-            mealsList
         }
         .task { await model.loadNutrition() }
         .sheet(isPresented: $showQuickAdd) { QuickAddMealSheet() }
@@ -63,6 +48,61 @@ struct FuelSection: View {
         .alert("Barcode scanning unavailable", isPresented: $scannerUnavailable) {
             Button("OK", role: .cancel) {}
         } message: { Text("This device can't scan barcodes. Snap the nutrition label instead.") }
+    }
+
+    /// Fuel history pager — scroll back to any past day; forward is capped at today (2.1).
+    private var datePager: some View {
+        HStack(spacing: Theme.Space.s) {
+            pagerButton("chevron.left", enabled: true) { Task { await model.stepFuelDay(-1) } }
+            Spacer()
+            Text(fuelDateLabel).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            Spacer()
+            pagerButton("chevron.right", enabled: model.canFuelGoForward) { Task { await model.stepFuelDay(1) } }
+        }
+    }
+
+    private func pagerButton(_ icon: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 15, weight: .bold))
+                .foregroundStyle(enabled ? Theme.Palette.text : Theme.Palette.textFaint)
+                .frame(width: 44, height: 36)
+                .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+        }.buttonStyle(.plain).disabled(!enabled)
+    }
+
+    private var fuelDateLabel: String {
+        let cal = Calendar.current
+        if cal.isDateInToday(model.fuelDate) { return String(localized: "Today") }
+        if cal.isDateInYesterday(model.fuelDate) { return String(localized: "Yesterday") }
+        let f = DateFormatter(); f.dateFormat = "EEE, MMM d"; return f.string(from: model.fuelDate)
+    }
+
+    /// The snap-a-meal hero (today only) — snap, then tell the AI what it is for accurate macros.
+    private var snapHero: some View {
+        PhotoSourceButton(onImage: { data in staged = StagedMealPhoto(data: data) }) {
+            GlassCard(padding: Theme.Space.l) {
+                HStack(spacing: Theme.Space.m) {
+                    ZStack {
+                        Circle().fill(Theme.Palette.amber.opacity(0.16)).frame(width: 52, height: 52)
+                        Image(systemName: model.scanning ? "sparkles" : "camera.fill")
+                            .font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.Palette.amber)
+                            .symbolEffect(.pulse, options: model.scanning ? .repeating : .nonRepeating)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        (model.scanning ? Text("Reading your plate…") : Text("Snap a meal"))
+                            .font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                        (model.scanning ? Text("Estimating macros with AI") : Text("Snap it, tell me what it is → accurate macros"))
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    }
+                    Spacer()
+                    if model.scanning { ProgressView().tint(Theme.Palette.amber) }
+                    else { Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint) }
+                }
+            }
+        }
+        .buttonStyle(PressCard())
+        .disabled(model.scanning)
     }
 
     /// Scan a packaged product's barcode → exact macros from Open Food Facts, then confirm the amount.

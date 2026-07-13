@@ -165,8 +165,10 @@ final class APIClient {
 
     // MARK: nutrition (Fuel tab)
 
-    func nutritionToday() async throws -> NutritionToday {
-        try await send(request("api/me/nutrition"), as: NutritionToday.self)
+    /// A day's fuel. `date` (yyyy-MM-dd) scopes to a past day for the Fuel history pager; nil → today.
+    func nutritionToday(date: String? = nil) async throws -> NutritionToday {
+        let path = date.map { "api/me/nutrition?date=\($0)" } ?? "api/me/nutrition"
+        return try await send(request(path), as: NutritionToday.self)
     }
 
     func sleepDetail() async throws -> SleepResponse {

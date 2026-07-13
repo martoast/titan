@@ -440,6 +440,7 @@ struct CoachScanResult: Codable {
 
 /// `GET /api/me/nutrition` — the macro-ring card + today's logged meals.
 struct NutritionToday: Codable, Equatable {
+    var date: String? = nil   // the resolved local day being viewed (nil → today) — Fuel history pager
     let macros: MacroCard
     let meals: [Meal]
 }

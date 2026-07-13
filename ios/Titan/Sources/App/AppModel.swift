@@ -706,11 +706,34 @@ final class AppModel: ObservableObject {
 
     // MARK: nutrition + progress (Fuel tab)
 
+    /// The day the Fuel tab is showing (local). Today by default; the pager moves it back/forward.
+    @Published var fuelDate = Calendar.current.startOfDay(for: Date())
+
+    private var isFuelToday: Bool { Calendar.current.isDateInToday(fuelDate) }
+
+    private static let ymd: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = .current; return f
+    }()
+
     func loadNutrition() async {
-        do { nutrition = try await api.nutritionToday() }
+        // Pass the date only for a past day — today stays nil so the card keeps its "next meal" + title.
+        let date = isFuelToday ? nil : Self.ymd.string(from: fuelDate)
+        do { nutrition = try await api.nutritionToday(date: date) }
         catch { if case APIError.unauthorized = error { await handleUnauthorized() } }
         await loadMealLibrary()
     }
+
+    /// Fuel history pager: step the viewed day and reload. Forward is capped at today.
+    func stepFuelDay(_ days: Int) async {
+        let cal = Calendar.current
+        let next = cal.startOfDay(for: cal.date(byAdding: .day, value: days, to: fuelDate) ?? fuelDate)
+        guard next <= cal.startOfDay(for: Date()) else { return }   // never past today
+        fuelDate = next
+        Haptic.tap()
+        await loadNutrition()
+    }
+
+    var canFuelGoForward: Bool { !isFuelToday }
 
     /// "Your meals" — the remembered dishes, ranked. Best-effort; a failure just leaves the last list.
     func loadMealLibrary() async {

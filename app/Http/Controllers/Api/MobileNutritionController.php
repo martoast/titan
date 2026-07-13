@@ -27,15 +27,35 @@ class MobileNutritionController extends Controller
 {
     public function __construct(protected ScanService $scan, protected MealMemory $memory, protected OpenFoodFacts $off) {}
 
-    /** Today's fuel: the macro-ring card + the meals logged today. */
+    /**
+     * A day's fuel: the macro-ring card + that day's meals. `?date=yyyy-MM-dd` (profile-local) scopes to a
+     * past day for the Fuel history pager; omitted → today (MEAL_LOGGING_REVISION 2.1).
+     */
     public function index(Request $request): JsonResponse
     {
         $profile = $this->profile($request);
+        $date = $this->validDate($request->query('date'), $profile);
 
         return response()->json([
-            'macros' => Macros::today($profile),
-            'meals' => $this->todaysMeals($profile)->map(fn (Meal $m) => $this->mealJson($m))->values(),
+            'date' => $date,   // the resolved local day the client is viewing (null → today)
+            'macros' => Macros::today($profile, $date),
+            'meals' => $this->mealsForDay($profile, $date)->map(fn (Meal $m) => $this->mealJson($m))->values(),
         ]);
+    }
+
+    /** A valid past-or-today yyyy-MM-dd in the profile tz, or null (today). Guards against junk + future dates. */
+    private function validDate(?string $raw, Profile $profile): ?string
+    {
+        if (! $raw) {
+            return null;
+        }
+        $tz = $profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $day = rescue(fn () => Carbon::parse($raw, $tz)->startOfDay(), null, false);
+        if (! $day || $day->greaterThan(Carbon::now($tz)->startOfDay())) {
+            return null;   // unparseable or in the future → treat as today
+        }
+
+        return $day->toDateString();
     }
 
     /**
@@ -314,11 +334,13 @@ class MobileNutritionController extends Controller
     }
 
     /** @return \Illuminate\Support\Collection<int,Meal> */
-    private function todaysMeals(Profile $profile)
+    /** The meals for a profile-local day (today when $date is null), newest first. */
+    private function mealsForDay(Profile $profile, ?string $date = null)
     {
         $appTz = config('app.timezone', 'UTC');
         $tz = $profile->settings['timezone'] ?? $appTz;
-        $start = Carbon::now($tz)->startOfDay()->setTimezone($appTz);
+        $start = ($date ? Carbon::parse($date, $tz)->startOfDay() : Carbon::now($tz)->startOfDay())
+            ->setTimezone($appTz);
 
         return $profile->meals()
             ->where('eaten_at', '>=', $start)
