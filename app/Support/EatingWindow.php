@@ -113,21 +113,24 @@ class EatingWindow
         if ($cfg === null) {
             return null;
         }
-        $tz = $tz ?: ($profile->settings['timezone'] ?? config('app.timezone', 'UTC'));
         $startMin = self::startMinute($cfg['start']);
         $lenMin = self::windowLengthMin($cfg['plan']);
         $eatH = self::PLANS[$cfg['plan']];
 
-        $now = Carbon::now($tz);
+        // TZ FRAME (review af83f57): `Meal.eaten_at` is a wall-clock anchored to app.timezone — the exact
+        // time the app DISPLAYS, and the frame the user set their window against. Compare meal times AND
+        // "now" in THAT frame (app tz), never re-converting to profile.settings.timezone: setTimezone would
+        // shift the wall-clock by the app-vs-profile offset and mis-flag edge meals (a noon meal → 11am).
+        // (The deeper fault — app.timezone ≠ the user's real tz — is out of scope here; see the memory.)
+        $appTz = config('app.timezone', 'UTC');
+        $now = Carbon::now($appTz);
         $open = self::contains($now->hour * 60 + $now->minute, $startMin, $lenMin);
 
-        // Meals grouped by local day (last LOOKBACK_DAYS) for adherence + streak.
-        $appTz = config('app.timezone', 'UTC');
-        $since = $now->copy()->subDays(self::LOOKBACK_DAYS)->startOfDay()->setTimezone($appTz);
-        $byDay = [];   // 'Y-m-d' (local) => [minuteOfDay, …]
+        // Meals grouped by app-tz calendar day (last LOOKBACK_DAYS) for adherence + streak.
+        $since = $now->copy()->subDays(self::LOOKBACK_DAYS)->startOfDay();
+        $byDay = [];   // 'Y-m-d' (app tz) => [minuteOfDay, …]
         foreach ($profile->meals()->where('eaten_at', '>=', $since)->get() as $meal) {
-            $local = $meal->eaten_at->copy()->setTimezone($tz);
-            $byDay[$local->toDateString()][] = $local->hour * 60 + $local->minute;
+            $byDay[$meal->eaten_at->toDateString()][] = $meal->eaten_at->hour * 60 + $meal->eaten_at->minute;
         }
 
         $todayKey = $now->toDateString();
@@ -190,16 +193,15 @@ class EatingWindow
     }
 
     /** Was a meal eaten OUTSIDE the configured window? null when no window is set (nothing to judge). */
-    public static function mealOutside(Profile $profile, Carbon $eatenAt, ?string $tz = null): ?bool
+    public static function mealOutside(Profile $profile, Carbon $eatenAt): ?bool
     {
         $cfg = self::config($profile);
         if ($cfg === null) {
             return null;
         }
-        $tz = $tz ?: ($profile->settings['timezone'] ?? config('app.timezone', 'UTC'));
-        $local = $eatenAt->copy()->setTimezone($tz);
-
-        return ! self::contains($local->hour * 60 + $local->minute, self::startMinute($cfg['start']), self::windowLengthMin($cfg['plan']));
+        // Read the meal's wall-clock in the frame it's stored/displayed in (app tz) — DON'T setTimezone to
+        // a different zone or edge meals flip (review af83f57). `eaten_at` is already cast in app tz.
+        return ! self::contains($eatenAt->hour * 60 + $eatenAt->minute, self::startMinute($cfg['start']), self::windowLengthMin($cfg['plan']));
     }
 
     /** The honest one-liner shown wherever the window appears. */

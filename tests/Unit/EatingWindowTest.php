@@ -44,6 +44,24 @@ class EatingWindowTest extends TestCase
         $this->assertFalse(EatingWindow::contains(19 * 60, $start, $len));  // 19:00 before it opens
     }
 
+    public function test_meal_just_inside_the_edge_is_not_flagged_outside(): void
+    {
+        // Regression (review af83f57): a 12:07 meal must read INSIDE a 12:00 window. Previously a tz
+        // setTimezone shifted 12:07 → 11:07 and mis-flagged it outside.
+        $start = EatingWindow::startMinute('12:00');
+        $len = EatingWindow::windowLengthMin('16:8');   // 12:00–20:00
+        $this->assertTrue(EatingWindow::contains(12 * 60 + 7, $start, $len));
+        $this->assertTrue(EatingWindow::dayAdherent([12 * 60 + 7], $start, $len));
+    }
+
+    public function test_mealOutside_reads_the_stored_wallclock_no_tz_shift(): void
+    {
+        // The fixed mealOutside must NOT re-convert eaten_at to another tz. An in-window 12:07 → false.
+        $p = new \App\Models\Profile(['settings' => ['eating_window' => ['plan' => '16:8', 'start' => '12:00']]]);
+        $this->assertFalse(EatingWindow::mealOutside($p, \Illuminate\Support\Carbon::parse('2026-07-13 12:07:00')));
+        $this->assertTrue(EatingWindow::mealOutside($p, \Illuminate\Support\Carbon::parse('2026-07-13 08:00:00')));   // real breakfast, outside
+    }
+
     public function test_day_adherence(): void
     {
         $start = EatingWindow::startMinute('12:00');
