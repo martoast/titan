@@ -243,6 +243,56 @@ class MobileNutritionController extends Controller
         return response()->json(['meal' => $this->mealJson($meal), 'macros' => Macros::today($profile)]);
     }
 
+    /**
+     * Copy a past day's meals to today — "log this day again", for people on repeating diets
+     * (MEAL_LOGGING_REVISION 2.3). Each meal is re-created at today's date keeping its time-of-day (clamped
+     * to now, never the future), reconciled + stamped source 'memory'. App-tz frame, per the meal-tz fault.
+     */
+    public function copyDay(Request $request): JsonResponse
+    {
+        $profile = $this->profile($request);
+        $date = $this->validDate($request->input('date'), $profile);
+        if ($date === null) {
+            return response()->json(['error' => 'A valid past date is required.'], 422);
+        }
+        $meals = $this->mealsForDay($profile, $date);
+        if ($meals->isEmpty()) {
+            return response()->json(['error' => 'No meals were logged that day to copy.'], 422);
+        }
+
+        $appTz = config('app.timezone', 'UTC');
+        $tz = $profile->settings['timezone'] ?? $appTz;
+        $todayLocal = Carbon::now($tz)->toDateString();
+
+        $copied = 0;
+        foreach ($meals as $m) {
+            // Today's date + the meal's original wall-clock time (the frame it's displayed in); clamp future.
+            $eatenAt = Carbon::parse($todayLocal.' '.$m->eaten_at->format('H:i:s'), $appTz);
+            if ($eatenAt->isFuture()) {
+                $eatenAt = Carbon::now();
+            }
+            $rc = Macros::reconcile((int) $m->calories, (float) $m->protein_g, (float) $m->carbs_g, (float) $m->fat_g);
+            $profile->meals()->create([
+                'name' => $m->name,
+                'eaten_at' => $eatenAt,
+                'calories' => $rc['calories'],
+                'protein_g' => $rc['protein_g'],
+                'carbs_g' => $rc['carbs_g'],
+                'fat_g' => $rc['fat_g'],
+                'photo_path' => $m->photo_path,
+                'source' => 'memory',
+            ]);
+            $copied++;
+        }
+
+        return response()->json([
+            'ok' => true,
+            'copied' => $copied,
+            'macros' => Macros::today($profile),
+            'meals' => $this->mealsForDay($profile)->map(fn (Meal $m) => $this->mealJson($m))->values(),
+        ]);
+    }
+
     /** Correct an AI estimate (or any meal). */
     public function update(Request $request, int $meal): JsonResponse
     {

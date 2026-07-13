@@ -125,6 +125,8 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::post('/nutrition/barcode', [\App\Http\Controllers\Api\MobileNutritionController::class, 'barcode']);
     Route::post('/meals/confirm', [\App\Http\Controllers\Api\MobileNutritionController::class, 'confirm']);
     Route::post('/meals', [\App\Http\Controllers\Api\MobileNutritionController::class, 'store']);
+    // Copy a past day's meals to today ("log this day again") — for people on repeating diets.
+    Route::post('/meals/copy-day', [\App\Http\Controllers\Api\MobileNutritionController::class, 'copyDay']);
     Route::patch('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'update']);
     Route::delete('/meals/{meal}', [\App\Http\Controllers\Api\MobileNutritionController::class, 'destroy']);
     // Meal memory ("Your meals"): the profile's remembered dishes + one-tap re-log (no camera/AI).

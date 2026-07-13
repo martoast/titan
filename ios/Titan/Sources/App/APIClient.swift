@@ -218,6 +218,11 @@ final class APIClient {
     }
 
     /// Confirm a scanned draft (after the user set the amount) → log it, re-attaching the scan's photo.
+    /// Copy a past day's meals to today ("log this day again"). Returns the refreshed today payload.
+    func copyDay(date: String) async throws -> NutritionToday {
+        try await send(request("api/me/meals/copy-day", method: "POST", json: ["date": date]), as: NutritionToday.self)
+    }
+
     /// Manual quick-add (no photo/barcode) → POST /meals. Optional P/C/F default to 0; the server
     /// reconciles them against the calories, so "300 kcal" alone still stores a sensible split.
     func storeMeal(name: String, calories: Int, protein: Double?, carbs: Double?, fat: Double?, eatenAt: Date?) async throws -> MealMutation {

@@ -33,6 +33,7 @@ struct FuelSection: View {
             } else {
                 // A past day is review-only — the "log now" actions belong to today. Just the day's totals + meals.
                 macrosCard
+                if !(model.nutrition?.meals.isEmpty ?? true) { copyDayButton }
                 mealsList
             }
         }
@@ -126,6 +127,28 @@ struct FuelSection: View {
         }
         .buttonStyle(PressCard())
         .disabled(model.scanning)
+    }
+
+    /// Copy this past day's meals to today — for repeating diets. Re-logs them and jumps to today (2.3).
+    @State private var copyingDay = false
+    private var copyDayButton: some View {
+        Button {
+            copyingDay = true
+            Task { await model.copyCurrentFuelDay(); copyingDay = false }
+        } label: {
+            HStack(spacing: Theme.Space.s) {
+                if copyingDay { ProgressView().tint(Theme.Palette.mint) }
+                else { Image(systemName: "doc.on.doc.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.Palette.mint) }
+                Text("Log this day again").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                Spacer()
+                Image(systemName: "arrow.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+            }
+            .padding(Theme.Space.m)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+        }
+        .buttonStyle(PressCard())
+        .disabled(copyingDay)
     }
 
     /// Manual quick-add — log a meal you didn't photograph or remember, without leaving the tab (the #1

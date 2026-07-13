@@ -735,6 +735,19 @@ final class AppModel: ObservableObject {
 
     var canFuelGoForward: Bool { !isFuelToday }
 
+    /// Copy the viewed PAST day's meals to today, then jump to today showing the refreshed totals (2.3).
+    func copyCurrentFuelDay() async {
+        guard !isFuelToday else { return }
+        let date = Self.ymd.string(from: fuelDate)
+        do {
+            let today = try await api.copyDay(date: date)
+            fuelDate = Calendar.current.startOfDay(for: Date())   // jump to today (the copy target)
+            nutrition = today
+            Haptic.success()
+            await loadMealLibrary()
+        } catch { if case APIError.unauthorized = error { await handleUnauthorized() } else { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription } }
+    }
+
     /// "Your meals" — the remembered dishes, ranked. Best-effort; a failure just leaves the last list.
     func loadMealLibrary() async {
         if let lib = try? await api.mealLibrary() { mealLibrary = lib.meals }
