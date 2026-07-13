@@ -927,55 +927,82 @@ struct BioPanelCard: View {
 
 // MARK: - Meal (a single logged meal · COACH CARDS v2 · Thrust B4)
 
-/// One logged meal — the beautiful confirmation of a food log: a photo thumb (or a fork placeholder),
-/// the name + time, and the macro breakdown (kcal + P/C/F chips). Editable right from the card via the
-/// action row. Distinct from the day-total `macros` card (one tap away via "Today's macros").
+/// One logged meal — the beautiful confirmation of a food log. Macros are the HERO: photo thumb + name
+/// + big kcal, then a proportional bar split by each macro's CALORIC share (protein g×4 / carbs g×4 /
+/// fat g×9), so "mostly protein" vs "mostly fat" reads at a glance — with gram readouts below. Editable
+/// via the action row. Distinct from the day-total `macros` card. (MEAL_CARD_VISUAL redesign.)
 struct MealCard: View {
     let json: [String: Any]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let p = jsonNum(json["protein_g"]) ?? 0
+        let c = jsonNum(json["carbs_g"]) ?? 0
+        let f = jsonNum(json["fat_g"]) ?? 0
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
                 RemoteImage(url: json["photo_url"] as? String)
                     .frame(width: 56, height: 56).clipped()
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text((json["name"] as? String) ?? "Meal").font(Theme.Font.body.weight(.semibold))
-                        .foregroundStyle(Theme.Palette.text).lineLimit(2)
-                    if let at = json["eaten_at"] as? String, !at.isEmpty {
-                        Text(verbatim: at).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-                    }
-                }
+                Text((json["name"] as? String) ?? "Meal").font(Theme.Font.body.weight(.semibold))
+                    .foregroundStyle(Theme.Palette.text).lineLimit(2)
                 Spacer(minLength: 0)
                 if let kcal = jsonNum(json["calories"]) {
                     VStack(alignment: .trailing, spacing: 0) {
-                        Text("\(Int(kcal))").font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+                        Text("\(Int(kcal))").font(Theme.Font.num(22)).foregroundStyle(Theme.Palette.text).monospacedDigit()
                         Text("kcal").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
                     }
                 }
             }
-            HStack(spacing: 8) {
-                macro("Protein", json["protein_g"], Theme.Palette.pink)
-                macro("Carbs", json["carbs_g"], Theme.Palette.cyan)
-                macro("Fat", json["fat_g"], Theme.Palette.amber)
-            }
+            MacroShareBar(protein: p, carbs: c, fat: f)
             CardActionsRow(json: json)
         }
         .coachCard()
     }
+}
 
-    private func macro(_ label: LocalizedStringKey, _ value: Any?, _ color: Color) -> some View {
+/// A proportional macro bar (segments sized by CALORIC share) + gram readouts. Protein=pink, carbs=cyan,
+/// fat=amber. A missing macro is a 0-width segment; an all-zero meal shows an empty track. Static (no
+/// animation) so there's nothing to reduce for reduced-motion.
+private struct MacroShareBar: View {
+    let protein: Double, carbs: Double, fat: Double
+
+    private var kcal: (p: Double, c: Double, f: Double) { (protein * 4, carbs * 4, fat * 9) }
+    private var total: Double { max(0, kcal.p + kcal.c + kcal.f) }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            GeometryReader { geo in
+                let w = geo.size.width
+                HStack(spacing: total > 0 ? 2 : 0) {
+                    segment(kcal.p, w, Theme.Palette.pink)
+                    segment(kcal.c, w, Theme.Palette.cyan)
+                    segment(kcal.f, w, Theme.Palette.amber)
+                    if total <= 0 { Capsule().fill(Theme.Palette.card) }   // empty track when nothing logged
+                }
+            }
+            .frame(height: 8)
+            HStack(spacing: 0) {
+                readout("Protein", protein, Theme.Palette.pink)
+                readout("Carbs", carbs, Theme.Palette.cyan)
+                readout("Fat", fat, Theme.Palette.amber)
+            }
+        }
+    }
+
+    @ViewBuilder private func segment(_ share: Double, _ width: CGFloat, _ color: Color) -> some View {
+        if total > 0, share > 0 {
+            Capsule().fill(color).frame(width: max(2, width * CGFloat(share / total)))
+        }
+    }
+
+    private func readout(_ label: LocalizedStringKey, _ grams: Double, _ color: Color) -> some View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 6, height: 6)
+            Text("\(Int(grams.rounded()))g").font(Theme.Font.num(13)).foregroundStyle(Theme.Palette.text).monospacedDigit()
             Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-            Spacer(minLength: 2)
-            Text(jsonNum(value).map { "\(Int($0.rounded()))g" } ?? "–g")
-                .font(Theme.Font.num(13)).foregroundStyle(Theme.Palette.text).monospacedDigit()
         }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(Theme.Palette.card, in: Capsule())
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

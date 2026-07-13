@@ -1552,11 +1552,12 @@ class CoachTools
      *  day-total `macros` card (one tap away via the action). */
     private function mealCard(\App\Models\Meal $meal): array
     {
+        // No top-level id / eaten_at: MealCard doesn't read them (the Edit/Delete action prompts embed the
+        // id inline), and dropping them keeps the GenericCard fallback clean on OLD app builds that predate
+        // the `meal` case — it would otherwise dump `Meal_id`/`Eaten_at` as raw fields (MEAL_CARD_VISUAL).
         return array_filter([
             'type' => 'meal',
-            'id' => $meal->id,
             'name' => $meal->name,
-            'eaten_at' => $meal->eaten_at?->format('g:i A'),
             'photo_url' => $meal->photoUrl(),
             'calories' => $meal->calories,
             'protein_g' => (float) $meal->protein_g,
