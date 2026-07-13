@@ -45,6 +45,10 @@ struct TrendsView: View {
                                      color: Theme.Palette.violet, unit: "h", average: o.averages.sleep_h, decimals: 1)
                         .frame(height: 110)
                 }
+
+                // Nutrition (MEAL_LOGGING_REVISION 2.2) — daily calories + P/C/F, with the target as the
+                // drawn reference line so "did I hit protein this week" reads at a glance.
+                nutritionTrends(o)
             } else {
                 ProgressView().tint(Theme.Palette.indigo).frame(maxWidth: .infinity, minHeight: 200)
             }
@@ -52,6 +56,39 @@ struct TrendsView: View {
         }
         .titanScreen("Trends", glow: Theme.Palette.violet)
         .task { if model.overview == nil { await model.loadOverview() } }
+    }
+
+    /// Calories + protein / carbs / fat over the period. The target is drawn as the reference line (via the
+    /// chart's `average` param) so adherence — did I hit protein this week — reads at a glance.
+    @ViewBuilder
+    private func nutritionTrends(_ o: OverviewResponse) -> some View {
+        // Only show once there's some nutrition data in the window.
+        if o.points.contains(where: { $0.calories != nil }) {
+            let t = o.targets
+            nutritionCard("Calories", avg: o.averages.calories, target: t?.calories, unit: "kcal", color: Theme.Palette.cyan,
+                          values: o.points.map { ($0.date, $0.calories.map(Double.init)) })
+            nutritionCard("Protein", avg: o.averages.protein, target: t?.protein_g, unit: "g", color: Theme.Palette.pink,
+                          values: o.points.map { ($0.date, $0.protein.map(Double.init)) })
+            nutritionCard("Carbs", avg: o.averages.carbs, target: t?.carbs_g, unit: "g", color: Theme.Palette.amber,
+                          values: o.points.map { ($0.date, $0.carbs.map(Double.init)) })
+            nutritionCard("Fat", avg: o.averages.fat, target: t?.fat_g, unit: "g", color: Theme.Palette.mint,
+                          values: o.points.map { ($0.date, $0.fat.map(Double.init)) })
+        }
+    }
+
+    @ViewBuilder
+    private func nutritionCard(_ title: LocalizedStringKey, avg: Double?, target: Int?, unit: String, color: Color,
+                               values: [(String, Double?)]) -> some View {
+        trendCard(title, avg: avg, unit: unit, color: color) {
+            // Draw the TARGET as the reference line (labelled below), so the chart shows adherence vs goal.
+            VStack(alignment: .leading, spacing: 4) {
+                TrendMetricChart(points: values, color: color, unit: unit, average: target.map(Double.init))
+                    .frame(height: 110)
+                if let target {
+                    Text("target \(target) \(unit)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+        }
     }
 
     @ViewBuilder

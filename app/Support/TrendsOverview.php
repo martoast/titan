@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\ActivitySession;
 use App\Models\DailyActivity;
+use App\Models\Meal;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Models\SleepLog;
@@ -45,6 +46,12 @@ class TrendsOverview
             ->whereDate('started_at', '>=', $from)->get()
             ->groupBy(fn (ActivitySession $s) => Carbon::parse($s->started_at)->toDateString());
 
+        // Nutrition per day (MEAL_LOGGING_REVISION 2.2). Meals are app-tz wall-clocks — group by that frame
+        // (same as $key below), never re-convert (the meal-timezone fault).
+        $mealsByDay = Meal::where('profile_id', $profile->id)
+            ->where('eaten_at', '>=', $from->copy()->startOfDay())->get()
+            ->groupBy(fn (Meal $m) => $m->eaten_at->toDateString());
+
         $sleepBaseline = SleepCoach::baselineFor($profile);
 
         $points = [];
@@ -73,6 +80,9 @@ class TrendsOverview
             $strain = $trimp + $ambient > 0
                 ? round(self::STRAIN_MAX * (1 - exp(-($trimp + $ambient) / self::STRAIN_K)), 1) : null;
 
+            // Nutrition consumed that day (null when nothing was logged → the chart shows a gap, not a 0-dip).
+            $meals = $mealsByDay->get($key);
+
             $points[] = [
                 'date' => $key,
                 'recovery' => $score,
@@ -81,6 +91,10 @@ class TrendsOverview
                 'hrv' => $rec?->hrv_ms !== null ? (int) round($rec->hrv_ms) : null,
                 'rhr' => $rec?->resting_hr !== null ? (int) round($rec->resting_hr) : null,
                 'sleep_h' => ($slp && $slp->duration_min) ? round($slp->duration_min / 60.0, 1) : null,
+                'calories' => $meals ? (int) $meals->sum('calories') : null,
+                'protein' => $meals ? (int) round((float) $meals->sum('protein_g')) : null,
+                'carbs' => $meals ? (int) round((float) $meals->sum('carbs_g')) : null,
+                'fat' => $meals ? (int) round((float) $meals->sum('fat_g')) : null,
             ];
         }
 
@@ -94,7 +108,13 @@ class TrendsOverview
                 'hrv' => self::avg($points, 'hrv'),
                 'rhr' => self::avg($points, 'rhr'),
                 'sleep_h' => self::avg($points, 'sleep_h', 1),
+                'calories' => self::avg($points, 'calories'),
+                'protein' => self::avg($points, 'protein'),
+                'carbs' => self::avg($points, 'carbs'),
+                'fat' => self::avg($points, 'fat'),
             ],
+            // The unified daily targets, so the trend charts can show adherence vs goal (2.2).
+            'targets' => Macros::goalTargets($profile),
         ];
     }
 

@@ -291,16 +291,20 @@ struct OverviewResponse: Codable {
     let days: Int
     let points: [Point]
     let averages: Averages
+    var targets: NutritionTargets? = nil   // daily macro targets for the nutrition trend adherence (2.2)
     struct Point: Codable, Identifiable {
         let date: String
         let recovery: Int?; let sleep_performance: Int?; let strain: Double?
         let hrv: Int?; let rhr: Int?; let sleep_h: Double?
+        var calories: Int? = nil; var protein: Int? = nil; var carbs: Int? = nil; var fat: Int? = nil
         var id: String { date }
     }
     struct Averages: Codable {
         let recovery: Double?; let sleep_performance: Double?; let strain: Double?
         let hrv: Double?; let rhr: Double?; let sleep_h: Double?
+        var calories: Double? = nil; var protein: Double? = nil; var carbs: Double? = nil; var fat: Double? = nil
     }
+    struct NutritionTargets: Codable { let calories: Int?; let protein_g: Int?; let carbs_g: Int?; let fat_g: Int? }
 }
 
 /// The Whoop-style Strain screen: today's day strain building through the day, the recovery-based
