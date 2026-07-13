@@ -21,7 +21,10 @@ surfaces carry the product's feel every day; make each of them the best in class
    *(Home-screen/lock-screen WidgetKit is a separate greenfield option for later — not this sprint.)*
 3. **Coach** — already sophisticated (streaming, native cards, trajectory + situational lenses,
    memory). Elevate from "a great chatbot you open" to "a coach who reaches out." → `COACH_DEPTH.md`
-   (workstream 3)
+   (later workstream)
+4. **Native UI polish** — the app is Whoop/Oura-grade, but a few surfaces drag it down: a
+   stock-looking Trends tab, stock iOS controls on the first-run flow, and a lift-detail screen
+   that's a lower-fidelity twin of the premium summary. → `UI_POLISH.md` (workstream 3)
 
 ## The design bar (all three)
 
