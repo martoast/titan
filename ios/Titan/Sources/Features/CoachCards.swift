@@ -405,6 +405,31 @@ struct NightStoryCard: View {
     }
 }
 
+// MARK: - Lesson (a teaching moment as a card — Coach v3 educational stance)
+
+struct LessonCard: View {
+    let json: [String: Any]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "graduationcap.fill").foregroundStyle(Theme.Palette.cyan)
+                Text((json["title"] as? String) ?? "").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let body = json["body"] as? String, !body.isEmpty {
+                Text(body).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).fixedSize(horizontal: false, vertical: true)
+            }
+            if let analogy = json["analogy"] as? String, !analogy.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "quote.opening").font(.caption2).foregroundStyle(Theme.Palette.textFaint)
+                    Text(analogy).font(Theme.Font.micro.italic()).foregroundStyle(Theme.Palette.textDim).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .coachCard()
+    }
+}
+
 // MARK: - Sleep week (the week at a glance, in chat)
 
 struct SleepWeekCard: View {

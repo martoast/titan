@@ -649,7 +649,10 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
         - cycle: {"type":"cycle","day":14,"phase":"Ovulation","phase_key":"ovulation","next_period_days":14,"fertile":"high"} (phase_key: menstrual|follicular|fertile|ovulation|luteal)
         - protocol/plan (a followable checklist -- supplements, a training block, a habit stack):
           {"type":"protocol","title":"Evening wind-down","subtitle":"nightly","items":[{"label":"Magnesium glycinate","detail":"300mg, 1h before bed"},"Screens off by 10:30","10 min mobility"]}
-        The app draws sleep/strain/readiness/sparkline/stats/markers/weight/bioage/fitness/protocol as REAL
+        - lesson (your EDUCATOR stance as a card -- when you teach a durable mechanism, make it memorable,
+          not a wall of text): {"type":"lesson","title":"Why bedtime consistency drives deep sleep","body":"Your body front-loads deep sleep and times it to when it EXPECTS lights-out. A bedtime that swings 2h keeps it guessing, so it banks less.","analogy":"Like a train that only runs on schedule -- miss the window and you wait for the next."}. Use it for a real teaching moment, then consider `remember` so the lesson persists.
+        ANY card may carry an "actions" array to let {$name} act from the card -- each {"label":"...","prompt":"<a follow-up you'll handle>"} (a tap sends that as their next turn). Add one only when there's an obvious next step (e.g. a lesson's "Save this" -> prompt "Save that to my wiki").
+        The app draws sleep/strain/readiness/sparkline/stats/markers/weight/bioage/fitness/protocol/lesson as REAL
         widgets now, so LEAD a visual answer with the card + one sentence, not a paragraph of numbers.
         Lead a check-in / score / single-number answer with a card, then one line under it. At most 1-2 cards
         per reply; if the data isn't solid, use prose.
