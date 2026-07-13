@@ -246,14 +246,50 @@ struct FastingCard: View {
 
     var body: some View {
         GlassCard {
-            if let f = model.fasting, f.active {
-                active(f)
-            } else {
-                idle
+            VStack(spacing: Theme.Space.m) {
+                if let f = model.fasting, f.active {
+                    active(f)
+                } else {
+                    idle
+                }
+                // The recurring eating window stands whether or not a fast is running.
+                if let w = model.fasting?.window {
+                    windowSection(w)
+                }
             }
         }
         .task { await model.loadFasting() }
         .sheet(isPresented: $showStart) { FastingStartSheet() }
+    }
+
+    /// The recurring eating window + adherence streak — consistency is the behavior that actually helps.
+    private func windowSection(_ w: EatingWindowInfo) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider().overlay(Theme.Palette.cardStroke)
+            HStack(spacing: 8) {
+                Image(systemName: "clock.badge.checkmark").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.Palette.mint)
+                if let s = w.start, let e = w.end {
+                    Text(verbatim: "\(s)–\(e)").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                }
+                if let plan = w.plan { Text(verbatim: plan.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+                Spacer()
+                Text(w.open == true ? "Open" : "Closed").font(Theme.Font.micro.weight(.semibold))
+                    .foregroundStyle(w.open == true ? Theme.Palette.mint : Theme.Palette.textFaint)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background((w.open == true ? Theme.Palette.mint.opacity(0.15) : Theme.Palette.card), in: Capsule())
+            }
+            if let cur = w.streak?.current, cur > 0 {
+                Text("🔥 \(cur)-day window streak").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            }
+            if let outside = w.today_outside, outside > 0 {
+                Text(outside == 1 ? "1 meal outside your window today" : "\(outside) meals outside your window today")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.amber)
+            }
+            if let note = w.note {
+                Text(note).font(.system(size: 10, design: .rounded)).foregroundStyle(Theme.Palette.textFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func active(_ f: FastingStatus) -> some View {

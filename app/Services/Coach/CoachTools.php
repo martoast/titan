@@ -511,6 +511,10 @@ class CoachTools
         ], []);
         $tools[] = $this->fn('end_fast', 'End the user\'s active fast when they break it ("breaking my fast", "just ate").', [], []);
         $tools[] = $this->fn('fasting_status', "The user's current fast — elapsed, target, % and the metabolic stage — as a `fasting` card. Use when they ask about their fast / fasting window.", [], []);
+        $tools[] = $this->fn('set_eating_window', "Set the user's recurring daily EATING WINDOW (time-restricted eating) when they choose one (\"do 16:8 starting at noon\", \"eat between 12 and 8\"). A consistent window mostly helps by making it easier to eat less/earlier — frame it honestly, never as a longevity guarantee.", [
+            'plan' => ['type' => 'string', 'enum' => ['12:12', '14:10', '16:8', '18:6', 'omad'], 'description' => 'Window ratio (fast:eat). omad = one meal a day.'],
+            'start' => ['type' => 'string', 'description' => "When the eating window OPENS, 'HH:MM' 24h (e.g. 12:00)."],
+        ], ['plan', 'start']);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -606,6 +610,7 @@ class CoachTools
             'start_fast' => 'Starting your fast',
             'end_fast' => 'Ending your fast',
             'fasting_status' => 'Checking your fast',
+            'set_eating_window' => 'Setting your eating window',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -746,6 +751,7 @@ class CoachTools
             'hydration_today' => \App\Support\Hydration::today($this->profile) + ['_show' => 'Emit this `hydration` card in a ```titan-card fence with one line on progress to target.'],
             'start_fast' => $this->startFast($args),
             'end_fast' => $this->endFast(),
+            'set_eating_window' => $this->setEatingWindow($args),
             'fasting_status' => \App\Support\Fasting::card($this->profile) + ['_show' => 'Emit this `fasting` card in a ```titan-card fence; one line on elapsed vs goal + the current stage. If not active, suggest starting one.'],
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
@@ -1447,12 +1453,17 @@ class CoachTools
             'source' => 'coach',
         ]);
 
-        return [
+        // If they run a recurring eating window and this meal fell outside it, note it GENTLY (never shame).
+        $outsideWindow = \App\Support\EatingWindow::mealOutside($this->profile, $meal->eaten_at) === true;
+
+        return array_filter([
             'ok' => true, 'meal_id' => $meal->id, 'name' => $meal->name, 'calories' => $meal->calories, 'protein_g' => $meal->protein_g,
             'card' => $this->mealCard($meal),
-            '_show' => "Show this `meal` card (inside a ```titan-card fence) to confirm the log, then one short line on what's left to hit today's targets.",
+            'outside_window' => $outsideWindow ?: null,
+            '_show' => 'Show this `meal` card (inside a ```titan-card fence) to confirm the log, then one short line on what\'s left to hit today\'s targets.'
+                .($outsideWindow ? ' This meal was outside their eating window — mention it once, gently and without judgement (consistency is the goal, not perfection).' : ''),
             'message' => "Logged {$meal->name} — {$meal->calories} kcal, {$meal->protein_g}g protein.",
-        ];
+        ], fn ($v) => $v !== null);
     }
 
     /**
@@ -1825,6 +1836,20 @@ class CoachTools
         $hours = round($fast->started_at->diffInMinutes($fast->ended_at) / 60, 1);
 
         return ['ok' => true, 'fasted_hours' => $hours, '_show' => "Congratulate them on a {$hours}-hour fast and one line on what to eat to break it well (protein + fibre)."];
+    }
+
+    private function setEatingWindow(array $a): mixed
+    {
+        $tz = $this->profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $status = \App\Support\EatingWindow::set($this->profile, (string) ($a['plan'] ?? ''), (string) ($a['start'] ?? ''), $tz);
+        if ($status === null) {
+            return ['error' => 'Use a plan of 12:12 / 14:10 / 16:8 / 18:6 / omad and a start time like 12:00.'];
+        }
+
+        return [
+            'card' => \App\Support\Fasting::card($this->profile),
+            '_show' => "Confirm their window in one line (e.g. \"{$status['start']}–{$status['end']}, {$status['plan']}\") + the honest note (helps mostly by eating less/earlier, not a longevity guarantee), then show the `fasting` card.",
+        ];
     }
 
     private function myImpacts(): array

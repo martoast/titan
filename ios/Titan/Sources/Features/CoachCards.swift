@@ -1052,6 +1052,7 @@ struct FastingCoachCard: View {
                 Text("Start a fasting window and I'll show your body's stages as you go.")
                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
             }
+            if let w = json["window"] as? [String: Any] { windowRow(w) }
             if let disclaimer = json["disclaimer"] as? String, !disclaimer.isEmpty {
                 Text(disclaimer).font(.system(size: 10, design: .rounded)).foregroundStyle(Theme.Palette.textFaint)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1059,6 +1060,25 @@ struct FastingCoachCard: View {
             CardActionsRow(json: json)
         }
         .coachCard()
+    }
+
+    @ViewBuilder private func windowRow(_ w: [String: Any]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "clock.badge.checkmark").font(.caption2).foregroundStyle(Theme.Palette.mint)
+                if let s = w["start"] as? String, let e = w["end"] as? String {
+                    Text(verbatim: "\(s)–\(e)").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                }
+                if let plan = w["plan"] as? String { Text(verbatim: plan.uppercased()).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+                if let cur = jsonNum((w["streak"] as? [String: Any])?["current"]), cur > 0 {
+                    Text("· 🔥\(Int(cur))").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                }
+            }
+            if let outside = jsonNum(w["today_outside"]), outside > 0 {
+                Text(Int(outside) == 1 ? "1 meal outside your window today" : "\(Int(outside)) meals outside your window today")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.amber)
+            }
+        }
     }
 }
 

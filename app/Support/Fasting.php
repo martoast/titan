@@ -88,17 +88,23 @@ class Fasting
         return $fast;
     }
 
-    /** The `fasting` card for the active fast, or a "not fasting" payload. */
+    /** The `fasting` card for the active fast, or a "not fasting" payload. Carries the recurring eating
+     *  window (+ adherence streak) when one is configured — it stands whether or not a fast is running. */
     public static function card(Profile $profile): array
     {
+        $window = EatingWindow::forProfile($profile);   // null when no window is set
         $fast = self::active($profile);
         if (! $fast) {
-            return ['type' => 'fasting', 'active' => false];
+            return array_filter([
+                'type' => 'fasting',
+                'active' => false,
+                'window' => $window,
+            ], fn ($v) => $v !== null);
         }
         $elapsed = $fast->started_at->diffInMinutes(now()) / 60;
         [$stage, $next] = self::stageFor($elapsed);
 
-        return [
+        return array_filter([
             'type' => 'fasting',
             'active' => true,
             'started_at' => $fast->started_at->toIso8601String(),
@@ -112,8 +118,9 @@ class Fasting
             'stage_honesty' => $stage['honesty'], // caveat where the human evidence is thin (nullable)
             'next_stage' => $next['label'] ?? null,
             'next_stage_in_h' => $next !== null ? round(max(0, $next['h'] - $elapsed), 1) : null,
+            'window' => $window,
             'disclaimer' => self::DISCLAIMER,
-        ];
+        ], fn ($v) => $v !== null);
     }
 
     /** The stage a fast is in at `$hours` elapsed (pure — used by the card + unit-tested). */

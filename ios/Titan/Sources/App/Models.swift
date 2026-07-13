@@ -658,7 +658,22 @@ struct FastingStatus: Codable, Equatable {
     var stage_honesty: String? = nil  // caveat where the human evidence is thin (nullable)
     var next_stage: String? = nil
     let next_stage_in_h: Double?
-    var disclaimer: String? = nil     // the non-negotiable honest framing
+    var window: EatingWindowInfo? = nil   // the recurring eating window + adherence streak (may be nil)
+    var disclaimer: String? = nil         // the non-negotiable honest framing
+}
+
+/// The recurring eating window (time-restricted eating) + its adherence streak — FASTING_EVIDENCE T2.
+struct EatingWindowInfo: Codable, Equatable {
+    let plan: String?
+    let start: String?
+    let end: String?
+    let eat_hours: Int?
+    let fast_hours: Int?
+    let open: Bool?
+    let today_outside: Int?
+    let streak: EWStreak?
+    let note: String?
+    struct EWStreak: Codable, Equatable { let current: Int?; let longest: Int? }
 }
 
 /// `GET /api/me/health` · result of `POST /api/me/health/ingest`
