@@ -17,16 +17,22 @@ class FastingProtein
     /** A sustainable protein intake rate across an eating window (~a palm of protein every ~1.5h). */
     public const SUSTAINABLE_G_PER_HOUR = 20;
 
+    /** Only flag when remaining exceeds what's achievable by this margin — so it nudges on genuinely tight
+     *  days, not every 16:8 morning for a high-protein user (e.g. 176g in an 8h window is fine at the
+     *  start; review 4884582's calibration note). */
+    public const MARGIN_G = 20;
+
     /** Grams of protein realistically eatable in the remaining eating-window hours. Pure. */
     public static function achievableG(float $windowHoursRemaining): float
     {
         return max(0.0, $windowHoursRemaining) * self::SUSTAINABLE_G_PER_HOUR;
     }
 
-    /** Is the window squeezing protein — i.e. more remaining than can be eaten in the time left? Pure. */
+    /** Is the window squeezing protein — i.e. more remaining than can be eaten in the time left (plus a
+     *  small margin so it doesn't fire on every tight-but-doable window)? Pure. */
     public static function isSqueezed(float $remainingProteinG, float $windowHoursRemaining): bool
     {
-        return $remainingProteinG > 0 && $remainingProteinG > self::achievableG($windowHoursRemaining);
+        return $remainingProteinG > 0 && $remainingProteinG > self::achievableG($windowHoursRemaining) + self::MARGIN_G;
     }
 
     /**
@@ -62,13 +68,15 @@ class FastingProtein
             return null;
         }
 
-        $hLabel = $hoursLeft <= 0 ? 'no' : ('~'.rtrim(rtrim(number_format($hoursLeft, 1), '0'), '.').'h');
+        $timePhrase = $hoursLeft <= 0
+            ? 'your eating window is already closed for today'
+            : 'have only ~'.rtrim(rtrim(number_format($hoursLeft, 1), '0'), '.').'h of eating window left';
 
         return [
             'remaining_g' => $remaining,
             'target_g' => $target,
             'window_hours_left' => $hoursLeft,
-            'message' => "You still need ~{$remaining}g protein but have {$hLabel} of eating window left — that's a lot to fit. Protein protects muscle (older adults & lifters need MORE, ~1.2–1.5 g/kg), so don't let the fast squeeze it: front-load protein now or widen today's window.",
+            'message' => "You still need ~{$remaining}g protein but {$timePhrase} — that's a lot to fit. Protein protects muscle (older adults & lifters need MORE, ~1.2–1.5 g/kg), so don't let the fast squeeze it: front-load protein now or widen today's window.",
         ];
     }
 }

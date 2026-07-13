@@ -23,12 +23,15 @@ class FastingProteinTest extends TestCase
 
     public function test_squeeze_only_when_more_protein_than_time_allows(): void
     {
-        // 140g still needed, 6h window left (≤120g achievable) → squeezed.
-        $this->assertTrue(FastingProtein::isSqueezed(140, 6));
-        // 100g needed, 6h left (120g achievable) → fits, not squeezed.
-        $this->assertFalse(FastingProtein::isSqueezed(100, 6));
-        // Nothing left to eat and protein still owed → squeezed.
-        $this->assertTrue(FastingProtein::isSqueezed(30, 0));
+        // 6h → 120g achievable + 20g margin = 140g threshold.
+        $this->assertTrue(FastingProtein::isSqueezed(150, 6));   // 150 > 140 → genuinely tight
+        $this->assertFalse(FastingProtein::isSqueezed(130, 6));  // 130 ≤ 140 → doable, no nag
+        // The margin: a high-protein 16:8 morning (176g, 8h → 160g achievable) does NOT flag at the start.
+        $this->assertFalse(FastingProtein::isSqueezed(176, 8));  // 176 ≤ 180 threshold
+        $this->assertTrue(FastingProtein::isSqueezed(185, 8));   // 185 > 180 → behind, flag
+        // Window closed with real protein still owed → squeezed.
+        $this->assertTrue(FastingProtein::isSqueezed(40, 0));    // 40 > 20 margin
+        $this->assertFalse(FastingProtein::isSqueezed(15, 0));   // only 15g left → don't nag
         // No protein remaining → never a squeeze.
         $this->assertFalse(FastingProtein::isSqueezed(0, 2));
         $this->assertFalse(FastingProtein::isSqueezed(-10, 2));
