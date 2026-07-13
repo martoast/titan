@@ -63,6 +63,11 @@ class FastingWeek
             $days[] = ['date' => $key, 'weekday' => $d->format('D'), 'fasted' => $h !== null, 'hours' => $h];
         }
 
+        // The eating-window (+ its adherence streak) — the consistency that actually helps. Pull the streak
+        // up to a TOP-LEVEL field too so it's on the card even though `window` is dropped when unset, and so
+        // the coach's "celebrate the streak" instruction has a value to reference (review 4fc8a31).
+        $window = class_exists(EatingWindow::class) ? EatingWindow::forProfile($profile) : null;
+
         return array_filter([
             'type' => 'fastingweek',
             'longest_h' => round($longest, 1),
@@ -70,8 +75,8 @@ class FastingWeek
             'count' => $profile->fasts()->whereNotNull('ended_at')->count(),
             'recent' => $recent,
             'days' => $days,
-            // The eating-window adherence streak (the consistency that actually helps) — same source as the card.
-            'window' => class_exists(EatingWindow::class) ? EatingWindow::forProfile($profile) : null,
+            'streak' => $window['streak'] ?? null,   // {current, longest} — null when no window is set
+            'window' => $window,
         ], fn ($v) => $v !== null);
     }
 }

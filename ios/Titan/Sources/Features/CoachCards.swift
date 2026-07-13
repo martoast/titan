@@ -1119,8 +1119,9 @@ struct FastingWeekCard: View {
                 }
             }
             HStack(spacing: 12) {
-                if let streak = (json["window"] as? [String: Any])?["streak"] as? [String: Any],
-                   let cur = jsonNum(streak["current"]), cur > 0 {
+                // Top-level `streak`, with the nested window.streak as a fallback.
+                let streak = (json["streak"] as? [String: Any]) ?? ((json["window"] as? [String: Any])?["streak"] as? [String: Any])
+                if let streak, let cur = jsonNum(streak["current"]), cur > 0 {
                     Text("🔥 \(Int(cur))-day window streak").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                 }
                 if let avg = jsonNum(json["avg_h"]), avg > 0 {
