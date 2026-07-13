@@ -405,6 +405,54 @@ struct NightStoryCard: View {
     }
 }
 
+// MARK: - Sleep week (the week at a glance, in chat)
+
+struct SleepWeekCard: View {
+    let json: [String: Any]
+    private var days: [[String: Any]] { json["days"] as? [[String: Any]] ?? [] }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                cardTitle("Sleep week")
+                Spacer()
+                if let s = jsonNum(json["week_score"]) { Text("\(Int(s))").font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.indigo) }
+            }
+            if let label = json["week_label"] as? String {
+                HStack(spacing: 6) {
+                    Text(label).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    if let t = json["trend"] as? String, t != "flat" {
+                        Image(systemName: t == "up" ? "arrow.up.right" : "arrow.down.right").font(.caption2)
+                            .foregroundStyle(t == "up" ? Theme.Palette.mint : Theme.Palette.amber)
+                    }
+                }
+            }
+            // The 7-night bar row.
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(Array(days.enumerated()), id: \.offset) { _, d in
+                    let score = jsonNum(d["score"]) ?? 0
+                    let hit = d["hit"] as? Bool ?? false
+                    let low = d["low"] as? Bool ?? false
+                    let logged = d["logged"] as? Bool ?? false
+                    VStack(spacing: 4) {
+                        Spacer(minLength: 0)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(!logged ? Color.white.opacity(0.06) : (low ? Theme.Palette.textFaint : (hit ? Theme.Palette.indigo : Theme.Palette.indigo.opacity(0.35))))
+                            .frame(height: max(logged ? 5 : 3, 44 * CGFloat(min(1, score / 100))))
+                        Text((d["weekday"] as? String)?.prefix(1).uppercased() ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    }.frame(maxWidth: .infinity, minHeight: 56)
+                }
+            }
+            if let streak = jsonNum(json["streak"]), streak > 0 {
+                Text("🌙 \(Int(streak))-night streak").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            }
+            if let tip = json["tip_headline"] as? String, !tip.isEmpty {
+                cardCaption(tip)
+            }
+        }
+        .coachCard()
+    }
+}
+
 /// The honesty chip (COACH CARDS v2 · A1) — an estimate/low-confidence card reads as an estimate, never a
 /// confident number. Same rule as the timeline + debt ledger.
 struct EstimateChip: View {

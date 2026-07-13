@@ -448,6 +448,9 @@ class CoachTools
         if (class_exists(\App\Support\SleepDebt::class)) {
             $tools[] = $this->fn('sleep_debt', "The user's sleep-debt LEDGER as a ready-made `sleep_debt` card (current balance, band, rising/easing trend, last night's paid-back/added, and a realistic payback plan). Lead any 'how's my sleep debt / am I caught up' question with it; teach the mechanism (owe from recent short nights, payable over ~2 weeks, can't bank ahead).", [], []);
         }
+        if (class_exists(\App\Support\SleepWeek::class)) {
+            $tools[] = $this->fn('sleep_week', "The user's sleep WEEK as a ready-made `sleepweek` card (7-night score row + cumulative week score + consistency streak + this week's one tip). Lead any 'how's my sleep this week / my sleep lately' question with it.", [], []);
+        }
         if (class_exists(\App\Models\BiomarkerReading::class)) {
             $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
         }
@@ -568,6 +571,7 @@ class CoachTools
             'longevity_status' => 'Computing your Titan Age',
             'sleep_plan' => 'Planning your bedtime',
             'sleep_debt' => 'Tallying your sleep debt',
+            'sleep_week' => 'Reviewing your sleep week',
             'bloodwork_panel' => 'Pulling your bloodwork',
             'macros_today' => 'Tallying your macros',
             'set_targets' => 'Updating your targets',
@@ -705,6 +709,7 @@ class CoachTools
             'longevity_status' => $this->longevityStatus(),
             'sleep_plan' => $this->sleepPlan(),
             'sleep_debt' => $this->sleepDebt(),
+            'sleep_week' => $this->sleepWeek(),
             'bloodwork_panel' => $this->bloodworkPanel(),
             'macros_today' => ['card' => $this->macrosCard() + ['actions' => [['label' => '＋ Log food', 'prompt' => 'I want to log a meal — help me add it.']]], '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
@@ -2154,6 +2159,29 @@ class CoachTools
         ], fn ($v) => $v !== null && $v !== []);
 
         return ['card' => $card, '_show' => 'Open with this `sleep_debt` card inside a ```titan-card fence, then TEACH from the mechanism (owe from recent short nights, payable over ~2 weeks at ~an hour a night, can\'t bank ahead or clear it all at once) and give the ONE next night to chip at it. If balance is 0, celebrate "rested — no debt".'];
+    }
+
+    private function sleepWeek(): mixed
+    {
+        if (! class_exists(\App\Support\SleepWeek::class)) {
+            return ['error' => 'The sleep week is not available.'];
+        }
+        $w = \App\Support\SleepWeek::forProfile($this->profile, $this->profile->settings['timezone'] ?? config('app.timezone', 'UTC'));
+        $card = array_filter([
+            'type' => 'sleepweek',
+            'week_score' => $w['week_score'] ?? null,
+            'week_label' => $w['week_label'] ?? null,
+            'trend' => $w['trend'] ?? null,
+            'streak' => $w['streak']['current'] ?? null,
+            'days' => collect($w['days'] ?? [])->map(fn ($d) => array_filter([
+                'weekday' => $d['weekday'], 'score' => $d['score'], 'hit' => $d['hit_need'],
+                'low' => $d['low_confidence'], 'logged' => $d['logged'],
+            ], fn ($v) => $v !== null))->values()->all(),
+            'tip_headline' => $w['tip']['headline'] ?? null,
+            'tip_action' => $w['tip']['action'] ?? null,
+        ], fn ($v) => $v !== null && $v !== []);
+
+        return ['card' => $card, '_show' => 'Emit this `sleepweek` card inside a ```titan-card fence, then ONE line leading with the week\'s tip (the card shows the row + streak, so don\'t restate them).'];
     }
 
     private function bloodworkPanel(): mixed
