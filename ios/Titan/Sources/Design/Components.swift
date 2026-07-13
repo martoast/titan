@@ -391,7 +391,9 @@ struct SleepTimeline: View {
         return vals[min(vals.count - 1, Int(Double(vals.count) * 0.7))]
     }
 
-    @State private var scrubFraction: CGFloat? = nil
+    @State private var scrubFraction: CGFloat? = nil    // transient drag readout
+    @State private var selectedRun: Int? = nil          // sticky tapped-segment start index (hero only)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if computing && !hasRibbon {
@@ -539,18 +541,26 @@ struct SleepTimeline: View {
             ZStack(alignment: .topLeading) {
                 Canvas { ctx, size in draw(ctx, size) }
 
+                // A live drag preview wins over the sticky selection; otherwise the tapped segment persists.
                 if let f = scrubFraction, let idx = index(at: f) {
-                    scrubOverlay(fraction: f, index: idx, width: geo.size.width, height: geo.size.height)
+                    scrubOverlay(fraction: f, index: idx, width: geo.size.width, height: geo.size.height, segment: false)
+                } else if let sel = selectedRun, let f = runCenterFraction(sel) {
+                    scrubOverlay(fraction: f, index: sel, width: geo.size.width, height: geo.size.height, segment: true)
                 }
             }
             .contentShape(Rectangle())
-            .modifier(ScrubGesture(enabled: interactive && !mini, width: geo.size.width, fraction: $scrubFraction))
+            .modifier(TimelineInteraction(enabled: interactive && !mini, width: geo.size.width, count: parsed.count,
+                                          fraction: $scrubFraction, selected: $selectedRun,
+                                          runStart: { runBounds(at: $0).0 }))
+            .animation(reduceMotion ? nil : Theme.Motion.spring, value: selectedRun)
         }
         .frame(height: ribbonHeight)
     }
 
     /// Paint the stepped ribbon: runs of a sleep stage as rounded blocks in their lane; runs of NODATA
-    /// as a full-height faint rect with a diagonal hatch — an honest gap, never a lane.
+    /// as a full-height faint rect with a diagonal hatch — an honest gap, never a lane. On the full hero
+    /// (never mini) deep/REM read as the restorative sleep they are (a soft halo), faint ultradian cycle
+    /// markers trace the ~90-min sleep cycles, and a tapped segment lifts with a bright outline.
     private func draw(_ ctx: GraphicsContext, _ size: CGSize) {
         let stages = parsed
         let n = stages.count
@@ -558,6 +568,18 @@ struct SleepTimeline: View {
         let laneH = size.height / CGFloat(SleepStage.laneCount)
         let barH = laneH * 0.62
         let colW = size.width / CGFloat(n)
+        let emphasize = !mini    // restorative halo + cycle markers + selection are hero-only; mini stays calm
+
+        // Faint ultradian cycle boundaries behind the ribbon (end of each completed REM period).
+        if emphasize {
+            for b in cycleBoundaries {
+                let x = CGFloat(b) * colW
+                var line = Path()
+                line.move(to: CGPoint(x: x, y: 0)); line.addLine(to: CGPoint(x: x, y: size.height))
+                ctx.stroke(line, with: .color(Theme.Palette.textFaint.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
+            }
+        }
 
         var i = 0
         while i < n {
@@ -570,7 +592,18 @@ struct SleepTimeline: View {
             if let lane = s.lane {
                 let y = CGFloat(lane) * laneH + (laneH - barH) / 2
                 let rect = CGRect(x: x, y: y, width: w, height: barH)
-                ctx.fill(Path(roundedRect: rect, cornerRadius: min(3, barH / 2)), with: .color(s.color))
+                let radius = min(3, barH / 2)
+                // Restorative (deep + REM) get a soft halo so the eye reads where the real recovery happened.
+                if emphasize, s.colorRole == .deep || s.colorRole == .rem {
+                    let halo = rect.insetBy(dx: -1.5, dy: -2)
+                    ctx.fill(Path(roundedRect: halo, cornerRadius: radius + 2), with: .color(s.color.opacity(0.22)))
+                }
+                ctx.fill(Path(roundedRect: rect, cornerRadius: radius), with: .color(s.color))
+                // Tapped segment: a bright outline so the sticky readout has a clear anchor.
+                if emphasize, selectedRun == i {
+                    ctx.stroke(Path(roundedRect: rect.insetBy(dx: -1, dy: -1.5), cornerRadius: radius + 1),
+                               with: .color(Theme.Palette.text.opacity(0.9)), lineWidth: 1.5)
+                }
             } else {
                 // NODATA coverage hole — full-height faint rect + diagonal hatch, clipped to the gap.
                 let hole = CGRect(x: x, y: 0, width: w, height: size.height)
@@ -589,6 +622,42 @@ struct SleepTimeline: View {
             }
             i = j
         }
+    }
+
+    /// Epoch indices where a sleep cycle completes — the end of each REM run (the classic ultradian
+    /// marker). Skips a REM run that butts against the very end (a partial cycle isn't a boundary).
+    private var cycleBoundaries: [Int] {
+        let p = parsed
+        guard p.count > 6 else { return [] }
+        var out: [Int] = []
+        var i = 0
+        while i < p.count {
+            if p[i] == .rem {
+                var j = i
+                while j < p.count && p[j] == .rem { j += 1 }
+                if j < p.count - 2 { out.append(j) }   // boundary at REM-run end, unless it's the tail
+                i = j
+            } else { i += 1 }
+        }
+        return out
+    }
+
+    /// The contiguous run (same stage) containing `index`, as [start, endExclusive).
+    private func runBounds(at index: Int) -> (Int, Int) {
+        let p = parsed
+        guard index >= 0, index < p.count else { return (index, index + 1) }
+        let s = p[index]
+        var a = index; while a > 0 && p[a - 1] == s { a -= 1 }
+        var b = index; while b < p.count - 1 && p[b + 1] == s { b += 1 }
+        return (a, b + 1)
+    }
+
+    /// Center-of-run fraction for a run identified by its start index — where the sticky readout sits.
+    private func runCenterFraction(_ start: Int) -> CGFloat? {
+        let n = parsed.count
+        guard n > 0, start >= 0, start < n else { return nil }
+        let (a, b) = runBounds(at: start)
+        return (CGFloat(a) + CGFloat(b)) / 2 / CGFloat(n)
     }
 
     // MARK: Clock axis (real times, user tz)
@@ -636,23 +705,10 @@ struct SleepTimeline: View {
         return min(n - 1, max(0, Int(fraction * CGFloat(n))))
     }
 
-    private func scrubOverlay(fraction: CGFloat, index: Int, width: CGFloat, height: CGFloat) -> some View {
+    private func scrubOverlay(fraction: CGFloat, index: Int, width: CGFloat, height: CGFloat, segment: Bool) -> some View {
         let x = fraction * width
         let stage = parsed[index]
-        var label = stage.label
-        if !stage.isHole { label = "\(stage.label) sleep" }
-        if let start = epochSec {
-            let t = Date(timeIntervalSince1970: TimeInterval(start + index * Self.epochLen))
-            label = "\(Self.clock(t)) · \(label)"
-        }
-        // v2: append the measured per-epoch HR + restlessness for this epoch → "3:12 AM · Deep · HR 52 ·
-        // calm". Sparse: an epoch with no measured HR/motion says "· signal gap" — never a stale value.
-        let hr = hrByIndex[index]
-        let motion = motionByIndex[index]
-        if let hr { label += " · HR \(Int(hr.rounded()))" }
-        if let motion { label += " · " + (motion >= restlessThreshold ? String(localized: "restless") : String(localized: "calm")) }
-        // Only when the night HAS these channels but this epoch measured neither — honest gap, not silence.
-        if hr == nil, motion == nil, hasHR || hasMotion { label += " · " + String(localized: "signal gap") }
+        let label = segment ? segmentLabel(runStart: index, stage: stage) : scrubLabel(index: index, stage: stage)
         return ZStack(alignment: .topLeading) {
             Rectangle().fill(Theme.Palette.text.opacity(0.35)).frame(width: 1, height: height)
                 .position(x: x, y: height / 2)
@@ -664,6 +720,38 @@ struct SleepTimeline: View {
                 .fixedSize()
                 .position(x: min(max(48, x), width - 48), y: -2)
         }
+    }
+
+    /// Transient drag readout: the single epoch under the finger → "3:12 AM · Deep · HR 52 · calm".
+    private func scrubLabel(index: Int, stage: SleepStage) -> String {
+        var label = stage.isHole ? stage.label : "\(stage.label) sleep"
+        if let start = epochSec {
+            let t = Date(timeIntervalSince1970: TimeInterval(start + index * Self.epochLen))
+            label = "\(Self.clock(t)) · \(label)"
+        }
+        // v2: append the measured per-epoch HR + restlessness. Sparse: an epoch with no measured HR/motion
+        // says "· signal gap" — never a stale value.
+        let hr = hrByIndex[index]
+        let motion = motionByIndex[index]
+        if let hr { label += " · HR \(Int(hr.rounded()))" }
+        if let motion { label += " · " + (motion >= restlessThreshold ? String(localized: "restless") : String(localized: "calm")) }
+        if hr == nil, motion == nil, hasHR || hasMotion { label += " · " + String(localized: "signal gap") }
+        return label
+    }
+
+    /// Sticky segment readout: the whole tapped run → "Deep · 42m · 1:10–1:52 AM". A NODATA gap reads
+    /// as its span without a stage claim.
+    private func segmentLabel(runStart: Int, stage: SleepStage) -> String {
+        let (a, b) = runBounds(at: runStart)
+        let mins = (b - a) * Self.epochLen / 60
+        var label = stage.isHole ? String(localized: "No data") : "\(stage.label) · \(mins)m"
+        if stage.isHole { label += " · \(mins)m" }
+        if let start = epochSec {
+            let t0 = Date(timeIntervalSince1970: TimeInterval(start + a * Self.epochLen))
+            let t1 = Date(timeIntervalSince1970: TimeInterval(start + b * Self.epochLen))
+            label += " · \(Self.clock(t0))–\(Self.clock(t1))"
+        }
+        return label
     }
 
     // MARK: Computing (skeleton) + duration-only states
@@ -965,17 +1053,32 @@ enum SleepFmt {
 
 /// Drag/tap scrubbing for the timeline, gated by `enabled` so the mini/non-interactive variants ignore
 /// touches. Reports the touch position as a 0…1 fraction of the ribbon width.
-private struct ScrubGesture: ViewModifier {
+/// One gesture over the hero timeline: a DRAG scrubs a live per-epoch readout (`fraction`); a TAP (a
+/// press that barely moves) selects the whole stage SEGMENT under the finger (`selected` = its run-start
+/// index) with a haptic, and tapping the same segment again clears it. Disabled on the mini variant.
+private struct TimelineInteraction: ViewModifier {
     let enabled: Bool
     let width: CGFloat
+    let count: Int
     @Binding var fraction: CGFloat?
+    @Binding var selected: Int?
+    let runStart: (Int) -> Int
 
     func body(content: Content) -> some View {
-        guard enabled, width > 0 else { return AnyView(content) }
+        guard enabled, width > 0, count > 0 else { return AnyView(content) }
         return AnyView(content.gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { v in fraction = min(1, max(0, v.location.x / width)) }
-                .onEnded { _ in fraction = nil }
+                .onEnded { v in
+                    let moved = abs(v.translation.width) + abs(v.translation.height)
+                    if moved < 8 {   // a tap, not a scrub → sticky-select the segment
+                        let frac = min(1, max(0, v.location.x / width))
+                        let idx = min(count - 1, max(0, Int(frac * CGFloat(count))))
+                        let start = runStart(idx)
+                        if selected == start { selected = nil } else { selected = start; Haptic.tap() }
+                    }
+                    fraction = nil
+                }
         ))
     }
 }
