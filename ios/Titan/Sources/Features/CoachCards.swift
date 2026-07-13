@@ -846,6 +846,60 @@ struct BioPanelCard: View {
     }
 }
 
+// MARK: - Meal (a single logged meal · COACH CARDS v2 · Thrust B4)
+
+/// One logged meal — the beautiful confirmation of a food log: a photo thumb (or a fork placeholder),
+/// the name + time, and the macro breakdown (kcal + P/C/F chips). Editable right from the card via the
+/// action row. Distinct from the day-total `macros` card (one tap away via "Today's macros").
+struct MealCard: View {
+    let json: [String: Any]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                RemoteImage(url: json["photo_url"] as? String)
+                    .frame(width: 56, height: 56).clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text((json["name"] as? String) ?? "Meal").font(Theme.Font.body.weight(.semibold))
+                        .foregroundStyle(Theme.Palette.text).lineLimit(2)
+                    if let at = json["eaten_at"] as? String, !at.isEmpty {
+                        Text(verbatim: at).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
+                Spacer(minLength: 0)
+                if let kcal = jsonNum(json["calories"]) {
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("\(Int(kcal))").font(Theme.Font.num(20)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+                        Text("kcal").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                macro("Protein", json["protein_g"], Theme.Palette.pink)
+                macro("Carbs", json["carbs_g"], Theme.Palette.cyan)
+                macro("Fat", json["fat_g"], Theme.Palette.amber)
+            }
+            CardActionsRow(json: json)
+        }
+        .coachCard()
+    }
+
+    private func macro(_ label: LocalizedStringKey, _ value: Any?, _ color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            Spacer(minLength: 2)
+            Text(jsonNum(value).map { "\(Int($0.rounded()))g" } ?? "–g")
+                .font(Theme.Font.num(13)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(Theme.Palette.card, in: Capsule())
+        .frame(maxWidth: .infinity)
+    }
+}
+
 // MARK: - Weight (trend + rate)
 
 struct WeightTrendCard: View {

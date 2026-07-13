@@ -1444,8 +1444,8 @@ class CoachTools
 
         return [
             'ok' => true, 'meal_id' => $meal->id, 'name' => $meal->name, 'calories' => $meal->calories, 'protein_g' => $meal->protein_g,
-            'card' => $this->macrosCard(),
-            '_show' => "Logged it — show the updated `macros` card (inside a ```titan-card fence), then one short line on what's left to hit their targets.",
+            'card' => $this->mealCard($meal),
+            '_show' => "Show this `meal` card (inside a ```titan-card fence) to confirm the log, then one short line on what's left to hit today's targets.",
             'message' => "Logged {$meal->name} — {$meal->calories} kcal, {$meal->protein_g}g protein.",
         ];
     }
@@ -1533,6 +1533,30 @@ class CoachTools
     private function macrosCard(): array
     {
         return \App\Support\Macros::today($this->profile);
+    }
+
+    /** A single logged MEAL as a `meal` card (COACH CARDS v2 · B4) — the beautiful log confirmation:
+     *  photo thumb + name + time + macro breakdown, editable right from the card. Distinct from the
+     *  day-total `macros` card (one tap away via the action). */
+    private function mealCard(\App\Models\Meal $meal): array
+    {
+        return array_filter([
+            'type' => 'meal',
+            'id' => $meal->id,
+            'name' => $meal->name,
+            'eaten_at' => $meal->eaten_at?->format('g:i A'),
+            'photo_url' => $meal->photoUrl(),
+            'calories' => $meal->calories,
+            'protein_g' => (float) $meal->protein_g,
+            'carbs_g' => (float) $meal->carbs_g,
+            'fat_g' => (float) $meal->fat_g,
+            // CRUD from the card — routed as prompts so the coach confirms and uses update_meal / delete_meal
+            // (with the meal id in context); every action has the same typed-text equivalent.
+            'actions' => [
+                ['label' => 'Edit', 'prompt' => "The macros for \"{$meal->name}\" (meal #{$meal->id}) look off — let's fix them."],
+                ['label' => 'Delete', 'prompt' => "Delete the \"{$meal->name}\" I just logged (meal #{$meal->id})."],
+            ],
+        ], fn ($v) => $v !== null);
     }
 
     // --- "What you take": supplements & medications -------------------------

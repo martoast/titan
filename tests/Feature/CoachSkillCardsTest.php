@@ -28,8 +28,10 @@ class CoachSkillCardsTest extends TestCase
         }
     }
 
-    public function test_logging_a_meal_returns_the_updated_macros_card(): void
+    public function test_logging_a_meal_returns_a_meal_confirmation_card(): void
     {
+        // COACH CARDS v2 · B4: log_meal now confirms with a dedicated `meal` card (the day-total `macros`
+        // card is one tap away via the card action), not the flat macros card.
         $p = $this->profile();
         $p->update(['settings' => ['timezone' => 'UTC', 'macro_targets' => ['calories' => 3000, 'protein_g' => 200]]]);
         $t = new CoachTools($p->refresh());
@@ -38,13 +40,16 @@ class CoachSkillCardsTest extends TestCase
         $this->assertTrue($res['ok']);
 
         $card = $res['card'];
-        $this->assertSame('macros', $card['type']);
-        $this->assertSame(800, $card['calories']['value']);
-        $this->assertSame(3000, $card['calories']['target']);
-        $this->assertSame(60, $card['protein']['value']);
-        $this->assertSame(200, $card['protein']['target']);
-        $this->assertGreaterThan(0, $card['carbs']['target']);   // derived
-        $this->assertGreaterThan(0, $card['fat']['target']);
+        $this->assertSame('meal', $card['type']);
+        $this->assertSame('Steak & rice', $card['name']);
+        $this->assertSame(800, $card['calories']);
+        $this->assertSame(60.0, $card['protein_g']);
+        $this->assertSame(70.0, $card['carbs_g']);
+        $this->assertSame(25.0, $card['fat_g']);
+        // The card is actionable (edit the macros + jump to today's totals) — every action has a typed
+        // equivalent, so both are prompts.
+        $this->assertNotEmpty($card['actions']);
+        $this->assertContains('Edit', array_column($card['actions'], 'label'));
     }
 
     public function test_start_workout_returns_a_live_card(): void
