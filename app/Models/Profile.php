@@ -77,6 +77,12 @@ class Profile extends Model
         return $this->hasMany(Meal::class);
     }
 
+    /** Continuous-glucose readings (CGM — Nightscout / HealthKit / Dexcom). */
+    public function glucoseReadings(): HasMany
+    {
+        return $this->hasMany(GlucoseReading::class);
+    }
+
     /** The reusable meal memory — distinct dishes this profile eats, for one-tap re-logging. */
     public function mealTemplates(): HasMany
     {
