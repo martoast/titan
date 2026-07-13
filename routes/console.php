@@ -20,6 +20,9 @@ Schedule::command('sleep:recover-late')->everyThirtyMinutes()->withoutOverlappin
 // Seal completed workouts into activity_sessions (classification + TRIMP + VO2max + HRR).
 Schedule::command('biosignal:seal-activities')->everyFifteenMinutes()->withoutOverlapping();
 
+// Pull fresh CGM readings for glucose-enabled profiles (Nightscout / etc.) — incremental + dedup.
+Schedule::command('glucose:sync')->everyFiveMinutes()->withoutOverlapping();
+
 // Proactive AI coach: morning briefing + evening nudge (behaviour-triggered windows).
 Schedule::command('coach:morning-briefing')->dailyAt('07:00')->timezone(config('app.timezone'));
 Schedule::command('coach:evening-nudge')->dailyAt('18:30')->timezone(config('app.timezone'));
