@@ -12,6 +12,11 @@ Artisan::command('inspire', function () {
 // Seal completed nights into the authoritative whole-night HRV/recovery row.
 Schedule::command('biosignal:seal-nights')->hourly()->withoutOverlapping();
 
+// Recover nights whose band data buffered offline and uploaded AFTER the seal (the "phone died
+// mid-night" case): re-seal the affected night and fire the sleep summary/email that was missed
+// because no live phone marked awake. Idempotent + self-deduping (see RecoverLateNights).
+Schedule::command('sleep:recover-late')->everyThirtyMinutes()->withoutOverlapping();
+
 // Seal completed workouts into activity_sessions (classification + TRIMP + VO2max + HRR).
 Schedule::command('biosignal:seal-activities')->everyFifteenMinutes()->withoutOverlapping();
 
