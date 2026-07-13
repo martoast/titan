@@ -659,7 +659,9 @@ struct FastingStatus: Codable, Equatable {
     var next_stage: String? = nil
     let next_stage_in_h: Double?
     var window: EatingWindowInfo? = nil   // the recurring eating window + adherence streak (may be nil)
+    var protein_flag: ProteinFlag? = nil  // set when the window is too short to fit today's protein
     var disclaimer: String? = nil         // the non-negotiable honest framing
+    struct ProteinFlag: Codable, Equatable { let remaining_g: Int?; let target_g: Int?; let window_hours_left: Double?; let message: String? }
 }
 
 /// The recurring eating window (time-restricted eating) + its adherence streak — FASTING_EVIDENCE T2.

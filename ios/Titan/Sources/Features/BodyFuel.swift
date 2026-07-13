@@ -256,6 +256,16 @@ struct FastingCard: View {
                 if let w = model.fasting?.window {
                     windowSection(w)
                 }
+                // Protein guardrail — the window is too short to fit today's remaining protein.
+                if let msg = model.fasting?.protein_flag?.message, !msg.isEmpty {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(Theme.Palette.amber)
+                        Text(msg).font(Theme.Font.micro).foregroundStyle(Theme.Palette.text).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Space.s)
+                    .background(Theme.Palette.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                }
             }
         }
         .task { await model.loadFasting() }

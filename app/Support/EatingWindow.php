@@ -84,6 +84,24 @@ class EatingWindow
     }
 
     /**
+     * Hours of eating window still ahead TODAY at `$nowMin`: the remainder if it's open now, the whole
+     * window if it hasn't opened yet, or 0 once it's closed for the day. Pure (used by the protein
+     * guardrail). Wrap-past-midnight windows count only the portion up to the current moment's day.
+     */
+    public static function windowHoursRemaining(int $nowMin, int $startMin, int $lenMin): float
+    {
+        $offset = (($nowMin - $startMin) % 1440 + 1440) % 1440;
+        if ($offset < $lenMin) {
+            return round(($lenMin - $offset) / 60, 2);   // open now → time left in it
+        }
+        if ($nowMin < $startMin) {
+            return round($lenMin / 60, 2);               // opens later today → the whole window is ahead
+        }
+
+        return 0.0;                                       // past today's window
+    }
+
+    /**
      * Was a day adherent? A day with logged meals is adherent iff EVERY meal fell inside the window. A day
      * with no meals is not counted (returns null) — it doesn't help or hurt the streak (you may have just
      * not logged), same as SleepWeek skips unlogged nights.

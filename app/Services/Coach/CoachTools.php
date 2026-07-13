@@ -752,7 +752,7 @@ class CoachTools
             'start_fast' => $this->startFast($args),
             'end_fast' => $this->endFast(),
             'set_eating_window' => $this->setEatingWindow($args),
-            'fasting_status' => \App\Support\Fasting::card($this->profile) + ['_show' => 'Emit this `fasting` card in a ```titan-card fence; one line on elapsed vs goal + the current stage. If not active, suggest starting one.'],
+            'fasting_status' => \App\Support\Fasting::card($this->profile) + ['_show' => 'Emit this `fasting` card in a ```titan-card fence; one line on elapsed vs goal + the current stage. If not active, suggest starting one. If the card has a `protein_flag`, raise it: their eating window is too short to fit the protein they still need — protein protects muscle (elders/lifters need MORE), so nudge them to front-load protein or widen the window, not fast harder.'],
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],
         };

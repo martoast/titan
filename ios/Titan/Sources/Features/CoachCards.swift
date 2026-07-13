@@ -1053,6 +1053,11 @@ struct FastingCoachCard: View {
                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
             }
             if let w = json["window"] as? [String: Any] { windowRow(w) }
+            if let msg = (json["protein_flag"] as? [String: Any])?["message"] as? String, !msg.isEmpty {
+                Label { Text(msg).font(Theme.Font.micro).foregroundStyle(Theme.Palette.text) }
+                    icon: { Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(Theme.Palette.amber) }
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let disclaimer = json["disclaimer"] as? String, !disclaimer.isEmpty {
                 Text(disclaimer).font(.system(size: 10, design: .rounded)).foregroundStyle(Theme.Palette.textFaint)
                     .fixedSize(horizontal: false, vertical: true)

@@ -93,12 +93,14 @@ class Fasting
     public static function card(Profile $profile): array
     {
         $window = EatingWindow::forProfile($profile);   // null when no window is set
+        $proteinFlag = FastingProtein::check($profile); // null unless the window is squeezing protein
         $fast = self::active($profile);
         if (! $fast) {
             return array_filter([
                 'type' => 'fasting',
                 'active' => false,
                 'window' => $window,
+                'protein_flag' => $proteinFlag,
             ], fn ($v) => $v !== null);
         }
         $elapsed = $fast->started_at->diffInMinutes(now()) / 60;
@@ -119,6 +121,7 @@ class Fasting
             'next_stage' => $next['label'] ?? null,
             'next_stage_in_h' => $next !== null ? round(max(0, $next['h'] - $elapsed), 1) : null,
             'window' => $window,
+            'protein_flag' => $proteinFlag,
             'disclaimer' => self::DISCLAIMER,
         ], fn ($v) => $v !== null);
     }
