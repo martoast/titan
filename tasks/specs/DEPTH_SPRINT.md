@@ -25,6 +25,9 @@ surfaces carry the product's feel every day; make each of them the best in class
 4. **Native UI polish** — the app is Whoop/Oura-grade, but a few surfaces drag it down: a
    stock-looking Trends tab, stock iOS controls on the first-run flow, and a lift-detail screen
    that's a lower-fidelity twin of the premium summary. → `UI_POLISH.md` (workstream 3)
+5. **Meal-logging revision** — the #1 daily feature is great at the novel paths (photo, barcode,
+   re-log) but missing the boring high-frequency ones (manual quick-add, "what's left," any day but
+   today). Close the gap to MacroFactor/MFP parity. → `MEAL_LOGGING_REVISION.md` (workstream 4)
 
 ## The design bar (all three)
 
