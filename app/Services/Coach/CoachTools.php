@@ -311,7 +311,7 @@ class CoachTools
 
         // --- Logging & data entry (write) — so the chat can run the whole platform ---
         if (class_exists(\App\Models\Meal::class)) {
-            $tools[] = $this->fn('log_meal', "Log a meal FAST with your best macro estimate the moment they say they ate something — don't wait on a lookup or ask for exact portions. (For a photo of food they use the camera button.)", [
+            $tools[] = $this->fn('log_meal', "Log a meal FAST with your best macro estimate the moment they say they ate something — don't wait on a lookup or ask for exact portions. Always estimate ALL of protein/carbs/fat so they roughly reconcile with the calories (4·P + 4·C + 9·F ≈ calories) — never leave carbs or fat at 0 when the calories say otherwise. (For a photo of food they use the camera button.)", [
                 'name' => ['type' => 'string', 'description' => 'Short meal name.'],
                 'calories' => ['type' => 'integer', 'description' => 'Calories (kcal).'],
                 'protein_g' => ['type' => 'number', 'description' => 'Protein grams.'],
@@ -1432,13 +1432,18 @@ class CoachTools
         if ($name === '') {
             return ['error' => 'A meal name is required.'];
         }
+        // Guardrail: a fast log can capture "470 kcal, 37g protein" and leave carbs/fat at 0 — keep the
+        // stored macros consistent with the calories so the meal card + daily totals stay honest (review d987a9d).
+        $m = \App\Support\Macros::reconcile(
+            (int) round((float) ($a['calories'] ?? 0)),
+            (float) ($a['protein_g'] ?? 0), (float) ($a['carbs_g'] ?? 0), (float) ($a['fat_g'] ?? 0));
         $meal = $this->profile->meals()->create([
             'name' => \Illuminate\Support\Str::limit($name, 80, ''),
             'eaten_at' => $this->parseEatenAt($a['eaten_at'] ?? null),
-            'calories' => (int) round((float) ($a['calories'] ?? 0)),
-            'protein_g' => round((float) ($a['protein_g'] ?? 0), 1),
-            'carbs_g' => round((float) ($a['carbs_g'] ?? 0), 1),
-            'fat_g' => round((float) ($a['fat_g'] ?? 0), 1),
+            'calories' => $m['calories'],
+            'protein_g' => $m['protein_g'],
+            'carbs_g' => $m['carbs_g'],
+            'fat_g' => $m['fat_g'],
             'source' => 'coach',
         ]);
 
@@ -1503,6 +1508,13 @@ class CoachTools
         if (isset($a['eaten_at'])) {
             $meal->eaten_at = $this->parseEatenAt($a['eaten_at']);
         }
+        // Same guardrail as log_meal: the corrected macros must still reconcile with the calories
+        // (review d987a9d) — so an edit can't leave the meal self-contradicting either.
+        $r = \App\Support\Macros::reconcile((int) $meal->calories, (float) $meal->protein_g, (float) $meal->carbs_g, (float) $meal->fat_g);
+        $meal->calories = $r['calories'];
+        $meal->protein_g = $r['protein_g'];
+        $meal->carbs_g = $r['carbs_g'];
+        $meal->fat_g = $r['fat_g'];
         $meal->save();
 
         return [
