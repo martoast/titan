@@ -13,6 +13,7 @@ struct FuelSection: View {
     @State private var showScanner = false
     @State private var scannerUnavailable = false
     @State private var staged: StagedMealPhoto?
+    @State private var showQuickAdd = false
     @AppStorage("barcodeScanEnabled") private var barcodeEnabled = true
 
     var body: some View {
@@ -43,6 +44,7 @@ struct FuelSection: View {
             .disabled(model.scanning)
 
             if barcodeEnabled { barcodeButton }
+            manualAddButton
             yourMealsCard
             macrosCard
             HydrationCard()
@@ -50,6 +52,7 @@ struct FuelSection: View {
             mealsList
         }
         .task { await model.loadNutrition() }
+        .sheet(isPresented: $showQuickAdd) { QuickAddMealSheet() }
         .sheet(item: $editing) { EditMealSheet(meal: $0) }
         .sheet(item: $staged) { s in
             MealCaptionSheet(photo: s.data) { caption in Task { await model.scanMeal(s.data, caption: caption) } }
@@ -83,6 +86,28 @@ struct FuelSection: View {
         }
         .buttonStyle(PressCard())
         .disabled(model.scanning)
+    }
+
+    /// Manual quick-add — log a meal you didn't photograph or remember, without leaving the tab (the #1
+    /// gap: this used to force a switch to coach chat). Name + kcal in seconds; P/C/F optional.
+    private var manualAddButton: some View {
+        Button {
+            Haptic.tap(); showQuickAdd = true
+        } label: {
+            HStack(spacing: Theme.Space.s) {
+                Image(systemName: "square.and.pencil").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.Palette.mint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Log manually").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    Text("Know the numbers? Add a meal in seconds").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+            }
+            .padding(Theme.Space.m)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+        }
+        .buttonStyle(PressCard())
     }
 
     /// "Your meals" — the dishes you eat, remembered. One tap re-logs a usual (no camera, no AI):
@@ -471,6 +496,88 @@ struct ScanResultSheet: View {
             Text(v).font(Theme.Font.num(20)).foregroundStyle(c).monospacedDigit()
             Text(l).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }.frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Manual quick-add
+
+/// Log a meal by hand — name + calories in seconds, P/C/F optional (the server reconciles them so even
+/// "300 kcal" alone stores a sensible split), time defaults to now. The boring path, made fast.
+private struct QuickAddMealSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var calories = ""
+    @State private var protein = ""
+    @State private var carbs = ""
+    @State private var fat = ""
+    @State private var when = Date()
+    @State private var saving = false
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && (Int(calories) ?? 0) > 0
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: Theme.Space.m) {
+                        field("Name", text: $name, keyboard: .default)
+                        field("Calories (kcal)", text: $calories, keyboard: .numberPad)
+                        HStack(spacing: Theme.Space.s) {
+                            field("Protein (g)", text: $protein, keyboard: .numberPad)
+                            field("Carbs (g)", text: $carbs, keyboard: .numberPad)
+                            field("Fat (g)", text: $fat, keyboard: .numberPad)
+                        }
+                        Text("Macros optional — leave them blank and I'll estimate a split from the calories.")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("When").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
+                            TitanDateField(selection: $when, components: [.date, .hourAndMinute])
+                        }
+
+                        Button {
+                            saving = true
+                            Task {
+                                let ok = await model.addMeal(
+                                    name: name.trimmingCharacters(in: .whitespaces),
+                                    calories: Int(calories) ?? 0,
+                                    protein: Double(protein), carbs: Double(carbs), fat: Double(fat),
+                                    eatenAt: when)
+                                saving = false
+                                if ok { dismiss() }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if saving { ProgressView().tint(.white) }
+                                (saving ? Text("Logging…") : Text("Log meal")).font(Theme.Font.body.weight(.semibold))
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                            .foregroundStyle(.white).opacity(canSave ? 1 : 0.5)
+                        }
+                        .disabled(!canSave || saving)
+                    }.padding(Theme.Space.m)
+                }
+            }
+            .navigationTitle("Log a meal").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+    }
+
+    private func field(_ label: LocalizedStringKey, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
+            TextField("", text: text)
+                .font(Theme.Font.body).foregroundStyle(Theme.Palette.text).keyboardType(keyboard)
+                .padding(12).background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+        }
     }
 }
 

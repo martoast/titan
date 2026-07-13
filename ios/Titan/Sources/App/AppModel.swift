@@ -819,6 +819,17 @@ final class AppModel: ObservableObject {
     }
 
     /// Confirm a scanned meal draft (with the amount the user set) → log it, close the sheet, refresh.
+    /// Manual quick-add from the Fuel tab — log a meal without a photo/barcode. Returns success so the
+    /// sheet can close only on a good save.
+    func addMeal(name: String, calories: Int, protein: Double?, carbs: Double?, fat: Double?, eatenAt: Date?) async -> Bool {
+        do {
+            _ = try await api.storeMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, eatenAt: eatenAt)
+            Haptic.success()
+            await loadNutrition()
+            return true
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
+    }
+
     func confirmScannedMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, photoPath: String?, source: String? = nil) async {
         do {
             _ = try await api.confirmMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, photoPath: photoPath, source: source)
