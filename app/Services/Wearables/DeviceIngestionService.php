@@ -337,8 +337,9 @@ class DeviceIngestionService
                 'weight_kg' => $summary['weight_kg'] ?? null,
                 'body_fat_pct' => $summary['body_fat_pct'] ?? null,
             ], fn ($v) => $v !== null)),
-            // Merge (per-day MAX) rather than overwrite, so the band's steps and the phone's never
-            // double-count or clobber each other — see DailyActivity::mergeDaily.
+            // The band is the PRIMARY source: mergeDaily takes these as authoritative for the day and
+            // won't let an Apple-Health write override them (band-primary — supersedes the old per-day
+            // MAX merge that let the phone win). See DailyActivity::mergeDaily.
             'activity' => (bool) DailyActivity::mergeDaily(
                 $pid,
                 $this->dateOf($summary['date'] ?? null, $tz),

@@ -83,8 +83,8 @@ class HealthIngestService
             if ($fields === []) {
                 continue;
             }
-            // Per-day MAX merge (not overwrite) so phone steps and any band steps coexist without
-            // double-counting or clobbering — see DailyActivity::mergeDaily.
+            // Apple Health is the FALLBACK source: mergeDaily only stores these on a day the band hasn't
+            // claimed (band-primary — supersedes the old per-day-MAX merge). See DailyActivity::mergeDaily.
             DailyActivity::mergeDaily($pid, $date, $fields, ['source' => self::SOURCE, 'updated_via' => self::SOURCE]);
             $c['activity']++;
         }
