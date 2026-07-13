@@ -138,12 +138,8 @@ private struct AddProgressSheet: View {
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             Text("POSE").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                            Picker("", selection: $pose) {
-                                Text("—").tag(String?.none)
-                                Text("Front").tag(String?.some("front"))
-                                Text("Side").tag(String?.some("side"))
-                                Text("Back").tag(String?.some("back"))
-                            }.pickerStyle(.segmented)
+                            PillSwitch(options: [(String?.none, "—"), (.some("front"), "Front"), (.some("side"), "Side"), (.some("back"), "Back")],
+                                       selection: $pose)
                         }
                         labeledField("Weight (kg, optional)", text: $weight, keyboard: .decimalPad)
                         labeledField("Note (optional)", text: $notes, keyboard: .default)

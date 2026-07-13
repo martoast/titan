@@ -141,9 +141,7 @@ struct OnboardingView: View {
             VStack(spacing: Theme.Space.m) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("BIRTHDATE").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                    DatePicker("", selection: $form.birthdate, in: ...Date(), displayedComponents: .date)
-                        .labelsHidden().datePickerStyle(.compact).tint(Theme.Palette.indigo)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    TitanDateField(selection: $form.birthdate)
                 }
                 inlineLabel("SEX"); OBOptionList(options: OB.sexes, selection: $form.sex)
                 inlineLabel("UNITS"); OBOptionList(options: OB.units, selection: $form.units)
@@ -190,8 +188,7 @@ struct OnboardingView: View {
                     Toggle("Set my last period start", isOn: $form.hasLastPeriod).tint(Theme.Palette.pink)
                         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     if form.hasLastPeriod {
-                        DatePicker("Last period", selection: $form.lastPeriod, in: ...Date(), displayedComponents: .date)
-                            .datePickerStyle(.compact).tint(Theme.Palette.pink).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        TitanDateField(selection: $form.lastPeriod, accent: Theme.Palette.pink)
                     }
                 }
             }
@@ -218,9 +215,7 @@ struct OnboardingView: View {
         HStack {
             Text(label).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
             Spacer()
-            Stepper("\(value.wrappedValue)\(unit.isEmpty ? "" : " \(unit)")", value: value, in: range)
-                .labelsHidden()
-            Text("\(value.wrappedValue)\(unit.isEmpty ? "" : " \(unit)")").font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.text).frame(width: 64, alignment: .trailing)
+            TitanStepper(value: value, range: range, unit: unit)
         }
         .padding(.horizontal, Theme.Space.m).padding(.vertical, 10)
         .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
@@ -245,8 +240,7 @@ struct EditProfileView: View {
                     VStack(spacing: Theme.Space.m) {
                         section("About you") {
                             OBTextField(label: String(localized: "Name"), text: $form.displayName)
-                            DatePicker("Birthdate", selection: $form.birthdate, in: ...Date(), displayedComponents: .date)
-                                .tint(Theme.Palette.indigo).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                            label("Birthdate"); TitanDateField(selection: $form.birthdate)
                             label("Sex"); OBOptionList(options: OB.sexes, selection: $form.sex)
                             label("Units"); OBOptionList(options: OB.units, selection: $form.units)
                             OBTextField(label: String(localized: "Height (\(form.heightUnit))"), text: $form.height, keyboard: .decimalPad)
@@ -277,12 +271,13 @@ struct EditProfileView: View {
                                 if form.cycleEnabled {
                                     Toggle("Log my last period", isOn: $form.hasLastPeriod).tint(Theme.Palette.pink).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                                     if form.hasLastPeriod {
-                                        DatePicker("First day of last period", selection: $form.lastPeriod, in: ...Date(), displayedComponents: .date)
-                                            .tint(Theme.Palette.pink).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                        label("First day of last period"); TitanDateField(selection: $form.lastPeriod, accent: Theme.Palette.pink)
                                     }
-                                    Stepper(value: $form.cycleLength, in: 21...45) {
-                                        Text("Average cycle length: \(form.cycleLength) days").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
-                                    }.tint(Theme.Palette.pink)
+                                    HStack {
+                                        Text("Average cycle length").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                        Spacer()
+                                        TitanStepper(value: $form.cycleLength, range: 21...45, unit: "days")
+                                    }
                                     label("Birth control"); OBOptionList(options: OB.birthControl, selection: $form.birthControl)
                                     label("Intent"); OBOptionList(options: OB.cycleIntent, selection: $form.cycleIntent)
                                 }

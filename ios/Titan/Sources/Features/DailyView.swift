@@ -377,10 +377,8 @@ private struct CycleSection: View {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
                         if let flows = model.cycle?.flows {
                             Text("FLOW").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                            Picker("", selection: $todayFlow) {
-                                Text("—").tag(String?.none)
-                                ForEach(flows, id: \.self) { Text($0.capitalized).tag(String?.some($0)) }
-                            }.pickerStyle(.segmented)
+                            PillSwitch(options: [(String?.none, "—")] + flows.map { (String?.some($0), $0.capitalized) },
+                                       selection: $todayFlow)
                         }
                         if let syms = model.cycle?.symptoms {
                             Text("SYMPTOMS").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)

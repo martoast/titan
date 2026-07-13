@@ -722,6 +722,76 @@ struct SleepTimeline: View {
     }
 }
 
+// MARK: - Themed form controls (UI_POLISH job 2 — replace stock Stepper / compact DatePicker)
+
+/// A themed +/− stepper: SF-rounded number, accent circular buttons, haptic tick. Replaces the stock
+/// `Stepper` (which looks off on the dark canvas). Reused across onboarding + the log sheets.
+struct TitanStepper: View {
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    var step: Int = 1
+    var unit: String = ""
+
+    var body: some View {
+        HStack(spacing: Theme.Space.m) {
+            button("minus") { adjust(-step) }
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("\(value)").font(Theme.Font.num(22)).foregroundStyle(Theme.Palette.text).monospacedDigit()
+                if !unit.isEmpty { Text(unit).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+            }
+            .frame(minWidth: 70)
+            button("plus") { adjust(step) }
+        }
+    }
+
+    private func adjust(_ d: Int) {
+        let n = min(range.upperBound, max(range.lowerBound, value + d))
+        if n != value { value = n; Haptic.tap() }
+    }
+
+    private func button(_ icon: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.body.weight(.bold)).foregroundStyle(Theme.Palette.text)
+                .frame(width: 42, height: 42)
+                .background(Theme.Palette.card, in: Circle()).overlay(Circle().strokeBorder(Theme.Palette.cardStroke))
+        }.buttonStyle(PressCard())
+    }
+}
+
+/// A themed date/time field — the native compact picker (familiar tap-to-open UX) inside the app's
+/// dark-canvas pill, accent-tinted. Replaces bare `.datePickerStyle(.compact)`. Defaults to past-only
+/// (matches birthdate / when-did-this-happen); pass `notAfter` to widen.
+struct TitanDateField: View {
+    @Binding var selection: Date
+    var components: DatePickerComponents = .date
+    var notAfter: Date = Date()
+    var accent: Color = Theme.Palette.indigo
+
+    var body: some View {
+        HStack {
+            DatePicker("", selection: $selection, in: Date.distantPast...notAfter, displayedComponents: components)
+                .labelsHidden().datePickerStyle(.compact).tint(accent).colorScheme(.dark)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Theme.Space.m).padding(.vertical, 8)
+        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+    }
+}
+
+/// A themed toggle — accent tint + the app's label styling, so it doesn't read as a stock iOS switch.
+struct TitanToggle: View {
+    let title: LocalizedStringKey
+    @Binding var isOn: Bool
+    var accent: Color = Theme.Palette.indigo
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            Text(title).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+        }
+        .tint(accent)
+    }
+}
+
 /// A first-class trend chart matching the app's crafted look (HrGraph/SleepTimeline family) — a gradient
 /// area + line, light gridlines + a real date axis, the period AVERAGE drawn on the chart (dashed rule),
 /// an emphasized endpoint, and drag-to-scrub reading a day's date + value. Replaces the stock Swift-Charts

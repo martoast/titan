@@ -54,7 +54,7 @@ struct LogWorkoutSheet: View {
                                     Text("\(minutes)").font(Theme.Font.num(34)).foregroundStyle(Theme.Palette.text).monospacedDigit()
                                     Text("min").font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
                                     Spacer()
-                                    Stepper("", value: $minutes, in: 1...600, step: 5).labelsHidden().tint(Theme.Palette.indigo)
+                                    TitanStepper(value: $minutes, range: 1...600, step: 5)
                                 }
                                 HStack(spacing: 6) {
                                     ForEach(presets, id: \.self) { p in
@@ -85,9 +85,7 @@ struct LogWorkoutSheet: View {
                         }
 
                         field("WHEN") {
-                            DatePicker("", selection: $when, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
-                                .labelsHidden().datePickerStyle(.compact).tint(Theme.Palette.indigo)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            TitanDateField(selection: $when, components: [.date, .hourAndMinute])
                         }
 
                         if let errorText {
