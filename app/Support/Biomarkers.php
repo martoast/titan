@@ -180,6 +180,37 @@ class Biomarkers
         return self::get($key)['unit'] ?? null;
     }
 
+    /** Which body-system panel a marker belongs to — groups the `biopanel` card into clinical sections
+     *  (Hormones / Lipids / Metabolic / …) so a wall of markers reads as a structured panel. Unknown or
+     *  uncatalogued keys fall to "Other" (never dropped). Order here is the display order of the sections. */
+    private const GROUPS = [
+        'Hormones' => ['testosterone', 'free_testosterone'],
+        'Lipids' => ['apob', 'ldl', 'hdl', 'triglycerides'],
+        'Metabolic' => ['hba1c', 'fasting_glucose', 'insulin'],
+        'Vitamins & minerals' => ['vitamin_d', 'ferritin'],
+        'Inflammation' => ['hs_crp'],
+        'Liver' => ['alt', 'ast', 'ggt', 'alkaline_phosphatase', 'albumin'],
+        'Kidney' => ['creatinine', 'egfr', 'bun'],
+        'Blood count' => ['wbc', 'lymphocyte_percent', 'mcv', 'rdw'],
+    ];
+
+    public static function group(string $key): string
+    {
+        foreach (self::GROUPS as $name => $keys) {
+            if (in_array($key, $keys, true)) {
+                return $name;
+            }
+        }
+
+        return 'Other';
+    }
+
+    /** The section order for the `biopanel` card (the catalog groups, then "Other" last). */
+    public static function groupOrder(): array
+    {
+        return [...array_keys(self::GROUPS), 'Other'];
+    }
+
     /**
      * Resolve a free-text marker name (e.g. from a lab PDF / LLM) to a catalog key.
      * Tries exact key, then label, then alias substring match. Null if unknown.

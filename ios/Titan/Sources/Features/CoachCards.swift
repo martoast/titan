@@ -781,6 +781,71 @@ struct MarkersCard: View {
     }
 }
 
+// MARK: - Bloodwork panel (COACH CARDS v2 · Thrust B7)
+
+/// The elevated bloodwork card: markers GROUPED by body system (Hormones / Lipids / Metabolic / …), each
+/// with an in-range/flagged chip, its optimal range, and a trend arrow vs the previous reading (green when
+/// the move is in the healthy direction, pink when it's the wrong way). Replaces the flat `markers` list.
+struct BioPanelCard: View {
+    let json: [String: Any]
+    private var groups: [[String: Any]] { json["groups"] as? [[String: Any]] ?? [] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                if let t = json["title"] as? String, !t.isEmpty { cardTitle(verbatim: t) } else { cardTitle("Bloodwork") }
+                Spacer()
+                if let taken = json["taken_at"] as? String {
+                    Text(verbatim: taken).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+            ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
+                let markers = g["markers"] as? [[String: Any]] ?? []
+                if !markers.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text((g["name"] as? String) ?? "").textCase(.uppercase)
+                            .font(Theme.Font.micro).tracking(0.6).foregroundStyle(Theme.Palette.textFaint)
+                        ForEach(Array(markers.enumerated()), id: \.offset) { _, m in
+                            markerRow(m)
+                        }
+                    }
+                }
+            }
+            cardCaption(json["caption"] as? String)
+        }
+        .coachCard()
+    }
+
+    private func markerRow(_ m: [String: Any]) -> some View {
+        let flag = m["flag"] as? String
+        let color = coachFlagColor(flag)
+        let valueColor = color == Theme.Palette.textDim ? Theme.Palette.text : color
+        return HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 1) {
+                Text((m["label"] as? String) ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                if let range = m["range"] as? String, !range.isEmpty {
+                    Text(verbatim: range).font(.system(size: 9, design: .rounded)).foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+            Spacer(minLength: 6)
+            trendArrow(m)
+            Text((m["value"].map { "\($0)" }) ?? "–").font(Theme.Font.num(13)).foregroundStyle(valueColor)
+                .monospacedDigit().lineLimit(1)
+        }
+    }
+
+    @ViewBuilder private func trendArrow(_ m: [String: Any]) -> some View {
+        if let trend = m["trend"] as? String, trend == "up" || trend == "down" {
+            // trend_good may be absent (unknown direction) → neutral gray.
+            let good = m["trend_good"] as? Bool
+            let tint = good == nil ? Theme.Palette.textFaint : (good == true ? Theme.Palette.mint : Theme.Palette.pink)
+            Image(systemName: trend == "up" ? "arrow.up.right" : "arrow.down.right")
+                .font(.system(size: 10, weight: .bold)).foregroundStyle(tint)
+        }
+    }
+}
+
 // MARK: - Weight (trend + rate)
 
 struct WeightTrendCard: View {

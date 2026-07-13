@@ -455,7 +455,7 @@ class CoachTools
             $tools[] = $this->fn('streaks', "The user's consistency STREAKS as a ready-made `streak` card (training day-streak + sleep-need night-streak, each with its best-ever). Lead any 'what's my streak / how consistent have I been' question with it; celebrate the behavior, it's what moves the needle.", [], []);
         }
         if (class_exists(\App\Models\BiomarkerReading::class)) {
-            $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
+            $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `biopanel` card — markers grouped by body system (Hormones / Lipids / Metabolic / …), each with an in-range/flagged chip and a trend arrow vs the previous reading. Lead any 'show my bloodwork / labs / how are my markers' answer with it.", [], []);
         }
         if (class_exists(\App\Models\Meal::class)) {
             $tools[] = $this->fn('macros_today', "Today's macros — calories + protein / carbs / fat vs targets — as a ready-made `macros` card. Use whenever the user asks about their macros / calories / what's left to eat. (log_meal already shows this after logging.)", [], []);
@@ -2216,35 +2216,96 @@ class CoachTools
         if ($readings->isEmpty()) {
             return ['note' => 'No bloodwork logged yet. Snap a photo of a labs report with the camera button and I\'ll read it in.'];
         }
-        $seen = [];
-        $items = [];
-        $flagged = 0;
+        // Latest + previous reading per marker (readings are newest-first) → value, flag, and a trend arrow.
+        $byMarker = [];
         foreach ($readings as $r) {
-            if (isset($seen[$r->marker])) {
-                continue;
-            }
-            $seen[$r->marker] = true;
-            $label = class_exists(\App\Support\Biomarkers::class)
-                ? \App\Support\Biomarkers::label($r->marker)
-                : strtoupper(str_replace('_', ' ', $r->marker));
-            $val = rtrim(rtrim(number_format((float) $r->value, 2), '0'), '.').($r->unit ? ' '.$r->unit : '');
-            $flag = $r->flag ?: 'normal';
+            $byMarker[$r->marker][] = $r;
+        }
+
+        $bucket = [];   // group name → rows
+        $flagged = 0;
+        $latestTaken = null;
+        foreach ($byMarker as $key => $rs) {
+            $latest = $rs[0];
+            $prev = $rs[1] ?? null;
+            $label = \App\Support\Biomarkers::label($key);
+            $flag = $latest->flag ?: 'normal';
             if (! in_array($flag, ['normal', 'optimal'], true)) {
                 $flagged++;
             }
-            $items[] = ['label' => $label, 'value' => $val, 'flag' => $flag];
-            if (count($items) >= 12) {
-                break;
+            $latestTaken = $latestTaken ?? $latest->taken_at;
+            [$trend, $trendGood] = $this->biomarkerTrend($key, $latest, $prev);
+            $bucket[\App\Support\Biomarkers::group($key)][] = array_filter([
+                'label' => $label,
+                'value' => rtrim(rtrim(number_format((float) $latest->value, 2), '0'), '.').($latest->unit ? ' '.$latest->unit : ''),
+                'flag' => $flag,
+                'range' => \App\Support\Biomarkers::rangeLabel($key) ?: null,
+                'trend' => $trend,          // 'up' | 'down' | null (no prior reading / unchanged)
+                'trend_good' => $trendGood, // true | false | null — is that move in the healthy direction
+            ], fn ($v) => $v !== null);
+        }
+
+        // Emit groups in the catalog's clinical order, dropping empties.
+        $groups = [];
+        foreach (\App\Support\Biomarkers::groupOrder() as $name) {
+            if (! empty($bucket[$name])) {
+                $groups[] = ['name' => $name, 'markers' => $bucket[$name]];
             }
         }
-        $card = [
-            'type' => 'markers',
-            'title' => 'Latest bloodwork',
-            'items' => $items,
-            'caption' => $flagged === 0 ? 'All in range.' : $flagged.' marker'.($flagged === 1 ? '' : 's').' outside range — not a diagnosis; flag with your doctor.',
-        ];
 
-        return ['card' => $card, '_show' => 'Open with this `markers` card inside a ```titan-card fence, then briefly explain any flagged marker. Never diagnose; suggest a doctor for anything concerning.'];
+        $card = array_filter([
+            'type' => 'biopanel',
+            'title' => 'Latest bloodwork',
+            'taken_at' => $latestTaken?->format('M j, Y'),
+            'flagged' => $flagged,
+            'groups' => $groups,
+            'caption' => $flagged === 0 ? 'All markers in range.' : $flagged.' marker'.($flagged === 1 ? '' : 's').' outside range — not a diagnosis; review with your doctor.',
+        ], fn ($v) => $v !== null);
+
+        return ['card' => $card, '_show' => 'Open with this `biopanel` card inside a ```titan-card fence, then briefly explain any flagged marker. Never diagnose; suggest a doctor for anything concerning.'];
+    }
+
+    /**
+     * A marker's move since its previous reading, and whether that move is in the HEALTHY direction.
+     * A 2% dead-band swallows measurement noise. "Good" depends on the marker's optimal direction:
+     * lower-is-better → down is good; higher-is-better → up is good; mid-band → moving toward the band's
+     * center is good. Null trend/good when there's no prior reading (nothing to compare).
+     *
+     * @return array{0:?string,1:?bool} [ 'up'|'down'|null , good|null ]
+     */
+    private function biomarkerTrend(string $key, $latest, $prev): array
+    {
+        if ($prev === null) {
+            return [null, null];
+        }
+        $new = (float) $latest->value;
+        $old = (float) $prev->value;
+        if ($old != 0.0 && abs($new - $old) <= abs($old) * 0.02) {
+            return [null, null];   // within noise → no arrow
+        }
+        $arrow = $new > $old ? 'up' : 'down';
+        $def = \App\Support\Biomarkers::get($key);
+        if ($def === null) {
+            return [$arrow, null];
+        }
+        $good = match ($def['direction']) {
+            'lower' => $arrow === 'down',
+            'higher' => $arrow === 'up',
+            default => self::midImproved($new, $old, $def['low'], $def['high']),   // toward band center
+        };
+
+        return [$arrow, $good];
+    }
+
+    /** Mid-band marker: did the value move CLOSER to the optimal band's center? */
+    private static function midImproved(float $new, float $old, ?float $low, ?float $high): ?bool
+    {
+        if ($low === null || $high === null) {
+            return null;
+        }
+        $center = ($low + $high) / 2;
+
+        return abs($new - $center) < abs($old - $center);
     }
 
     // ---- Mesocycle generator — a real, followable program --------------------
