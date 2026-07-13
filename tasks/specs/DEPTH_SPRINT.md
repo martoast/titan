@@ -14,8 +14,11 @@ surfaces carry the product's feel every day; make each of them the best in class
 
 1. **Sleep timeline** — the thing Alex fought hardest for. Already a strong Canvas hypnogram; elevate
    it to *the story of your night*. → `SLEEP_TIMELINE_ELEVATION.md` (workstream 1, detailed)
-2. **Widgets** — greenfield (the app has ZERO WidgetKit today). The always-on pulse that makes Titan
-   present without opening it. → `WIDGETS.md` (workstream 2)
+2. **Coach cards** — the widgets the coach drops into chat (readiness ring, sleep debt, macros…).
+   Already a ~25-type catalog, but read-only and missing the newest features. Make them richer,
+   **interactive** (act from the chat), and cover more. This is the moat surface — Whoop has no
+   conversational card system at all. → `COACH_CARDS.md` (workstream 2)
+   *(Home-screen/lock-screen WidgetKit is a separate greenfield option for later — not this sprint.)*
 3. **Coach** — already sophisticated (streaming, native cards, trajectory + situational lenses,
    memory). Elevate from "a great chatbot you open" to "a coach who reaches out." → `COACH_DEPTH.md`
    (workstream 3)
