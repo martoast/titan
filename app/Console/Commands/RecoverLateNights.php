@@ -79,9 +79,13 @@ class RecoverLateNights extends Command
             }
         }
 
-        // --- 2. Fire the deferred summary for recent real overnights that never got one. ---
-        // Re-query AFTER the re-seal so a freshly-recovered overnight is included.
+        // --- 2. Fire the deferred summary for the LATEST recovered overnight that never got one. ---
+        // Re-query AFTER the re-seal so a freshly-recovered overnight is included. We consider only the
+        // single most-recent overnight per profile: `sleep_summary_reacted` is one value (the last night
+        // notified), so an OLDER night always looks "un-notified" once a newer one overwrites it -- firing
+        // for those would re-send stale summaries. The recovery case that matters is only ever last night.
         $notified = 0;
+        $latestByProfile = [];   // profileId => most-recent overnight SleepLog
         $overnights = SleepLog::query()
             ->where('is_nap', false)
             ->where('stage_status', 'final')
@@ -90,8 +94,11 @@ class RecoverLateNights extends Command
             ->with('profile')
             ->orderBy('slept_at')
             ->get();
-
         foreach ($overnights as $log) {
+            $latestByProfile[(int) $log->profile_id] = $log;   // asc order -> last write wins = latest night
+        }
+
+        foreach ($latestByProfile as $log) {
             $profile = $log->profile;
             $night = $log->slept_at?->toDateString();
             if (! $profile || ! $night) {
