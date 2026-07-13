@@ -722,6 +722,118 @@ struct SleepTimeline: View {
     }
 }
 
+/// A first-class trend chart matching the app's crafted look (HrGraph/SleepTimeline family) — a gradient
+/// area + line, light gridlines + a real date axis, the period AVERAGE drawn on the chart (dashed rule),
+/// an emphasized endpoint, and drag-to-scrub reading a day's date + value. Replaces the stock Swift-Charts
+/// bars on the Trends tab (UI_POLISH job 1). Nil values are honest gaps, never interpolated across.
+struct TrendMetricChart: View {
+    let points: [(date: String, value: Double?)]
+    let color: Color
+    var unit: String = ""
+    var average: Double? = nil
+    var yDomain: ClosedRange<Double>? = nil
+    var decimals: Int = 0
+    @State private var selected: Int?
+
+    private var vals: [Double?] { points.map(\.value) }
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            let present = vals.compactMap { $0 }
+            if present.count >= 2 {
+                let lo = yDomain?.lowerBound ?? max(0, (present.min() ?? 0) - (present.max()! - present.min()!) * 0.15)
+                let hi = yDomain?.upperBound ?? ((present.max() ?? 1) + (present.max()! - present.min()!) * 0.15 + 0.001)
+                let span = max(0.001, hi - lo)
+                let n = max(1, points.count - 1)
+                let x: (Int) -> CGFloat = { CGFloat($0) / CGFloat(n) * w }
+                let y: (Double) -> CGFloat = { h - CGFloat(($0 - lo) / span) * h }
+
+                ZStack(alignment: .topLeading) {
+                    // Gridlines.
+                    ForEach(0..<3) { i in
+                        let gy = h * CGFloat(i) / 2
+                        Path { $0.move(to: .init(x: 0, y: gy)); $0.addLine(to: .init(x: w, y: gy)) }
+                            .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
+                    }
+                    // Period average — drawn ON the chart.
+                    if let average, average >= lo, average <= hi {
+                        Path { $0.move(to: .init(x: 0, y: y(average))); $0.addLine(to: .init(x: w, y: y(average))) }
+                            .stroke(color.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    }
+                    // Area fill + line, breaking at nil (real gaps).
+                    area(w: w, h: h, x: x, y: y)
+                    line(x: x, y: y)
+                    // Emphasized endpoint.
+                    if let li = vals.lastIndex(where: { $0 != nil }), let v = vals[li] {
+                        Circle().fill(color).frame(width: 7, height: 7).position(x: x(li), y: y(v))
+                            .shadow(color: color.opacity(0.6), radius: 4)
+                    }
+                    // Scrub highlight + the day's readout.
+                    if let s = selected, let v = vals[s] {
+                        Path { $0.move(to: .init(x: x(s), y: 0)); $0.addLine(to: .init(x: x(s), y: h)) }
+                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        Circle().stroke(color, lineWidth: 2).background(Circle().fill(Theme.Palette.bg))
+                            .frame(width: 10, height: 10).position(x: x(s), y: y(v))
+                        HStack(spacing: 5) {
+                            Text(Self.shortDate(points[s].date)).foregroundStyle(Theme.Palette.textDim)
+                            Text((decimals > 0 ? String(format: "%.\(decimals)f", v) : "\(Int(v.rounded()))") + unit)
+                                .foregroundStyle(color).fontWeight(.semibold)
+                        }
+                        .font(Theme.Font.micro).padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Theme.Palette.card, in: Capsule()).overlay(Capsule().strokeBorder(Theme.Palette.cardStroke))
+                        .padding(6)
+                    }
+                }
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { g in
+                    let i = max(0, min(points.count - 1, Int((g.location.x / max(1, w)) * CGFloat(n) + 0.5)))
+                    if vals[i] != nil { if selected != i { Haptic.tap() }; selected = i }
+                }.onEnded { _ in selected = nil })
+            } else {
+                Text("Not enough data yet").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    /// Value + date readout for the scrubbed point (shown above the chart by the caller).
+    var readout: (label: String, value: String)? {
+        guard let s = selected, let v = vals[s] else { return nil }
+        return (Self.shortDate(points[s].date), (decimals > 0 ? String(format: "%.\(decimals)f", v) : "\(Int(v.rounded()))") + unit)
+    }
+
+    private func area(w: CGFloat, h: CGFloat, x: (Int) -> CGFloat, y: (Double) -> CGFloat) -> some View {
+        Path { p in
+            var open = false
+            for (i, v) in vals.enumerated() {
+                guard let v else { open = false; continue }
+                if !open { p.move(to: .init(x: x(i), y: h)); p.addLine(to: .init(x: x(i), y: y(v))); open = true }
+                else { p.addLine(to: .init(x: x(i), y: y(v))) }
+            }
+        }
+        .fill(LinearGradient(colors: [color.opacity(0.26), color.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+    }
+
+    private func line(x: @escaping (Int) -> CGFloat, y: @escaping (Double) -> CGFloat) -> some View {
+        Path { p in
+            var open = false
+            for (i, v) in vals.enumerated() {
+                guard let v else { open = false; continue }
+                open ? p.addLine(to: .init(x: x(i), y: y(v))) : p.move(to: .init(x: x(i), y: y(v)))
+                open = true
+            }
+        }.stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+    }
+
+    static func shortDate(_ s: String) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: s) else { return s }
+        let o = DateFormatter(); o.dateFormat = "MMM d"; o.locale = .current
+        return o.string(from: d)
+    }
+}
+
 /// "The story of your night" — the narrative that frames the hypnogram (server-derived, shared across the
 /// summary sheet + the detail screen + the coach). The takeaway leads (bold), the read follows.
 struct SleepStoryCard: View {

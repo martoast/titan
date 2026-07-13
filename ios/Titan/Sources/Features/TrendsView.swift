@@ -1,61 +1,49 @@
 import SwiftUI
-import Charts
 
 /// The Whoop-style Overview: your Recovery, Sleep Performance and Strain history over a week or month,
-/// each as a daily graph with its period average — plus the HRV / Resting HR trends underneath.
+/// each a first-class branded chart (gradient area + date axis + drawn average + scrub) — matching the
+/// sleep/heart charts, not stock Swift Charts (UI_POLISH job 1).
 struct TrendsView: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
         let o = model.overview
         VStack(spacing: Theme.Space.m) {
-            // Week / Month toggle.
-            Picker("Range", selection: Binding(get: { model.overviewDays }, set: { d in Task { await model.setOverviewDays(d) } })) {
-                Text("Week").tag(7)
-                Text("Month").tag(30)
-            }
-            .pickerStyle(.segmented)
-            .padding(.top, Theme.Space.s)
+            // Week / Month toggle — the app's own PillSwitch, not a stock .segmented Picker.
+            PillSwitch(options: [(7, "Week"), (30, "Month")],
+                       selection: Binding(get: { model.overviewDays }, set: { d in Task { await model.setOverviewDays(d) } }))
+                .padding(.top, Theme.Space.s)
 
             if let o {
                 trendCard("Recovery", avg: o.averages.recovery, unit: "%", color: Theme.Palette.mint) {
-                    Chart(o.points) { p in
-                        BarMark(x: .value("d", p.date), y: .value("recovery", p.recovery ?? 0))
-                            .foregroundStyle(Theme.Palette.recovery(p.recovery))
-                            .cornerRadius(3)
-                    }
-                    .chartYScale(domain: 0...100)
-                    .chartXAxis(.hidden).frame(height: 120)
+                    TrendMetricChart(points: o.points.map { ($0.date, $0.recovery.map(Double.init)) },
+                                     color: Theme.Palette.mint, unit: "%", average: o.averages.recovery, yDomain: 0...100)
+                        .frame(height: 120)
                 }
                 trendCard("Sleep Performance", avg: o.averages.sleep_performance, unit: "%", color: Theme.Palette.indigo) {
-                    Chart(o.points) { p in
-                        BarMark(x: .value("d", p.date), y: .value("sleep", p.sleep_performance ?? 0))
-                            .foregroundStyle(Theme.Palette.indigo).cornerRadius(3)
-                    }
-                    .chartYScale(domain: 0...100)
-                    .chartXAxis(.hidden).frame(height: 120)
+                    TrendMetricChart(points: o.points.map { ($0.date, $0.sleep_performance.map(Double.init)) },
+                                     color: Theme.Palette.indigo, unit: "%", average: o.averages.sleep_performance, yDomain: 0...100)
+                        .frame(height: 120)
                 }
-                trendCard("Day Strain", avg: o.averages.strain, unit: "", color: Theme.Palette.cyan) {
-                    Chart(o.points) { p in
-                        BarMark(x: .value("d", p.date), y: .value("strain", p.strain ?? 0))
-                            .foregroundStyle(Theme.Palette.cyan.opacity(0.85)).cornerRadius(3)
-                    }
-                    .chartYScale(domain: 0...21)
-                    .chartXAxis(.hidden).frame(height: 120)
+                trendCard("Day Strain", avg: o.averages.strain, unit: "", color: Theme.Palette.cyan, decimals: 1) {
+                    TrendMetricChart(points: o.points.map { ($0.date, $0.strain) },
+                                     color: Theme.Palette.cyan, average: o.averages.strain, yDomain: 0...21, decimals: 1)
+                        .frame(height: 120)
                 }
-                // HRV + Resting HR — the two headline vitals over time (line trends).
                 trendCard("HRV", avg: o.averages.hrv, unit: "ms", color: Theme.Palette.cyan) {
-                    lineChart(o.points.map { ($0.date, $0.hrv.map(Double.init)) }, color: Theme.Palette.cyan)
+                    TrendMetricChart(points: o.points.map { ($0.date, $0.hrv.map(Double.init)) },
+                                     color: Theme.Palette.cyan, unit: "ms", average: o.averages.hrv)
+                        .frame(height: 110)
                 }
                 trendCard("Resting Heart Rate", avg: o.averages.rhr, unit: "bpm", color: Theme.Palette.pink) {
-                    lineChart(o.points.map { ($0.date, $0.rhr.map(Double.init)) }, color: Theme.Palette.pink)
+                    TrendMetricChart(points: o.points.map { ($0.date, $0.rhr.map(Double.init)) },
+                                     color: Theme.Palette.pink, unit: "bpm", average: o.averages.rhr)
+                        .frame(height: 110)
                 }
                 trendCard("Hours of Sleep", avg: o.averages.sleep_h, unit: "h", color: Theme.Palette.violet, decimals: 1) {
-                    Chart(o.points) { p in
-                        BarMark(x: .value("d", p.date), y: .value("h", p.sleep_h ?? 0))
-                            .foregroundStyle(Theme.Palette.violet.opacity(0.8)).cornerRadius(3)
-                    }
-                    .chartXAxis(.hidden).frame(height: 110)
+                    TrendMetricChart(points: o.points.map { ($0.date, $0.sleep_h) },
+                                     color: Theme.Palette.violet, unit: "h", average: o.averages.sleep_h, decimals: 1)
+                        .frame(height: 110)
                 }
             } else {
                 ProgressView().tint(Theme.Palette.indigo).frame(maxWidth: .infinity, minHeight: 200)
@@ -83,21 +71,5 @@ struct TrendsView: View {
                 chart()
             }
         }
-    }
-
-    private func lineChart(_ points: [(String, Double?)], color: Color) -> some View {
-        Chart {
-            ForEach(Array(points.enumerated()), id: \.offset) { _, pt in
-                if let v = pt.1 {
-                    LineMark(x: .value("d", pt.0), y: .value("v", v))
-                        .interpolationMethod(.monotone)
-                        .lineStyle(.init(lineWidth: 2.5, lineCap: .round))
-                        .foregroundStyle(color)
-                    PointMark(x: .value("d", pt.0), y: .value("v", v))
-                        .foregroundStyle(color).symbolSize(18)
-                }
-            }
-        }
-        .chartXAxis(.hidden).frame(height: 110)
     }
 }
