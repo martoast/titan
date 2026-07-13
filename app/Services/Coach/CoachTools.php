@@ -39,7 +39,7 @@ class CoachTools
         'set_goal_weight' => 'weight', 'weight_progress' => 'weight',
         'log_water' => 'hydration', 'hydration_today' => 'hydration',
         'start_fast' => 'fasting', 'end_fast' => 'fasting', 'fasting_status' => 'fasting',
-        'set_eating_window' => 'fasting', 'longevity_knowledge' => 'fasting',
+        'set_eating_window' => 'fasting', 'longevity_knowledge' => 'fasting', 'fasting_week' => 'fasting',
         'research_topic' => 'research',
         'set_reminders' => 'reminders',
         'buzz_band' => 'device', 'request_sync' => 'device', 'pair_band' => 'device', 'spot_reading' => 'device',
@@ -520,6 +520,7 @@ class CoachTools
             'start' => ['type' => 'string', 'description' => "When the eating window OPENS, 'HH:MM' 24h (e.g. 12:00)."],
         ], ['plan', 'start']);
         $tools[] = $this->fn('longevity_knowledge', "The calibrated longevity/fasting knowledge pack — the survival pathways (mTOR/AMPK/sirtuins/autophagy) and the honest human evidence. Call it when the user asks WHY fasting/CR helps, about a longevity supplement (NMN, resveratrol, metformin, rapamycin…), or 'does fasting reverse aging'. Answer from it (calibrated, never hype) and teach a `lesson` card.", [], []);
+        $tools[] = $this->fn('fasting_week', "The user's fasting HISTORY as a `fastingweek` card — recent fasts, longest, a 7-day strip, and their eating-window adherence streak. Use for 'my fasting this week / history / longest fast / how consistent have I been'.", [], []);
 
         if (class_exists(\App\Models\PhysiqueGoal::class) && class_exists(\App\Models\ProgressPhoto::class)) {
             $tools[] = $this->fn('render_dream_physique', "Marquee: render their future self from their latest uploaded photo. Returns an image URL — embed it inline as markdown. No photo yet → tell them to tap the camera button.", [
@@ -617,6 +618,7 @@ class CoachTools
             'fasting_status' => 'Checking your fast',
             'set_eating_window' => 'Setting your eating window',
             'longevity_knowledge' => 'Checking the longevity research',
+            'fasting_week' => 'Reviewing your fasting week',
             'render_dream_physique' => 'Rendering your future self',
             default => 'Looking that up',
         };
@@ -759,6 +761,7 @@ class CoachTools
             'end_fast' => $this->endFast(),
             'set_eating_window' => $this->setEatingWindow($args),
             'longevity_knowledge' => ['knowledge' => \App\Support\LongevityKnowledge::pack(), '_show' => 'Answer their question from this pack, CALIBRATED to the human evidence (animal-vs-human explicit, never "reverse aging" or a supplement lifespan claim). Teach the mechanism as a `lesson` card, then one honest takeaway.'],
+            'fasting_week' => \App\Support\FastingWeek::forProfile($this->profile) + ['_show' => 'Emit this `fastingweek` card in a ```titan-card fence, then one line celebrating their window-adherence streak (consistency is what helps) or their longest fast. If they have no fasts yet, invite them to start one.'],
             'fasting_status' => \App\Support\Fasting::card($this->profile) + ['_show' => 'Emit this `fasting` card in a ```titan-card fence; one line on elapsed vs goal + the current stage. If not active, suggest starting one. If the card has a `protein_flag`, raise it: their eating window is too short to fit the protein they still need — protein protects muscle (elders/lifters need MORE), so nudge them to front-load protein or widen the window, not fast harder.'],
             'render_dream_physique' => $this->renderDreamPhysique($args),
             default => ['error' => "Unknown tool: {$name}"],

@@ -1087,6 +1087,51 @@ struct FastingCoachCard: View {
     }
 }
 
+// MARK: - Fasting week (history + adherence · FASTING_EVIDENCE T5)
+
+/// The fasting week/history card — a 7-day fast strip, longest fast, and the eating-window adherence
+/// streak (the consistency that actually helps). Mirrors the sleep/training week surfaces.
+struct FastingWeekCard: View {
+    let json: [String: Any]
+    private var days: [[String: Any]] { json["days"] as? [[String: Any]] ?? [] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                cardTitle("Fasting week")
+                Spacer()
+                if let longest = jsonNum(json["longest_h"]), longest > 0 {
+                    Text(String(format: "%gh longest", longest)).font(Theme.Font.num(15)).foregroundStyle(Theme.Palette.violet)
+                }
+            }
+            // 7-day fast strip — a bar per day, height by hours fasted (cap ~20h), lit when they fasted.
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(Array(days.enumerated()), id: \.offset) { _, d in
+                    let fasted = d["fasted"] as? Bool ?? false
+                    let hours = jsonNum(d["hours"]) ?? 0
+                    VStack(spacing: 4) {
+                        Spacer(minLength: 0)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(fasted ? Theme.Palette.violet : Color.white.opacity(0.06))
+                            .frame(height: max(fasted ? 5 : 3, 44 * CGFloat(min(1, hours / 20))))
+                        Text((d["weekday"] as? String)?.prefix(1).uppercased() ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    }.frame(maxWidth: .infinity, minHeight: 56)
+                }
+            }
+            HStack(spacing: 12) {
+                if let streak = (json["window"] as? [String: Any])?["streak"] as? [String: Any],
+                   let cur = jsonNum(streak["current"]), cur > 0 {
+                    Text("🔥 \(Int(cur))-day window streak").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                }
+                if let avg = jsonNum(json["avg_h"]), avg > 0 {
+                    Text(String(format: "avg %gh", avg)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+            }
+        }
+        .coachCard()
+    }
+}
+
 // MARK: - Weight (trend + rate)
 
 struct WeightTrendCard: View {
