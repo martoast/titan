@@ -819,20 +819,22 @@ final class AppModel: ObservableObject {
     }
 
     /// Confirm a scanned meal draft (with the amount the user set) → log it, close the sheet, refresh.
-    func confirmScannedMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, photoPath: String?) async {
+    func confirmScannedMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, photoPath: String?, source: String? = nil) async {
         do {
-            _ = try await api.confirmMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, photoPath: photoPath)
+            _ = try await api.confirmMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, photoPath: photoPath, source: source)
             Haptic.success()
             scanResult = nil
             await loadNutrition()
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
-    func updateMeal(_ id: Int, name: String, calories: Int, protein: Double, carbs: Double, fat: Double) async {
+    func updateMeal(_ id: Int, name: String, calories: Int, protein: Double, carbs: Double, fat: Double, eatenAt: Date? = nil) async {
         do {
-            _ = try await api.updateMeal(id, fields: [
+            var fields: [String: Any] = [
                 "name": name, "calories": calories, "protein_g": protein, "carbs_g": carbs, "fat_g": fat,
-            ])
+            ]
+            if let eatenAt { fields["eaten_at"] = ISO8601DateFormatter().string(from: eatenAt) }
+            _ = try await api.updateMeal(id, fields: fields)
             await loadNutrition()
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }

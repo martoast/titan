@@ -174,6 +174,9 @@ class MobileNutritionController extends Controller
             'carbs_g' => ['required', 'numeric', 'min:0', 'max:2000'],
             'fat_g' => ['required', 'numeric', 'min:0', 'max:2000'],
             'photo_path' => ['nullable', 'string', 'max:255'],
+            // The draft's real source (a barcode scan confirms through here too) — was hardcoded 'photo',
+            // which mislabelled barcode meals (MEAL_LOGGING_REVISION 1.3).
+            'source' => ['nullable', 'string', \Illuminate\Validation\Rule::in(Meal::SOURCES)],
         ]);
 
         // Only ever re-attach a photo the scanner itself just stored — never an arbitrary path.
@@ -183,15 +186,17 @@ class MobileNutritionController extends Controller
             $photo = $data['photo_path'];
         }
 
+        // One creation path: every meal, however born, runs the same macro↔calorie reconcile.
+        $m = Macros::reconcile((int) $data['calories'], (float) $data['protein_g'], (float) $data['carbs_g'], (float) $data['fat_g']);
         $meal = $profile->meals()->create([
             'name' => $data['name'],
             'eaten_at' => now(),
-            'calories' => $data['calories'],
-            'protein_g' => $data['protein_g'],
-            'carbs_g' => $data['carbs_g'],
-            'fat_g' => $data['fat_g'],
+            'calories' => $m['calories'],
+            'protein_g' => $m['protein_g'],
+            'carbs_g' => $m['carbs_g'],
+            'fat_g' => $m['fat_g'],
             'photo_path' => $photo,
-            'source' => 'photo',
+            'source' => $data['source'] ?? 'photo',
         ]);
 
         return response()->json(['meal' => $this->mealJson($meal), 'macros' => Macros::today($profile)]);
@@ -203,8 +208,15 @@ class MobileNutritionController extends Controller
         $data = $this->validateMeal($request, required: true);
         $profile = $this->profile($request);
 
-        $meal = $profile->meals()->create($data + [
+        // Same reconcile guardrail as every other creation path (MEAL_LOGGING_REVISION 1.3).
+        $m = Macros::reconcile((int) $data['calories'], (float) $data['protein_g'], (float) $data['carbs_g'], (float) $data['fat_g']);
+        $meal = $profile->meals()->create([
+            'name' => $data['name'],
             'eaten_at' => $data['eaten_at'] ?? now(),
+            'calories' => $m['calories'],
+            'protein_g' => $m['protein_g'],
+            'carbs_g' => $m['carbs_g'],
+            'fat_g' => $m['fat_g'],
             'source' => 'manual',
         ]);
 
@@ -216,7 +228,14 @@ class MobileNutritionController extends Controller
     {
         $profile = $this->profile($request);
         $row = $profile->meals()->findOrFail($meal);
-        $row->update($this->validateMeal($request, required: false));
+        $row->fill($this->validateMeal($request, required: false));
+        // Keep the corrected macros reconciled with the calories — same one creation path as the others.
+        $m = Macros::reconcile((int) $row->calories, (float) $row->protein_g, (float) $row->carbs_g, (float) $row->fat_g);
+        $row->calories = $m['calories'];
+        $row->protein_g = $m['protein_g'];
+        $row->carbs_g = $m['carbs_g'];
+        $row->fat_g = $m['fat_g'];
+        $row->save();
 
         return response()->json(['meal' => $this->mealJson($row->fresh()), 'macros' => Macros::today($profile)]);
     }

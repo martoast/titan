@@ -18,7 +18,9 @@ class Meal extends Model
 {
     use HasFactory;
 
-    public const SOURCES = ['photo', 'manual', 'text', 'memory'];
+    // Every way a meal is actually born. `coach` (chat log_meal) and `barcode` (Open Food Facts scan)
+    // were written but missing here, so a validated `source` would reject them (MEAL_LOGGING_REVISION 1.3).
+    public const SOURCES = ['photo', 'manual', 'text', 'coach', 'memory', 'barcode'];
 
     protected $fillable = [
         'profile_id', 'eaten_at', 'name', 'photo_path',

@@ -408,7 +408,10 @@ struct ScanResultSheet: View {
                 await model.confirmScannedMeal(
                     name: name.trimmingCharacters(in: .whitespaces).isEmpty ? d.name : name,
                     calories: scaledCal(d), protein: scaled(d.protein_g),
-                    carbs: scaled(d.carbs_g), fat: scaled(d.fat_g), photoPath: d.photo_path)
+                    carbs: scaled(d.carbs_g), fat: scaled(d.fat_g), photoPath: d.photo_path,
+                    // Only 'barcode' is a real meal source among the draft's resolve-chain values; a photo
+                    // scan (your_meals/brand/web/photo) → nil → the server stamps 'photo'.
+                    source: d.source == "barcode" ? "barcode" : nil)
                 logging = false
             }
         } label: {
@@ -471,6 +474,7 @@ private struct EditMealSheet: View {
     @State private var protein: String
     @State private var carbs: String
     @State private var fat: String
+    @State private var when: Date
 
     init(meal: Meal) {
         self.meal = meal
@@ -479,6 +483,7 @@ private struct EditMealSheet: View {
         _protein = State(initialValue: "\(Int(meal.protein_g))")
         _carbs = State(initialValue: "\(Int(meal.carbs_g))")
         _fat = State(initialValue: "\(Int(meal.fat_g))")
+        _when = State(initialValue: meal.eaten_at.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date())
     }
 
     var body: some View {
@@ -493,6 +498,11 @@ private struct EditMealSheet: View {
                         field("Carbs (g)", text: $carbs, keyboard: .numberPad)
                         field("Fat (g)", text: $fat, keyboard: .numberPad)
 
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("When").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
+                            TitanDateField(selection: $when, components: [.date, .hourAndMinute])
+                        }
+
                         Button {
                             Haptic.success()
                             Task {
@@ -500,7 +510,8 @@ private struct EditMealSheet: View {
                                                        calories: Int(calories) ?? meal.calories,
                                                        protein: Double(protein) ?? meal.protein_g,
                                                        carbs: Double(carbs) ?? meal.carbs_g,
-                                                       fat: Double(fat) ?? meal.fat_g)
+                                                       fat: Double(fat) ?? meal.fat_g,
+                                                       eatenAt: when)
                                 dismiss()
                             }
                         } label: {

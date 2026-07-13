@@ -103,12 +103,11 @@ class Macros
 
         // One source of truth for all four targets (honours the user's custom overrides; carb/fat
         // default to a sensible split of the calorie budget when not customised).
-        $t = rescue(fn () => TargetSettings::resolve($profile), null, false)
-            ?? ['calories' => 2800, 'protein_g' => 200, 'carbs_g' => 280, 'fat_g' => 84];
-        $calT = (int) $t['calories'];
-        $proT = (int) $t['protein_g'];
-        $carbT = (int) $t['carbs_g'];
-        $fatT = (int) $t['fat_g'];
+        $t = self::resolveTargets($profile);
+        $calT = $t['calories'];
+        $proT = $t['protein_g'];
+        $carbT = $t['carbs_g'];
+        $fatT = $t['fat_g'];
 
         $logged = $meals->count();
         $next = null;
@@ -143,16 +142,29 @@ class Macros
     /** The macro budget the user configures on the Meals page (settings override, else defaults). */
     public const DEFAULT_TARGETS = ['calories' => 2800, 'protein_g' => 200, 'carbs_g' => 280, 'fat_g' => 80];
 
-    public static function goalTargets(Profile $profile): array
+    /**
+     * The ONE macro-target resolver every surface shares — mobile card, coach card, web meals page, and
+     * the home dashboard. Previously `today()` used TargetSettings::resolve while goalTargets()/forHome()
+     * read raw `macro_targets`, so the screens could disagree (MEAL_LOGGING_REVISION 1.3). All now route
+     * through TargetSettings::resolve (which honours custom overrides + derives carb/fat from the budget).
+     *
+     * @return array{calories:int,protein_g:int,carbs_g:int,fat_g:int}
+     */
+    private static function resolveTargets(Profile $profile): array
     {
-        $set = $profile->settings['macro_targets'] ?? [];
+        $t = rescue(fn () => TargetSettings::resolve($profile), null, false) ?? self::DEFAULT_TARGETS;
 
         return [
-            'calories' => (int) ($set['calories'] ?? self::DEFAULT_TARGETS['calories']),
-            'protein_g' => (int) ($set['protein_g'] ?? self::DEFAULT_TARGETS['protein_g']),
-            'carbs_g' => (int) ($set['carbs_g'] ?? self::DEFAULT_TARGETS['carbs_g']),
-            'fat_g' => (int) ($set['fat_g'] ?? self::DEFAULT_TARGETS['fat_g']),
+            'calories' => (int) $t['calories'],
+            'protein_g' => (int) $t['protein_g'],
+            'carbs_g' => (int) $t['carbs_g'],
+            'fat_g' => (int) $t['fat_g'],
         ];
+    }
+
+    public static function goalTargets(Profile $profile): array
+    {
+        return self::resolveTargets($profile);
     }
 
     /**
