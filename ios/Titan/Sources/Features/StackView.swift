@@ -625,9 +625,8 @@ private struct StackEditor: View {
                     }
 
                     card(String(localized: "Repeat")) {
-                        Picker("", selection: $draft.frequency) {
-                            Text("Daily").tag("daily"); Text("Specific days").tag("specific"); Text("As needed").tag("as_needed")
-                        }.pickerStyle(.segmented)
+                        PillSwitch(options: [("daily", "Daily"), ("specific", "Specific days"), ("as_needed", "As needed")],
+                                   selection: $draft.frequency)
                         if draft.frequency == "specific" {
                             HStack(spacing: 6) {
                                 ForEach(Array(weekdays.enumerated()), id: \.offset) { _, d in
@@ -645,9 +644,8 @@ private struct StackEditor: View {
 
                     if showType {
                         card(String(localized: "Type")) {
-                            Picker("", selection: $draft.kind) {
-                                Text("Supplement").tag("supplement"); Text("Medication").tag("medication"); Text("Other").tag("other")
-                            }.pickerStyle(.segmented)
+                            PillSwitch(options: [("supplement", "Supplement"), ("medication", "Medication"), ("other", "Other")],
+                                       selection: $draft.kind)
                             foodToggle.padding(.top, 4)
                         }
                     } else {

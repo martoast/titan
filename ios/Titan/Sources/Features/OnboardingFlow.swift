@@ -267,9 +267,9 @@ struct EditProfileView: View {
                         }
                         if form.isFemale {
                             section("Cycle") {
-                                Toggle("Track my cycle", isOn: $form.cycleEnabled).tint(Theme.Palette.pink).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                TitanToggle(title: "Track my cycle", isOn: $form.cycleEnabled, accent: Theme.Palette.pink)
                                 if form.cycleEnabled {
-                                    Toggle("Log my last period", isOn: $form.hasLastPeriod).tint(Theme.Palette.pink).font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                                    TitanToggle(title: "Log my last period", isOn: $form.hasLastPeriod, accent: Theme.Palette.pink)
                                     if form.hasLastPeriod {
                                         label("First day of last period"); TitanDateField(selection: $form.lastPeriod, accent: Theme.Palette.pink)
                                     }
