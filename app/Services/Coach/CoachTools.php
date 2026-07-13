@@ -317,8 +317,22 @@ class CoachTools
                 'protein_g' => ['type' => 'number', 'description' => 'Protein grams.'],
                 'carbs_g' => ['type' => 'number', 'description' => 'Carb grams.'],
                 'fat_g' => ['type' => 'number', 'description' => 'Fat grams.'],
-                'eaten_at' => ['type' => 'string', 'description' => 'ISO datetime; default now.'],
+                'eaten_at' => ['type' => 'string', 'description' => "ISO datetime in the USER's local time; default now. Never in the future — a meal they mention was already eaten."],
             ], ['name']);
+            $tools[] = $this->fn('update_meal', "Fix a LOGGED meal when the user corrects it (\"that shake was 300 cal\", \"that was yesterday\", \"rename it\"). Pass the meal name (latest match wins) or the id from recent_meals, plus ONLY the fields to change.", [
+                'name' => ['type' => 'string', 'description' => 'Name of the logged meal to fix (fuzzy, most recent match wins).'],
+                'id' => ['type' => 'integer', 'description' => 'Exact meal id from recent_meals — use when the name is ambiguous.'],
+                'new_name' => ['type' => 'string', 'description' => 'New meal name, if renaming.'],
+                'calories' => ['type' => 'integer', 'description' => 'Corrected calories (kcal).'],
+                'protein_g' => ['type' => 'number', 'description' => 'Corrected protein grams.'],
+                'carbs_g' => ['type' => 'number', 'description' => 'Corrected carb grams.'],
+                'fat_g' => ['type' => 'number', 'description' => 'Corrected fat grams.'],
+                'eaten_at' => ['type' => 'string', 'description' => "Corrected datetime in the USER's local time (never future)."],
+            ], []);
+            $tools[] = $this->fn('delete_meal', "Remove a logged meal when the user says it's wrong (\"I didn't eat that\", \"delete that\", \"logged it twice\"). Pass the meal name (latest match wins) or the id from recent_meals.", [
+                'name' => ['type' => 'string', 'description' => 'Name of the logged meal to remove (fuzzy, most recent match wins).'],
+                'id' => ['type' => 'integer', 'description' => 'Exact meal id from recent_meals — use when the name is ambiguous.'],
+            ], []);
         }
         if (class_exists(\App\Models\BodyMetric::class)) {
             $tools[] = $this->fn('log_weight', 'Log a body-weight measurement (kg), optionally body-fat %.', [
@@ -545,6 +559,8 @@ class CoachTools
             'log_period' => 'Logging your period',
             'log_cycle' => 'Logging your cycle day',
             'log_meal' => 'Logging your meal',
+            'update_meal' => 'Fixing that meal',
+            'delete_meal' => 'Removing that meal',
             'log_weight' => 'Logging your weight',
             'log_recovery' => 'Logging your recovery',
             'log_sleep' => 'Logging your sleep',
@@ -684,6 +700,8 @@ class CoachTools
             'log_period' => $this->logPeriod($args),
             'log_cycle' => $this->logCycle($args),
             'log_meal' => $this->logMeal($args),
+            'update_meal' => $this->updateMeal($args),
+            'delete_meal' => $this->deleteMeal($args),
             'log_weight' => $this->logWeight($args),
             'log_recovery' => $this->logRecovery($args),
             'log_sleep' => $this->logSleep($args),
@@ -1069,6 +1087,7 @@ class CoachTools
             'window_days' => $days,
             'daily_totals' => $daily,
             'recent_meals' => $meals->take(12)->map(fn ($m) => [
+                'id' => $m->id,
                 'name' => $m->name,
                 'eaten_at' => optional($m->eaten_at)->toDateTimeString(),
                 'calories' => (int) $m->calories,
@@ -1415,7 +1434,7 @@ class CoachTools
         }
         $meal = $this->profile->meals()->create([
             'name' => \Illuminate\Support\Str::limit($name, 80, ''),
-            'eaten_at' => isset($a['eaten_at']) ? rescue(fn () => Carbon::parse($a['eaten_at']), Carbon::now(), false) : Carbon::now(),
+            'eaten_at' => $this->parseEatenAt($a['eaten_at'] ?? null),
             'calories' => (int) round((float) ($a['calories'] ?? 0)),
             'protein_g' => round((float) ($a['protein_g'] ?? 0), 1),
             'carbs_g' => round((float) ($a['carbs_g'] ?? 0), 1),
@@ -1424,10 +1443,89 @@ class CoachTools
         ]);
 
         return [
-            'ok' => true, 'name' => $meal->name, 'calories' => $meal->calories, 'protein_g' => $meal->protein_g,
+            'ok' => true, 'meal_id' => $meal->id, 'name' => $meal->name, 'calories' => $meal->calories, 'protein_g' => $meal->protein_g,
             'card' => $this->macrosCard(),
             '_show' => "Logged it — show the updated `macros` card (inside a ```titan-card fence), then one short line on what's left to hit their targets.",
             'message' => "Logged {$meal->name} — {$meal->calories} kcal, {$meal->protein_g}g protein.",
+        ];
+    }
+
+    /**
+     * Parse a model-supplied meal time in the USER's timezone, stored in the app timezone —
+     * clamped to now, because "I ate X" can never be in the future (a future eaten_at silently
+     * vanishes from today's macros, which reads as "the coach didn't log it").
+     */
+    private function parseEatenAt(mixed $v): Carbon
+    {
+        if ($v === null || trim((string) $v) === '') {
+            return Carbon::now();
+        }
+        $appTz = config('app.timezone', 'UTC');
+        $tz = $this->profile->settings['timezone'] ?? $appTz;
+        $t = rescue(fn () => Carbon::parse((string) $v, $tz)->setTimezone($appTz), Carbon::now(), false);
+
+        return $t->isFuture() ? Carbon::now() : $t;
+    }
+
+    /** Find one of the user's logged meals by id, or fuzzy name (most recent first). */
+    private function findMeal(array $a): ?\App\Models\Meal
+    {
+        $id = (int) ($a['id'] ?? 0);
+        if ($id > 0) {
+            return $this->profile->meals()->whereKey($id)->first();
+        }
+        $name = trim((string) ($a['name'] ?? ''));
+        if ($name === '') {
+            return null;
+        }
+
+        return $this->profile->meals()
+            ->where('eaten_at', '>=', Carbon::now()->subDays(14))
+            ->where('name', 'like', '%'.str_replace(['%', '_'], ['\%', '\_'], $name).'%')
+            ->orderByDesc('eaten_at')
+            ->first();
+    }
+
+    private function updateMeal(array $a): mixed
+    {
+        $meal = $this->findMeal($a);
+        if (! $meal) {
+            return ['error' => "Couldn't find that meal in the last 14 days — call recent_meals and retry with the exact id."];
+        }
+        if (isset($a['new_name']) && trim((string) $a['new_name']) !== '') {
+            $meal->name = \Illuminate\Support\Str::limit(trim((string) $a['new_name']), 80, '');
+        }
+        foreach (['calories', 'protein_g', 'carbs_g', 'fat_g'] as $k) {
+            if (isset($a[$k]) && is_numeric($a[$k])) {
+                $meal->{$k} = $k === 'calories' ? (int) round((float) $a[$k]) : round((float) $a[$k], 1);
+            }
+        }
+        if (isset($a['eaten_at'])) {
+            $meal->eaten_at = $this->parseEatenAt($a['eaten_at']);
+        }
+        $meal->save();
+
+        return [
+            'ok' => true, 'meal_id' => $meal->id, 'name' => $meal->name, 'calories' => $meal->calories,
+            'protein_g' => $meal->protein_g, 'eaten_at' => $meal->eaten_at->toDateTimeString(),
+            'card' => $this->macrosCard(),
+            '_show' => 'Fixed — confirm the correction in one line, then show the updated `macros` card (inside a ```titan-card fence).',
+        ];
+    }
+
+    private function deleteMeal(array $a): mixed
+    {
+        $meal = $this->findMeal($a);
+        if (! $meal) {
+            return ['error' => "Couldn't find that meal in the last 14 days — call recent_meals and retry with the exact id."];
+        }
+        $gone = ['name' => $meal->name, 'calories' => (int) $meal->calories];
+        $meal->delete();
+
+        return [
+            'ok' => true, 'removed' => $gone,
+            'card' => $this->macrosCard(),
+            '_show' => 'Removed — confirm in one line what you deleted, then show the updated `macros` card (inside a ```titan-card fence).',
         ];
     }
 

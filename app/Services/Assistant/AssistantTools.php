@@ -568,9 +568,12 @@ class AssistantTools
         if ($name === '') {
             return ['error' => 'name is required'];
         }
+        $eatenAt = isset($a['eaten_at']) ? rescue(fn () => Carbon::parse($a['eaten_at']), now(), false) : now();
         $meal = $this->profile->meals()->create([
             'name' => $name,
-            'eaten_at' => isset($a['eaten_at']) ? Carbon::parse($a['eaten_at']) : now(),
+            // Clamp to now — "I ate X" can never be in the future, and a future eaten_at
+            // silently drops the meal out of today's macros.
+            'eaten_at' => $eatenAt->isFuture() ? now() : $eatenAt,
             'calories' => (int) round((float) ($a['calories'] ?? 0)),
             'protein_g' => round((float) ($a['protein_g'] ?? 0), 1),
             'carbs_g' => round((float) ($a['carbs_g'] ?? 0), 1),
