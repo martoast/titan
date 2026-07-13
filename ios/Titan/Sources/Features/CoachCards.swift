@@ -705,6 +705,85 @@ private struct Sparkline: View {
     }
 }
 
+// MARK: - Compare (two metrics over time · COACH CARDS v2 · Thrust B5)
+
+/// Two series overlaid on one time axis — the cross-domain connection the coach already reasons about,
+/// made visual ("deep sleep vs nights you trained late"). Each series is normalized to its OWN range so
+/// two different units share the frame; a two-color legend names them (with last values) and the caption
+/// reads the relationship. Coach-authored, like `sparkline`. Richer than a single sparkline.
+struct CompareCard: View {
+    let json: [String: Any]
+
+    private func series(_ key: String) -> (label: String, unit: String, points: [Double])? {
+        guard let s = json[key] as? [String: Any] else { return nil }
+        let pts = (s["points"] as? [Any])?.compactMap { jsonNum($0) } ?? []
+        return (label: (s["label"] as? String) ?? "", unit: (s["unit"] as? String) ?? "", points: pts)
+    }
+
+    var body: some View {
+        let a = series("a"); let b = series("b")
+        VStack(alignment: .leading, spacing: 10) {
+            if let t = json["title"] as? String, !t.isEmpty { cardTitle(verbatim: t) } else { cardTitle("Comparison") }
+            if let a, let b, a.points.count >= 2, b.points.count >= 2 {
+                CompareChart(a: a.points, b: b.points, colorA: Theme.Palette.cyan, colorB: Theme.Palette.amber)
+                    .frame(height: 56)
+                HStack(spacing: 16) {
+                    legend(a, Theme.Palette.cyan)
+                    legend(b, Theme.Palette.amber)
+                    Spacer(minLength: 0)
+                }
+            } else {
+                Text("Not enough overlapping data to compare yet").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+            }
+            cardCaption(json["caption"] as? String)
+        }
+        .coachCard()
+    }
+
+    private func legend(_ s: (label: String, unit: String, points: [Double]), _ color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(verbatim: s.label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            if let last = s.points.last {
+                Text(verbatim: (last == last.rounded() ? String(Int(last)) : String(format: "%.1f", last)) + (s.unit.isEmpty ? "" : " \(s.unit)"))
+                    .font(Theme.Font.num(12)).foregroundStyle(color)
+            }
+        }
+    }
+}
+
+/// Two normalized polylines (each to its own min/max) over a shared width, with soft end dots.
+private struct CompareChart: View {
+    let a: [Double]; let b: [Double]
+    let colorA: Color; let colorB: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                line(a, colorA, in: geo.size)
+                line(b, colorB, in: geo.size)
+            }
+        }
+    }
+
+    @ViewBuilder private func line(_ points: [Double], _ color: Color, in size: CGSize) -> some View {
+        let lo = points.min() ?? 0, hi = points.max() ?? 1
+        let span = hi - lo == 0 ? 1 : hi - lo
+        let step = points.count > 1 ? size.width / CGFloat(points.count - 1) : size.width
+        let xy: (Int) -> CGPoint = { i in
+            CGPoint(x: CGFloat(i) * step, y: size.height - CGFloat((points[i] - lo) / span) * size.height)
+        }
+        ZStack {
+            Path { p in
+                p.move(to: xy(0))
+                for i in points.indices.dropFirst() { p.addLine(to: xy(i)) }
+            }
+            .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            Circle().fill(color).frame(width: 5, height: 5).position(xy(points.count - 1))
+        }
+    }
+}
+
 // MARK: - Stat (one metric tile)
 
 struct StatCard: View {

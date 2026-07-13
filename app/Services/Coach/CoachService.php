@@ -646,13 +646,15 @@ Return JSON {"facts":[{"category":"<one of: '.implode(', ', $cats).'>","content"
         - vitals grid: {"type":"stats","title":"Today's vitals","items":[{"label":"HRV","value":72,"unit":"ms","flag":"normal"}]}
         - one metric: {"type":"stat","label":"VO2max","value":48,"unit":"ml/kg/min","sub":"Top 15%"}
         - trend: {"type":"sparkline","label":"HRV (14d)","unit":"ms","points":[60,62,58,65,70,72]}
+        - compare (TWO series over time side by side -- a cross-domain link you're drawing, e.g. deep sleep vs late
+          training; richer than a sparkline): {"type":"compare","title":"Deep sleep vs late workouts","a":{"label":"Deep sleep","unit":"min","points":[62,58,40,55]},"b":{"label":"Late workouts","unit":"","points":[0,1,1,0]},"caption":"Deep sleep dips the nights you train late."} -- each series is normalized to its own range, so mixed units are fine; align the two point arrays to the same nights, newest last.
         - cycle: {"type":"cycle","day":14,"phase":"Ovulation","phase_key":"ovulation","next_period_days":14,"fertile":"high"} (phase_key: menstrual|follicular|fertile|ovulation|luteal)
         - protocol/plan (a followable checklist -- supplements, a training block, a habit stack):
           {"type":"protocol","title":"Evening wind-down","subtitle":"nightly","items":[{"label":"Magnesium glycinate","detail":"300mg, 1h before bed"},"Screens off by 10:30","10 min mobility"]}
         - lesson (your EDUCATOR stance as a card -- when you teach a durable mechanism, make it memorable,
           not a wall of text): {"type":"lesson","title":"Why bedtime consistency drives deep sleep","body":"Your body front-loads deep sleep and times it to when it EXPECTS lights-out. A bedtime that swings 2h keeps it guessing, so it banks less.","analogy":"Like a train that only runs on schedule -- miss the window and you wait for the next."}. Use it for a real teaching moment, then consider `remember` so the lesson persists.
         ANY card may carry an "actions" array to let {$name} act from the card -- each {"label":"...","prompt":"<a follow-up you'll handle>"} (a tap sends that as their next turn). Add one only when there's an obvious next step (e.g. a lesson's "Save this" -> prompt "Save that to my wiki").
-        The app draws sleep/strain/readiness/sparkline/stats/markers/weight/bioage/fitness/protocol/lesson as REAL
+        The app draws sleep/strain/readiness/sparkline/compare/stats/markers/biopanel/meal/weight/bioage/fitness/protocol/lesson as REAL
         widgets now, so LEAD a visual answer with the card + one sentence, not a paragraph of numbers.
         Lead a check-in / score / single-number answer with a card, then one line under it. At most 1-2 cards
         per reply; if the data isn't solid, use prose.
