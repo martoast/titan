@@ -451,6 +451,9 @@ class CoachTools
         if (class_exists(\App\Support\SleepWeek::class)) {
             $tools[] = $this->fn('sleep_week', "The user's sleep WEEK as a ready-made `sleepweek` card (7-night score row + cumulative week score + consistency streak + this week's one tip). Lead any 'how's my sleep this week / my sleep lately' question with it.", [], []);
         }
+        if (class_exists(\App\Support\WorkoutStreak::class)) {
+            $tools[] = $this->fn('streaks', "The user's consistency STREAKS as a ready-made `streak` card (training day-streak + sleep-need night-streak, each with its best-ever). Lead any 'what's my streak / how consistent have I been' question with it; celebrate the behavior, it's what moves the needle.", [], []);
+        }
         if (class_exists(\App\Models\BiomarkerReading::class)) {
             $tools[] = $this->fn('bloodwork_panel', "The user's latest bloodwork as a ready-made `markers` card (each marker with an in-range / flagged dot). Lead any 'show my bloodwork / labs' answer with it.", [], []);
         }
@@ -572,6 +575,7 @@ class CoachTools
             'sleep_plan' => 'Planning your bedtime',
             'sleep_debt' => 'Tallying your sleep debt',
             'sleep_week' => 'Reviewing your sleep week',
+            'streaks' => 'Counting your streaks',
             'bloodwork_panel' => 'Pulling your bloodwork',
             'macros_today' => 'Tallying your macros',
             'set_targets' => 'Updating your targets',
@@ -710,6 +714,7 @@ class CoachTools
             'sleep_plan' => $this->sleepPlan(),
             'sleep_debt' => $this->sleepDebt(),
             'sleep_week' => $this->sleepWeek(),
+            'streaks' => $this->streaks(),
             'bloodwork_panel' => $this->bloodworkPanel(),
             'macros_today' => ['card' => $this->macrosCard() + ['actions' => [['label' => '＋ Log food', 'prompt' => 'I want to log a meal — help me add it.']]], '_show' => 'Emit this `macros` card inside a ```titan-card fence, then a one-line read of where they are vs targets.'],
             'set_targets' => $this->setTargets($args),
@@ -2182,6 +2187,23 @@ class CoachTools
         ], fn ($v) => $v !== null && $v !== []);
 
         return ['card' => $card, '_show' => 'Emit this `sleepweek` card inside a ```titan-card fence, then ONE line leading with the week\'s tip (the card shows the row + streak, so don\'t restate them).'];
+    }
+
+    private function streaks(): mixed
+    {
+        $tz = $this->profile->settings['timezone'] ?? config('app.timezone', 'UTC');
+        $workout = rescue(fn () => class_exists(\App\Support\WorkoutStreak::class) ? \App\Support\WorkoutStreak::forProfile($this->profile, $tz) : null, null, false);
+        $sleep = rescue(fn () => class_exists(\App\Support\SleepWeek::class) ? \App\Support\SleepWeek::forProfile($this->profile, $tz)['streak'] ?? null : null, null, false);
+
+        $card = array_filter([
+            'type' => 'streak',
+            'workout_current' => $workout['current'] ?? null,
+            'workout_longest' => $workout['longest'] ?? null,
+            'sleep_current' => $sleep['current'] ?? null,
+            'sleep_longest' => $sleep['longest'] ?? null,
+        ], fn ($v) => $v !== null);
+
+        return ['card' => $card, '_show' => 'Emit this `streak` card inside a ```titan-card fence, then one warm line celebrating the streak (or, if both are 0, one encouraging line to start one today). Consistency is what actually moves recovery + physique — reinforce it.'];
     }
 
     private function bloodworkPanel(): mixed

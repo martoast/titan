@@ -8636,6 +8636,16 @@
         }
       }
     },
+    "Your streaks": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus rachas"
+          }
+        }
+      }
+    },
     "Your targets": {
       "extractionState": "stale",
       "localizations": {
@@ -8891,6 +8901,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "mejor"
+          }
+        }
+      }
+    },
+    "best %@": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mejor %@"
+          }
+        }
+      }
+    },
+    "best %lld": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mejor %lld"
           }
         }
       }

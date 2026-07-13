@@ -405,6 +405,41 @@ struct NightStoryCard: View {
     }
 }
 
+// MARK: - Streaks (training + sleep consistency in one card)
+
+struct StreakCard: View {
+    let json: [String: Any]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            cardTitle("Your streaks")
+            HStack(spacing: Theme.Space.m) {
+                streak("figure.run", "Training", Theme.Palette.mint, json["workout_current"], json["workout_longest"])
+                streak("moon.stars.fill", "Sleep", Theme.Palette.indigo, json["sleep_current"], json["sleep_longest"])
+            }
+        }
+        .coachCard()
+    }
+
+    private func streak(_ icon: String, _ label: LocalizedStringKey, _ color: Color, _ current: Any?, _ longest: Any?) -> some View {
+        let cur = Int(jsonNum(current) ?? 0)
+        let best = Int(jsonNum(longest) ?? 0)
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).foregroundStyle(color)
+                Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("\(cur)").font(Theme.Font.num(26)).foregroundStyle(Theme.Palette.text)
+                Text(cur == 1 ? "day" : "days").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+            }
+            if best > 0 { Text("best \(best)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Space.s)
+        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+    }
+}
+
 // MARK: - Lesson (a teaching moment as a card — Coach v3 educational stance)
 
 struct LessonCard: View {
