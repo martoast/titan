@@ -23,13 +23,14 @@ class Reminders
         'training' => 'Training nudges',
         'strain' => 'Strain coach',
         'stress' => 'Stress check-ins',
+        'glucose' => 'Glucose spikes',
     ];
 
     /** intensity => [label, blurb, default-on types]. */
     public const INTENSITIES = [
         'minimal' => ['label' => 'Light touch', 'blurb' => 'Just a morning briefing and a weekly review -- I stay out of your way.', 'types' => ['briefing', 'review']],
         'balanced' => ['label' => 'Balanced', 'blurb' => 'Daily briefing, weekly review, meal timing, a nightly wind-down, and cycle heads-ups.', 'types' => ['briefing', 'review', 'meals', 'sleep', 'cycle']],
-        'intense' => ['label' => 'All-in', 'blurb' => "I'm on you all day -- eat, train, move, stretch, sleep, plus a weekly review. Like a coach in your pocket.", 'types' => ['briefing', 'review', 'meals', 'sleep', 'cycle', 'move', 'training', 'strain', 'stress']],
+        'intense' => ['label' => 'All-in', 'blurb' => "I'm on you all day -- eat, train, move, stretch, sleep, plus a weekly review. Like a coach in your pocket.", 'types' => ['briefing', 'review', 'meals', 'sleep', 'cycle', 'move', 'training', 'strain', 'stress', 'glucose']],
     ];
 
     public static function intensity(Profile $profile): string

@@ -23,6 +23,9 @@ Schedule::command('biosignal:seal-activities')->everyFifteenMinutes()->withoutOv
 // Pull fresh CGM readings for glucose-enabled profiles (Nightscout / etc.) — incremental + dedup.
 Schedule::command('glucose:sync')->everyFiveMinutes()->withoutOverlapping();
 
+// Walk-after-spike: when glucose is actively rising, offer a 2-min walk (Dunstan ~24–30% cut). Waking hours only.
+Schedule::command('glucose:walk-nudge')->everyFifteenMinutes()->between('08:00', '21:00')->timezone(config('app.timezone'))->withoutOverlapping();
+
 // Proactive AI coach: morning briefing + evening nudge (behaviour-triggered windows).
 Schedule::command('coach:morning-briefing')->dailyAt('07:00')->timezone(config('app.timezone'));
 Schedule::command('coach:evening-nudge')->dailyAt('18:30')->timezone(config('app.timezone'));
