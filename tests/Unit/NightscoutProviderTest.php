@@ -29,12 +29,22 @@ class NightscoutProviderTest extends TestCase
         $this->assertSame('2026-07-13T08:00:00+00:00', $r['taken_at']->toIso8601String());
     }
 
-    public function test_drops_non_sgv_and_out_of_range(): void
+    public function test_drops_non_sgv_and_no_data(): void
     {
         $this->assertNull(NightscoutProvider::mapEntry(['mbg' => 100, 'date' => 1720000000000])); // no sgv (calibration)
-        $this->assertNull(NightscoutProvider::mapEntry(['sgv' => 0, 'date' => 1720000000000]));    // 0 → drop
-        $this->assertNull(NightscoutProvider::mapEntry(['sgv' => 900, 'date' => 1720000000000]));  // impossible → drop
+        $this->assertNull(NightscoutProvider::mapEntry(['sgv' => 0, 'date' => 1720000000000]));    // 0 → no-data sentinel
+        $this->assertNull(NightscoutProvider::mapEntry(['sgv' => -5, 'date' => 1720000000000]));   // negative → drop
         $this->assertNull(NightscoutProvider::mapEntry(['sgv' => 100]));                            // no timestamp → drop
+    }
+
+    public function test_clamps_impossible_readings_to_the_cgm_range(): void
+    {
+        // A calibration glitch (600) clamps to the real CGM ceiling, not passed through to skew the stats.
+        $this->assertSame(400, NightscoutProvider::mapEntry(['sgv' => 600, 'date' => 1720000000000])['mg_dl']);
+        // A sub-floor value clamps up to 40 (the device would report LOW here).
+        $this->assertSame(40, NightscoutProvider::mapEntry(['sgv' => 12, 'date' => 1720000000000])['mg_dl']);
+        // A real in-range value is untouched.
+        $this->assertSame(95, NightscoutProvider::mapEntry(['sgv' => 95, 'date' => 1720000000000])['mg_dl']);
     }
 
     public function test_direction_vocabulary(): void

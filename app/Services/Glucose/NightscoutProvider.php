@@ -66,9 +66,13 @@ class NightscoutProvider implements GlucoseProvider
             return null;   // not a sensor-glucose entry (e.g. a calibration/mbg row)
         }
         $mg = (int) round((float) $sgv);
-        if ($mg <= 0 || $mg > 600) {
-            return null;   // out of any real CGM range → drop
+        if ($mg <= 0) {
+            return null;   // 0 / negative is a no-data sentinel, not a real low → drop
         }
+        // A CGM physically measures ~40–400 mg/dL (it reports LOW/HIGH outside that). Clamp to that range —
+        // matching how the devices themselves report an extreme — so a calibration glitch (e.g. sgv=600)
+        // can't skew TIR/average/variability. The original value stays in `raw` (review fa31f1a).
+        $mg = max(40, min(400, $mg));
 
         $takenAt = null;
         if (isset($e['date']) && is_numeric($e['date'])) {
