@@ -70,6 +70,13 @@ class SealNightJob implements ShouldQueue
      *  confident fact. A DIY optical band loses contact often; the honest failure mode builds trust. */
     private const LOW_COVERAGE_CONFIDENCE = 0.5;
 
+    /** At/above this coverage the stager had good data, so a SKEWED stage split (light-heavy, low-deep) is a
+     *  REAL — if unusual — night, not a signal artifact. Above it we DON'T apply the crude
+     *  `stageSplitImplausible` fallback, which otherwise flags every light-heavy night as an estimate
+     *  (review 2026-07-14: Alex's 99%-coverage nights were permanently stuck on "signal was thin"). The
+     *  stager's own `stages_low_confidence` + `degenerateNight` are still trusted unconditionally. */
+    private const HIGH_COVERAGE_CONFIDENCE = 0.85;
+
     /** Below this fraction of FULLY-VALID ppg_raw windows (the rest tagged short/invalid for poor contact),
      *  the night is low_confidence regardless of bridged epoch coverage. This is the SIGNAL-quality gate the
      *  span-merge can't mask: bridging NODATA holes inflates `coverage` toward 1.0, but a night where the
@@ -1316,9 +1323,15 @@ class SealNightJob implements ShouldQueue
             return true;
         }
 
+        // On a well-measured night the stager had good data, so a skewed split is a real night — only apply
+        // the crude stage-split fallback when the signal ISN'T already strong (review 2026-07-14). Always
+        // trust the stager's own model flag + a degenerate sliver.
+        $signalStrong = $cov >= self::HIGH_COVERAGE_CONFIDENCE
+            && ($validFraction === null || $validFraction >= self::MIN_VALID_WINDOW_FRAC);
+
         return (bool) ($metrics['stages_low_confidence'] ?? false)
             || $this->degenerateNight($metrics)
-            || $this->stageSplitImplausible($metrics);
+            || (! $signalStrong && $this->stageSplitImplausible($metrics));
     }
 
     /** A degenerate "night": almost no sleep but sealed as a full night (a 6-min wrist-on sliver — 7 min
