@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Support\LongevityIndex;
+use App\Support\BioAgePage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,27 +17,18 @@ class MobileLongevityController extends Controller
     public function show(Request $request): JsonResponse
     {
         $profile = $request->user()->profile ?? $request->user()->ensureProfile();
-        $l = LongevityIndex::assess($profile);
 
-        if ($l === null) {
+        // The full transparent Bio Age page payload (superset of the old fields — the glanceable card still
+        // reads titan_age/delta/levers; the page reads the enriched components + tips + methodology).
+        $page = BioAgePage::forProfile($profile);
+
+        if ($page === null) {
             return response()->json([
                 'available' => false,
                 'reason' => 'Needs a blood panel or a VO₂max/fitness read to estimate your Titan Age.',
             ]);
         }
 
-        return response()->json([
-            'available' => true,
-            'titan_age' => $l['titan_age'],
-            'chronological_age' => $l['chronological_age'],
-            'delta' => $l['delta'],
-            'band' => $l['band'],
-            'label' => $l['label'],
-            'confidence' => $l['confidence'],
-            'partial' => $l['partial'],
-            'pace' => $l['pace'],
-            'younger_levers' => $l['younger_levers'],
-            'older_levers' => $l['older_levers'],
-        ]);
+        return response()->json(['available' => true] + $page);
     }
 }
