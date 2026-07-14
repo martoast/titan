@@ -104,6 +104,20 @@ class BiologicalAge
             $components[] = self::comp('steps', 'Daily activity', 'lever', round($avg), round($off, 1));
         }
 
+        // --- Metabolic lever: glucose variability (only if a CGM is connected) ----------------
+        // Glucose variability (CV) is an emerging metabolic-aging signal — steadier glucose tracks with
+        // better metabolic health. The evidence in non-diabetics is real but modest, so this is the
+        // lowest-weight lever, tightly capped, and only counts with two solid weeks of readings.
+        if (class_exists(\App\Models\GlucoseReading::class)) {
+            $gluCv = self::glucoseCv($profile);
+            if ($gluCv !== null) {
+                $off = self::cap(-((30.0 - $gluCv) / 10.0) * 1.5, 3.0);        // steadier (low CV) → younger
+                $modifiers += $off;
+                $components[] = self::comp('glucose_variability', 'Glucose variability', 'lever', round($gluCv, 1), round($off, 1),
+                    'Steadier glucose (lower CV) tracks with metabolic health — emerging, low weight.');
+            }
+        }
+
         $modifiers = self::cap($modifiers, self::MODIFIER_CAP);
 
         // Need a real signal: an anchor, or at least two wearable levers.
@@ -178,6 +192,18 @@ class BiologicalAge
             fn ($m) => Biomarkers::label($m),
             array_filter(PhenoAge::requiredMarkers(), fn ($m) => ! isset($have[$m]))
         ));
+    }
+
+    /** Mean glucose CV (%) over the last 14 days, or null without two solid weeks of CGM readings. */
+    private static function glucoseCv(Profile $profile): ?float
+    {
+        $vals = $profile->glucoseReadings()
+            ->where('taken_at', '>=', Carbon::today()->subDays(13))
+            ->pluck('mg_dl')->map(fn ($v) => (int) $v)->all();
+        if (count($vals) < 200) {
+            return null;                                          // too sparse to trust the variability
+        }
+        return GlucoseMetrics::cv($vals);
     }
 
     private static function comp(string $key, string $label, string $kind, float $value, float $years, ?string $note = null): array

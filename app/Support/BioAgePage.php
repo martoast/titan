@@ -24,6 +24,7 @@ class BioAgePage
         'hrv' => ['unit' => 'ms', 'how' => 'Higher HRV signals a resilient nervous system; we compare yours to age norms and credit the biological youth it implies.'],
         'sleep_regularity' => ['unit' => '', 'how' => 'A consistent sleep–wake schedule (SRI) tracks with slower aging; irregular nights add years.'],
         'steps' => ['unit' => '/day', 'how' => 'Daily movement volume is a robust healthspan signal — more steps, fewer biological years.'],
+        'glucose_variability' => ['unit' => '% CV', 'how' => 'From your CGM: steadier glucose (a lower coefficient of variation) tracks with better metabolic health. Emerging evidence, so it carries the lightest weight.'],
     ];
 
     public static function forProfile(Profile $profile): ?array
@@ -100,6 +101,7 @@ class BioAgePage
             str_contains($l, 'vo') || str_contains($l, 'fitness') => 'Your cardio fitness is a top youth driver — keep it with a weekly long Zone-2 session plus one harder effort.',
             str_contains($l, 'sleep') => 'Your steady sleep schedule is buying you biological youth — keep bedtime consistent, even on weekends.',
             str_contains($l, 'activity') || str_contains($l, 'step') => 'Your daily movement is on your side — protect the streak; consistency beats the occasional big day.',
+            str_contains($l, 'glucose') => 'Your steady glucose is a metabolic-health win — keep it by pairing carbs with protein/fibre and walking after bigger meals.',
             default => null,
         };
     }
@@ -115,6 +117,7 @@ class BioAgePage
             str_contains($l, 'vo') || str_contains($l, 'fitness') => 'Build cardio fitness with mostly easy Zone-2 volume plus one weekly VO₂-max interval session.',
             str_contains($l, 'sleep') => 'Tighten your sleep schedule — a fixed wake time (even after a bad night) is what steadies the rhythm that\'s adding years.',
             str_contains($l, 'activity') || str_contains($l, 'step') => 'More daily movement is the fix — aim to lift your weekly step average; short walks after meals add up.',
+            str_contains($l, 'glucose') => 'Steady your glucose — pair carbs with protein, fat or fibre, favour whole foods over refined ones, and take a short walk after meals.',
             default => null,
         };
     }
