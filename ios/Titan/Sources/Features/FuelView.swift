@@ -269,18 +269,48 @@ struct FuelSection: View {
             GlassCard {
                 VStack(spacing: 0) {
                     SectionHeader(title: "Today's meals", trailing: "\(meals.count)")
-                    ForEach(meals) { meal in
-                        Button { Haptic.tap(); editing = meal } label: { mealRow(meal) }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button { Haptic.tap(); editing = meal } label: { Label("Edit", systemImage: "slider.horizontal.3") }
-                                Button(role: .destructive) { Task { await model.deleteMeal(meal.id) } } label: { Label("Delete", systemImage: "trash") }
-                            }
-                        if meal.id != meals.last?.id { Divider().overlay(Theme.Palette.cardStroke) }
+                    // Group by meal type in day order (3.5) — breakfast / lunch / dinner / snack.
+                    ForEach(Self.mealSections(meals), id: \.type) { section in
+                        mealSectionHeader(section.type, section.meals)
+                        ForEach(section.meals) { meal in
+                            Button { Haptic.tap(); editing = meal } label: { mealRow(meal) }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button { Haptic.tap(); editing = meal } label: { Label("Edit", systemImage: "slider.horizontal.3") }
+                                    Button(role: .destructive) { Task { await model.deleteMeal(meal.id) } } label: { Label("Delete", systemImage: "trash") }
+                                }
+                            if meal.id != meals.last?.id { Divider().overlay(Theme.Palette.cardStroke) }
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Day order + labels for the sectioned list. `snack` covers afternoon/late gaps.
+    private static let sectionOrder: [(type: String, label: String)] = [
+        ("breakfast", "Breakfast"), ("lunch", "Lunch"), ("dinner", "Dinner"), ("snack", "Snacks"),
+    ]
+
+    /// Bucket the day's meals by type, keeping only non-empty sections in day order. A meal with an
+    /// unknown/missing type falls to snacks so nothing is ever dropped.
+    private static func mealSections(_ meals: [Meal]) -> [(type: String, label: String, meals: [Meal])] {
+        sectionOrder.compactMap { section in
+            let inSection = meals.filter { ($0.meal_type ?? "snack") == section.type }
+            return inSection.isEmpty ? nil : (section.type, section.label, inSection)
+        }
+    }
+
+    @ViewBuilder private func mealSectionHeader(_ type: String, _ meals: [Meal]) -> some View {
+        let kcal = meals.reduce(0) { $0 + $1.calories }
+        HStack {
+            Text(Self.sectionOrder.first { $0.type == type }?.label ?? type.capitalized)
+                .font(Theme.Font.micro.weight(.semibold)).textCase(.uppercase).tracking(0.6)
+                .foregroundStyle(Theme.Palette.textDim)
+            Spacer()
+            Text("\(kcal) kcal").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+        }
+        .padding(.top, 12).padding(.bottom, 4)
     }
 
     private func mealRow(_ meal: Meal) -> some View {
@@ -716,6 +746,11 @@ private struct EditMealSheet: View {
     @State private var carbs: String
     @State private var fat: String
     @State private var when: Date
+    @State private var mealType: String
+
+    private static let types: [(String, String)] = [
+        ("breakfast", "Breakfast"), ("lunch", "Lunch"), ("dinner", "Dinner"), ("snack", "Snack"),
+    ]
 
     init(meal: Meal) {
         self.meal = meal
@@ -725,6 +760,7 @@ private struct EditMealSheet: View {
         _carbs = State(initialValue: "\(Int(meal.carbs_g))")
         _fat = State(initialValue: "\(Int(meal.fat_g))")
         _when = State(initialValue: meal.eaten_at.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date())
+        _mealType = State(initialValue: meal.meal_type ?? "snack")
     }
 
     var body: some View {
@@ -744,6 +780,14 @@ private struct EditMealSheet: View {
                             TitanDateField(selection: $when, components: [.date, .hourAndMinute])
                         }
 
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Meal").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
+                            Picker("Meal", selection: $mealType) {
+                                ForEach(Self.types, id: \.0) { Text($0.1).tag($0.0) }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+
                         Button {
                             Haptic.success()
                             Task {
@@ -752,7 +796,7 @@ private struct EditMealSheet: View {
                                                        protein: Double(protein) ?? meal.protein_g,
                                                        carbs: Double(carbs) ?? meal.carbs_g,
                                                        fat: Double(fat) ?? meal.fat_g,
-                                                       eatenAt: when)
+                                                       eatenAt: when, mealType: mealType)
                                 dismiss()
                             }
                         } label: {

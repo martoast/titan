@@ -570,6 +570,7 @@ struct Meal: Codable, Identifiable, Equatable {
     var fiber_g: Double? = nil   // secondary stat, nil when unknown (3.3)
     let photo_url: String?
     let source: String?
+    var meal_type: String? = nil            // breakfast|lunch|dinner|snack — sections the day list (3.5)
     var macros_estimated: [String]? = nil   // macros the server invented (honest "estimated" chip; 3.6)
     var glucose: MealGlucose? = nil   // per-meal CGM response, when glucose covers this meal (P2)
     struct MealGlucose: Codable, Equatable {

@@ -24,8 +24,16 @@ class Meal extends Model
 
     protected $fillable = [
         'profile_id', 'eaten_at', 'name', 'photo_path',
-        'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'macros_estimated', 'source', 'notes',
+        'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'macros_estimated', 'source', 'meal_type', 'notes',
     ];
+
+    /** The meal's group for the sectioned day list — the stored override, or inferred from its time. */
+    public function mealType(): string
+    {
+        return \App\Support\MealType::valid($this->meal_type)
+            ? $this->meal_type
+            : \App\Support\MealType::infer($this->eaten_at ?? now());
+    }
 
     protected function casts(): array
     {

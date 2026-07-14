@@ -214,6 +214,7 @@ class MobileNutritionController extends Controller
             'carbs_g' => ['required', 'numeric', 'min:0', 'max:2000'],
             'fat_g' => ['required', 'numeric', 'min:0', 'max:2000'],
             'fiber_g' => ['nullable', 'numeric', 'min:0', 'max:500'],   // secondary stat, not in the reconcile
+            'meal_type' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Support\MealType::TYPES))],
             'photo_path' => ['nullable', 'string', 'max:255'],
             // The draft's real source (a barcode scan confirms through here too) — was hardcoded 'photo',
             // which mislabelled barcode meals (MEAL_LOGGING_REVISION 1.3).
@@ -238,6 +239,7 @@ class MobileNutritionController extends Controller
             'fat_g' => $m['fat_g'],
             'fiber_g' => self::normFiber($data['fiber_g'] ?? null),
             'macros_estimated' => $m['estimated'] ?? null,
+            'meal_type' => $data['meal_type'] ?? null,   // null → inferred from time at read
             'photo_path' => $photo,
             'source' => $data['source'] ?? 'photo',
         ]);
@@ -262,6 +264,7 @@ class MobileNutritionController extends Controller
             'fat_g' => $m['fat_g'],
             'fiber_g' => self::normFiber($data['fiber_g'] ?? null),
             'macros_estimated' => $m['estimated'] ?? null,
+            'meal_type' => $data['meal_type'] ?? null,   // null → inferred from time at read
             'source' => 'manual',
         ]);
 
@@ -305,6 +308,7 @@ class MobileNutritionController extends Controller
                 'carbs_g' => $rc['carbs_g'],
                 'fat_g' => $rc['fat_g'],
                 'fiber_g' => $m->fiber_g,   // carry fibre onto the copy (unknown stays unknown)
+                'meal_type' => $m->meal_type,   // preserve an explicit override (time-of-day is kept, so inference matches anyway)
                 // Carry the honesty flag from the source meal (its macros are already reconciled, so a
                 // re-reconcile here invents nothing) — a copied estimate is still an estimate.
                 'macros_estimated' => $m->macros_estimated ?: null,
@@ -441,6 +445,7 @@ class MobileNutritionController extends Controller
             'carbs_g' => [$req, 'numeric', 'min:0', 'max:2000'],
             'fat_g' => [$req, 'numeric', 'min:0', 'max:2000'],
             'fiber_g' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:500'],
+            'meal_type' => ['sometimes', 'nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Support\MealType::TYPES))],
             'eaten_at' => ['sometimes', 'date'],
         ]);
     }
@@ -463,6 +468,7 @@ class MobileNutritionController extends Controller
             'carbs_g' => (float) $m->carbs_g,
             'fat_g' => (float) $m->fat_g,
             'fiber_g' => $m->fiber_g !== null ? (float) $m->fiber_g : null,   // secondary stat, null when unknown
+            'meal_type' => $m->mealType(),   // resolved group (stored override, else inferred from time)
             'macros_estimated' => $m->macros_estimated ?: null,   // which macros the server invented (honesty chip)
             'photo_url' => $m->photoUrl(),
             'source' => $m->source,

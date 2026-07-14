@@ -1657,6 +1657,7 @@ class CoachTools
             'carbs_g' => (float) $meal->carbs_g,
             'fat_g' => (float) $meal->fat_g,
             'fiber_g' => $meal->fiber_g !== null ? (float) $meal->fiber_g : null,   // secondary stat, null when unknown
+            'meal_type' => $meal->mealType(),   // breakfast/lunch/dinner/snack (stored override, else inferred)
             'macros_estimated' => $meal->macros_estimated ?: null,   // honest "estimated" chip when the split was invented
             // CRUD from the card — routed as prompts so the coach confirms and uses update_meal / delete_meal
             // (with the meal id in context); every action has the same typed-text equivalent.

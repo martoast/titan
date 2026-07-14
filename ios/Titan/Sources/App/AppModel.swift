@@ -887,12 +887,13 @@ final class AppModel: ObservableObject {
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
-    func updateMeal(_ id: Int, name: String, calories: Int, protein: Double, carbs: Double, fat: Double, eatenAt: Date? = nil) async {
+    func updateMeal(_ id: Int, name: String, calories: Int, protein: Double, carbs: Double, fat: Double, eatenAt: Date? = nil, mealType: String? = nil) async {
         do {
             var fields: [String: Any] = [
                 "name": name, "calories": calories, "protein_g": protein, "carbs_g": carbs, "fat_g": fat,
             ]
             if let eatenAt { fields["eaten_at"] = ISO8601DateFormatter().string(from: eatenAt) }
+            if let mealType { fields["meal_type"] = mealType }   // user re-files the meal's group (3.5)
             _ = try await api.updateMeal(id, fields: fields)
             await loadNutrition()
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
