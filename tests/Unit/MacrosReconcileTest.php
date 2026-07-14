@@ -38,6 +38,29 @@ class MacrosReconcileTest extends TestCase
         $this->assertSame(36.0, $r['protein_g']);
         $this->assertSame(54.0, $r['carbs_g']);
         $this->assertSame(36.0, $r['fat_g']);
+        $this->assertArrayNotHasKey('estimated', $r);    // nothing invented → no estimated flag
+    }
+
+    public function test_filled_macros_are_flagged_estimated(): void
+    {
+        // Henry's shake: only carbs+fat were invented, protein was real → only c+f flagged.
+        $r = Macros::reconcile(470, 37, 0, 0);
+        $this->assertSame(['carbs', 'fat'], array_values($r['estimated']));
+    }
+
+    public function test_calories_only_flags_all_three_as_estimated(): void
+    {
+        // "600 kcal" with no macros → the whole 30/40/30 split is invented.
+        $r = Macros::reconcile(600, 0, 0, 0);
+        $this->assertSame(['protein', 'carbs', 'fat'], $r['estimated']);
+    }
+
+    public function test_exactly_solved_single_macro_is_not_flagged(): void
+    {
+        // Only fat missing but back-solved exactly (see below) — a deterministic single-macro fill is
+        // precise, not a guess, so it still carries the flag honestly (it WAS server-derived).
+        $r = Macros::reconcile(500, 40, 40, 0);
+        $this->assertSame(['fat'], array_values($r['estimated']));
     }
 
     public function test_a_single_missing_macro_is_back_solved_exactly(): void

@@ -235,6 +235,7 @@ class MobileNutritionController extends Controller
             'protein_g' => $m['protein_g'],
             'carbs_g' => $m['carbs_g'],
             'fat_g' => $m['fat_g'],
+            'macros_estimated' => $m['estimated'] ?? null,
             'photo_path' => $photo,
             'source' => $data['source'] ?? 'photo',
         ]);
@@ -257,6 +258,7 @@ class MobileNutritionController extends Controller
             'protein_g' => $m['protein_g'],
             'carbs_g' => $m['carbs_g'],
             'fat_g' => $m['fat_g'],
+            'macros_estimated' => $m['estimated'] ?? null,
             'source' => 'manual',
         ]);
 
@@ -299,6 +301,9 @@ class MobileNutritionController extends Controller
                 'protein_g' => $rc['protein_g'],
                 'carbs_g' => $rc['carbs_g'],
                 'fat_g' => $rc['fat_g'],
+                // Carry the honesty flag from the source meal (its macros are already reconciled, so a
+                // re-reconcile here invents nothing) — a copied estimate is still an estimate.
+                'macros_estimated' => $m->macros_estimated ?: null,
                 'photo_path' => $m->photo_path,
                 'source' => 'memory',
             ]);
@@ -325,6 +330,7 @@ class MobileNutritionController extends Controller
         $row->protein_g = $m['protein_g'];
         $row->carbs_g = $m['carbs_g'];
         $row->fat_g = $m['fat_g'];
+        $row->macros_estimated = $m['estimated'] ?? null;   // a real correction clears the flag
         $row->save();
 
         return response()->json(['meal' => $this->mealJson($row->fresh()), 'macros' => Macros::today($profile)]);
@@ -445,6 +451,7 @@ class MobileNutritionController extends Controller
             'protein_g' => (float) $m->protein_g,
             'carbs_g' => (float) $m->carbs_g,
             'fat_g' => (float) $m->fat_g,
+            'macros_estimated' => $m->macros_estimated ?: null,   // which macros the server invented (honesty chip)
             'photo_url' => $m->photoUrl(),
             'source' => $m->source,
         ];

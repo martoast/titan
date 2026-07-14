@@ -286,8 +286,14 @@ struct FuelSection: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 (meal.name.map { Text($0) } ?? Text("Meal")).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
-                Text("\(meal.calories) kcal · \(Int(meal.protein_g))P · \(Int(meal.carbs_g))C · \(Int(meal.fat_g))F")
-                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                HStack(spacing: 5) {
+                    Text("\(meal.calories) kcal · \(Int(meal.protein_g))P · \(Int(meal.carbs_g))C · \(Int(meal.fat_g))F")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    // Honest cue that part of this split was server-estimated (MEAL_LOGGING_REVISION 3.6).
+                    if let est = meal.macros_estimated, !est.isEmpty {
+                        Image(systemName: "wand.and.stars").font(.system(size: 9)).foregroundStyle(Theme.Palette.amber)
+                    }
+                }
                 // The meal's real glucose response (CGM P2), when glucose covered it.
                 if let g = meal.glucose, let delta = g.peak_delta {
                     glucoseResponseLine(g, delta)

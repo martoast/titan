@@ -955,9 +955,39 @@ struct MealCard: View {
                 }
             }
             MacroShareBar(protein: p, carbs: c, fat: f)
+            if let est = json["macros_estimated"] as? [String], !est.isEmpty {
+                EstimatedMacroChip(macros: est)
+            }
             CardActionsRow(json: json)
         }
         .coachCard()
+    }
+}
+
+/// Honest "estimated" chip (MEAL_LOGGING_REVISION 3.6) — surfaces when Titan had to invent part of a
+/// meal's macro split (e.g. only calories were logged) so the numbers never look more precise than they
+/// are. Names which macros were guessed; taps route to the same Edit flow to confirm.
+struct EstimatedMacroChip: View {
+    let macros: [String]
+
+    private var label: String {
+        let names = macros.map { $0.capitalized }
+        let list: String
+        switch names.count {
+        case 3: list = "macros"
+        case 2: list = "\(names[0]) & \(names[1])"
+        default: list = names.first ?? "macros"
+        }
+        return "\(list) estimated — tap Edit to confirm"
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "wand.and.stars").font(.caption2).foregroundStyle(Theme.Palette.amber)
+            Text(verbatim: label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.amber)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Theme.Palette.amber.opacity(0.13), in: Capsule())
     }
 }
 

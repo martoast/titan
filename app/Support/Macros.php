@@ -59,13 +59,15 @@ class Macros
         $zeros = array_keys(array_filter(['p' => $p, 'c' => $c, 'f' => $f], fn ($v) => $v < 0.5));
 
         // Calories exceed the accounted macro energy, with a macro left at 0 → fill the missing macro(s).
+        // Those filled macros are ESTIMATED (server-invented), so we flag them for an honest "estimated" chip.
         if ($gap > 0 && $zeros !== []) {
             if (count($zeros) === 3) {
                 // Only calories were given — a balanced default split keeps the daily total honest.
                 return self::macroRow($calories,
                     0.30 * $calories / self::KCAL_P,
                     0.40 * $calories / self::KCAL_C,
-                    0.30 * $calories / self::KCAL_F);
+                    0.30 * $calories / self::KCAL_F,
+                    ['protein', 'carbs', 'fat']);
             }
             $share = $gap / count($zeros);   // split the unaccounted energy evenly by kcal
             foreach ($zeros as $z) {
@@ -75,8 +77,9 @@ class Macros
                     default => $f = $share / self::KCAL_F,
                 };
             }
+            $estimated = array_map(fn ($z) => ['p' => 'protein', 'c' => 'carbs', 'f' => 'fat'][$z], $zeros);
 
-            return self::macroRow($calories, $p, $c, $f);
+            return self::macroRow($calories, $p, $c, $f, $estimated);
         }
 
         // Macros are fully specified but contradict the calories (over, or under with none at 0):
@@ -84,10 +87,17 @@ class Macros
         return self::macroRow((int) round($macroKcal), $p, $c, $f);
     }
 
-    /** @return array{calories:int,protein_g:float,carbs_g:float,fat_g:float} */
-    private static function macroRow(int $cal, float $p, float $c, float $f): array
+    /**
+     * @param  array<int,string>  $estimated  macros ('protein'|'carbs'|'fat') this reconcile INVENTED (server
+     *                                         split, not user/vision data) — surfaced as an honest "estimated" chip.
+     * @return array{calories:int,protein_g:float,carbs_g:float,fat_g:float,estimated?:array<int,string>}
+     */
+    private static function macroRow(int $cal, float $p, float $c, float $f, array $estimated = []): array
     {
-        return ['calories' => $cal, 'protein_g' => round($p, 1), 'carbs_g' => round($c, 1), 'fat_g' => round($f, 1)];
+        return array_filter([
+            'calories' => $cal, 'protein_g' => round($p, 1), 'carbs_g' => round($c, 1), 'fat_g' => round($f, 1),
+            'estimated' => $estimated,
+        ], fn ($v) => $v !== []);
     }
 
     /**

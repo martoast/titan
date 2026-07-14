@@ -1524,6 +1524,7 @@ class CoachTools
             'protein_g' => $m['protein_g'],
             'carbs_g' => $m['carbs_g'],
             'fat_g' => $m['fat_g'],
+            'macros_estimated' => $m['estimated'] ?? null,
             'source' => 'coach',
         ]);
 
@@ -1600,6 +1601,7 @@ class CoachTools
         $meal->protein_g = $r['protein_g'];
         $meal->carbs_g = $r['carbs_g'];
         $meal->fat_g = $r['fat_g'];
+        $meal->macros_estimated = $r['estimated'] ?? null;   // a real correction clears the flag; a still-partial edit re-flags
         $meal->save();
 
         return [
@@ -1648,6 +1650,7 @@ class CoachTools
             'protein_g' => (float) $meal->protein_g,
             'carbs_g' => (float) $meal->carbs_g,
             'fat_g' => (float) $meal->fat_g,
+            'macros_estimated' => $meal->macros_estimated ?: null,   // honest "estimated" chip when the split was invented
             // CRUD from the card — routed as prompts so the coach confirms and uses update_meal / delete_meal
             // (with the meal id in context); every action has the same typed-text equivalent.
             'actions' => [

@@ -568,6 +568,7 @@ struct Meal: Codable, Identifiable, Equatable {
     let fat_g: Double
     let photo_url: String?
     let source: String?
+    var macros_estimated: [String]? = nil   // macros the server invented (honest "estimated" chip; 3.6)
     var glucose: MealGlucose? = nil   // per-meal CGM response, when glucose covers this meal (P2)
     struct MealGlucose: Codable, Equatable {
         let baseline_mg_dl: Int?; let peak_mg_dl: Int?; let peak_delta: Int?
