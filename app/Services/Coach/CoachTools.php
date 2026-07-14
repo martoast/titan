@@ -207,6 +207,7 @@ class CoachTools
         }
 
         if (class_exists(\App\Models\GlucoseReading::class)) {
+            $tools[] = $this->fn('glucose_status', "The user's CURRENT glucose from their CGM: latest reading + trend, and today's average / time-in-range / variability (CV) / estimated GMI. Use for 'what's my glucose / blood sugar right now / how's my glucose today / am I spiking'. Non-diabetic wellness framing — optimization, never diagnosis or insulin advice.", [], []);
             $tools[] = $this->fn('glucose_meals', "The user's SPIKIEST and STEADIEST foods by real CGM glucose response over the last 2 weeks. Use for 'what spikes me / which meals raise my blood sugar / what should I swap'. Suggest lower-spike swaps; a spike is normal physiology — frame as optimization, not a diagnosis.", [], []);
         }
 
@@ -553,6 +554,7 @@ class CoachTools
             'web_search' => 'Searching the web',
             'lookup_food' => 'Looking up the nutrition facts',
             'recent_biomarkers' => 'Checking your bloodwork',
+            'glucose_status' => 'Checking your glucose',
             'glucose_meals' => 'Reviewing your glucose response',
             'recent_meals' => 'Reviewing your nutrition',
             'my_meals' => 'Recalling your usual meals',
@@ -698,6 +700,7 @@ class CoachTools
             'web_search' => $this->webSearch($args),
             'lookup_food' => $this->lookupFood($args),
             'recent_biomarkers' => $this->recentBiomarkers(),
+            'glucose_status' => $this->glucoseStatus(),
             'glucose_meals' => $this->glucoseMeals(),
             'recent_meals' => $this->recentMeals((int) ($args['days'] ?? 7)),
             'my_meals' => $this->myMeals(),
@@ -1003,6 +1006,45 @@ class CoachTools
 
             return ['error' => 'Could not save note — try again.'];
         }
+    }
+
+    private function glucoseStatus(): mixed
+    {
+        if (! class_exists(\App\Models\GlucoseReading::class)) {
+            return ['note' => 'Connect a CGM (Nightscout or Apple Health) to see your glucose here.'];
+        }
+        $day = \App\Support\GlucoseDay::forProfile($this->profile);
+        $status = $day['status'] ?? [];
+        if (empty($status['connected'])) {
+            return ['note' => 'No CGM connected yet. In the Fuel tab → Glucose, link Nightscout or Apple Health and I\'ll track your glucose.'];
+        }
+
+        // Latest reading + trend (the "right now"), separate from today's aggregate.
+        $latest = $this->profile->glucoseReadings()->orderByDesc('taken_at')->first(['mg_dl', 'trend', 'taken_at']);
+        $summary = $day['summary'] ?? ['n' => 0];
+        if ($latest === null || ($summary['n'] ?? 0) === 0) {
+            return ['note' => 'Your CGM is connected but I don\'t have readings for today yet — give it a few minutes to sync.'];
+        }
+
+        $spike = \App\Support\GlucoseSpike::active($this->profile);
+
+        return [
+            'card' => [
+                'type' => 'glucose',
+                'current_mg_dl' => (int) $latest->mg_dl,
+                'trend' => $latest->trend,
+                'fresh' => (bool) ($status['fresh'] ?? false),
+                'spiking' => $spike !== null,
+                'average_mg_dl' => $summary['average_mg_dl'] ?? null,
+                'time_in_range_pct' => $summary['time_in_range_pct'] ?? null,
+                'cv_pct' => $summary['cv_pct'] ?? null,
+                'stable' => $summary['stable'] ?? null,
+                'gmi_pct' => $summary['gmi_pct'] ?? null,
+                'range_low' => $summary['range_low'] ?? \App\Support\GlucoseMetrics::RANGE_LOW,
+                'range_high' => $summary['range_high'] ?? \App\Support\GlucoseMetrics::RANGE_HIGH,
+            ],
+            '_show' => 'Emit this `glucose` card in a ```titan-card fence, then ONE line reading the moment: if spiking, a spike is normal — offer a 2-minute walk to blunt it (~a quarter). Otherwise reflect on today\'s time-in-range/stability. Wellness optimization, never diagnosis or insulin advice.',
+        ];
     }
 
     private function glucoseMeals(): mixed

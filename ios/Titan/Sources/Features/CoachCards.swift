@@ -1164,6 +1164,79 @@ struct GlucoseMealsCard: View {
     }
 }
 
+// MARK: - Glucose (current reading + today's TIR / variability)
+
+struct GlucoseCard: View {
+    let json: [String: Any]
+
+    var body: some View {
+        let current = jsonNum(json["current_mg_dl"]).map { Int($0) }
+        let low = Int(jsonNum(json["range_low"]) ?? 70)
+        let high = Int(jsonNum(json["range_high"]) ?? 140)
+        let spiking = json["spiking"] as? Bool ?? false
+        let color = readingColor(current, low: low, high: high, spiking: spiking)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Glucose").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(current.map(String.init) ?? "–").font(Theme.Font.num(28)).foregroundStyle(color)
+                        Text("mg/dL").font(Theme.Font.num(12)).foregroundStyle(Theme.Palette.textDim)
+                        if let arrow = trendArrow(json["trend"] as? String) {
+                            Text(arrow).font(Theme.Font.num(16)).foregroundStyle(color)
+                        }
+                    }
+                }
+                Spacer()
+                if spiking {
+                    Text("Rising now").font(Theme.Font.micro).foregroundStyle(Theme.Palette.pink)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Theme.Palette.pink.opacity(0.15), in: Capsule())
+                } else if !(json["fresh"] as? Bool ?? true) {
+                    Text("Stale").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+            }
+            HStack(spacing: 0) {
+                metric("In range", jsonNum(json["time_in_range_pct"]).map { "\(Int($0))%" }, Theme.Palette.mint)
+                metric("Average", jsonNum(json["average_mg_dl"]).map { "\(Int($0))" }, Theme.Palette.text)
+                let stable = json["stable"] as? Bool ?? false
+                metric("Variability", jsonNum(json["cv_pct"]).map { String(format: "%.0f%%", $0) },
+                       stable ? Theme.Palette.mint : Theme.Palette.amber)
+            }
+            cardCaption(json["caption"] as? String)
+        }
+        .coachCard()
+    }
+
+    @ViewBuilder private func metric(_ label: LocalizedStringKey, _ value: String?, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value ?? "–").font(Theme.Font.num(17)).foregroundStyle(color)
+            Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func readingColor(_ mg: Int?, low: Int, high: Int, spiking: Bool) -> Color {
+        guard let mg else { return Theme.Palette.text }
+        if spiking || mg > high { return Theme.Palette.pink }
+        if mg < low { return Theme.Palette.amber }
+        return Theme.Palette.mint
+    }
+
+    private func trendArrow(_ trend: String?) -> String? {
+        switch trend {
+        case "rising_fast", "double_up": return "⇈"
+        case "rising", "single_up", "up": return "↑"
+        case "rising_slow", "forty_five_up": return "↗"
+        case "flat", "steady": return "→"
+        case "falling_slow", "forty_five_down": return "↘"
+        case "falling", "single_down", "down": return "↓"
+        case "falling_fast", "double_down": return "⇊"
+        default: return nil
+        }
+    }
+}
+
 // MARK: - Weight (trend + rate)
 
 struct WeightTrendCard: View {
