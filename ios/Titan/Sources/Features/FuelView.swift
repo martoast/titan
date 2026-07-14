@@ -241,6 +241,13 @@ struct FuelSection: View {
                         MacroRing(line: m.carbs, label: "Carbs", unit: "g", color: Theme.Palette.amber, size: 86)
                         MacroRing(line: m.fat, label: "Fat", unit: "g", color: Theme.Palette.pink, size: 86)
                     }
+                    // Fibre — a secondary daily stat (no target), only once a meal has reported it.
+                    if let fiber = m.fiber_g {
+                        HStack(spacing: 5) {
+                            Image(systemName: "leaf.fill").font(.caption2).foregroundStyle(Theme.Palette.mint)
+                            Text("\(fiber)g fiber today").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                        }
+                    }
                 }
             }
         } else {
@@ -287,7 +294,7 @@ struct FuelSection: View {
             VStack(alignment: .leading, spacing: 3) {
                 (meal.name.map { Text($0) } ?? Text("Meal")).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
                 HStack(spacing: 5) {
-                    Text("\(meal.calories) kcal · \(Int(meal.protein_g))P · \(Int(meal.carbs_g))C · \(Int(meal.fat_g))F")
+                    Text("\(meal.calories) kcal · \(Int(meal.protein_g))P · \(Int(meal.carbs_g))C · \(Int(meal.fat_g))F\(meal.fiber_g.map { " · \(Int($0))g fiber" } ?? "")")
                         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                     // Honest cue that part of this split was server-estimated (MEAL_LOGGING_REVISION 3.6).
                     if let est = meal.macros_estimated, !est.isEmpty {
@@ -545,6 +552,9 @@ struct ScanResultSheet: View {
                     macroStat("\(Int(scaled(d.carbs_g)))", "carbs", Theme.Palette.amber)
                     macroStat("\(Int(scaled(d.fat_g)))", "fat", Theme.Palette.pink)
                 }
+                if let fib = d.fiber_g, fib > 0 {
+                    Text("+ \(Int(scaled(fib)))g fiber").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
             }
         }
     }
@@ -556,7 +566,8 @@ struct ScanResultSheet: View {
                 await model.confirmScannedMeal(
                     name: name.trimmingCharacters(in: .whitespaces).isEmpty ? d.name : name,
                     calories: scaledCal(d), protein: scaled(d.protein_g),
-                    carbs: scaled(d.carbs_g), fat: scaled(d.fat_g), photoPath: d.photo_path,
+                    carbs: scaled(d.carbs_g), fat: scaled(d.fat_g),
+                    fiber: d.fiber_g.map(scaled), photoPath: d.photo_path,
                     // Only 'barcode' is a real meal source among the draft's resolve-chain values; a photo
                     // scan (your_meals/brand/web/photo) → nil → the server stamps 'photo'.
                     source: d.source == "barcode" ? "barcode" : nil)

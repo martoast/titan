@@ -544,6 +544,7 @@ struct MacroCard: Codable, Equatable {
     let protein: MacroLine
     let carbs: MacroLine
     let fat: MacroLine
+    var fiber_g: Int? = nil             // daily fibre total (secondary stat, nil when no meal reported it)
     var remaining_line: String? = nil   // "1,240 kcal · 63 g protein left" / "320 kcal over"
     var over_budget: Bool? = nil
     let footer: String?
@@ -566,6 +567,7 @@ struct Meal: Codable, Identifiable, Equatable {
     let protein_g: Double
     let carbs_g: Double
     let fat_g: Double
+    var fiber_g: Double? = nil   // secondary stat, nil when unknown (3.3)
     let photo_url: String?
     let source: String?
     var macros_estimated: [String]? = nil   // macros the server invented (honest "estimated" chip; 3.6)
@@ -602,6 +604,7 @@ struct MealDraft: Codable {
     let protein_g: Double
     let carbs_g: Double
     let fat_g: Double
+    var fiber_g: Double? = nil    // secondary stat, scaled with servings like the macros (3.3)
     let confidence: String        // low | medium | high
     let source: String            // your_meals | brand | web | photo — where the macros came from
     let serving_hint: String?

@@ -24,7 +24,7 @@ class Meal extends Model
 
     protected $fillable = [
         'profile_id', 'eaten_at', 'name', 'photo_path',
-        'calories', 'protein_g', 'carbs_g', 'fat_g', 'macros_estimated', 'source', 'notes',
+        'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'macros_estimated', 'source', 'notes',
     ];
 
     protected function casts(): array
@@ -35,6 +35,7 @@ class Meal extends Model
             'protein_g' => 'decimal:1',
             'carbs_g' => 'decimal:1',
             'fat_g' => 'decimal:1',
+            'fiber_g' => 'decimal:1',   // secondary stat — not part of the energy reconcile
             'macros_estimated' => 'array',
         ];
     }
@@ -82,6 +83,11 @@ class Meal extends Model
         $this->protein_g = round((float) $items->sum('protein_g'), 1);
         $this->carbs_g = round((float) $items->sum('carbs_g'), 1);
         $this->fat_g = round((float) $items->sum('fat_g'), 1);
+        // Fiber is a secondary stat: sum it only if at least one item reports it, else leave null
+        // (unknown, not a misleading 0).
+        $this->fiber_g = $items->whereNotNull('fiber_g')->isNotEmpty()
+            ? round((float) $items->sum('fiber_g'), 1)
+            : null;
         $this->macros_estimated = null;   // macros now come from real per-item data — nothing invented
         $this->save();
     }

@@ -213,6 +213,7 @@ class MobileNutritionController extends Controller
             'protein_g' => ['required', 'numeric', 'min:0', 'max:2000'],
             'carbs_g' => ['required', 'numeric', 'min:0', 'max:2000'],
             'fat_g' => ['required', 'numeric', 'min:0', 'max:2000'],
+            'fiber_g' => ['nullable', 'numeric', 'min:0', 'max:500'],   // secondary stat, not in the reconcile
             'photo_path' => ['nullable', 'string', 'max:255'],
             // The draft's real source (a barcode scan confirms through here too) — was hardcoded 'photo',
             // which mislabelled barcode meals (MEAL_LOGGING_REVISION 1.3).
@@ -235,6 +236,7 @@ class MobileNutritionController extends Controller
             'protein_g' => $m['protein_g'],
             'carbs_g' => $m['carbs_g'],
             'fat_g' => $m['fat_g'],
+            'fiber_g' => self::normFiber($data['fiber_g'] ?? null),
             'macros_estimated' => $m['estimated'] ?? null,
             'photo_path' => $photo,
             'source' => $data['source'] ?? 'photo',
@@ -258,6 +260,7 @@ class MobileNutritionController extends Controller
             'protein_g' => $m['protein_g'],
             'carbs_g' => $m['carbs_g'],
             'fat_g' => $m['fat_g'],
+            'fiber_g' => self::normFiber($data['fiber_g'] ?? null),
             'macros_estimated' => $m['estimated'] ?? null,
             'source' => 'manual',
         ]);
@@ -301,6 +304,7 @@ class MobileNutritionController extends Controller
                 'protein_g' => $rc['protein_g'],
                 'carbs_g' => $rc['carbs_g'],
                 'fat_g' => $rc['fat_g'],
+                'fiber_g' => $m->fiber_g,   // carry fibre onto the copy (unknown stays unknown)
                 // Carry the honesty flag from the source meal (its macros are already reconciled, so a
                 // re-reconcile here invents nothing) — a copied estimate is still an estimate.
                 'macros_estimated' => $m->macros_estimated ?: null,
@@ -436,8 +440,15 @@ class MobileNutritionController extends Controller
             'protein_g' => [$req, 'numeric', 'min:0', 'max:2000'],
             'carbs_g' => [$req, 'numeric', 'min:0', 'max:2000'],
             'fat_g' => [$req, 'numeric', 'min:0', 'max:2000'],
+            'fiber_g' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:500'],
             'eaten_at' => ['sometimes', 'date'],
         ]);
+    }
+
+    /** Fibre is a secondary stat: keep it null (unknown) rather than storing a misleading 0 for "not given". */
+    private static function normFiber(mixed $v): ?float
+    {
+        return is_numeric($v) ? round((float) $v, 1) : null;
     }
 
     /** @return array<string,mixed> */
@@ -451,6 +462,7 @@ class MobileNutritionController extends Controller
             'protein_g' => (float) $m->protein_g,
             'carbs_g' => (float) $m->carbs_g,
             'fat_g' => (float) $m->fat_g,
+            'fiber_g' => $m->fiber_g !== null ? (float) $m->fiber_g : null,   // secondary stat, null when unknown
             'macros_estimated' => $m->macros_estimated ?: null,   // which macros the server invented (honesty chip)
             'photo_url' => $m->photoUrl(),
             'source' => $m->source,

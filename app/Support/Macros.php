@@ -143,6 +143,10 @@ class Macros
         $pro = (int) round((float) $meals->sum('protein_g'));
         $carb = (int) round((float) $meals->sum('carbs_g'));
         $fat = (int) round((float) $meals->sum('fat_g'));
+        // Fiber is a secondary stat with no reconcile/target: a daily total, null when no meal reported it.
+        $fiber = $meals->whereNotNull('fiber_g')->isNotEmpty()
+            ? (int) round((float) $meals->sum('fiber_g'))
+            : null;
 
         return [
             'type' => 'macros',
@@ -151,6 +155,7 @@ class Macros
             'protein' => self::macroLine($pro, $proT),
             'carbs' => self::macroLine($carb, $carbT),
             'fat' => self::macroLine($fat, $fatT),
+            'fiber_g' => $fiber,
             // What's LEFT is the highest-frequency glance — lead with it; flip to over-budget when past target.
             'remaining_line' => self::remainingLine($cal, $calT, $pro, $proT),
             'over_budget' => $cal > $calT,

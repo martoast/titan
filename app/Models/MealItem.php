@@ -16,7 +16,7 @@ class MealItem extends Model
 
     protected $fillable = [
         'meal_id', 'name', 'quantity',
-        'calories', 'protein_g', 'carbs_g', 'fat_g',
+        'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g',
     ];
 
     protected function casts(): array
@@ -26,6 +26,7 @@ class MealItem extends Model
             'protein_g' => 'decimal:1',
             'carbs_g' => 'decimal:1',
             'fat_g' => 'decimal:1',
+            'fiber_g' => 'decimal:1',   // secondary stat — not part of the energy reconcile
         ];
     }
 

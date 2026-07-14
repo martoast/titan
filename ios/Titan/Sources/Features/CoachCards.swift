@@ -955,6 +955,12 @@ struct MealCard: View {
                 }
             }
             MacroShareBar(protein: p, carbs: c, fat: f)
+            if let fiber = jsonNum(json["fiber_g"]), fiber > 0 {
+                HStack(spacing: 5) {
+                    Image(systemName: "leaf.fill").font(.caption2).foregroundStyle(Theme.Palette.mint)
+                    Text("\(Int(fiber))g fiber").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+            }
             if let est = json["macros_estimated"] as? [String], !est.isEmpty {
                 EstimatedMacroChip(macros: est)
             }

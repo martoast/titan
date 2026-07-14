@@ -251,8 +251,9 @@ final class APIClient {
         return try await send(request("api/me/meals", method: "POST", json: json), as: MealMutation.self)
     }
 
-    func confirmMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, photoPath: String?, source: String? = nil) async throws -> MealMutation {
+    func confirmMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, fiber: Double? = nil, photoPath: String?, source: String? = nil) async throws -> MealMutation {
         var json: [String: Any] = ["name": name, "calories": calories, "protein_g": protein, "carbs_g": carbs, "fat_g": fat]
+        if let fiber { json["fiber_g"] = fiber }   // secondary stat, when the draft carried one
         if let photoPath { json["photo_path"] = photoPath }
         if let source { json["source"] = source }   // stamp the draft's real source (barcode vs photo)
         return try await send(request("api/me/meals/confirm", method: "POST", json: json), as: MealMutation.self)

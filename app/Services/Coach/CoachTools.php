@@ -326,6 +326,7 @@ class CoachTools
                 'protein_g' => ['type' => 'number', 'description' => 'Protein grams.'],
                 'carbs_g' => ['type' => 'number', 'description' => 'Carb grams.'],
                 'fat_g' => ['type' => 'number', 'description' => 'Fat grams.'],
+                'fiber_g' => ['type' => 'number', 'description' => 'Dietary fibre grams, when the food plausibly has it (veg, fruit, legumes, whole grains). Omit if unknown — a secondary stat, not part of the calorie math.'],
                 'eaten_at' => ['type' => 'string', 'description' => "ISO datetime in the USER's local time; default now. Never in the future — a meal they mention was already eaten."],
             ], ['name']);
             $tools[] = $this->fn('update_meal', "Fix a LOGGED meal when the user corrects it (\"that shake was 300 cal\", \"that was yesterday\", \"rename it\"). Pass the meal name (latest match wins) or the id from recent_meals, plus ONLY the fields to change.", [
@@ -336,6 +337,7 @@ class CoachTools
                 'protein_g' => ['type' => 'number', 'description' => 'Corrected protein grams.'],
                 'carbs_g' => ['type' => 'number', 'description' => 'Corrected carb grams.'],
                 'fat_g' => ['type' => 'number', 'description' => 'Corrected fat grams.'],
+                'fiber_g' => ['type' => 'number', 'description' => 'Corrected dietary fibre grams.'],
                 'eaten_at' => ['type' => 'string', 'description' => "Corrected datetime in the USER's local time (never future)."],
             ], []);
             $tools[] = $this->fn('delete_meal', "Remove a logged meal when the user says it's wrong (\"I didn't eat that\", \"delete that\", \"logged it twice\"). Pass the meal name (latest match wins) or the id from recent_meals.", [
@@ -1524,6 +1526,7 @@ class CoachTools
             'protein_g' => $m['protein_g'],
             'carbs_g' => $m['carbs_g'],
             'fat_g' => $m['fat_g'],
+            'fiber_g' => isset($a['fiber_g']) && is_numeric($a['fiber_g']) ? round((float) $a['fiber_g'], 1) : null,
             'macros_estimated' => $m['estimated'] ?? null,
             'source' => 'coach',
         ]);
@@ -1591,6 +1594,9 @@ class CoachTools
                 $meal->{$k} = $k === 'calories' ? (int) round((float) $a[$k]) : round((float) $a[$k], 1);
             }
         }
+        if (isset($a['fiber_g']) && is_numeric($a['fiber_g'])) {
+            $meal->fiber_g = round((float) $a['fiber_g'], 1);   // secondary stat — set directly, not reconciled
+        }
         if (isset($a['eaten_at'])) {
             $meal->eaten_at = $this->parseEatenAt($a['eaten_at']);
         }
@@ -1650,6 +1656,7 @@ class CoachTools
             'protein_g' => (float) $meal->protein_g,
             'carbs_g' => (float) $meal->carbs_g,
             'fat_g' => (float) $meal->fat_g,
+            'fiber_g' => $meal->fiber_g !== null ? (float) $meal->fiber_g : null,   // secondary stat, null when unknown
             'macros_estimated' => $meal->macros_estimated ?: null,   // honest "estimated" chip when the split was invented
             // CRUD from the card — routed as prompts so the coach confirms and uses update_meal / delete_meal
             // (with the meal id in context); every action has the same typed-text equivalent.
