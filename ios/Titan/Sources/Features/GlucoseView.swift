@@ -50,7 +50,7 @@ struct GlucoseView: View {
                         Text("mg/dL avg").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
                     }
                 }
-                GlucoseCurve(points: g.points, low: g.range_low ?? 70, high: g.range_high ?? 140)
+                GlucoseCurve(points: g.points, meals: g.meals, low: g.range_low ?? 70, high: g.range_high ?? 140)
                     .frame(height: 150)
                 HStack {
                     Text("12a").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint); Spacer()
@@ -150,6 +150,7 @@ struct GlucoseView: View {
 /// (the line breaks where readings are >~20 min apart — no interpolation over a sensor gap).
 private struct GlucoseCurve: View {
     let points: [GlucoseDay.Point]
+    var meals: [GlucoseDay.MealMarker] = []
     let low: Int
     let high: Int
 
@@ -168,6 +169,21 @@ private struct GlucoseCurve: View {
                 let bandTop = y(Double(high)), bandBottom = y(Double(low))
                 Rectangle().fill(Theme.Palette.mint.opacity(0.12))
                     .frame(height: max(0, bandBottom - bandTop)).position(x: w / 2, y: (bandTop + bandBottom) / 2)
+
+                // Meal markers — a faint vertical tick at each meal time, tagged with its peak Δ (P2).
+                ForEach(meals) { m in
+                    let mx = CGFloat(Self.dayFraction(m.t)) * w
+                    Rectangle().fill(Theme.Palette.textFaint.opacity(0.35)).frame(width: 1, height: h)
+                        .position(x: mx, y: h / 2)
+                    if let d = m.peak_delta {
+                        Text("+\(d)").font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(m.spike == "large" ? Theme.Palette.pink : (m.spike == "moderate" ? Theme.Palette.amber : Theme.Palette.mint))
+                            .position(x: min(max(12, mx), w - 12), y: 8)
+                    } else {
+                        Image(systemName: "fork.knife").font(.system(size: 7)).foregroundStyle(Theme.Palette.textFaint)
+                            .position(x: min(max(8, mx), w - 8), y: 8)
+                    }
+                }
 
                 if points.count >= 2 {
                     // Line, broken across gaps (>20 min between consecutive readings).

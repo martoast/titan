@@ -351,6 +351,7 @@ struct GlucoseDay: Codable {
     let range_low: Int?
     let range_high: Int?
     var points: [Point] = []
+    var meals: [MealMarker] = []   // logged meals overlaid on the curve (P2)
     let summary: Summary?
     let overnight_mg_dl: Int?
     let disclaimer: String?
@@ -358,6 +359,10 @@ struct GlucoseDay: Codable {
 
     struct Point: Codable, Identifiable {
         let t: String; let mg: Int
+        var id: String { t }
+    }
+    struct MealMarker: Codable, Identifiable {
+        let t: String; let name: String?; let peak_delta: Int?; let spike: String?
         var id: String { t }
     }
     struct Summary: Codable {
