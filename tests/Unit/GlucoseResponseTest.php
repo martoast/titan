@@ -2,8 +2,12 @@
 
 namespace Tests\Unit;
 
+use App\Models\GlucoseReading;
+use App\Models\Meal;
+use App\Models\Profile;
 use App\Support\GlucoseResponse;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Support\Carbon;
+use Tests\TestCase;   // Laravel base (boots the app) — the forMeal test instantiates Eloquent models
 
 /**
  * A meal's glucose response math (CGM_INTEGRATION P2) — baseline → peak Δ, time-to-peak, time-to-baseline,
@@ -62,5 +66,26 @@ class GlucoseResponseTest extends TestCase
     {
         $this->assertNull(GlucoseResponse::compute(90, []));
         $this->assertNull(GlucoseResponse::compute(90, [['min' => -5, 'mg' => 90]]));   // only pre-meal
+    }
+
+    /** forMeal windows a readings collection around eaten_at — baseline from pre-meal, response after.
+     *  Regression for review 5876613 (the query frame must match app-tz storage; the collection path is
+     *  tz-agnostic and correct). */
+    public function test_forMeal_windows_a_readings_collection(): void
+    {
+        $meal = new Meal(['eaten_at' => Carbon::parse('2026-07-14 12:00:00')]);
+        $readings = collect([
+            new GlucoseReading(['taken_at' => Carbon::parse('2026-07-14 11:50:00'), 'mg_dl' => 90]),
+            new GlucoseReading(['taken_at' => Carbon::parse('2026-07-14 12:00:00'), 'mg_dl' => 92]),
+            new GlucoseReading(['taken_at' => Carbon::parse('2026-07-14 12:45:00'), 'mg_dl' => 146]),
+            new GlucoseReading(['taken_at' => Carbon::parse('2026-07-14 13:40:00'), 'mg_dl' => 95]),
+        ]);
+        $r = GlucoseResponse::forMeal(new Profile(), $meal, $readings);
+
+        $this->assertNotNull($r);
+        $this->assertSame(91, $r['baseline_mg_dl']);      // mean of the two pre-meal readings (90, 92)
+        $this->assertSame(146, $r['peak_mg_dl']);
+        $this->assertSame(55, $r['peak_delta']);          // 146 − 91
+        $this->assertSame(45, $r['time_to_peak_min']);
     }
 }

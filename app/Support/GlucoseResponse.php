@@ -108,10 +108,12 @@ class GlucoseResponse
     {
         $at = $meal->eaten_at instanceof Carbon ? $meal->eaten_at->copy() : Carbon::parse($meal->eaten_at);
 
-        // Meal.eaten_at is app-tz wall-clock; glucose taken_at is UTC — compare as real instants.
-        $atUtc = $at->copy()->utc();
-        $from = $atUtc->copy()->subMinutes(self::BASELINE_MIN);
-        $to = $atUtc->copy()->addMinutes(self::RESPONSE_WINDOW_MIN);
+        // TZ FRAME (review 5876613): glucose `taken_at` is stored in APP-TZ (same frame as meals.eaten_at) —
+        // NOT UTC. So the SQL bounds must be app-tz too, or `whereBetween('taken_at', …)` searches ~offset
+        // hours off and finds nothing. Mirror GlucoseDay (which queries app-tz and works). The instant
+        // comparisons below (lte/gte/betweenIncluded/diffInMinutes) are tz-agnostic and already correct.
+        $from = $at->copy()->subMinutes(self::BASELINE_MIN);
+        $to = $at->copy()->addMinutes(self::RESPONSE_WINDOW_MIN);
 
         $rows = $readings
             ? collect($readings)->filter(fn ($r) => $r->taken_at->betweenIncluded($from, $to))
@@ -122,11 +124,11 @@ class GlucoseResponse
         }
 
         // Baseline = mean of the pre-meal readings; if none, use the first reading at/after the meal.
-        $pre = $rows->filter(fn ($r) => $r->taken_at->lte($atUtc));
+        $pre = $rows->filter(fn ($r) => $r->taken_at->lte($at));
         $baseline = $pre->isNotEmpty() ? $pre->avg('mg_dl') : (float) $rows->first()->mg_dl;
 
-        $samples = $rows->filter(fn ($r) => $r->taken_at->gte($atUtc))
-            ->map(fn ($r) => ['min' => (int) round($atUtc->diffInMinutes($r->taken_at)), 'mg' => (int) $r->mg_dl])
+        $samples = $rows->filter(fn ($r) => $r->taken_at->gte($at))
+            ->map(fn ($r) => ['min' => (int) round($at->diffInMinutes($r->taken_at)), 'mg' => (int) $r->mg_dl])
             ->values()->all();
 
         $resp = self::compute($baseline, $samples);

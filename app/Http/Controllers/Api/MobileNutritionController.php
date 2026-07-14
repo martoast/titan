@@ -54,8 +54,10 @@ class MobileNutritionController extends Controller
         if ($meals->isEmpty() || ! class_exists(\App\Models\GlucoseReading::class)) {
             return null;
         }
-        $first = $meals->min(fn (Meal $m) => $m->eaten_at)->copy()->utc()->subMinutes(20);
-        $last = $meals->max(fn (Meal $m) => $m->eaten_at)->copy()->utc()->addHours(3);
+        // Query in APP-TZ (the frame glucose taken_at is stored in, same as meals) — NOT UTC, or the bounds
+        // miss every reading and every meal gets glucose:null (review 5876613; mirror GlucoseDay).
+        $first = $meals->min(fn (Meal $m) => $m->eaten_at)->copy()->subMinutes(20);
+        $last = $meals->max(fn (Meal $m) => $m->eaten_at)->copy()->addHours(3);
         $rows = $profile->glucoseReadings()->whereBetween('taken_at', [$first, $last])->orderBy('taken_at')->get(['taken_at', 'mg_dl']);
 
         return $rows->isEmpty() ? null : $rows;
