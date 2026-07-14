@@ -1348,11 +1348,13 @@ class SealNightJob implements ShouldQueue
     }
 
     /**
-     * Fraction of the night's ppg_raw windows that were FULLY VALID (passed the standalone HRV gate — no
-     * `skipped` marker). A window tagged `short_window_aggregate_only` or `invalid_signal` (poor contact,
-     * ProcessWindowJob) is NOT fully valid. Measured on the RAW windows so the span-merge (which bridges
-     * NODATA into `coverage`) can't hide a night the band couldn't read. Null when there are no ppg_raw
-     * windows to judge (a legacy/sleep-only cluster).
+     * Fraction of the night's ppg_raw windows where the band actually READ the pulse — the SIGNAL-quality
+     * gate the span-merge can't mask. A window is a real read when it's either fully valid (no `skipped`)
+     * OR tagged `short_window_aggregate_only` — the band's NORMAL duty-cycle burst (samples in short bursts
+     * to save battery; the pulse WAS read, the window was just too short for standalone HRV). Only
+     * `invalid_signal` (genuine poor contact) counts as unread. Counting the duty-cycle bursts as invalid
+     * made validFraction≈0 on EVERY night, so `signalStrong` was never true and every light-heavy night
+     * read "signal was thin" (ROOT-CAUSE review 088d9a1). Null when there are no ppg_raw windows to judge.
      *
      * @param  \Illuminate\Support\Collection<int,DeviceIngestion>  $windows
      */
@@ -1362,7 +1364,11 @@ class SealNightJob implements ShouldQueue
         if ($ppg->isEmpty()) {
             return null;
         }
-        $valid = $ppg->filter(fn (DeviceIngestion $w) => empty(((array) $w->result_refs)['skipped']))->count();
+        $valid = $ppg->filter(function (DeviceIngestion $w) {
+            $skip = ((array) $w->result_refs)['skipped'] ?? null;
+
+            return empty($skip) || $skip === 'short_window_aggregate_only';   // a duty-cycle burst is still a read
+        })->count();
 
         return $valid / $ppg->count();
     }
