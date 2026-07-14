@@ -14,6 +14,7 @@ struct GlucoseView: View {
                 if g.has_data {
                     curveCard(g)
                     metricsCard(g)
+                    if let r = g.ranking, !r.spikiest.isEmpty { rankingCard(r) }
                     if let o = g.overnight_mg_dl {
                         GlassCard {
                             HStack {
@@ -80,6 +81,32 @@ struct GlucoseView: View {
                     metric("Range", (s?.min_mg_dl).flatMap { lo in (s?.max_mg_dl).map { "\(lo)–\($0)" } }, "mg/dL", Theme.Palette.violet)
                 }
             }
+        }
+    }
+
+    /// Spikiest vs steadiest foods over the last 2 weeks — turns the curve into an action (P2).
+    private func rankingCard(_ r: GlucoseDay.Ranking) -> some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                SectionHeader(title: "Your foods & glucose")
+                Text("SPIKIEST").font(Theme.Font.micro).tracking(0.6).foregroundStyle(Theme.Palette.pink)
+                ForEach(r.spikiest) { foodRow($0) }
+                if !r.steadiest.isEmpty {
+                    Text("STEADIEST").font(Theme.Font.micro).tracking(0.6).foregroundStyle(Theme.Palette.mint).padding(.top, 4)
+                    ForEach(r.steadiest) { foodRow($0) }
+                }
+            }
+        }
+    }
+
+    private func foodRow(_ f: GlucoseDay.Ranking.Food) -> some View {
+        let color: Color = switch f.spike { case "large": Theme.Palette.pink; case "moderate": Theme.Palette.amber; default: Theme.Palette.mint }
+        return HStack(spacing: Theme.Space.s) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(verbatim: f.name ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.text).lineLimit(1)
+            if let n = f.times, n > 1 { Text("×\(n)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
+            Spacer()
+            if let d = f.avg_peak_delta { Text("+\(d) mg/dL").font(Theme.Font.num(13)).foregroundStyle(color) }
         }
     }
 

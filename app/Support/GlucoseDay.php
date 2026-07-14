@@ -69,6 +69,8 @@ class GlucoseDay
             'points' => $points,
             'summary' => GlucoseMetrics::summary($values),
             'overnight_mg_dl' => $overnight !== [] ? (int) round(array_sum($overnight) / count($overnight)) : null,
+            // Spikiest/steadiest foods over the last 2 weeks (P2) — turns the curve into an action.
+            'ranking' => GlucoseMealRanking::forProfile($profile),
             'disclaimer' => GlucoseMetrics::DISCLAIMER,
             'status' => [
                 'connected' => $cfg !== null && $cfg['enabled'],

@@ -527,6 +527,7 @@ private struct TitanCardView: View {
             case "meal":                  MealCard(json: json)
             case "fasting":               FastingCoachCard(json: json)
             case "fastingweek":           FastingWeekCard(json: json)
+            case "glucosemeals":          GlucoseMealsCard(json: json)
             case "readiness":             ReadinessCard(json: json)
             case "strain":                StrainCard(json: json)
             case "stress_now":            StressCard(json: json)

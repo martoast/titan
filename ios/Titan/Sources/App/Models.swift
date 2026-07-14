@@ -354,8 +354,19 @@ struct GlucoseDay: Codable {
     var meals: [MealMarker] = []   // logged meals overlaid on the curve (P2)
     let summary: Summary?
     let overnight_mg_dl: Int?
+    var ranking: Ranking? = nil    // spikiest / steadiest foods by glucose response (P2)
     let disclaimer: String?
     let status: Status?
+
+    struct Ranking: Codable, Equatable {
+        let measured: Int?
+        var spikiest: [Food] = []
+        var steadiest: [Food] = []
+        struct Food: Codable, Equatable, Identifiable {
+            let name: String?; let avg_peak_delta: Int?; let times: Int?; let spike: String?
+            var id: String { name ?? "" }
+        }
+    }
 
     struct Point: Codable, Identifiable {
         let t: String; let mg: Int

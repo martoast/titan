@@ -206,6 +206,10 @@ class CoachTools
             $tools[] = $this->fn('recent_biomarkers', "Get the latest bloodwork value for each tracked marker, with its out-of-range flag.", [], []);
         }
 
+        if (class_exists(\App\Models\GlucoseReading::class)) {
+            $tools[] = $this->fn('glucose_meals', "The user's SPIKIEST and STEADIEST foods by real CGM glucose response over the last 2 weeks. Use for 'what spikes me / which meals raise my blood sugar / what should I swap'. Suggest lower-spike swaps; a spike is normal physiology — frame as optimization, not a diagnosis.", [], []);
+        }
+
         if (class_exists(\App\Support\FoodDiary::class)) {
             $tools[] = $this->fn('my_foods', "Their most-eaten foods (frequency, typical macros, last eaten). For meal planning / suggestions / 'what do I usually eat'.", [], []);
         }
@@ -549,6 +553,7 @@ class CoachTools
             'web_search' => 'Searching the web',
             'lookup_food' => 'Looking up the nutrition facts',
             'recent_biomarkers' => 'Checking your bloodwork',
+            'glucose_meals' => 'Reviewing your glucose response',
             'recent_meals' => 'Reviewing your nutrition',
             'my_meals' => 'Recalling your usual meals',
             'my_stack' => 'Checking what you take',
@@ -693,6 +698,7 @@ class CoachTools
             'web_search' => $this->webSearch($args),
             'lookup_food' => $this->lookupFood($args),
             'recent_biomarkers' => $this->recentBiomarkers(),
+            'glucose_meals' => $this->glucoseMeals(),
             'recent_meals' => $this->recentMeals((int) ($args['days'] ?? 7)),
             'my_meals' => $this->myMeals(),
             'my_stack' => $this->myStack(),
@@ -997,6 +1003,22 @@ class CoachTools
 
             return ['error' => 'Could not save note — try again.'];
         }
+    }
+
+    private function glucoseMeals(): mixed
+    {
+        if (! class_exists(\App\Models\GlucoseReading::class)) {
+            return ['note' => 'Connect a CGM (Nightscout or Apple Health) to see which foods spike you.'];
+        }
+        $r = \App\Support\GlucoseMealRanking::forProfile($this->profile);
+        if ($r === null) {
+            return ['note' => 'No glucose-and-meal overlap yet — keep logging meals while your CGM is connected and I\'ll rank your spikiest vs steadiest foods.'];
+        }
+
+        return [
+            'card' => ['type' => 'glucosemeals', 'spikiest' => $r['spikiest'], 'steadiest' => $r['steadiest'], 'measured' => $r['measured']],
+            '_show' => 'Emit this `glucosemeals` card in a ```titan-card fence, then ONE line: suggest a concrete lower-spike swap or pairing for their spikiest food (pair carbs with protein/fat/fibre, eat it later in the meal, or walk after). A spike is normal physiology — frame it as optimization, never a diagnosis.',
+        ];
     }
 
     private function recentBiomarkers(): mixed

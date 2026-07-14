@@ -1133,6 +1133,37 @@ struct FastingWeekCard: View {
     }
 }
 
+// MARK: - Glucose meals (spikiest / steadiest · CGM P2)
+
+/// The user's spikiest vs steadiest foods by real CGM glucose response — the "swap the white rice" loop.
+struct GlucoseMealsCard: View {
+    let json: [String: Any]
+    private func foods(_ key: String) -> [[String: Any]] { json[key] as? [[String: Any]] ?? [] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            cardTitle("Foods & glucose")
+            section("Spikiest", foods("spikiest"), Theme.Palette.pink)
+            if !foods("steadiest").isEmpty { section("Steadiest", foods("steadiest"), Theme.Palette.mint) }
+        }
+        .coachCard()
+    }
+
+    @ViewBuilder private func section(_ title: LocalizedStringKey, _ list: [[String: Any]], _ header: Color) -> some View {
+        Text(title).textCase(.uppercase).font(Theme.Font.micro).tracking(0.6).foregroundStyle(header)
+        ForEach(Array(list.enumerated()), id: \.offset) { _, f in
+            let spike = f["spike"] as? String
+            let color: Color = spike == "large" ? Theme.Palette.pink : (spike == "moderate" ? Theme.Palette.amber : Theme.Palette.mint)
+            HStack(spacing: 8) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text((f["name"] as? String) ?? "").font(Theme.Font.micro).foregroundStyle(Theme.Palette.text).lineLimit(1)
+                Spacer()
+                if let d = jsonNum(f["avg_peak_delta"]) { Text("+\(Int(d)) mg/dL").font(Theme.Font.num(13)).foregroundStyle(color) }
+            }
+        }
+    }
+}
+
 // MARK: - Weight (trend + rate)
 
 struct WeightTrendCard: View {
