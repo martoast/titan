@@ -800,6 +800,13 @@ final class AppModel: ObservableObject {
     func loadLongevity() async {
         longevity = try? await api.longevity()
     }
+
+    @Published var glucose: GlucoseDay?
+    func loadGlucose() async { glucose = try? await api.glucose() }
+    func connectGlucose(provider: String, nightscoutUrl: String?, token: String?) async -> Bool {
+        do { glucose = try await api.connectGlucose(provider: provider, nightscoutUrl: nightscoutUrl, token: token); Haptic.success(); return true }
+        catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
+    }
     func loadCycle() async {
         if cycle == nil { cyclePhase = .loading }
         do { cycle = try await api.cycle(); cyclePhase = .loaded }

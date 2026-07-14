@@ -189,6 +189,20 @@ final class APIClient {
         try await send(request("api/me/longevity"), as: LongevityPage.self)
     }
 
+    /// A day's continuous-glucose curve + metrics + connection status.
+    func glucose(date: String? = nil) async throws -> GlucoseDay {
+        let path = date.map { "api/me/glucose?date=\($0)" } ?? "api/me/glucose"
+        return try await send(request(path), as: GlucoseDay.self)
+    }
+
+    /// Connect a CGM source (nightscout URL+token / healthkit) → returns the refreshed day.
+    func connectGlucose(provider: String, nightscoutUrl: String?, token: String?) async throws -> GlucoseDay {
+        var json: [String: Any] = ["provider": provider, "enabled": true]
+        if let nightscoutUrl { json["nightscout_url"] = nightscoutUrl }
+        if let token, !token.isEmpty { json["nightscout_token"] = token }
+        return try await send(request("api/me/glucose/connect", method: "POST", json: json), as: GlucoseDay.self)
+    }
+
     func strain() async throws -> StrainResponse {
         try await send(request("api/me/strain?tz=\(Self.localTZ)"), as: StrainResponse.self)
     }

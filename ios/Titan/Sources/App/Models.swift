@@ -343,6 +343,42 @@ struct LongevityPage: Codable {
     }
 }
 
+/// `GET /me/glucose` — a day's continuous-glucose curve + headline metrics + connection status. Wellness
+/// data from the user's own CGM (Nightscout / HealthKit), never medical.
+struct GlucoseDay: Codable {
+    let date: String?
+    var has_data: Bool = false
+    let range_low: Int?
+    let range_high: Int?
+    var points: [Point] = []
+    let summary: Summary?
+    let overnight_mg_dl: Int?
+    let disclaimer: String?
+    let status: Status?
+
+    struct Point: Codable, Identifiable {
+        let t: String; let mg: Int
+        var id: String { t }
+    }
+    struct Summary: Codable {
+        let n: Int?
+        let average_mg_dl: Int?
+        let time_in_range_pct: Int?
+        let sd: Double?
+        let cv_pct: Double?
+        let stable: Bool?
+        let gmi_pct: Double?
+        let min_mg_dl: Int?
+        let max_mg_dl: Int?
+    }
+    struct Status: Codable {
+        let connected: Bool?
+        let provider: String?
+        let last_reading_at: String?
+        let fresh: Bool?
+    }
+}
+
 /// The Whoop-style Strain screen: today's day strain building through the day, the recovery-based
 /// target band, and the workouts that drove it (each with the strain it added).
 struct StrainResponse: Codable {

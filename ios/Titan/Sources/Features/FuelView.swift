@@ -27,6 +27,7 @@ struct FuelSection: View {
                 manualAddButton
                 yourMealsCard
                 macrosCard
+                glucoseLink
                 HydrationCard()
                 FastingCard()
                 mealsList
@@ -149,6 +150,26 @@ struct FuelSection: View {
         }
         .buttonStyle(PressCard())
         .disabled(copyingDay)
+    }
+
+    /// Continuous glucose — tap through to the day's curve + time-in-range (or connect a CGM). Metabolic
+    /// data lives with food; meal↔glucose overlay comes next (P2).
+    private var glucoseLink: some View {
+        NavigationLink { GlucoseView() } label: {
+            HStack(spacing: Theme.Space.s) {
+                Image(systemName: "drop.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.Palette.cyan)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Glucose").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    Text("Your CGM curve + time in range").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+            }
+            .padding(Theme.Space.m)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+        }
+        .buttonStyle(PressCard())
     }
 
     /// Manual quick-add — log a meal you didn't photograph or remember, without leaving the tab (the #1
