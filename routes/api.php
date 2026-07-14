@@ -52,6 +52,9 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/hr', [\App\Http\Controllers\Api\MobileHrController::class, 'show']);
     // Real-time stress (0–3, motion-gated) + the stress-over-day strip.
     Route::get('/stress', [\App\Http\Controllers\Api\MobileStressController::class, 'show']);
+    // Continuous glucose (CGM): a day's curve + metrics + connection status, and the connect flow.
+    Route::get('/glucose', [\App\Http\Controllers\Api\MobileGlucoseController::class, 'show']);
+    Route::post('/glucose/connect', [\App\Http\Controllers\Api\MobileGlucoseController::class, 'connect']);
     // Titan Longevity Index — biological age + pace of aging + levers.
     Route::get('/longevity', [\App\Http\Controllers\Api\MobileLongevityController::class, 'show']);
     Route::get('/cycle', [\App\Http\Controllers\Api\MobileCycleController::class, 'show']);

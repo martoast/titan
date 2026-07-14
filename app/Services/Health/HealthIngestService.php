@@ -5,6 +5,7 @@ namespace App\Services\Health;
 use App\Models\ActivitySession;
 use App\Models\BodyMetric;
 use App\Models\DailyActivity;
+use App\Models\GlucoseReading;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Models\SleepLog;
@@ -31,7 +32,7 @@ class HealthIngestService
     public function ingest(Profile $profile, array $payload): array
     {
         $pid = $profile->id;
-        $c = ['recovery' => 0, 'sleep' => 0, 'activity' => 0, 'body' => 0, 'workouts' => 0];
+        $c = ['recovery' => 0, 'sleep' => 0, 'activity' => 0, 'body' => 0, 'workouts' => 0, 'glucose' => 0];
 
         foreach ((array) ($payload['recovery'] ?? []) as $r) {
             if (! is_array($r) || ! ($date = $this->date($r['date'] ?? null))) {
@@ -126,6 +127,28 @@ class HealthIngestService
                 'updated_via' => self::SOURCE,
             ], fn ($v) => $v !== null));
             $c['workouts']++;
+        }
+
+        // Continuous glucose from HealthKit (Libre/Dexcom write HKQuantityTypeIdentifierBloodGlucose). Same
+        // glucose_readings table + (profile_id, taken_at) dedup as Nightscout — a second, frictionless source.
+        foreach ((array) ($payload['glucose'] ?? []) as $g) {
+            if (! is_array($g) || ! ($ts = $this->time($g['taken_at'] ?? null))) {
+                continue;
+            }
+            $mg = $this->int($g['mg_dl'] ?? null);
+            if ($mg === null || $mg <= 0) {
+                continue;   // 0/negative is a no-data sentinel
+            }
+            GlucoseReading::updateOrCreate(
+                ['profile_id' => $pid, 'taken_at' => $ts->utc()],
+                array_filter([
+                    'mg_dl' => GlucoseReading::clampMgDl($mg),
+                    'trend' => isset($g['trend']) ? (string) $g['trend'] : null,
+                    'source' => 'healthkit',
+                    'device' => isset($g['device']) ? (string) $g['device'] : null,
+                ], fn ($v) => $v !== null),
+            );
+            $c['glucose']++;
         }
 
         if (($vo2 = $this->float($payload['vo2max'] ?? null, 1)) !== null) {

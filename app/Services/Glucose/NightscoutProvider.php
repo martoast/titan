@@ -69,10 +69,9 @@ class NightscoutProvider implements GlucoseProvider
         if ($mg <= 0) {
             return null;   // 0 / negative is a no-data sentinel, not a real low → drop
         }
-        // A CGM physically measures ~40–400 mg/dL (it reports LOW/HIGH outside that). Clamp to that range —
-        // matching how the devices themselves report an extreme — so a calibration glitch (e.g. sgv=600)
-        // can't skew TIR/average/variability. The original value stays in `raw` (review fa31f1a).
-        $mg = max(40, min(400, $mg));
+        // Clamp to the real CGM range (device reports LOW/HIGH outside) so a calibration glitch (sgv=600)
+        // can't skew the stats; the original stays in `raw`. Shared with the HealthKit path.
+        $mg = \App\Models\GlucoseReading::clampMgDl($mg);
 
         $takenAt = null;
         if (isset($e['date']) && is_numeric($e['date'])) {

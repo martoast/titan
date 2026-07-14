@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\GlucoseReading;
 use App\Services\Glucose\NightscoutProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -45,6 +46,14 @@ class NightscoutProviderTest extends TestCase
         $this->assertSame(40, NightscoutProvider::mapEntry(['sgv' => 12, 'date' => 1720000000000])['mg_dl']);
         // A real in-range value is untouched.
         $this->assertSame(95, NightscoutProvider::mapEntry(['sgv' => 95, 'date' => 1720000000000])['mg_dl']);
+    }
+
+    public function test_shared_clamp_helper(): void
+    {
+        // The clamp is shared by the Nightscout + HealthKit ingest paths.
+        $this->assertSame(400, GlucoseReading::clampMgDl(600));
+        $this->assertSame(40, GlucoseReading::clampMgDl(12));
+        $this->assertSame(95, GlucoseReading::clampMgDl(95));
     }
 
     public function test_direction_vocabulary(): void

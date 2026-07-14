@@ -32,6 +32,17 @@ class GlucoseReading extends Model
         return $this->belongsTo(Profile::class);
     }
 
+    /** The physical range a CGM measures — it reports LOW/HIGH outside this. Clamp to it so a calibration
+     *  glitch (e.g. sgv=600) can't skew TIR/average/variability (review fa31f1a). */
+    public const RANGE_MIN = 40;
+    public const RANGE_MAX = 400;
+
+    /** Clamp a raw mg/dL to the real CGM range. Shared by every ingest source. */
+    public static function clampMgDl(int $mg): int
+    {
+        return max(self::RANGE_MIN, min(self::RANGE_MAX, $mg));
+    }
+
     /** The reading in mmol/L (non-US display). */
     public function mmol(): float
     {
