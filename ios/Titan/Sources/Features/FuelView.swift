@@ -288,12 +288,34 @@ struct FuelSection: View {
                 (meal.name.map { Text($0) } ?? Text("Meal")).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
                 Text("\(meal.calories) kcal · \(Int(meal.protein_g))P · \(Int(meal.carbs_g))C · \(Int(meal.fat_g))F")
                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                // The meal's real glucose response (CGM P2), when glucose covered it.
+                if let g = meal.glucose, let delta = g.peak_delta {
+                    glucoseResponseLine(g, delta)
+                }
             }
             Spacer()
             Text(mealTime(meal.eaten_at)).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
         }
         .padding(.vertical, 10)
         .contentShape(Rectangle())
+    }
+
+    /// "▲ +55 mg/dL · back in 1h40" — the meal's CGM response, colored by spike size.
+    private func glucoseResponseLine(_ g: Meal.MealGlucose, _ delta: Int) -> some View {
+        let color: Color = switch g.spike { case "large": Theme.Palette.pink; case "moderate": Theme.Palette.amber; default: Theme.Palette.mint }
+        return HStack(spacing: 4) {
+            Image(systemName: "drop.fill").font(.system(size: 9)).foregroundStyle(color)
+            Text("+\(delta) mg/dL").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(color)
+            if let ttb = g.time_to_baseline_min {
+                Text("· back in \(hm(ttb))").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+            } else if g.peak_delta != nil {
+                Text("· still elevated").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+            }
+        }
+    }
+
+    private func hm(_ minutes: Int) -> String {
+        minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h\(minutes % 60 == 0 ? "" : String(format: "%02d", minutes % 60))"
     }
 }
 

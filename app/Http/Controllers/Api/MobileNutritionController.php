@@ -35,12 +35,30 @@ class MobileNutritionController extends Controller
     {
         $profile = $this->profile($request);
         $date = $this->validDate($request->query('date'), $profile);
+        $meals = $this->mealsForDay($profile, $date);
+        // Pre-fetch the day's glucose once (null when no CGM), so each meal's response is O(1), not a query.
+        $glucose = $this->dayGlucoseReadings($profile, $meals);
 
         return response()->json([
             'date' => $date,   // the resolved local day the client is viewing (null → today)
             'macros' => Macros::today($profile, $date),
-            'meals' => $this->mealsForDay($profile, $date)->map(fn (Meal $m) => $this->mealJson($m))->values(),
+            'meals' => $meals->map(fn (Meal $m) => $this->mealJson($m) + array_filter([
+                'glucose' => $glucose ? \App\Support\GlucoseResponse::forMeal($profile, $m, $glucose) : null,
+            ], fn ($v) => $v !== null))->values(),
         ]);
+    }
+
+    /** The profile's glucose readings spanning the day's meals (±window), fetched once. Null when no CGM. */
+    private function dayGlucoseReadings(Profile $profile, $meals)
+    {
+        if ($meals->isEmpty() || ! class_exists(\App\Models\GlucoseReading::class)) {
+            return null;
+        }
+        $first = $meals->min(fn (Meal $m) => $m->eaten_at)->copy()->utc()->subMinutes(20);
+        $last = $meals->max(fn (Meal $m) => $m->eaten_at)->copy()->utc()->addHours(3);
+        $rows = $profile->glucoseReadings()->whereBetween('taken_at', [$first, $last])->orderBy('taken_at')->get(['taken_at', 'mg_dl']);
+
+        return $rows->isEmpty() ? null : $rows;
     }
 
     /** A valid past-or-today yyyy-MM-dd in the profile tz, or null (today). Guards against junk + future dates. */

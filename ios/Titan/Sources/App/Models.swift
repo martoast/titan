@@ -552,6 +552,12 @@ struct Meal: Codable, Identifiable, Equatable {
     let fat_g: Double
     let photo_url: String?
     let source: String?
+    var glucose: MealGlucose? = nil   // per-meal CGM response, when glucose covers this meal (P2)
+    struct MealGlucose: Codable, Equatable {
+        let baseline_mg_dl: Int?; let peak_mg_dl: Int?; let peak_delta: Int?
+        let time_to_peak_min: Int?; let time_to_baseline_min: Int?; let auc_2h: Int?
+        let spike: String?   // small | moderate | large
+    }
 }
 
 /// `POST /api/me/nutrition/scan` — photo → AI identifies it → macros nailed (your usuals / official
