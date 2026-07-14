@@ -1367,8 +1367,13 @@ final class AppModel: ObservableObject {
         // Show the post-workout summary immediately from the live stats, then enrich it once the server
         // seals (Whoop-style instant seal makes that quick). Skip a non-session (e.g. a stray 0-second blip).
         if runElapsedSec >= 10 || runDistanceKm > 0.05 {
+            // Preliminary duration from WALL-CLOCK (now − start), not the phone's live timer: for a
+            // watch-driven workout the phone timer only accrues while foreground/connected and undercounts
+            // the real session (a 33-min lift showed 11 — review). The sealed duration_min replaces this
+            // within seconds.
+            let prelimSec = runStartedAt.map { max(runElapsedSec, Int(Date().timeIntervalSince($0))) } ?? runElapsedSec
             workoutSummary = WorkoutSummaryState(
-                kind: workoutKind, distanceKm: runDistanceKm, elapsedSec: runElapsedSec,
+                kind: workoutKind, distanceKm: runDistanceKm, elapsedSec: prelimSec,
                 maxBpm: runMaxBpm, startedAt: runStartedAt, hasGps: runHasGps)
             // Mark this workout seen so the catch-up path never re-pops the one we just showed live.
             if let s = runStartedAt { lastSeenWorkoutAt = max(lastSeenWorkoutAt, s) }

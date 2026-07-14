@@ -349,7 +349,15 @@ struct WorkoutSummaryView: View {
     private func elevText(_ m: Int) -> String { imperial ? "\(Int(Double(m) * 3.28084)) ft" : "\(m) m" }
 
     private var durationText: String {
-        let s = detail?.moving_time_s ?? detail?.duration_min.map { $0 * 60 } ?? summary.elapsedSec
+        // Prefer the sealed session duration; elapsedSec is only a last-resort placeholder. A LIFT's length
+        // is its session duration — NEVER moving_time_s (a running "time-moving" metric); using it would show
+        // a wrong number if a lift ever carried one (review). A run keeps moving_time_s (time actually running).
+        let s: Int
+        if isLift {
+            s = detail?.duration_min.map { $0 * 60 } ?? summary.elapsedSec
+        } else {
+            s = detail?.moving_time_s ?? detail?.duration_min.map { $0 * 60 } ?? summary.elapsedSec
+        }
         let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
     }
