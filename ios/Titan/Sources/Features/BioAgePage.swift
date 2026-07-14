@@ -12,7 +12,7 @@ struct BioAgePage: View {
         VStack(spacing: Theme.Space.m) {
             if let p = model.longevity {
                 if p.available, let titan = p.titan_age {
-                    hero(p, titan)
+                    BioAgeHero(page: p, titan: titan)
                     waterfall(p)
                     leversCard(p)
                     if p.partial == true { sharpenCard(p) }
@@ -28,44 +28,6 @@ struct BioAgePage: View {
         }
         .titanDetail("Titan Age", glow: Theme.Palette.violet)
         .task { await model.loadLongevity() }
-    }
-
-    // MARK: Hero
-
-    private func hero(_ p: LongevityPage, _ titan: Double) -> some View {
-        let younger = (p.delta ?? 0) < 0
-        let accent = younger ? Theme.Palette.mint : Theme.Palette.amber
-        return GlassCard {
-            VStack(spacing: Theme.Space.s) {
-                if let conf = p.confidence {
-                    Text(confidenceLabel(conf, partial: p.partial == true))
-                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                Text(String(format: "%.1f", titan)).font(Theme.Font.num(76)).foregroundStyle(Theme.Grad.brand)
-                Text("TITAN AGE").font(Theme.Font.micro).tracking(2).foregroundStyle(Theme.Palette.textDim)
-                if let delta = p.delta {
-                    Text(deltaHeadline(delta)).font(Theme.Font.title).foregroundStyle(accent)
-                        .multilineTextAlignment(.center)
-                }
-                if let chrono = p.chronological_age {
-                    Text("Your real age is \(String(format: "%.1f", chrono))")
-                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                }
-                if let pace = p.pace, let label = pace.label {
-                    HStack(spacing: 5) {
-                        Image(systemName: paceIcon(pace.direction)).font(.caption2).foregroundStyle(accent)
-                        Text(verbatim: label.capitalizedFirst).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
-                    }
-                }
-                ShareLink(item: shareText(p)) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .font(Theme.Font.body.weight(.semibold)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
-                }.padding(.top, Theme.Space.xs)
-            }
-        }
     }
 
     // MARK: Contribution waterfall
@@ -193,13 +155,132 @@ struct BioAgePage: View {
 
     // MARK: Helpers
 
-    private func deltaHeadline(_ delta: Double) -> String {
-        let y = abs(delta)
-        if y < 0.5 { return "Right on your age" }
-        return delta < 0 ? "\(String(format: "%.1f", y)) years younger than your age"
-                         : "\(String(format: "%.1f", y)) years older than your age"
-    }
     private func yearsLabel(_ y: Double) -> String { (y < 0 ? "−" : "+") + String(format: "%.1fy", abs(y)) }
+    private func tipIcon(_ kind: String?) -> String {
+        switch kind { case "protect": return "shield.fill"; case "improve": return "arrow.up.circle.fill"; default: return "star.fill" }
+    }
+    private func tipColor(_ kind: String?) -> Color {
+        switch kind { case "protect": return Theme.Palette.mint; case "improve": return Theme.Palette.amber; default: return Theme.Palette.violet }
+    }
+}
+
+// MARK: - Cinematic animated hero (BIO_AGE_PREMIUM — the screenshot moment)
+
+/// The Bio Age hero, animated: on open a radial age dial draws while the big number morphs from the
+/// user's CHRONOLOGICAL age DOWN to their Titan Age, then "N YEARS YOUNGER" springs in as the emotional
+/// hit — it literally animates "you're younger than your age." Reduced-motion renders the final state
+/// instantly. Share hands off a rendered IMAGE of the hero. Reuses Theme.Motion / Grad / Haptic.
+private struct BioAgeHero: View {
+    let page: LongevityPage
+    let titan: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // Animated state (starts at the "before" pose, drives to the target on reveal).
+    @State private var ageValue: Double
+    @State private var deltaValue: Double = 0
+    @State private var ringProgress: CGFloat = 0
+    @State private var showDelta = false
+    @State private var shareImage: UIImage?
+
+    init(page: LongevityPage, titan: Double) {
+        self.page = page
+        self.titan = titan
+        // Number begins at the chronological age (or the Titan age if we don't know it), then animates.
+        _ageValue = State(initialValue: page.chronological_age ?? titan)
+    }
+
+    private var delta: Double { page.delta ?? ((titan) - (page.chronological_age ?? titan)) }
+    private var younger: Bool { delta < 0 }
+    private var accent: Color { younger ? Theme.Palette.mint : Theme.Palette.amber }
+    /// The dial fills proportional to |delta| on a 0–12y scale — a bigger gap draws a fuller arc.
+    private var ringTarget: CGFloat { min(1, CGFloat(abs(delta) / 12)) }
+
+    var body: some View {
+        GlassCard {
+            VStack(spacing: Theme.Space.s) {
+                if let conf = page.confidence {
+                    Text(confidenceLabel(conf, partial: page.partial == true))
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+
+                // The dial + the morphing age number.
+                ZStack {
+                    Circle().stroke(Color.white.opacity(0.06), lineWidth: 14)
+                    Circle().trim(from: 0, to: ringProgress)
+                        .stroke(Theme.Grad.ring(accent), style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: accent.opacity(0.6), radius: 10)
+                    VStack(spacing: 0) {
+                        AnimatedNumber(value: ageValue, font: Theme.Font.num(60), color: Theme.Grad.brand)
+                        Text("TITAN AGE").font(Theme.Font.micro).tracking(2).foregroundStyle(Theme.Palette.textDim)
+                    }
+                }
+                .frame(width: 200, height: 200)
+                .background(Theme.Grad.glow(accent).scaleEffect(1.25).opacity(0.7))
+
+                // The delta — the screenshot beat.
+                if let d = page.delta {
+                    Text(deltaHeadline(d, animated: deltaValue))
+                        .font(Theme.Font.title).foregroundStyle(accent).multilineTextAlignment(.center)
+                        .scaleEffect(showDelta ? 1 : 0.9).opacity(showDelta ? 1 : 0)
+                }
+                if let chrono = page.chronological_age {
+                    Text("Your real age is \(String(format: "%.1f", chrono))")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+                if let pace = page.pace, let label = pace.label {
+                    HStack(spacing: 5) {
+                        Image(systemName: paceIcon(pace.direction)).font(.caption2).foregroundStyle(accent)
+                        Text(verbatim: label.capitalizedFirst).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    }
+                }
+                shareButton
+            }
+        }
+        .onAppear { runReveal(); renderShareImage() }
+    }
+
+    @ViewBuilder private var shareButton: some View {
+        let label = Label("Share", systemImage: "square.and.arrow.up")
+            .font(Theme.Font.body.weight(.semibold)).foregroundStyle(.white)
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+        // Prefer a rendered image of the hero; fall back to text until it's ready.
+        if let img = shareImage {
+            ShareLink(item: Image(uiImage: img), preview: SharePreview("My Titan Age", image: Image(uiImage: img))) { label }
+                .padding(.top, Theme.Space.xs)
+        } else {
+            ShareLink(item: shareText) { label }.padding(.top, Theme.Space.xs)
+        }
+    }
+
+    private func runReveal() {
+        guard !reduceMotion else {
+            ageValue = titan; deltaValue = abs(delta); ringProgress = ringTarget; showDelta = true
+            return
+        }
+        // Dial draws + number morphs chronological → Titan, together.
+        withAnimation(.easeOut(duration: 1.2).delay(0.2)) {
+            ageValue = titan; ringProgress = ringTarget; deltaValue = abs(delta)
+        }
+        // The delta springs in, with one settle haptic.
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.7).delay(1.4)) { showDelta = true }
+        Task { try? await Task.sleep(nanoseconds: 1_400_000_000); Haptic.success() }
+    }
+
+    /// Render the final hero pose to an image for Share (BIO_AGE_PREMIUM — the shared artifact matches on-screen).
+    private func renderShareImage() {
+        let renderer = ImageRenderer(content: HeroShareCard(titan: titan, delta: delta, chrono: page.chronological_age, accent: accent))
+        renderer.scale = 3
+        shareImage = renderer.uiImage
+    }
+
+    // Helpers (hero-local).
+    private func deltaHeadline(_ delta: Double, animated: Double) -> String {
+        if abs(delta) < 0.5 { return "Right on your age" }
+        return "\(String(format: "%.1f", animated)) YEARS \(delta < 0 ? "YOUNGER" : "OLDER")"
+    }
     private func confidenceLabel(_ c: String, partial: Bool) -> String {
         partial ? "\(c.capitalizedFirst) confidence · estimated from fitness — add bloodwork to sharpen"
                 : "\(c.capitalizedFirst) confidence"
@@ -207,17 +288,53 @@ struct BioAgePage: View {
     private func paceIcon(_ dir: String?) -> String {
         switch dir { case "younger": return "arrow.down.right"; case "older": return "arrow.up.right"; default: return "arrow.right" }
     }
-    private func tipIcon(_ kind: String?) -> String {
-        switch kind { case "protect": return "shield.fill"; case "improve": return "arrow.up.circle.fill"; default: return "star.fill" }
-    }
-    private func tipColor(_ kind: String?) -> Color {
-        switch kind { case "protect": return Theme.Palette.mint; case "improve": return Theme.Palette.amber; default: return Theme.Palette.violet }
-    }
-    private func shareText(_ p: LongevityPage) -> String {
-        guard let titan = p.titan_age else { return "My Titan Age — tracked on Titan." }
-        let d = p.delta ?? 0
-        let frame = abs(d) < 0.5 ? "right on my age" : (d < 0 ? "\(String(format: "%.1f", abs(d))) years younger than my age" : "\(String(format: "%.1f", abs(d))) years older than my age")
+    private var shareText: String {
+        let frame = abs(delta) < 0.5 ? "right on my age" : "\(String(format: "%.1f", abs(delta))) years \(younger ? "younger" : "older") than my age"
         return "My Titan Age is \(String(format: "%.1f", titan)) — \(frame). Tracked on Titan 🧬"
+    }
+}
+
+/// A view whose number smoothly INTERPOLATES between values (SwiftUI Text doesn't animate its content, so
+/// we drive it via `animatableData`). Used for the age morph + the "years younger" tick.
+private struct AnimatedNumber: View, Animatable {
+    var value: Double
+    var font: Font
+    var color: any ShapeStyle
+    var animatableData: Double { get { value } set { value = newValue } }
+    var body: some View {
+        Text(String(format: "%.1f", value)).font(font).foregroundStyle(AnyShapeStyle(color)).monospacedDigit()
+    }
+}
+
+/// The static, composed hero rendered to an image for Share — the dial + number + delta + Titan mark.
+private struct HeroShareCard: View {
+    let titan: Double
+    let delta: Double
+    let chrono: Double?
+    let accent: Color
+
+    var body: some View {
+        let younger = delta < 0
+        VStack(spacing: 12) {
+            ZStack {
+                Circle().stroke(Color.white.opacity(0.08), lineWidth: 16)
+                Circle().trim(from: 0, to: min(1, CGFloat(abs(delta) / 12)))
+                    .stroke(Theme.Grad.ring(accent), style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 0) {
+                    Text(String(format: "%.1f", titan)).font(Theme.Font.num(64)).foregroundStyle(Theme.Grad.brand).monospacedDigit()
+                    Text("TITAN AGE").font(Theme.Font.micro).tracking(2).foregroundStyle(Theme.Palette.textDim)
+                }
+            }.frame(width: 220, height: 220)
+            if abs(delta) >= 0.5 {
+                Text("\(String(format: "%.1f", abs(delta))) YEARS \(younger ? "YOUNGER" : "OLDER")")
+                    .font(Theme.Font.title).foregroundStyle(accent)
+            }
+            if let chrono { Text("Real age \(String(format: "%.1f", chrono))").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+            Text("TITAN").font(Theme.Font.label).tracking(4).foregroundStyle(Theme.Palette.textFaint)
+        }
+        .frame(width: 380, height: 480)
+        .background(Theme.Palette.bg)
     }
 }
 
