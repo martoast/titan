@@ -122,7 +122,37 @@ class Fasting
             'next_stage_in_h' => $next !== null ? round(max(0, $next['h'] - $elapsed), 1) : null,
             'window' => $window,
             'protein_flag' => $proteinFlag,
+            'glucose' => self::fastingGlucose($fast),   // CGM: is the fast flattening glucose? (nullable)
             'disclaimer' => self::DISCLAIMER,
+        ], fn ($v) => $v !== null);
+    }
+
+    /**
+     * Glucose behaviour SINCE the fast began, when a CGM is connected — the honest confirmation that a fast
+     * does what it's for: with no food coming in, glucose settles and flattens. Returns mean/min + a `flat`
+     * flag (steady AND not elevated), or null without enough readings. taken_at and started_at are both
+     * app-tz wall-clock, so they compare directly (see [[titan-meal-timezone-fault]]).
+     */
+    private static function fastingGlucose(Fast $fast): ?array
+    {
+        if (! class_exists(\App\Models\GlucoseReading::class)) {
+            return null;
+        }
+        $vals = $fast->profile->glucoseReadings()
+            ->where('taken_at', '>=', $fast->started_at)
+            ->pluck('mg_dl')->map(fn ($v) => (int) $v)->all();
+        if (count($vals) < 6) {
+            return null;                                 // too few readings into the fast to say anything
+        }
+        $mean = GlucoseMetrics::mean($vals);
+        $cv = GlucoseMetrics::cv($vals);
+
+        return array_filter([
+            'mean_mg_dl' => (int) round($mean),
+            'min_mg_dl' => min($vals),
+            'cv_pct' => $cv !== null ? round($cv, 1) : null,
+            // Flattened = steady (low variability) and sitting in a calm fasting range, not still riding a meal.
+            'flat' => $cv !== null && $cv < GlucoseMetrics::STABLE_CV && $mean <= GlucoseMetrics::RANGE_HIGH,
         ], fn ($v) => $v !== null);
     }
 

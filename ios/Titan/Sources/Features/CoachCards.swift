@@ -1047,6 +1047,7 @@ struct FastingCoachCard: View {
                 if let next = json["next_stage"] as? String, let inH = jsonNum(json["next_stage_in_h"]) {
                     Text("Next: \(next) in \(String(format: "%.1f", inH))h").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                 }
+                if let g = json["glucose"] as? [String: Any] { fastingGlucoseRow(g) }
             } else {
                 cardTitle("Not fasting")
                 Text("Start a fasting window and I'll show your body's stages as you go.")
@@ -1065,6 +1066,19 @@ struct FastingCoachCard: View {
             CardActionsRow(json: json)
         }
         .coachCard()
+    }
+
+    @ViewBuilder private func fastingGlucoseRow(_ g: [String: Any]) -> some View {
+        let flat = g["flat"] as? Bool ?? false
+        let color = flat ? Theme.Palette.mint : Theme.Palette.amber
+        HStack(spacing: 6) {
+            Image(systemName: flat ? "waveform.path.ecg" : "drop.fill").font(.caption2).foregroundStyle(color)
+            if let mean = jsonNum(g["mean_mg_dl"]) {
+                Text("Glucose \(Int(mean)) mg/dL").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+            }
+            Text(flat ? "· flat & steady — the fast is settling it" : "· still coming down")
+                .font(Theme.Font.micro).foregroundStyle(color)
+        }
     }
 
     @ViewBuilder private func windowRow(_ w: [String: Any]) -> some View {
