@@ -307,6 +307,42 @@ struct OverviewResponse: Codable {
     struct NutritionTargets: Codable { let calories: Int?; let protein_g: Int?; let carbs_g: Int?; let fat_g: Int? }
 }
 
+/// The full transparent Bio Age page (`GET /me/longevity`) — Titan Age, the contribution breakdown (each
+/// marker's ± years + how it maps), the youth/older levers, personalized honest tips, and methodology.
+struct LongevityPage: Codable {
+    let available: Bool
+    let reason: String?                  // when unavailable ("needs bloodwork / a fitness read")
+    let titan_age: Double?
+    let chronological_age: Double?
+    let delta: Double?                   // titan − chrono; negative = younger
+    let band: String?
+    let label: String?
+    let confidence: String?              // high | medium | low
+    let partial: Bool?
+    let pace: Pace?
+    var missing: [String] = []
+    var younger_levers: [Lever] = []
+    var older_levers: [Lever] = []
+    var components: [Component] = []
+    var tips: [Tip] = []
+    let methodology: String?
+    let disclaimer: String?
+
+    struct Pace: Codable { let value: Double?; let label: String?; let direction: String? }   // younger|older|even
+    struct Lever: Codable, Identifiable { let label: String?; let years: Double?; var id: String { label ?? UUID().uuidString } }
+    struct Component: Codable, Identifiable {
+        let key: String?; let label: String?; let kind: String?   // anchor | lever
+        let value: Double?; let unit: String?; let years: Double?
+        let how: String?; let context: String?
+        var id: String { key ?? label ?? UUID().uuidString }
+    }
+    struct Tip: Codable, Identifiable {
+        let key: String?; let label: String?; let years: Double?; let kind: String?   // protect|improve|celebrate
+        let action: String?
+        var id: String { (kind ?? "") + (label ?? "") }
+    }
+}
+
 /// The Whoop-style Strain screen: today's day strain building through the day, the recovery-based
 /// target band, and the workouts that drove it (each with the strain it added).
 struct StrainResponse: Codable {

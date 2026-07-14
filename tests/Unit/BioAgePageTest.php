@@ -20,6 +20,13 @@ class BioAgePageTest extends TestCase
         $this->assertSame(-3.0, $c['years']);            // contribution untouched
     }
 
+    public function test_value_is_rounded_to_one_dp(): void
+    {
+        // VO₂max came through as an unrounded float — round it for clean display (review 1020d59).
+        $c = BioAgePage::enrichComponent(['key' => 'fitness', 'label' => 'Cardio fitness (VO₂max)', 'value' => 29.22222222, 'years' => -1.0]);
+        $this->assertSame(29.2, $c['value']);
+    }
+
     public function test_unknown_component_is_tolerated(): void
     {
         $c = BioAgePage::enrichComponent(['key' => 'mystery', 'label' => 'X', 'value' => 1, 'years' => 0]);

@@ -795,6 +795,11 @@ final class AppModel: ObservableObject {
         do { sleepDetail = try await api.sleepDetail(); sleepPhase = .loaded }
         catch { sleepPhase = sleepDetail == nil ? .failed : .loaded }
     }
+
+    @Published var longevity: LongevityPage?
+    func loadLongevity() async {
+        longevity = try? await api.longevity()
+    }
     func loadCycle() async {
         if cycle == nil { cyclePhase = .loading }
         do { cycle = try await api.cycle(); cyclePhase = .loaded }

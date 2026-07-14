@@ -222,8 +222,9 @@ struct DashboardView: View {
 
             // ── Below the pillars: the marquee stat, your feed, and inputs ──────────────────────
 
-            // Biological Age — the "how old is your body" stat
+            // Biological Age — the "how old is your body" stat → the full transparent Titan Age page.
             if let b = d?.bio_age, let age = b.biological_age {
+                NavigationLink { BioAgePage() } label: {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.s) {
                         SectionHeader(title: String(localized: "Biological Age"), trailing: b.confidence.map { String(localized: "\($0.capitalized) confidence") })
@@ -246,6 +247,7 @@ struct DashboardView: View {
                         }
                     }
                 }
+                }.buttonStyle(.plain)
             }
 
             // For You — the ranked insight feed (anomalies, goal progress, wins, behavior correlations)

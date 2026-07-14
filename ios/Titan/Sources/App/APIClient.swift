@@ -184,6 +184,11 @@ final class APIClient {
         try await send(request("api/me/hr"), as: HrResponse.self)
     }
 
+    /// The full Bio Age page — Titan Age + the transparent contribution breakdown + tips.
+    func longevity() async throws -> LongevityPage {
+        try await send(request("api/me/longevity"), as: LongevityPage.self)
+    }
+
     func strain() async throws -> StrainResponse {
         try await send(request("api/me/strain?tz=\(Self.localTZ)"), as: StrainResponse.self)
     }

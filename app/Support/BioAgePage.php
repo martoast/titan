@@ -47,6 +47,9 @@ class BioAgePage
     {
         $meta = self::META[$c['key'] ?? ''] ?? ['unit' => '', 'how' => null];
         $out = $c;
+        if (isset($out['value']) && is_numeric($out['value'])) {
+            $out['value'] = round((float) $out['value'], 1);   // e.g. VO₂max 29.2222 → 29.2 (review 1020d59)
+        }
         $out['unit'] = $meta['unit'];
         if ($meta['how'] !== null) {
             $out['how'] = $meta['how'];
