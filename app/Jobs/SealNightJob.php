@@ -1324,14 +1324,17 @@ class SealNightJob implements ShouldQueue
         }
 
         // On a well-measured night the stager had good data, so a skewed split is a real night — only apply
-        // the crude stage-split fallback when the signal ISN'T already strong (review 2026-07-14). Always
-        // trust the stager's own model flag + a degenerate sliver.
+        // the crude stage-split doubt when the signal ISN'T already strong (review 2026-07-14).
         $signalStrong = $cov >= self::HIGH_COVERAGE_CONFIDENCE
             && ($validFraction === null || $validFraction >= self::MIN_VALID_WINDOW_FRAC);
 
-        return (bool) ($metrics['stages_low_confidence'] ?? false)
-            || $this->degenerateNight($metrics)
-            || (! $signalStrong && $this->stageSplitImplausible($metrics));
+        // `stages_low_confidence` (staging.py) is the SAME crude distribution heuristic as
+        // stageSplitImplausible (rem_frac<0.05 or dominant_frac>0.70) — NOT a model-uncertainty signal — so
+        // it gets the SAME signal gate (review dc8f1fb corrected my earlier "trust it unconditionally").
+        // Only a genuinely degenerate sliver flags regardless of coverage.
+        $stageDoubt = (bool) ($metrics['stages_low_confidence'] ?? false) || $this->stageSplitImplausible($metrics);
+
+        return $this->degenerateNight($metrics) || (! $signalStrong && $stageDoubt);
     }
 
     /** A degenerate "night": almost no sleep but sealed as a full night (a 6-min wrist-on sliver — 7 min
