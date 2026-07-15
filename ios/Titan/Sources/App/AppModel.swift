@@ -878,6 +878,38 @@ final class AppModel: ObservableObject {
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
     }
 
+    // MARK: Native food search (3.1)
+    @Published var foodResults: [FoodSearchResult] = []
+    @Published var foodSearching = false
+    private var foodSearchToken = 0
+
+    /// Debounce-safe: only the latest query's results are published (stale responses are dropped).
+    func searchFood(_ q: String) async {
+        let query = q.trimmingCharacters(in: .whitespaces)
+        guard query.count >= 2 else { foodResults = []; foodSearching = false; return }
+        foodSearchToken += 1
+        let token = foodSearchToken
+        foodSearching = true
+        do {
+            let results = try await api.searchFood(query)
+            guard token == foodSearchToken else { return }   // a newer search superseded this one
+            foodResults = results
+        } catch {
+            if token == foodSearchToken { foodResults = [] }
+        }
+        if token == foodSearchToken { foodSearching = false }
+    }
+
+    /// Log a searched food at the chosen amount (macros already scaled by the caller).
+    func logFood(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, fiber: Double?) async -> Bool {
+        do {
+            _ = try await api.storeMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, fiber: fiber, eatenAt: nil)
+            Haptic.success()
+            await loadNutrition()
+            return true
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
+    }
+
     func confirmScannedMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, fiber: Double? = nil, photoPath: String?, source: String? = nil, lineItems: [[String: Any]]? = nil) async {
         do {
             _ = try await api.confirmMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, fiber: fiber, photoPath: photoPath, source: source, lineItems: lineItems)

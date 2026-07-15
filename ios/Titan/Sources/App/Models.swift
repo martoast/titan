@@ -631,6 +631,26 @@ struct MealMutation: Codable { let meal: Meal; let macros: MacroCard }
 /// `DELETE /api/me/meals/{id}` → { ok, macros }
 struct MacrosOnly: Codable { let ok: Bool?; let macros: MacroCard }
 
+/// One native-food-search hit (3.1) — from the user's dishes, the nutrition library, or a branded
+/// product. `basis` tells the client how to scale: per_100g takes grams, per_serving/serving take a
+/// serving multiplier.
+struct FoodSearchResult: Codable, Identifiable, Equatable {
+    var id = UUID()
+    let name: String
+    let brand: String?
+    let basis: String            // per_100g | per_serving | serving
+    let serving_label: String?
+    let calories: Int
+    let protein_g: Double
+    let carbs_g: Double
+    let fat_g: Double
+    let fiber_g: Double?
+    let source: String           // your_meals | your_correction | library | brand
+    enum CodingKeys: String, CodingKey { case name, brand, basis, serving_label, calories, protein_g, carbs_g, fat_g, fiber_g, source }
+
+    var isPer100g: Bool { basis == "per_100g" }
+}
+
 /// A remembered dish in the user's meal library — re-loggable in one tap (no camera/AI).
 struct MealTemplate: Codable, Identifiable, Equatable {
     let id: Int

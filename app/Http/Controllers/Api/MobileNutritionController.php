@@ -271,6 +271,22 @@ class MobileNutritionController extends Controller
         return response()->json(['meal' => $this->mealJson($meal), 'macros' => Macros::today($profile)]);
     }
 
+    /**
+     * Native food search (MEAL_LOGGING_REVISION 3.1) — ranked matches from Titan's own caches (your logged
+     * dishes + the nutrition library + branded products). The client shows each with its basis so it can
+     * take a gram amount (per_100g) or a serving multiplier (per_serving), scale, and log via /meals.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $profile = $this->profile($request);
+        $q = (string) $request->query('q', '');
+
+        return response()->json([
+            'query' => $q,
+            'results' => \App\Support\FoodSearch::forProfile($profile, $q),
+        ]);
+    }
+
     /** Manual entry (or "add what the camera missed"). */
     public function store(Request $request): JsonResponse
     {

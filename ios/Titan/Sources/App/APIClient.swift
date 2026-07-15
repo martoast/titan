@@ -244,11 +244,19 @@ final class APIClient {
 
     /// Manual quick-add (no photo/barcode) → POST /meals. Optional P/C/F default to 0; the server
     /// reconciles them against the calories, so "300 kcal" alone still stores a sensible split.
-    func storeMeal(name: String, calories: Int, protein: Double?, carbs: Double?, fat: Double?, eatenAt: Date?) async throws -> MealMutation {
+    func storeMeal(name: String, calories: Int, protein: Double?, carbs: Double?, fat: Double?, fiber: Double? = nil, eatenAt: Date?) async throws -> MealMutation {
         var json: [String: Any] = ["name": name, "calories": calories,
                                    "protein_g": protein ?? 0, "carbs_g": carbs ?? 0, "fat_g": fat ?? 0]
+        if let fiber { json["fiber_g"] = fiber }
         if let eatenAt { json["eaten_at"] = ISO8601DateFormatter().string(from: eatenAt) }
         return try await send(request("api/me/meals", method: "POST", json: json), as: MealMutation.self)
+    }
+
+    /// Native food search over Titan's caches (3.1) — ranked matches to pick a portion from and log.
+    func searchFood(_ q: String) async throws -> [FoodSearchResult] {
+        let query = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        struct Resp: Codable { let results: [FoodSearchResult] }
+        return try await send(request("api/me/nutrition/search?q=\(query)", method: "GET"), as: Resp.self).results
     }
 
     func confirmMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, fiber: Double? = nil, photoPath: String?, source: String? = nil, lineItems: [[String: Any]]? = nil) async throws -> MealMutation {

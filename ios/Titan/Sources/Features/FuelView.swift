@@ -14,6 +14,7 @@ struct FuelSection: View {
     @State private var scannerUnavailable = false
     @State private var staged: StagedMealPhoto?
     @State private var showQuickAdd = false
+    @State private var showSearch = false
     @AppStorage("barcodeScanEnabled") private var barcodeEnabled = true
 
     private var isToday: Bool { Calendar.current.isDateInToday(model.fuelDate) }
@@ -24,6 +25,7 @@ struct FuelSection: View {
             if isToday {
                 snapHero
                 if barcodeEnabled { barcodeButton }
+                searchButton
                 manualAddButton
                 yourMealsCard
                 macrosCard
@@ -40,6 +42,7 @@ struct FuelSection: View {
         }
         .task { await model.loadNutrition() }
         .sheet(isPresented: $showQuickAdd) { QuickAddMealSheet() }
+        .sheet(isPresented: $showSearch) { FoodSearchSheet() }
         .sheet(item: $editing) { EditMealSheet(meal: $0) }
         .sheet(item: $staged) { s in
             MealCaptionSheet(photo: s.data) { caption in Task { await model.scanMeal(s.data, caption: caption) } }
@@ -183,6 +186,28 @@ struct FuelSection: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Log manually").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                     Text("Know the numbers? Add a meal in seconds").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
+            }
+            .padding(Theme.Space.m)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).fill(Theme.Palette.card))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.Palette.cardStroke))
+        }
+        .buttonStyle(PressCard())
+    }
+
+    /// Native food search (3.1) — find a food you've logged before, or that's in the library/branded
+    /// cache, pick a portion and log it. No camera, no AI, instant.
+    private var searchButton: some View {
+        Button {
+            Haptic.tap(); showSearch = true
+        } label: {
+            HStack(spacing: Theme.Space.s) {
+                Image(systemName: "magnifyingglass").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.Palette.cyan)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Search foods").font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                    Text("Your dishes, the library, and brands").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.Palette.textFaint)
@@ -1116,3 +1141,212 @@ private func mealTime(_ iso: String?) -> String {
     return f.string(from: date)
 }
 
+
+// MARK: - Food search (3.1)
+
+/// Search Titan's food caches (your dishes + nutrition library + branded), pick a portion, and log —
+/// no camera, no AI. Per-100g foods take a gram amount; per-serving/branded take a serving multiplier.
+private struct FoodSearchSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var selected: FoodSearchResult?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                VStack(spacing: Theme.Space.m) {
+                    searchField
+                    if model.foodSearching && model.foodResults.isEmpty {
+                        ProgressView().tint(Theme.Palette.textFaint).padding(.top, 40)
+                    } else if query.count >= 2 && model.foodResults.isEmpty {
+                        emptyState
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(model.foodResults) { r in
+                                    Button { Haptic.tap(); selected = r } label: { resultRow(r) }.buttonStyle(.plain)
+                                    Divider().overlay(Theme.Palette.cardStroke)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(Theme.Space.m)
+            }
+            .navigationTitle("Search foods").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(item: $selected) { r in FoodPortionSheet(food: r) { dismiss() } }
+            .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { focused = true } }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: Theme.Space.s) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Theme.Palette.textFaint)
+            TextField("Search a food…", text: $query)
+                .focused($focused).autocorrectionDisabled()
+                .font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                .onChange(of: query) { _, q in Task { await model.searchFood(q) } }
+            if !query.isEmpty {
+                Button { query = ""; model.foodResults = [] } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.Palette.textFaint)
+                }
+            }
+        }
+        .padding(12)
+        .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip).strokeBorder(Theme.Palette.cardStroke))
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: Theme.Space.s) {
+            Image(systemName: "fork.knife").font(.system(size: 28)).foregroundStyle(Theme.Palette.textFaint)
+            Text("No matches yet").font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+            Text("Log it once (photo or manual) and it'll be searchable next time.")
+                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint).multilineTextAlignment(.center)
+        }.padding(.top, 40)
+    }
+
+    private func resultRow(_ r: FoodSearchResult) -> some View {
+        HStack(spacing: Theme.Space.m) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(r.name).font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text).lineLimit(1)
+                HStack(spacing: 5) {
+                    Text("\(r.calories) kcal\(r.isPer100g ? " / 100g" : (r.serving_label.map { " · \($0)" } ?? " / serving"))")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    sourceTag(r.source)
+                }
+            }
+            Spacer()
+            Image(systemName: "plus.circle.fill").font(.system(size: 22)).foregroundStyle(Theme.Palette.amber)
+        }
+        .padding(.vertical, 12).contentShape(Rectangle())
+    }
+
+    @ViewBuilder private func sourceTag(_ s: String) -> some View {
+        let (label, color): (String, Color) = switch s {
+        case "your_meals": ("your meal", Theme.Palette.mint)
+        case "your_correction": ("your data", Theme.Palette.mint)
+        case "brand": ("brand", Theme.Palette.cyan)
+        default: ("library", Theme.Palette.textFaint)
+        }
+        Text(label).font(.system(size: 9, weight: .semibold, design: .rounded)).foregroundStyle(color)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(color.opacity(0.14), in: Capsule())
+    }
+}
+
+/// Pick how much of a searched food to log — grams for a per-100g food, servings otherwise — with the
+/// macros scaling live, then log it through the normal store path.
+private struct FoodPortionSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let food: FoodSearchResult
+    let onLogged: () -> Void
+    @State private var grams: Double
+    @State private var servings: Double = 1
+    @State private var logging = false
+
+    init(food: FoodSearchResult, onLogged: @escaping () -> Void) {
+        self.food = food; self.onLogged = onLogged
+        _grams = State(initialValue: 100)
+    }
+
+    /// The multiplier applied to the food's basis macros for the chosen amount.
+    private var factor: Double { food.isPer100g ? grams / 100.0 : servings }
+    private func scaled(_ v: Double) -> Double { (v * factor * 10).rounded() / 10 }
+    private var scaledCal: Int { Int((Double(food.calories) * factor).rounded()) }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.Space.m) {
+                        Text(food.name).font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                        if let s = food.serving_label { Text("Serving: \(s)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
+
+                        GlassCard {
+                            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                                if food.isPer100g { gramsControl } else { servingsControl }
+                                HStack(spacing: Theme.Space.m) {
+                                    portionStat("\(scaledCal)", "kcal", Theme.Palette.cyan)
+                                    portionStat("\(Int(scaled(food.protein_g).rounded()))", "protein", Theme.Palette.mint)
+                                    portionStat("\(Int(scaled(food.carbs_g).rounded()))", "carbs", Theme.Palette.amber)
+                                    portionStat("\(Int(scaled(food.fat_g).rounded()))", "fat", Theme.Palette.pink)
+                                }
+                                if let fib = food.fiber_g, fib > 0 {
+                                    Text("+ \(Int(scaled(fib).rounded()))g fiber").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                }
+                            }
+                        }
+
+                        Button {
+                            logging = true
+                            Task {
+                                let ok = await model.logFood(
+                                    name: food.name, calories: scaledCal,
+                                    protein: scaled(food.protein_g), carbs: scaled(food.carbs_g),
+                                    fat: scaled(food.fat_g), fiber: food.fiber_g.map(scaled))
+                                logging = false
+                                if ok { dismiss(); onLogged() }
+                            }
+                        } label: {
+                            HStack(spacing: Theme.Space.s) {
+                                if logging { ProgressView().tint(.black) }
+                                (logging ? Text("Logging…") : Text("Log food")).font(Theme.Font.body.weight(.bold))
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(Theme.Palette.amber, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                            .foregroundStyle(.black)
+                        }
+                        .disabled(logging || scaledCal <= 0)
+                    }.padding(Theme.Space.m)
+                }
+            }
+            .navigationTitle("Amount").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+    }
+
+    private var gramsControl: some View {
+        HStack {
+            Text("Grams").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+            Spacer()
+            portionStep("minus") { grams = max(5, grams - 5) }
+            Text("\(Int(grams)) g").font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.text).monospacedDigit().frame(minWidth: 64)
+            portionStep("plus") { grams = min(2000, grams + 5) }
+        }
+    }
+
+    private var servingsControl: some View {
+        HStack {
+            Text("Servings").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+            Spacer()
+            portionStep("minus") { servings = max(0.5, servings - 0.5) }
+            Text("×\(servings.formatted())").font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.text).monospacedDigit().frame(minWidth: 52)
+            portionStep("plus") { servings = min(20, servings + 0.5) }
+        }
+    }
+
+    private func portionStat(_ value: String, _ label: LocalizedStringKey, _ color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(Theme.Font.num(18)).foregroundStyle(color)
+            Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+        }.frame(maxWidth: .infinity)
+    }
+
+    private func portionStep(_ icon: String, _ action: @escaping () -> Void) -> some View {
+        Button { Haptic.tap(); action() } label: {
+            Image(systemName: icon).font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.Palette.text)
+                .frame(width: 30, height: 30).background(Theme.Palette.card, in: Circle())
+                .overlay(Circle().strokeBorder(Theme.Palette.cardStroke))
+        }
+    }
+}

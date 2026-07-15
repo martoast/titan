@@ -126,6 +126,8 @@ Route::middleware('auth.any')->prefix('me')->group(function () {
     Route::get('/nutrition', [\App\Http\Controllers\Api\MobileNutritionController::class, 'index']);
     Route::post('/nutrition/scan', [\App\Http\Controllers\Api\MobileNutritionController::class, 'scan']);
     Route::post('/nutrition/barcode', [\App\Http\Controllers\Api\MobileNutritionController::class, 'barcode']);
+    // Native food search over Titan's own caches (your dishes + nutrition library + branded) → pick a portion → log.
+    Route::get('/nutrition/search', [\App\Http\Controllers\Api\MobileNutritionController::class, 'search']);
     Route::post('/meals/confirm', [\App\Http\Controllers\Api\MobileNutritionController::class, 'confirm']);
     Route::post('/meals', [\App\Http\Controllers\Api\MobileNutritionController::class, 'store']);
     // Copy a past day's meals to today ("log this day again") — for people on repeating diets.
