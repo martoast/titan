@@ -18,12 +18,38 @@ class MealMemory
     /** Ignore trivially-named or empty meals — they'd pollute the library with a "Meal" catch-all. */
     private const SKIP_NAMES = ['', 'meal', 'food', 'snack'];
 
+    /** When paused, the Meal::created hook's remember() is a no-op — see withoutRemembering(). */
+    private static bool $paused = false;
+
+    /**
+     * Run a create-with-items sequence WITHOUT the per-insert auto-remember firing early. Item-based
+     * meals are inserted with zero totals, then their items + recalcFromItems set the real numbers; the
+     * created-hook would otherwise remember the empty intermediate state. Callers remember() once after.
+     *
+     * @template T
+     * @param  \Closure():T  $fn
+     * @return T
+     */
+    public static function withoutRemembering(\Closure $fn): mixed
+    {
+        $prev = self::$paused;
+        self::$paused = true;
+        try {
+            return $fn();
+        } finally {
+            self::$paused = $prev;
+        }
+    }
+
     /**
      * Fold a just-logged meal into the profile's library: upsert on the normalized name, bump the
      * frequency + recency, and refresh macros/photo to this (latest, i.e. most-corrected) instance.
      */
     public function remember(Meal $meal): void
     {
+        if (self::$paused) {
+            return;   // mid create-with-items; the caller will remember() the finished meal
+        }
         $name = trim((string) $meal->name);
         $key = self::normalize($name);
         if ($key === '' || in_array($key, self::SKIP_NAMES, true)) {
@@ -36,6 +62,21 @@ class MealMemory
         $tpl->protein_g = (float) $meal->protein_g;
         $tpl->carbs_g = (float) $meal->carbs_g;
         $tpl->fat_g = (float) $meal->fat_g;
+        $tpl->fiber_g = $meal->fiber_g !== null ? (float) $meal->fiber_g : null;
+        // Remember the ingredient breakdown too (MEAL_LOGGING_REVISION 3.4), so "my usual breakfast"
+        // re-logs as the eggs + oats + coffee it was. Null when the meal was logged as a lumped total.
+        $items = $meal->relationLoaded('items') ? $meal->items : $meal->items()->get();
+        $tpl->items = $items->isNotEmpty()
+            ? $items->map(fn (\App\Models\MealItem $i) => [
+                'name' => $i->name,
+                'quantity' => $i->quantity,
+                'calories' => (int) $i->calories,
+                'protein_g' => (float) $i->protein_g,
+                'carbs_g' => (float) $i->carbs_g,
+                'fat_g' => (float) $i->fat_g,
+                'fiber_g' => $i->fiber_g !== null ? (float) $i->fiber_g : null,
+            ])->values()->all()
+            : null;
         if ($meal->photo_path) {
             $tpl->photo_path = $meal->photo_path;   // keep the most recent real photo
         }

@@ -15,7 +15,7 @@ class MealTemplate extends Model
 {
     protected $fillable = [
         'profile_id', 'key', 'name', 'photo_path',
-        'calories', 'protein_g', 'carbs_g', 'fat_g',
+        'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'items',
         'times_logged', 'last_eaten_at', 'source', 'favorite',
     ];
 
@@ -27,6 +27,8 @@ class MealTemplate extends Model
             'protein_g' => 'decimal:1',
             'carbs_g' => 'decimal:1',
             'fat_g' => 'decimal:1',
+            'fiber_g' => 'decimal:1',
+            'items' => 'array',   // the multi-item breakdown, when this memory has one (3.4)
             'times_logged' => 'integer',
             'favorite' => 'boolean',
         ];

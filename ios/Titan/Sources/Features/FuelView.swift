@@ -393,8 +393,18 @@ private struct YourMealCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(template.name).font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.text)
                         .lineLimit(1)
-                    Text("\(template.calories) kcal · \(Int(template.protein_g))P")
-                        .font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(Theme.Palette.textDim)
+                    HStack(spacing: 4) {
+                        Text("\(template.calories) kcal · \(Int(template.protein_g))P")
+                            .font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(Theme.Palette.textDim)
+                        // A multi-item memory re-logs its whole breakdown in one tap (3.4).
+                        if template.item_count > 1 {
+                            HStack(spacing: 2) {
+                                Image(systemName: "list.bullet").font(.system(size: 8))
+                                Text("\(template.item_count)")
+                            }
+                            .font(.system(size: 9, weight: .semibold, design: .rounded)).foregroundStyle(Theme.Palette.mint)
+                        }
+                    }
                 }
                 .padding(.horizontal, 8).padding(.vertical, 7)
             }

@@ -177,30 +177,36 @@ class MealController extends Controller
             ->filter(fn ($i) => trim((string) ($i['name'] ?? '')) !== '')
             ->values();
 
-        $meal = $profile->meals()->create([
-            'eaten_at' => Carbon::parse($data['eaten_at']),
-            'name' => $data['name'] ?? null,
-            'photo_path' => $data['photo_path'] ?? null,
-            'source' => $data['source'],
-            'notes' => $data['notes'] ?? null,
-            'calories' => 0,
-            'protein_g' => 0,
-            'carbs_g' => 0,
-            'fat_g' => 0,
-        ]);
-
-        foreach ($items as $i) {
-            $meal->items()->create([
-                'name' => trim($i['name']),
-                'quantity' => $i['quantity'] ?? null,
-                'calories' => (int) round((float) ($i['calories'] ?? 0)),
-                'protein_g' => round((float) ($i['protein_g'] ?? 0), 1),
-                'carbs_g' => round((float) ($i['carbs_g'] ?? 0), 1),
-                'fat_g' => round((float) ($i['fat_g'] ?? 0), 1),
+        // Pause the auto-remember so the memory captures the finished meal (totals from its items), not
+        // the zero-total intermediate the created-hook would otherwise see (MEAL_LOGGING_REVISION 3.4).
+        $meal = \App\Support\MealMemory::withoutRemembering(function () use ($profile, $data, $items) {
+            $meal = $profile->meals()->create([
+                'eaten_at' => Carbon::parse($data['eaten_at']),
+                'name' => $data['name'] ?? null,
+                'photo_path' => $data['photo_path'] ?? null,
+                'source' => $data['source'],
+                'notes' => $data['notes'] ?? null,
+                'calories' => 0,
+                'protein_g' => 0,
+                'carbs_g' => 0,
+                'fat_g' => 0,
             ]);
-        }
 
-        $meal->recalcFromItems();
+            foreach ($items as $i) {
+                $meal->items()->create([
+                    'name' => trim($i['name']),
+                    'quantity' => $i['quantity'] ?? null,
+                    'calories' => (int) round((float) ($i['calories'] ?? 0)),
+                    'protein_g' => round((float) ($i['protein_g'] ?? 0), 1),
+                    'carbs_g' => round((float) ($i['carbs_g'] ?? 0), 1),
+                    'fat_g' => round((float) ($i['fat_g'] ?? 0), 1),
+                ]);
+            }
+
+            $meal->recalcFromItems();
+            return $meal;
+        });
+        app(\App\Support\MealMemory::class)->remember($meal);
 
         return redirect('/meals?day='.$meal->eaten_at->format('Y-m-d'))
             ->with('status', 'Meal logged -- '.$meal->calories.' kcal.');

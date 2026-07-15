@@ -235,16 +235,22 @@ class MobileNutritionController extends Controller
         // run the same macro↔calorie reconcile as every other creation path.
         $items = \App\Support\MealItems::clean($request->input('line_items', []));
         if ($items !== []) {
-            $meal = $profile->meals()->create([
-                'name' => $data['name'],
-                'eaten_at' => now(),
-                'calories' => 0, 'protein_g' => 0, 'carbs_g' => 0, 'fat_g' => 0,
-                'meal_type' => $data['meal_type'] ?? null,
-                'photo_path' => $photo,
-                'source' => $data['source'] ?? 'photo',
-            ]);
-            $meal->items()->createMany($items);
-            $meal->recalcFromItems();   // totals + fiber = the item sum; clears macros_estimated
+            // Insert with zero totals, attach items, then recalc — pausing the auto-remember so the memory
+            // captures the FINISHED meal (totals + breakdown), not the empty intermediate.
+            $meal = \App\Support\MealMemory::withoutRemembering(function () use ($profile, $data, $photo, $items) {
+                $meal = $profile->meals()->create([
+                    'name' => $data['name'],
+                    'eaten_at' => now(),
+                    'calories' => 0, 'protein_g' => 0, 'carbs_g' => 0, 'fat_g' => 0,
+                    'meal_type' => $data['meal_type'] ?? null,
+                    'photo_path' => $photo,
+                    'source' => $data['source'] ?? 'photo',
+                ]);
+                $meal->items()->createMany($items);
+                $meal->recalcFromItems();   // totals + fiber = the item sum; clears macros_estimated
+                return $meal;
+            });
+            app(\App\Support\MealMemory::class)->remember($meal);
         } else {
             $m = Macros::reconcile((int) $data['calories'], (float) $data['protein_g'], (float) $data['carbs_g'], (float) $data['fat_g']);
             $meal = $profile->meals()->create([
@@ -395,18 +401,54 @@ class MobileNutritionController extends Controller
         $tpl = $profile->mealTemplates()->findOrFail($data['template_id']);
         $p = (float) ($data['portion'] ?? 1.0);
 
-        $meal = $profile->meals()->create([
-            'name' => $tpl->name,
-            'eaten_at' => now(),
-            'calories' => (int) round((float) $tpl->calories * $p),
-            'protein_g' => round((float) $tpl->protein_g * $p, 1),
-            'carbs_g' => round((float) $tpl->carbs_g * $p, 1),
-            'fat_g' => round((float) $tpl->fat_g * $p, 1),
-            'photo_path' => $tpl->photo_path,   // reuse the remembered photo (same public file)
-            'source' => 'memory',
-        ]);
+        // A multi-item memory (3.4) recreates its ingredient breakdown, scaled by portion, and lets
+        // recalcFromItems set the totals; a plain single-dish memory logs the lumped macros as before.
+        $items = \App\Support\MealItems::clean($this->scaleItems($tpl->items, $p));
+        if ($items !== []) {
+            $meal = \App\Support\MealMemory::withoutRemembering(function () use ($profile, $tpl, $items) {
+                $meal = $profile->meals()->create([
+                    'name' => $tpl->name,
+                    'eaten_at' => now(),
+                    'calories' => 0, 'protein_g' => 0, 'carbs_g' => 0, 'fat_g' => 0,
+                    'photo_path' => $tpl->photo_path,
+                    'source' => 'memory',
+                ]);
+                $meal->items()->createMany($items);
+                $meal->recalcFromItems();
+                return $meal;
+            });
+            app(\App\Support\MealMemory::class)->remember($meal);
+        } else {
+            $meal = $profile->meals()->create([
+                'name' => $tpl->name,
+                'eaten_at' => now(),
+                'calories' => (int) round((float) $tpl->calories * $p),
+                'protein_g' => round((float) $tpl->protein_g * $p, 1),
+                'carbs_g' => round((float) $tpl->carbs_g * $p, 1),
+                'fat_g' => round((float) $tpl->fat_g * $p, 1),
+                'fiber_g' => $tpl->fiber_g !== null ? round((float) $tpl->fiber_g * $p, 1) : null,
+                'photo_path' => $tpl->photo_path,   // reuse the remembered photo (same public file)
+                'source' => 'memory',
+            ]);
+        }
 
         return response()->json(['meal' => $this->mealJson($meal), 'macros' => Macros::today($profile)]);
+    }
+
+    /** Scale a stored template's item lines by a portion multiplier (null-safe). */
+    private function scaleItems(mixed $items, float $portion): array
+    {
+        if (! is_array($items)) {
+            return [];
+        }
+        return array_map(function ($i) use ($portion) {
+            foreach (['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g'] as $k) {
+                if (isset($i[$k]) && is_numeric($i[$k])) {
+                    $i[$k] = (float) $i[$k] * $portion;
+                }
+            }
+            return $i;
+        }, $items);
     }
 
     /** Toggle a remembered meal as a favorite (pins it to the top of "your meals"). */
@@ -503,6 +545,8 @@ class MobileNutritionController extends Controller
             'protein_g' => (float) $t->protein_g,
             'carbs_g' => (float) $t->carbs_g,
             'fat_g' => (float) $t->fat_g,
+            'fiber_g' => $t->fiber_g !== null ? (float) $t->fiber_g : null,
+            'item_count' => is_array($t->items) ? count($t->items) : 0,   // >0 → a multi-item memory (3.4)
             'photo_url' => $t->photoUrl(),
             'times_logged' => (int) $t->times_logged,
             'last_eaten_at' => $t->last_eaten_at?->toIso8601String(),

@@ -639,6 +639,8 @@ struct MealTemplate: Codable, Identifiable, Equatable {
     let protein_g: Double
     let carbs_g: Double
     let fat_g: Double
+    var fiber_g: Double? = nil
+    var item_count: Int = 0   // >0 → a multi-item memory that re-logs its breakdown (3.4)
     let photo_url: String?
     let times_logged: Int
     let last_eaten_at: String?
