@@ -883,12 +883,14 @@ final class AppModel: ObservableObject {
     @Published var foodSearching = false
     private var foodSearchToken = 0
 
-    /// Debounce-safe: only the latest query's results are published (stale responses are dropped).
+    /// Only the latest query's results are published (stale responses are dropped). Every call bumps the
+    /// token FIRST — including the clear/short-query path — so an in-flight request can't repopulate a
+    /// field the user has since cleared or shortened.
     func searchFood(_ q: String) async {
-        let query = q.trimmingCharacters(in: .whitespaces)
-        guard query.count >= 2 else { foodResults = []; foodSearching = false; return }
         foodSearchToken += 1
         let token = foodSearchToken
+        let query = q.trimmingCharacters(in: .whitespaces)
+        guard query.count >= 2 else { foodResults = []; foodSearching = false; return }
         foodSearching = true
         do {
             let results = try await api.searchFood(query)

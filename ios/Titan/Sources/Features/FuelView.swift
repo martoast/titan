@@ -304,7 +304,7 @@ struct FuelSection: View {
                                     Button { Haptic.tap(); editing = meal } label: { Label("Edit", systemImage: "slider.horizontal.3") }
                                     Button(role: .destructive) { Task { await model.deleteMeal(meal.id) } } label: { Label("Delete", systemImage: "trash") }
                                 }
-                            if meal.id != meals.last?.id { Divider().overlay(Theme.Palette.cardStroke) }
+                            if meal.id != section.meals.last?.id { Divider().overlay(Theme.Palette.cardStroke) }
                         }
                     }
                 }
@@ -317,11 +317,17 @@ struct FuelSection: View {
         ("breakfast", "Breakfast"), ("lunch", "Lunch"), ("dinner", "Dinner"), ("snack", "Snacks"),
     ]
 
-    /// Bucket the day's meals by type, keeping only non-empty sections in day order. A meal with an
-    /// unknown/missing type falls to snacks so nothing is ever dropped.
+    private static let sectionTypes = Set(["breakfast", "lunch", "dinner", "snack"])
+
+    /// Bucket the day's meals by type, keeping only non-empty sections in day order. A meal with a
+    /// missing OR unrecognized type falls to snacks, so nothing is ever dropped (rows always == count).
     private static func mealSections(_ meals: [Meal]) -> [(type: String, label: String, meals: [Meal])] {
-        sectionOrder.compactMap { section in
-            let inSection = meals.filter { ($0.meal_type ?? "snack") == section.type }
+        func bucket(_ m: Meal) -> String {
+            let t = m.meal_type ?? ""
+            return sectionTypes.contains(t) ? t : "snack"
+        }
+        return sectionOrder.compactMap { section in
+            let inSection = meals.filter { bucket($0) == section.type }
             return inSection.isEmpty ? nil : (section.type, section.label, inSection)
         }
     }
@@ -422,10 +428,10 @@ private struct YourMealCard: View {
                         Text("\(template.calories) kcal · \(Int(template.protein_g))P")
                             .font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(Theme.Palette.textDim)
                         // A multi-item memory re-logs its whole breakdown in one tap (3.4).
-                        if template.item_count > 1 {
+                        if let n = template.item_count, n > 1 {
                             HStack(spacing: 2) {
                                 Image(systemName: "list.bullet").font(.system(size: 8))
-                                Text("\(template.item_count)")
+                                Text("\(n)")
                             }
                             .font(.system(size: 9, weight: .semibold, design: .rounded)).foregroundStyle(Theme.Palette.mint)
                         }
@@ -859,6 +865,7 @@ private struct EditMealSheet: View {
     @State private var fat: String
     @State private var when: Date
     @State private var mealType: String
+    private let initialMealType: String   // what the picker started at — only PATCH meal_type if it changed
 
     private static let types: [(String, String)] = [
         ("breakfast", "Breakfast"), ("lunch", "Lunch"), ("dinner", "Dinner"), ("snack", "Snack"),
@@ -872,7 +879,9 @@ private struct EditMealSheet: View {
         _carbs = State(initialValue: "\(Int(meal.carbs_g))")
         _fat = State(initialValue: "\(Int(meal.fat_g))")
         _when = State(initialValue: meal.eaten_at.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date())
-        _mealType = State(initialValue: meal.meal_type ?? "snack")
+        let startType = meal.meal_type ?? "snack"
+        _mealType = State(initialValue: startType)
+        initialMealType = startType
     }
 
     var body: some View {
@@ -908,7 +917,8 @@ private struct EditMealSheet: View {
                                                        protein: Double(protein) ?? meal.protein_g,
                                                        carbs: Double(carbs) ?? meal.carbs_g,
                                                        fat: Double(fat) ?? meal.fat_g,
-                                                       eatenAt: when, mealType: mealType)
+                                                       eatenAt: when,
+                                                       mealType: mealType == initialMealType ? nil : mealType)
                                 dismiss()
                             }
                         } label: {

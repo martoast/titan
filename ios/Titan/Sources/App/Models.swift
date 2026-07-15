@@ -660,7 +660,9 @@ struct MealTemplate: Codable, Identifiable, Equatable {
     let carbs_g: Double
     let fat_g: Double
     var fiber_g: Double? = nil
-    var item_count: Int = 0   // >0 → a multi-item memory that re-logs its breakdown (3.4)
+    // Optional (not `Int = 0`): synthesized Codable ignores stored-property defaults for missing keys and
+    // would THROW keyNotFound on an older payload, failing the whole library decode. nil == 0 at use sites.
+    var item_count: Int? = nil   // >0 → a multi-item memory that re-logs its breakdown (3.4)
     let photo_url: String?
     let times_logged: Int
     let last_eaten_at: String?
