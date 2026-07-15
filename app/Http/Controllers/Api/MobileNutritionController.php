@@ -339,22 +339,45 @@ class MobileNutritionController extends Controller
             if ($eatenAt->isFuture()) {
                 $eatenAt = Carbon::now();
             }
-            $rc = Macros::reconcile((int) $m->calories, (float) $m->protein_g, (float) $m->carbs_g, (float) $m->fat_g);
-            $profile->meals()->create([
-                'name' => $m->name,
-                'eaten_at' => $eatenAt,
-                'calories' => $rc['calories'],
-                'protein_g' => $rc['protein_g'],
-                'carbs_g' => $rc['carbs_g'],
-                'fat_g' => $rc['fat_g'],
-                'fiber_g' => $m->fiber_g,   // carry fibre onto the copy (unknown stays unknown)
-                'meal_type' => $m->meal_type,   // preserve an explicit override (time-of-day is kept, so inference matches anyway)
-                // Carry the honesty flag from the source meal (its macros are already reconciled, so a
-                // re-reconcile here invents nothing) — a copied estimate is still an estimate.
-                'macros_estimated' => $m->macros_estimated ?: null,
-                'photo_path' => $m->photo_path,
-                'source' => 'memory',
-            ]);
+
+            // Faithful copy: if the source meal has an item breakdown, recreate those items (so a copied
+            // multi-item meal keeps its ingredients + refreshes the 3.4 template), else copy the lumped macros.
+            $srcItems = \App\Support\MealItems::clean($m->items()->get()->map(fn (\App\Models\MealItem $i) => [
+                'name' => $i->name, 'quantity' => $i->quantity, 'calories' => (int) $i->calories,
+                'protein_g' => (float) $i->protein_g, 'carbs_g' => (float) $i->carbs_g,
+                'fat_g' => (float) $i->fat_g, 'fiber_g' => $i->fiber_g,
+            ])->all());
+
+            if ($srcItems !== []) {
+                $meal = \App\Support\MealMemory::withoutRemembering(function () use ($profile, $m, $eatenAt, $srcItems) {
+                    $meal = $profile->meals()->create([
+                        'name' => $m->name, 'eaten_at' => $eatenAt,
+                        'calories' => 0, 'protein_g' => 0, 'carbs_g' => 0, 'fat_g' => 0,
+                        'meal_type' => $m->meal_type, 'photo_path' => $m->photo_path, 'source' => 'memory',
+                    ]);
+                    $meal->items()->createMany($srcItems);
+                    $meal->recalcFromItems();
+                    return $meal;
+                });
+                app(\App\Support\MealMemory::class)->remember($meal);
+            } else {
+                $rc = Macros::reconcile((int) $m->calories, (float) $m->protein_g, (float) $m->carbs_g, (float) $m->fat_g);
+                $profile->meals()->create([
+                    'name' => $m->name,
+                    'eaten_at' => $eatenAt,
+                    'calories' => $rc['calories'],
+                    'protein_g' => $rc['protein_g'],
+                    'carbs_g' => $rc['carbs_g'],
+                    'fat_g' => $rc['fat_g'],
+                    'fiber_g' => $m->fiber_g,   // carry fibre onto the copy (unknown stays unknown)
+                    'meal_type' => $m->meal_type,   // preserve an explicit override (time-of-day is kept, so inference matches anyway)
+                    // Carry the honesty flag from the source meal (its macros are already reconciled, so a
+                    // re-reconcile here invents nothing) — a copied estimate is still an estimate.
+                    'macros_estimated' => $m->macros_estimated ?: null,
+                    'photo_path' => $m->photo_path,
+                    'source' => 'memory',
+                ]);
+            }
             $copied++;
         }
 
@@ -372,13 +395,17 @@ class MobileNutritionController extends Controller
         $profile = $this->profile($request);
         $row = $profile->meals()->findOrFail($meal);
         $row->fill($this->validateMeal($request, required: false));
-        // Keep the corrected macros reconciled with the calories — same one creation path as the others.
-        $m = Macros::reconcile((int) $row->calories, (float) $row->protein_g, (float) $row->carbs_g, (float) $row->fat_g);
-        $row->calories = $m['calories'];
-        $row->protein_g = $m['protein_g'];
-        $row->carbs_g = $m['carbs_g'];
-        $row->fat_g = $m['fat_g'];
-        $row->macros_estimated = $m['estimated'] ?? null;   // a real correction clears the flag
+        // Only re-reconcile when a macro/calorie field was actually submitted. A metadata-only edit
+        // (e.g. re-filing meal_type or setting fibre) must NOT rewrite the macros — for an item-based
+        // meal that would drift the stored calories away from its item sum for no reason.
+        if ($request->hasAny(['calories', 'protein_g', 'carbs_g', 'fat_g'])) {
+            $m = Macros::reconcile((int) $row->calories, (float) $row->protein_g, (float) $row->carbs_g, (float) $row->fat_g);
+            $row->calories = $m['calories'];
+            $row->protein_g = $m['protein_g'];
+            $row->carbs_g = $m['carbs_g'];
+            $row->fat_g = $m['fat_g'];
+            $row->macros_estimated = $m['estimated'] ?? null;   // a real correction clears the flag
+        }
         $row->save();
 
         return response()->json(['meal' => $this->mealJson($row->fresh()), 'macros' => Macros::today($profile)]);

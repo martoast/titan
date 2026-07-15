@@ -62,12 +62,13 @@ class MealMemory
         $tpl->protein_g = (float) $meal->protein_g;
         $tpl->carbs_g = (float) $meal->carbs_g;
         $tpl->fat_g = (float) $meal->fat_g;
-        $tpl->fiber_g = $meal->fiber_g !== null ? (float) $meal->fiber_g : null;
         // Remember the ingredient breakdown too (MEAL_LOGGING_REVISION 3.4), so "my usual breakfast"
-        // re-logs as the eggs + oats + coffee it was. Null when the meal was logged as a lumped total.
+        // re-logs as the eggs + oats + coffee it was. IMPORTANT: only OVERWRITE when this instance
+        // actually has data — a later LUMPED log of the same dish (copy-day, manual, coach) must not
+        // erase a breakdown/fibre we already learned (unknown never clobbers known).
         $items = $meal->relationLoaded('items') ? $meal->items : $meal->items()->get();
-        $tpl->items = $items->isNotEmpty()
-            ? $items->map(fn (\App\Models\MealItem $i) => [
+        if ($items->isNotEmpty()) {
+            $tpl->items = $items->map(fn (\App\Models\MealItem $i) => [
                 'name' => $i->name,
                 'quantity' => $i->quantity,
                 'calories' => (int) $i->calories,
@@ -75,8 +76,11 @@ class MealMemory
                 'carbs_g' => (float) $i->carbs_g,
                 'fat_g' => (float) $i->fat_g,
                 'fiber_g' => $i->fiber_g !== null ? (float) $i->fiber_g : null,
-            ])->values()->all()
-            : null;
+            ])->values()->all();
+        }
+        if ($meal->fiber_g !== null) {
+            $tpl->fiber_g = (float) $meal->fiber_g;
+        }
         if ($meal->photo_path) {
             $tpl->photo_path = $meal->photo_path;   // keep the most recent real photo
         }
