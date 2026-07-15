@@ -219,6 +219,8 @@ class MobileNutritionController extends Controller
             // The draft's real source (a barcode scan confirms through here too) — was hardcoded 'photo',
             // which mislabelled barcode meals (MEAL_LOGGING_REVISION 1.3).
             'source' => ['nullable', 'string', \Illuminate\Validation\Rule::in(Meal::SOURCES)],
+            // The edited per-item breakdown (MEAL_LOGGING_REVISION 3.2) — when present it IS the meal.
+            'line_items' => ['sometimes', 'array', 'max:40'],
         ]);
 
         // Only ever re-attach a photo the scanner itself just stored — never an arbitrary path.
@@ -228,21 +230,37 @@ class MobileNutritionController extends Controller
             $photo = $data['photo_path'];
         }
 
-        // One creation path: every meal, however born, runs the same macro↔calorie reconcile.
-        $m = Macros::reconcile((int) $data['calories'], (float) $data['protein_g'], (float) $data['carbs_g'], (float) $data['fat_g']);
-        $meal = $profile->meals()->create([
-            'name' => $data['name'],
-            'eaten_at' => now(),
-            'calories' => $m['calories'],
-            'protein_g' => $m['protein_g'],
-            'carbs_g' => $m['carbs_g'],
-            'fat_g' => $m['fat_g'],
-            'fiber_g' => self::normFiber($data['fiber_g'] ?? null),
-            'macros_estimated' => $m['estimated'] ?? null,
-            'meal_type' => $data['meal_type'] ?? null,   // null → inferred from time at read
-            'photo_path' => $photo,
-            'source' => $data['source'] ?? 'photo',
-        ]);
+        // If the user edited per-item lines, the items ARE the source of truth: create them and let
+        // recalcFromItems set the totals (so what they see equals the sum). Otherwise the lumped totals
+        // run the same macro↔calorie reconcile as every other creation path.
+        $items = \App\Support\MealItems::clean($request->input('line_items', []));
+        if ($items !== []) {
+            $meal = $profile->meals()->create([
+                'name' => $data['name'],
+                'eaten_at' => now(),
+                'calories' => 0, 'protein_g' => 0, 'carbs_g' => 0, 'fat_g' => 0,
+                'meal_type' => $data['meal_type'] ?? null,
+                'photo_path' => $photo,
+                'source' => $data['source'] ?? 'photo',
+            ]);
+            $meal->items()->createMany($items);
+            $meal->recalcFromItems();   // totals + fiber = the item sum; clears macros_estimated
+        } else {
+            $m = Macros::reconcile((int) $data['calories'], (float) $data['protein_g'], (float) $data['carbs_g'], (float) $data['fat_g']);
+            $meal = $profile->meals()->create([
+                'name' => $data['name'],
+                'eaten_at' => now(),
+                'calories' => $m['calories'],
+                'protein_g' => $m['protein_g'],
+                'carbs_g' => $m['carbs_g'],
+                'fat_g' => $m['fat_g'],
+                'fiber_g' => self::normFiber($data['fiber_g'] ?? null),
+                'macros_estimated' => $m['estimated'] ?? null,
+                'meal_type' => $data['meal_type'] ?? null,   // null → inferred from time at read
+                'photo_path' => $photo,
+                'source' => $data['source'] ?? 'photo',
+            ]);
+        }
 
         return response()->json(['meal' => $this->mealJson($meal), 'macros' => Macros::today($profile)]);
     }

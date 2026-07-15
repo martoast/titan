@@ -515,10 +515,34 @@ struct ScanResultSheet: View {
     @State private var servings: Double = 1
     @State private var name: String = ""
     @State private var logging = false
+    @State private var items: [MealDraft.LineItem] = []   // editable per-item breakdown (3.2)
+    @State private var factors: [UUID: Double] = [:]      // per-line amount multiplier (0.5 steps)
 
     private var draft: MealDraft? { result.draft }
+    private var hasItems: Bool { !items.isEmpty }
     private func scaledCal(_ d: MealDraft) -> Int { Int((Double(d.calories) * servings).rounded()) }
     private func scaled(_ v: Double) -> Double { (v * servings * 10).rounded() / 10 }
+
+    private func factor(_ i: MealDraft.LineItem) -> Double { factors[i.id] ?? 1 }
+    /// Live meal total from the (scaled) items — the sum the user is dialing in.
+    private var itemTotal: (cal: Int, p: Double, c: Double, f: Double, fiber: Double?) {
+        var cal = 0.0, p = 0.0, c = 0.0, f = 0.0, fiber = 0.0; var anyFiber = false
+        for i in items { let m = factor(i)
+            cal += i.calories * m; p += i.protein_g * m; c += i.carbs_g * m; f += i.fat_g * m
+            if let fb = i.fiber_g { fiber += fb * m; anyFiber = true }
+        }
+        return (Int(cal.rounded()), (p*10).rounded()/10, (c*10).rounded()/10, (f*10).rounded()/10, anyFiber ? (fiber*10).rounded()/10 : nil)
+    }
+    /// The scaled items as JSON for the confirm request.
+    private func itemsPayload() -> [[String: Any]] {
+        items.map { i in let m = factor(i)
+            var row: [String: Any] = ["name": i.name, "calories": i.calories * m,
+                "protein_g": i.protein_g * m, "carbs_g": i.carbs_g * m, "fat_g": i.fat_g * m]
+            if let q = i.quantity { row["quantity"] = q }
+            if let fb = i.fiber_g { row["fiber_g"] = fb * m }
+            return row
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -550,7 +574,10 @@ struct ScanResultSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { draft != nil ? Text("Cancel") : Text("Done") } } }
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .onAppear { if name.isEmpty { name = draft?.name ?? "" } }
+            .onAppear {
+                if name.isEmpty { name = draft?.name ?? "" }
+                if items.isEmpty, let li = draft?.line_items { items = li }
+            }
         }
     }
 
@@ -564,28 +591,70 @@ struct ScanResultSheet: View {
                     .font(Theme.Font.title).foregroundStyle(Theme.Palette.text).textFieldStyle(.plain)
                 if let b = d.brand, d.source != "brand" { Text(b).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim) }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Amount").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
-                        Spacer()
-                        stepButton("minus") { servings = max(0.5, (servings - 0.5)) }
-                        Text("×\(servings.formatted())").font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.text)
-                            .monospacedDigit().frame(minWidth: 52)
-                        stepButton("plus") { servings = min(20, servings + 0.5) }
+                if hasItems {
+                    itemsEditor()
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Amount").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+                            Spacer()
+                            stepButton("minus") { servings = max(0.5, (servings - 0.5)) }
+                            Text("×\(servings.formatted())").font(Theme.Font.num(18)).foregroundStyle(Theme.Palette.text)
+                                .monospacedDigit().frame(minWidth: 52)
+                            stepButton("plus") { servings = min(20, servings + 0.5) }
+                        }
+                        if let s = d.serving_hint { Text("Serving: \(s)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
                     }
-                    if let s = d.serving_hint { Text("Serving: \(s)").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint) }
-                }
 
-                HStack(spacing: Theme.Space.m) {
-                    macroStat("\(scaledCal(d))", "kcal", Theme.Palette.cyan)
-                    macroStat("\(Int(scaled(d.protein_g)))", "protein", Theme.Palette.mint)
-                    macroStat("\(Int(scaled(d.carbs_g)))", "carbs", Theme.Palette.amber)
-                    macroStat("\(Int(scaled(d.fat_g)))", "fat", Theme.Palette.pink)
-                }
-                if let fib = d.fiber_g, fib > 0 {
-                    Text("+ \(Int(scaled(fib)))g fiber").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    HStack(spacing: Theme.Space.m) {
+                        macroStat("\(scaledCal(d))", "kcal", Theme.Palette.cyan)
+                        macroStat("\(Int(scaled(d.protein_g)))", "protein", Theme.Palette.mint)
+                        macroStat("\(Int(scaled(d.carbs_g)))", "carbs", Theme.Palette.amber)
+                        macroStat("\(Int(scaled(d.fat_g)))", "fat", Theme.Palette.pink)
+                    }
+                    if let fib = d.fiber_g, fib > 0 {
+                        Text("+ \(Int(scaled(fib)))g fiber").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    }
                 }
             }
+        }
+    }
+
+    // Editable per-item breakdown (3.2) — fix the ingredient the camera got wrong: adjust each line's
+    // amount or swipe it away, and the meal total resums live from what's left.
+    @ViewBuilder private func itemsEditor() -> some View {
+        Text("Items — adjust or remove any").font(Theme.Font.label).foregroundStyle(Theme.Palette.textDim)
+        VStack(spacing: 0) {
+            ForEach(items) { item in
+                let m = factor(item)
+                HStack(spacing: Theme.Space.s) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.name).font(Theme.Font.body).foregroundStyle(Theme.Palette.text).lineLimit(1)
+                        Text("\(Int((item.calories * m).rounded())) kcal\(item.quantity.map { " · \($0)" } ?? "")")
+                            .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                    Spacer()
+                    stepButton("minus") { factors[item.id] = max(0.5, m - 0.5) }
+                    Text("×\(m.formatted())").font(Theme.Font.num(14)).foregroundStyle(Theme.Palette.text)
+                        .monospacedDigit().frame(minWidth: 40)
+                    stepButton("plus") { factors[item.id] = min(20, m + 0.5) }
+                    Button { items.removeAll { $0.id == item.id }; factors[item.id] = nil } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(Theme.Palette.textFaint)
+                    }
+                }
+                .padding(.vertical, 8)
+                if item.id != items.last?.id { Divider().overlay(Theme.Palette.cardStroke) }
+            }
+        }
+        let t = itemTotal
+        HStack(spacing: Theme.Space.m) {
+            macroStat("\(t.cal)", "kcal", Theme.Palette.cyan)
+            macroStat("\(Int(t.p.rounded()))", "protein", Theme.Palette.mint)
+            macroStat("\(Int(t.c.rounded()))", "carbs", Theme.Palette.amber)
+            macroStat("\(Int(t.f.rounded()))", "fat", Theme.Palette.pink)
+        }
+        if let fib = t.fiber, fib > 0 {
+            Text("+ \(Int(fib.rounded()))g fiber").font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
         }
     }
 
@@ -593,14 +662,21 @@ struct ScanResultSheet: View {
         Button {
             logging = true
             Task {
-                await model.confirmScannedMeal(
-                    name: name.trimmingCharacters(in: .whitespaces).isEmpty ? d.name : name,
-                    calories: scaledCal(d), protein: scaled(d.protein_g),
-                    carbs: scaled(d.carbs_g), fat: scaled(d.fat_g),
-                    fiber: d.fiber_g.map(scaled), photoPath: d.photo_path,
-                    // Only 'barcode' is a real meal source among the draft's resolve-chain values; a photo
-                    // scan (your_meals/brand/web/photo) → nil → the server stamps 'photo'.
-                    source: d.source == "barcode" ? "barcode" : nil)
+                let source = d.source == "barcode" ? "barcode" : nil   // else server stamps 'photo'
+                let mealName = name.trimmingCharacters(in: .whitespaces).isEmpty ? d.name : name
+                if hasItems {
+                    // The edited lines ARE the meal — server recalcs the total from them.
+                    let t = itemTotal
+                    await model.confirmScannedMeal(
+                        name: mealName, calories: t.cal, protein: t.p, carbs: t.c, fat: t.f,
+                        fiber: t.fiber, photoPath: d.photo_path, source: source, lineItems: itemsPayload())
+                } else {
+                    await model.confirmScannedMeal(
+                        name: mealName,
+                        calories: scaledCal(d), protein: scaled(d.protein_g),
+                        carbs: scaled(d.carbs_g), fat: scaled(d.fat_g),
+                        fiber: d.fiber_g.map(scaled), photoPath: d.photo_path, source: source)
+                }
                 logging = false
             }
         } label: {
@@ -612,7 +688,8 @@ struct ScanResultSheet: View {
             .background(Theme.Palette.amber, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
             .foregroundStyle(.black)
         }
-        .disabled(logging)
+        // If the scan had items and they've all been removed, there's nothing to log.
+        .disabled(logging || (draft?.line_items?.isEmpty == false && items.isEmpty))
     }
 
     private func sourceBadge(_ d: MealDraft) -> some View {

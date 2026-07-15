@@ -878,9 +878,9 @@ final class AppModel: ObservableObject {
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription; return false }
     }
 
-    func confirmScannedMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, fiber: Double? = nil, photoPath: String?, source: String? = nil) async {
+    func confirmScannedMeal(name: String, calories: Int, protein: Double, carbs: Double, fat: Double, fiber: Double? = nil, photoPath: String?, source: String? = nil, lineItems: [[String: Any]]? = nil) async {
         do {
-            _ = try await api.confirmMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, fiber: fiber, photoPath: photoPath, source: source)
+            _ = try await api.confirmMeal(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, fiber: fiber, photoPath: photoPath, source: source, lineItems: lineItems)
             Haptic.success()
             scanResult = nil
             await loadNutrition()

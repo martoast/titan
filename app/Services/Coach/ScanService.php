@@ -5,6 +5,7 @@ namespace App\Services\Coach;
 use App\Models\Profile;
 use App\Services\Ai\AiService;
 use App\Services\Web\WebSearch;
+use App\Support\MealItems;
 use App\Support\MealMemory;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
@@ -135,7 +136,7 @@ class ScanService
         {
           "kind": "meal" | "bloodwork" | "physique" | "other",
           "intent": "log" | "save",
-          "meal": { "name": string, "items": [string], "calories": int, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "confidence": "low"|"medium"|"high", "packaged": boolean, "is_label": boolean, "brand": string, "product": string, "serving_hint": string },
+          "meal": { "name": string, "items": [ { "name": string, "quantity": string, "calories": int, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number } ], "calories": int, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "confidence": "low"|"medium"|"high", "packaged": boolean, "is_label": boolean, "brand": string, "product": string, "serving_hint": string },
           "bloodwork": [ { "marker": string, "value": number, "unit": string } ],
           "note": string
         }
@@ -144,7 +145,7 @@ class ScanService
           - "save" = REMEMBER this food/ingredient/product as a reference for later, do NOT record eating it now. Signals: "save this", "add this to my foods/pantry/usuals", "remember this", "one of the pastas/meals/things I make", "the kind of X I use", "for later/next time", "for reference". A photo of a NUTRITION-FACTS panel or a packaged product with this kind of phrasing is almost always "save" — they're cataloguing the product, not eating it.
           - "log" = they are eating it now / want it recorded to today. Signals: "I ate", "just had", "log this", "for lunch", "this is my breakfast" — OR no instruction at all (a bare food photo defaults to "log").
           Default to "log" when genuinely unclear. Never "save" for bloodwork/physique — use "log".
-        - If it's food/a meal/a drink: fill "meal" with your best estimate of the macros for the WHOLE portion shown, plus a short name and the visible items. Leave "bloodwork" as []. Include "fiber_g" (dietary fibre, grams) when the food plausibly has it (vegetables, fruit, legumes, whole grains, nuts) — omit it or use 0 only when there's genuinely none; on a nutrition-facts panel, transcribe the printed fibre figure.
+        - If it's food/a meal/a drink: fill "meal" with your best estimate. Break the plate into its "items" — one line per distinct food (e.g. "grilled chicken", "white rice", "avocado") with that item's own "quantity" (e.g. "150 g", "1 cup", "2 eggs") and its OWN macros. The top-level "calories"/"protein_g"/"carbs_g"/"fat_g" must equal the SUM of the items so the two agree. A single-food photo is just one item. Include "fiber_g" per item (and at the top level) when the food plausibly has fibre (vegetables, fruit, legumes, whole grains, nuts) — omit or 0 when there's none; on a nutrition-facts panel, transcribe the printed fibre. Leave "bloodwork" as [].
         - If the image IS a NUTRITION FACTS panel (the printed nutrition table on packaging, or a screenshot of one): set "is_label": true AND read the macros DIRECTLY off it — copy calories/protein_g/carbs_g/fat_g PER SERVING exactly as printed (do not estimate). Put the printed serving size in "serving_hint" (e.g. "1 cup (240 ml)"). Set brand/product too if the label shows them. These printed numbers are ground truth — transcribe, don't guess.
         - If it's a PACKAGED / branded product (a wrapper, bottle, box, protein tub, bar, ready meal — a brand is visible but the full facts panel is NOT clearly readable): set "packaged": true and read the "brand" and exact "product" name off the label as precisely as you can (e.g. brand "Chobani", product "Non-Fat Greek Yogurt, Vanilla"). Put the serving/size you can see in "serving_hint". We will look up the OFFICIAL label macros for this exact product, so getting the brand + product right matters more than guessing the numbers.
         - For a non-packaged home/restaurant plate, set "packaged": false and leave brand/product empty; put your read of the portion in "serving_hint" (e.g. "~1.5 cups rice, palm-size chicken").
@@ -324,8 +325,22 @@ class ScanService
     private function draftMeal(array $m, string $path, string $imageUrl): array
     {
         $confidence = (string) ($m['_confidence'] ?? 'low');
+        $source = (string) ($m['_source'] ?? 'photo');
 
-        return [
+        // Editable per-item breakdown (MEAL_LOGGING_REVISION 3.2) — ONLY on the photo-estimate path, where
+        // the items genuinely sum to the total. Your-usual / branded-label / web totals come from another
+        // source and wouldn't reconcile with vision items, so those stay a single lumped estimate.
+        $lineItems = $source === 'photo' ? MealItems::clean($m['items'] ?? []) : [];
+        // When we have real line items, the total IS their sum — guarantees the draft the user edits agrees.
+        $totals = $lineItems !== [] ? MealItems::totals($lineItems) : null;
+
+        // Names for older app builds that render `items` as a plain string list.
+        $names = array_values(array_filter(array_map(
+            fn ($i) => is_array($i) ? trim((string) ($i['name'] ?? '')) : (is_string($i) ? $i : ''),
+            (array) ($m['items'] ?? [])
+        ), fn ($s) => $s !== ''));
+
+        return array_filter([
             'kind' => 'meal',
             'logged' => false,
             'draft' => true,
@@ -333,19 +348,21 @@ class ScanService
             'image_url' => $imageUrl,
             'name' => Str::limit(trim((string) ($m['name'] ?? 'Meal')) ?: 'Meal', 80, ''),
             'brand' => trim((string) ($m['brand'] ?? '')) ?: null,
-            'items' => array_values(array_filter((array) ($m['items'] ?? []), 'is_string')),
-            'calories' => (int) round((float) ($m['calories'] ?? 0)),
-            'protein_g' => round((float) ($m['protein_g'] ?? 0), 1),
-            'carbs_g' => round((float) ($m['carbs_g'] ?? 0), 1),
-            'fat_g' => round((float) ($m['fat_g'] ?? 0), 1),
-            // Secondary stat: null (unknown) unless the estimate actually carried a fibre figure.
-            'fiber_g' => isset($m['fiber_g']) && is_numeric($m['fiber_g']) ? round((float) $m['fiber_g'], 1) : null,
+            'items' => $names,
+            'line_items' => $lineItems ?: null,   // structured, editable (photo path only)
+            'calories' => $totals ? $totals['calories'] : (int) round((float) ($m['calories'] ?? 0)),
+            'protein_g' => $totals ? $totals['protein_g'] : round((float) ($m['protein_g'] ?? 0), 1),
+            'carbs_g' => $totals ? $totals['carbs_g'] : round((float) ($m['carbs_g'] ?? 0), 1),
+            'fat_g' => $totals ? $totals['fat_g'] : round((float) ($m['fat_g'] ?? 0), 1),
+            // Secondary stat: null (unknown) unless the estimate/items actually carried a fibre figure.
+            'fiber_g' => $totals ? $totals['fiber_g']
+                : (isset($m['fiber_g']) && is_numeric($m['fiber_g']) ? round((float) $m['fiber_g'], 1) : null),
             'confidence' => $confidence,
-            'source' => (string) ($m['_source'] ?? 'photo'),
+            'source' => $source,
             'serving_hint' => trim((string) ($m['serving_hint'] ?? '')) ?: null,
             // High-confidence (your usual / exact label) can log with one tap; otherwise confirm the amount.
             'needs_confirmation' => $confidence !== 'high',
-        ];
+        ], fn ($v) => $v !== null);
     }
 
     private function otherResult(array $data, string $imageUrl): array

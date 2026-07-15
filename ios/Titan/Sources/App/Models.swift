@@ -606,10 +606,24 @@ struct MealDraft: Codable {
     let carbs_g: Double
     let fat_g: Double
     var fiber_g: Double? = nil    // secondary stat, scaled with servings like the macros (3.3)
+    var line_items: [LineItem]? = nil   // editable per-item breakdown (photo path only; 3.2)
     let confidence: String        // low | medium | high
     let source: String            // your_meals | brand | web | photo — where the macros came from
     let serving_hint: String?
     let needs_confirmation: Bool
+
+    /// One editable ingredient line — name + its own macros. Identifiable for the edit list.
+    struct LineItem: Codable, Identifiable, Equatable {
+        var id = UUID()
+        var name: String
+        var quantity: String?
+        var calories: Double
+        var protein_g: Double
+        var carbs_g: Double
+        var fat_g: Double
+        var fiber_g: Double?
+        enum CodingKeys: String, CodingKey { case name, quantity, calories, protein_g, carbs_g, fat_g, fiber_g }
+    }
 }
 
 /// `POST/PATCH /api/me/meals` → { meal, macros }
