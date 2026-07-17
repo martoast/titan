@@ -182,6 +182,14 @@ class Readiness
             ];
         }
 
+        // HRV is the anchor of readiness (§5, the dominant 50% term). Without a fresh HRV reading —
+        // stale/no recovery log today, or a device that returned no HRV — the score leans on the secondary
+        // signals (sleep/RHR) and is a degraded estimate, so flag it provisional with an HRV-specific note.
+        $hrvMissing = ! isset($components['hrv']);
+        if ($hrvMissing) {
+            $provisional = true;
+        }
+
         // Re-normalise weights over whatever components we actually have.
         $totalWeight = array_sum(array_column($components, 'weight'));
         $score = 0.0;
@@ -205,7 +213,7 @@ class Readiness
         }
 
         $score = (int) round(self::clamp($score));
-        [$label, $note] = self::interpret($score, $provisional);
+        [$label, $note] = self::interpret($score, $provisional, $hrvMissing);
 
         return [
             'score' => $score,
@@ -247,7 +255,7 @@ class Readiness
     }
 
     /** @return array{0:string,1:string} */
-    private static function interpret(int $score, bool $provisional): array
+    private static function interpret(int $score, bool $provisional, bool $hrvMissing = false): array
     {
         [$label, $note] = match (true) {
             $score >= 80 => ['Primed', 'Your body is well recovered -- a good day to push hard training.'],
@@ -258,7 +266,10 @@ class Readiness
         };
 
         if ($provisional) {
-            $note .= ' Still building your baseline -- readiness sharpens after ~2 weeks of nights.';
+            // HRV missing is a different provisional reason than a still-forming baseline — say which.
+            $note .= $hrvMissing
+                ? ' Provisional -- no recent HRV read, so this leans on sleep. Log a morning read for a full recovery score.'
+                : ' Still building your baseline -- readiness sharpens after ~2 weeks of nights.';
         }
 
         return [$label, $note];

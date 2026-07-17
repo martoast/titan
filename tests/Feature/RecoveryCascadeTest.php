@@ -82,6 +82,25 @@ class RecoveryCascadeTest extends TestCase
         $this->assertArrayHasKey('rhr', $components, "yesterday's reading still stands in for today");
     }
 
+    public function test_readiness_is_provisional_when_hrv_is_stale_but_sleep_is_fresh(): void
+    {
+        $profile = User::factory()->create()->ensureProfile();
+        // Fresh sleep last night, but the most recent HRV/RHR reading is days old.
+        SleepLog::create([
+            'profile_id' => $profile->id, 'slept_at' => Carbon::today()->toDateString(),
+            'is_nap' => false, 'duration_min' => 470, 'quality' => 88, 'stage_status' => 'final',
+        ]);
+        $profile->recoveryLogs()->create([
+            'logged_at' => Carbon::today()->subDays(4)->toDateString(), 'hrv_ms' => 120, 'resting_hr' => 50,
+        ]);
+
+        $r = Readiness::compute($profile);
+        $this->assertNotNull($r['score'], 'fresh sleep still yields a score');
+        $this->assertArrayNotHasKey('hrv', $r['components'], 'the stale HRV reading is not scored');
+        $this->assertTrue($r['provisional'], 'a sleep-only score is provisional');
+        $this->assertStringContainsString('no recent HRV read', $r['note'], 'the note names the HRV gap');
+    }
+
     public function test_recovery_greeting_waits_for_the_night_to_finalize(): void
     {
         $profile = User::factory()->create()->ensureProfile();
