@@ -60,8 +60,12 @@ class Readiness
         // or readiness would be computed from an incomplete night for the ~2 min it's being staged. Until
         // tonight finalizes we use the last complete night; the finalize re-fires the morning read. Progressive
         // summary: see docs/PROGRESSIVE_SUMMARY.md.
+        // …and only if that night is recent enough to be LAST night. A stale freshest night (band not
+        // worn for a day+) is history, not recovery input — crediting its sleep term would show a
+        // "recovered" score with no recent sleep. The HRV/RHR terms still stand on their own.
         $sleep = $profile->sleepLogs()->nights()->final()
             ->whereDate('slept_at', '<=', $date)
+            ->recentNight(null, Carbon::parse($date))
             ->orderByDesc('slept_at')
             ->orderByDesc('id')
             ->first();

@@ -27,7 +27,10 @@ class MobileDashboardController extends Controller
         $rec = RecoveryLog::where('profile_id', $profile->id)
             ->orderByDesc('logged_at')->orderByDesc('id')->first();
 
+        // Only LAST night's sleep (today/yesterday) — never a stale night from days ago when the band
+        // wasn't worn, which would otherwise render as today's sleep card + score. Null → app empty state.
         $sleep = SleepLog::where('profile_id', $profile->id)->nights()->final()
+            ->recentNight($tz)
             ->orderByDesc('slept_at')->orderByDesc('id')->first();
 
         $activity = DailyActivity::where('profile_id', $profile->id)

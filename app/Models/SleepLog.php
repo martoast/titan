@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * One night's sleep for a profile. Duration is stored in minutes; helpers expose it
@@ -58,6 +59,29 @@ class SleepLog extends Model
     public function scopeFinal($query)
     {
         return $query->where('stage_status', self::STATUS_FINAL);
+    }
+
+    /** How stale the most-recent recorded night may be and still count as "last night". A night is only
+     *  last night's sleep if its wake date is today or yesterday; if the band wasn't worn for longer, the
+     *  freshest row is history, NOT current sleep. */
+    public const RECENT_NIGHT_GRACE_DAYS = 1;
+
+    /** The earliest `slept_at` (wake date) that still qualifies as "last night", as a Y-m-d string.
+     *  One source of truth for the freshness rule so every current-day reader agrees. */
+    public static function recentNightFloor(?string $tz = null, ?Carbon $asOf = null): string
+    {
+        $base = $asOf ? $asOf->copy() : Carbon::now($tz ?: config('app.timezone', 'UTC'));
+
+        return $base->subDays(self::RECENT_NIGHT_GRACE_DAYS)->toDateString();
+    }
+
+    /** Constrain to nights recent enough to be "last night" (today or yesterday). Use this on any reader
+     *  that presents a night as CURRENT — the home sleep card, the Sleep-performance ring, the recovery
+     *  sleep term — so a stale night (band not worn for a day+) can't masquerade as last night's sleep.
+     *  Deliberately NOT used by debt/streak/history readers: a MISSED night still owes sleep debt. */
+    public function scopeRecentNight($query, ?string $tz = null, ?Carbon $asOf = null)
+    {
+        return $query->where('slept_at', '>=', self::recentNightFloor($tz, $asOf));
     }
 
     /** Whole hours of sleep (floor of duration). */

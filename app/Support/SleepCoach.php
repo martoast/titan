@@ -101,8 +101,14 @@ class SleepCoach
 
         $need = self::needFor($profile, $baseline, $debt, $day, $strainBump);
 
-        // Last night's raw duration…
+        // Last night's raw duration… but only if the most recent night is ACTUALLY last night. A stale
+        // freshest night (band not worn for a day+) is history, not last night's sleep, so it can't drive
+        // the performance ring — otherwise a "Well rested / 100%" ring shows on a night with no recording.
+        // Debt/need above still see the full window ($nights) — a MISSED night rightly accrues debt.
         $last = $nights->first();
+        if ($last && $last->slept_at?->toDateString() < SleepLog::recentNightFloor(null, $day)) {
+            $last = null;
+        }
         $lastH = $last ? round($last->duration_min / 60.0, 1) : null;
 
         // …plus any naps today: a nap is real recovery, so it adds to the effective sleep that
