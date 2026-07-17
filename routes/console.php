@@ -17,6 +17,11 @@ Schedule::command('biosignal:seal-nights')->hourly()->withoutOverlapping();
 // because no live phone marked awake. Idempotent + self-deduping (see RecoverLateNights).
 Schedule::command('sleep:recover-late')->everyThirtyMinutes()->withoutOverlapping();
 
+// Recover a night stranded in "computing" (its stage pass never finished — e.g. biosignal was
+// down/unhealthy at seal time, so the hypnogram is empty and the app shows an eternal loading card).
+// Re-runs the CONFIRMED seal once biosignal is healthy again; idempotent (see RecoverStuckNights).
+Schedule::command('sleep:recover-stuck')->everyFifteenMinutes()->withoutOverlapping();
+
 // Seal completed workouts into activity_sessions (classification + TRIMP + VO2max + HRR).
 Schedule::command('biosignal:seal-activities')->everyFifteenMinutes()->withoutOverlapping();
 
