@@ -48,6 +48,40 @@ class RecoveryCascadeTest extends TestCase
         $this->assertGreaterThan(80, $sleep, 'readiness uses the complete 8h night, not the 4h placeholder');
     }
 
+    public function test_readiness_ignores_a_stale_recovery_reading(): void
+    {
+        $profile = User::factory()->create()->ensureProfile();
+        // The only recovery reading is 3 days old — no reading today or yesterday. It must NOT be scored as
+        // today's recovery (that would show a "recovered" number from a days-old HRV/RHR reading).
+        $profile->recoveryLogs()->create([
+            'logged_at' => Carbon::today()->subDays(3)->toDateString(), 'hrv_ms' => 120, 'resting_hr' => 50,
+        ]);
+
+        $components = Readiness::compute($profile)['components'] ?? [];
+        $this->assertArrayNotHasKey('hrv', $components, 'a 3-day-old reading is not today\'s recovery');
+        $this->assertArrayNotHasKey('rhr', $components, 'a 3-day-old reading is not today\'s recovery');
+    }
+
+    public function test_readiness_still_uses_a_yesterday_recovery_reading(): void
+    {
+        $profile = User::factory()->create()->ensureProfile();
+        // Baseline history + the most recent reading dated YESTERDAY — fresh enough to stand in for today
+        // (grace = today or yesterday), so HRV/RHR still contribute.
+        for ($d = 2; $d <= 20; $d++) {
+            $profile->recoveryLogs()->create([
+                'logged_at' => Carbon::today()->subDays($d)->toDateString(),
+                'hrv_ms' => 120 + ($d % 5), 'resting_hr' => 50 + ($d % 3),
+            ]);
+        }
+        $profile->recoveryLogs()->create([
+            'logged_at' => Carbon::today()->subDay()->toDateString(), 'hrv_ms' => 130, 'resting_hr' => 48,
+        ]);
+
+        $components = Readiness::compute($profile)['components'] ?? [];
+        $this->assertArrayHasKey('hrv', $components, "yesterday's reading still stands in for today");
+        $this->assertArrayHasKey('rhr', $components, "yesterday's reading still stands in for today");
+    }
+
     public function test_recovery_greeting_waits_for_the_night_to_finalize(): void
     {
         $profile = User::factory()->create()->ensureProfile();

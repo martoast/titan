@@ -37,6 +37,11 @@ class Readiness
     /** Nights of history before the full z-score baseline is trustworthy (§5 cold-start). */
     private const MIN_BASELINE = 14;
 
+    /** How stale the most-recent recovery reading may be and still stand in for "today" (today or
+     *  yesterday). Older than this, there is no current reading — HRV/RHR don't contribute, rather than
+     *  scoring a days-old reading as today's recovery. Mirrors SleepLog's last-night freshness rule. */
+    private const FRESH_READING_DAYS = 1;
+
     /**
      * Compute readiness for a profile on a given date.
      *
@@ -53,8 +58,17 @@ class Readiness
             ->limit(61)
             ->get();
 
-        $today = $history->firstWhere(fn (RecoveryLog $r) => $r->logged_at->toDateString() === $date)
-            ?? $history->last();
+        // The reading being scored AS today. Prefer an actual same-day log; otherwise the most recent one
+        // stands in only while it's still fresh (yesterday). An older reading is stale history, not today's
+        // recovery — scoring it would show a "recovered" number built on an HRV/RHR reading days old (the
+        // same phantom-score bug as a stale sleep night). The 60-day baseline in $history is untouched;
+        // only the CURRENT reading must be recent. If none is fresh, HRV/RHR simply don't contribute.
+        $today = $history->firstWhere(fn (RecoveryLog $r) => $r->logged_at->toDateString() === $date);
+        if (! $today) {
+            $latest = $history->last();
+            $freshFloor = Carbon::parse($date)->subDays(self::FRESH_READING_DAYS)->toDateString();
+            $today = ($latest && $latest->logged_at->toDateString() >= $freshFloor) ? $latest : null;
+        }
 
         // A FINAL night only — never the in-flight `computing` placeholder (duration but no stages/quality),
         // or readiness would be computed from an incomplete night for the ~2 min it's being staged. Until
