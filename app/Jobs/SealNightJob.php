@@ -821,6 +821,20 @@ class SealNightJob implements ShouldQueue
             return;
         }
 
+        // Whole-night HRV / RHR → recovery_logs, from THIS session's own overnight IBI. The auto path does
+        // this in sealNight(); a CONFIRMED session (start/stop on the watch) must too — without it a night
+        // recorded that way stages sleep but never produces a recovery/HRV read, leaving readiness
+        // permanently HRV-blind (stuck provisional/sleep-only despite the band being worn all night). Nights
+        // only: a nap / evening cluster carries exercise-elevated HR, not resting recovery. Runs before
+        // staging (mirrors sealNight order) so a transient service error retries cleanly on the still-
+        // `computing` placeholder rather than short-circuiting the already-`final` replay guard.
+        if (! $isNap) {
+            $ibiScoped = $scoped->whereIn('kind', ['ibi', 'ppg_raw']);
+            if ($ibiScoped->isNotEmpty()) {
+                $this->sealRecovery($profile, $biosignal, $date, $ibiScoped);
+            }
+        }
+
         // Effective staging end = min(marker wake, last sample + a few hours' grace). This presumes sleep a
         // little past where the band stopped (so a band that DIED mid-night still reads as a real night to
         // the honest wake marker), but never the many hours a forgot-to-mark marker would claim as "light
