@@ -126,6 +126,7 @@
     <script>
         const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
         const NUS_TX      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // device → us (notify)
+        const NUS_RX      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // us → device (write)
 
         function bangleBridge(cfg) {
             return {
@@ -135,7 +136,7 @@
                 samples: 0, windowsSent: 0, rateHz: 0, bpm: 0,
                 statusLabel: 'Disconnected',
                 btSupported: !!(navigator.bluetooth && navigator.bluetooth.requestDevice),
-                _device: null, _rx: '', _wave: [], waveHasData: false,
+                _device: null, _rx: '', _rxChar: null, _wave: [], waveHasData: false,
                 _samples: [], _trailTimer: null, WINDOW_MS: 120000,
                 log: [],
                 // ---- auto-sync ----
@@ -206,6 +207,13 @@
                     const tx = await svc.getCharacteristic(NUS_TX);
                     await tx.startNotifications();
                     tx.addEventListener('characteristicvaluechanged', (e) => this._onBytes(e.target.value));
+                    // Push the phone's clock to the band (C2) on every attach, like the iOS companion.
+                    // After a dead-battery reboot the band's RTC restarts at 1970 and stays wrong until
+                    // this lands — un-synced, every wake/workout marker it emits is epoch-stamped garbage.
+                    try {
+                        this._rxChar = await svc.getCharacteristic(NUS_RX);
+                        await this._syncTime();
+                    } catch (e) { this._rxChar = null; /* RX missing: old firmware — stream-only still works */ }
                     this.connected = true;
                     this._userDisconnected = false;
                     clearTimeout(this._reconnectTimer);
@@ -218,6 +226,18 @@
                         const win = this._wa && this._wa.tick(this._maxDeviceT);
                         if (win) this._ship(win);
                     }, 5000);
+                },
+                // The band's C2 command: set time + timezone from this device's clock. Format matches
+                // the firmware parser and the iOS companion: {t: unixSeconds UTC, tz: hoursOffset}.
+                async _syncTime() {
+                    if (!this._rxChar) return;
+                    const t = Math.floor(Date.now() / 1000);
+                    const tz = -new Date().getTimezoneOffset() / 60;   // e.g. PDT = -7
+                    const cmd = 'C2:' + JSON.stringify({ t: t, tz: tz }) + '\n';
+                    const bytes = new TextEncoder().encode(cmd);
+                    if (this._rxChar.writeValueWithoutResponse) await this._rxChar.writeValueWithoutResponse(bytes);
+                    else await this._rxChar.writeValue(bytes);
+                    this._log('ok', 'Band clock synced');
                 },
                 // A Web Bluetooth link is bound to the page session, so a refresh drops it.
                 // Chrome remembers granted devices, though — so on load we silently re-attach

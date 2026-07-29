@@ -187,6 +187,8 @@ class DeviceIngestionService
     private const CLOCK_AHEAD_TOLERANCE_SEC = 7200; // 2h
     /** Cap for a re-anchored window's span so a corrupt duration can't invent a huge session. */
     private const REANCHOR_MAX_SPAN_SEC = 21600; // 6h
+    /** Span cap when re-anchoring a SLEEP marker — a real night outruns 6h; mirrors SealNightJob::MAX_SESSION_MIN. */
+    private const REANCHOR_MAX_SLEEP_SPAN_SEC = 57600; // 16h
 
     /**
      * Guard against a broken band clock. After a dead-battery reboot or a fresh reflash the band's RTC
@@ -202,7 +204,7 @@ class DeviceIngestionService
      *
      * @return array{0:CarbonImmutable,1:CarbonImmutable}
      */
-    private function reanchorIfClockBad(CarbonImmutable $start, CarbonImmutable $end): array
+    private function reanchorIfClockBad(CarbonImmutable $start, CarbonImmutable $end, int $maxSpanSec = self::REANCHOR_MAX_SPAN_SEC): array
     {
         $floor = CarbonImmutable::parse(self::CLOCK_FLOOR);
         $now = now()->toImmutable();
@@ -214,9 +216,9 @@ class DeviceIngestionService
             return [$start, $end];
         }
 
-        // Keep the window's real span (clamped), and hang it off the upload time.
+        // Keep the real span (clamped), and hang it off the upload time.
         $span = $start->lessThanOrEqualTo($end) ? abs($start->diffInSeconds($end)) : 0;
-        $span = min($span, self::REANCHOR_MAX_SPAN_SEC);
+        $span = min($span, $maxSpanSec);
 
         return [$now->subSeconds($span), $now];
     }
@@ -237,6 +239,25 @@ class DeviceIngestionService
         if (empty($summary['confirmed'])) {
             return false;
         }
+        // The marker's [bedtime, wake] epochs come off the band's OWN clock, and — like raw windows —
+        // a dead-battery reboot leaves that clock un-synced (~1970) until a C2 time-sync lands. Raw
+        // windows are re-anchored on ingest, but these epochs used to pass through RAW: the confirmed
+        // seal then scoped itself to a 1970 window, found no windows there, and wrote a phantom
+        // 1970-dated marker-only row while the real night waited hours for the slow auto pass (bit
+        // Tester B four mornings running, 2026-07-23..26). Re-anchor the pair the same way: keep the
+        // user's declared span (a night can be long — cap 16h, mirroring SealNightJob's session max)
+        // and hang it off the upload time, since the marker uploads moments after the double-click.
+        $bed = (! empty($summary['bedtime']) && is_numeric($summary['bedtime'])) ? (int) $summary['bedtime'] : null;
+        $wake = (! empty($summary['wake']) && is_numeric($summary['wake'])) ? (int) $summary['wake'] : null;
+        if ($wake !== null) {
+            [$bedDt, $wakeDt] = $this->reanchorIfClockBad(
+                CarbonImmutable::createFromTimestamp($bed ?? $wake, 'UTC'),
+                CarbonImmutable::createFromTimestamp($wake, 'UTC'),
+                self::REANCHOR_MAX_SLEEP_SPAN_SEC,
+            );
+            $bed = $bed !== null ? $bedDt->getTimestamp() : null;
+            $wake = $wakeDt->getTimestamp();
+        }
         // Key the night the SAME way SealNightJob groups windows — by the local date the overnight
         // windows END (the wake date). Deriving it from bedtime breaks for every sleep that crosses
         // midnight (bed 23:00 → wake 07:00): the bedtime date never matches the window_end grouping,
@@ -249,19 +270,17 @@ class DeviceIngestionService
             ->max('window_end');
         if ($latestEnd !== null) {
             $night = CarbonImmutable::parse($latestEnd)->setTimezone($tz)->toDateString();
-        } elseif (! empty($summary['wake']) && is_numeric($summary['wake'])) {
+        } elseif ($wake !== null) {
             // No unsealed windows (already sealed by the cron, or the night's raw upload failed) —
             // the user still explicitly marked awake, so key the night off the marker's own wake
             // timestamp instead of silently dropping their confirmation.
-            $night = CarbonImmutable::createFromTimestamp((int) $summary['wake'], 'UTC')->setTimezone($tz)->toDateString();
+            $night = CarbonImmutable::createFromTimestamp($wake, 'UTC')->setTimezone($tz)->toDateString();
         } else {
             return false;
         }
         // Pass the user's REAL session bounds through so the seal scopes to [bedtime, wake] — not the
         // whole calendar date — and can guarantee a bounded nap row even when the PPG windows are thin
         // or never arrived. Ignoring these is what buried a nap under a whole-day "Awake 100%" phantom.
-        $bed = (! empty($summary['bedtime']) && is_numeric($summary['bedtime'])) ? (int) $summary['bedtime'] : null;
-        $wake = (! empty($summary['wake']) && is_numeric($summary['wake'])) ? (int) $summary['wake'] : null;
         \App\Jobs\SealNightJob::dispatch($connection->profile_id, $night, true, $bed, $wake)->afterCommit();
 
         return true;
@@ -283,6 +302,13 @@ class DeviceIngestionService
         if ($start === null || $end === null || $end <= $start) {
             return false;
         }
+        // Same un-synced-RTC guard as the sleep marker: a 1970-stamped envelope scopes the workout
+        // seal to nowhere and writes a phantom 1970-dated session. Keep the real span, anchor at upload.
+        [$startDt, $endDt] = $this->reanchorIfClockBad(
+            CarbonImmutable::createFromTimestamp($start, 'UTC'),
+            CarbonImmutable::createFromTimestamp($end, 'UTC'),
+        );
+        [$start, $end] = [$startDt->getTimestamp(), $endDt->getTimestamp()];
         // The workout's ACTIVITY kind ('run'/'strength'/…) travels in its own field — `kind` on the
         // summary is the summary TYPE ('workout_session') and is consumed by writeSummary's router.
         $kind = (! empty($summary['activity_kind']) && is_string($summary['activity_kind'])) ? $summary['activity_kind'] : null;
