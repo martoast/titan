@@ -110,6 +110,33 @@ cat ~/deploy/.henry-seen           # what Henry has reviewed through
 The catcher does not exit on the first hit — the loop is bidirectional and a session normally needs
 several round trips.
 
+## The mechanics on the dev side
+
+The other half, added 2026-08-03 — until then the loop only ran one way, and Alex had to relay
+Henry's reviews by hand.
+
+```bash
+./scripts/dev-watch.sh              # one-shot: reviews pushed since our marker, with the verdict line
+./scripts/dev-watch.sh --watch      # poll every 45s (mirrors henry-watch.sh)
+./scripts/dev-watch.sh --seen [sha] # advance the marker once the review has been acted on
+cat "$(git rev-parse --git-dir)/titan-dev-seen"   # what the dev agent has read through
+```
+
+Two deliberate choices, both mirroring mistakes already made on the server side:
+
+- **A review is identified by subject prefix or a `tasks/reviews/` file, never by author.** Both
+  sides push as `martoast <alexmartos96@gmail.com>`, so the author field cannot discriminate.
+- **`--seen` refuses a commit that isn't an ancestor of `origin/master`**, for the same reason
+  `henry-reviewed.sh` does — a marker advanced past a commit that was never pushed silently skips a
+  review nobody ever reads.
+
+The marker lives in `.git/` rather than the working tree: it is per-checkout state, and a committed
+marker would conflict on every round trip.
+
+**The dev agent should also state its own verdict line** when a push answers a review — e.g. a commit
+subject or body opening `ADDRESSES <review-file> · <n> items` — so Henry can tell a response from a
+new increment without diffing.
+
 ---
 
 ## Failure modes that have actually happened

@@ -128,3 +128,23 @@ a math bug. **[docs/SEAL_ARCHITECTURE.md](docs/SEAL_ARCHITECTURE.md)** is requir
 `SealNightJob`, `SealActivityJob`, `ProcessWindowJob`, the biosignal `staging.py`/`activity.py`, or any
 "last night"/streak/strain reader — it has the invariants and a pre-change checklist that prevent the
 "17-minute night" class of bug.
+
+## You are not the only agent in this repo — read the review loop
+
+A second agent (**Henry**) runs on the production server and reviews every push to `master`. He has
+what this checkout does not: the **production database, Alex's real band data, the raw waveforms in
+MinIO, and the running containers**. He catches pushes automatically within ~45s and answers with a
+`review(...)` commit under `tasks/reviews/`.
+
+**[tasks/REVIEW_LOOP.md](tasks/REVIEW_LOOP.md) is the contract — read it before pushing.** The two
+rules that matter most from this side:
+
+- **The commit is the channel.** Neither agent can see the other's chat, so anything that matters
+  must be in the commit message or a committed file.
+- **Say what you could not verify.** Firmware needs a reflash, iOS needs Xcode, anything else needs
+  real data — name the gap and Henry closes it. That is the whole value of the loop.
+
+```bash
+./scripts/dev-watch.sh              # any reviews we haven't acted on? (--watch to poll)
+./scripts/dev-watch.sh --seen       # mark them read once acted on
+```
