@@ -56,7 +56,11 @@ class CoachActivityPrimingTest extends TestCase
     public function test_priming_normalizes_synonyms(): void
     {
         $this->assertSame('run', ActivityPriming::normalize('jog'));
-        $this->assertSame('cycle', ActivityPriming::normalize('Peloton spin'));
+        // Was 'cycle' until 2026-08-03. A Peloton is a stationary bike, and the firmware now picks a
+        // different HR model for it (SPORT_TYPE_SPINNING vs RIDE_BIKE) using `gps` as the
+        // discriminator — so priming it as road cycling both requested the wrong model and powered
+        // the GPS indoors. See SpinBikePrimingTest.
+        $this->assertSame('spin', ActivityPriming::normalize('Peloton spin'));
         $this->assertSame('row', ActivityPriming::normalize('erg'));
         $this->assertSame('other', ActivityPriming::normalize('underwater basket weaving'));
         $this->assertFalse(ActivityPriming::profile('swim')['gps']);   // no GPS underwater

@@ -285,8 +285,8 @@ class CoachTools
 
         // --- Cardio / activity sessions (write) — start an activity and PRIME the wearable for it ---
         if (class_exists(\App\Models\ActivitySession::class)) {
-            $tools[] = $this->fn('start_activity', "Start cardio (run/walk/hike/bike/swim/row/HIIT) AND prime the wearable for it (e.g. GPS + faster HR for a run). Cardio only; use start_workout/log_set for lifting.", [
-                'type' => ['type' => 'string', 'description' => 'Activity, e.g. run, walk, hike, cycle, swim, row, hiit. Free text is fine — it gets normalized.'],
+            $tools[] = $this->fn('start_activity', "Start cardio (run/walk/hike/bike/spin/swim/row/HIIT) AND prime the wearable for it (e.g. GPS + faster HR for a run). Cardio only; use start_workout/log_set for lifting.", [
+                'type' => ['type' => 'string', 'description' => 'Activity, e.g. run, walk, hike, cycle, spin, swim, row, hiit. Free text is fine — it gets normalized. A GYM/STATIONARY bike is "spin", not "cycle" — they select different heart-rate models on the band, and spin keeps the GPS off.'],
                 'note' => ['type' => 'string', 'description' => 'Optional note, e.g. "easy zone 2", "tempo".'],
             ], ['type']);
 

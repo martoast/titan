@@ -25,6 +25,12 @@ class ActivityPriming
         'walk' => ['label' => 'Walk', 'hr_hz' => 0.5, 'accel_hz' => 12.5, 'gps' => true],
         'hike' => ['label' => 'Hike', 'hr_hz' => 0.5, 'accel_hz' => 12.5, 'gps' => true],
         'cycle' => ['label' => 'Cycle', 'hr_hz' => 1.0, 'accel_hz' => 6.25, 'gps' => true],
+        // A gym spin bike is a DIFFERENT activity from a road ride, to the sensor and to the battery.
+        // The firmware picks SPORT_TYPE_SPINNING (algo.h 0x12) over RIDE_BIKE (0x02) for it, and uses
+        // `gps` as the discriminator — so priming a spin session with gps:true would silently request
+        // the road model AND power the receiver indoors for a fix it will never get. Same low accel
+        // rate as cycling: the wrist is static on the bars either way.
+        'spin' => ['label' => 'Spin bike', 'hr_hz' => 1.0, 'accel_hz' => 6.25, 'gps' => false],
         'swim' => ['label' => 'Swim', 'hr_hz' => 1.0, 'accel_hz' => 12.5, 'gps' => false],
         'row' => ['label' => 'Row', 'hr_hz' => 1.0, 'accel_hz' => 12.5, 'gps' => false],
         'hiit' => ['label' => 'HIIT', 'hr_hz' => 1.0, 'accel_hz' => 25.0, 'gps' => false],
@@ -37,7 +43,19 @@ class ActivityPriming
     private const ALIASES = [
         'jog' => 'run', 'jogging' => 'run', 'running' => 'run', 'sprint' => 'run', 'sprints' => 'run', 'treadmill' => 'run',
         'walking' => 'walk', 'stroll' => 'walk', 'rucking' => 'hike', 'ruck' => 'hike', 'hiking' => 'hike', 'trek' => 'hike',
-        'bike' => 'cycle', 'biking' => 'cycle', 'cycling' => 'cycle', 'ride' => 'cycle', 'spin' => 'cycle', 'spinning' => 'cycle', 'peloton' => 'cycle',
+        // ORDER MATTERS HERE. normalize() falls back to a str_contains scan in insertion order, and
+        // every one of these phrases CONTAINS "bike" or "cycling" — so the specific indoor forms must
+        // be listed BEFORE the generic outdoor ones or "spin bike" resolves to road cycling.
+        // These used to alias to 'cycle', which meant the words that most clearly mean "spin bike"
+        // were the ones that guaranteed the ROAD model; the firmware's SPINNING branch was
+        // unreachable from the coach entirely.
+        'spin bike' => 'spin', 'stationary bike' => 'spin', 'exercise bike' => 'spin',
+        'indoor bike' => 'spin', 'indoor cycling' => 'spin', 'assault bike' => 'spin',
+        'spinning' => 'spin', 'peloton' => 'spin', 'stationary' => 'spin',
+        // Outdoor riding. A bare "bike" stays ROAD: it is the general meaning, and the wrong guess is
+        // asymmetric — a road model on a spin bike costs some HR accuracy, while spin on a real ride
+        // costs the route entirely. Say "spin bike" (or prime it in the app) for the gym.
+        'bike' => 'cycle', 'biking' => 'cycle', 'cycling' => 'cycle', 'ride' => 'cycle',
         'swimming' => 'swim', 'laps' => 'swim',
         'rowing' => 'row', 'erg' => 'row', 'ergometer' => 'row',
         'interval' => 'hiit', 'intervals' => 'hiit', 'circuit' => 'hiit', 'crossfit' => 'hiit', 'metcon' => 'hiit',
