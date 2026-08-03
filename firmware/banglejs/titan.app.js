@@ -1281,17 +1281,36 @@ function applyAccelRate() {
 // Which Bangle sport mode fits the current state: normal (0) at rest, biking (2) for a primed
 // cycle/bike workout, general sport (1) for any other workout (lifting included). Lifting has no
 // dedicated mode; mode 1 is the motion-tolerant general profile and is far better than normal.
+// The workout SPORT TAG carried on every T5 frame. This stays the workout's sport (run/bike) for the WHOLE
+// session because the phone's live workout state machine reads `sport==1` as "workout active" — flipping it
+// to 0 mid-workout would make the app seal the run. The ACTUAL Bangle HRM algorithm mode is chosen
+// separately (accel-gated) by hrmAlgoModeFor(); tag and applied-mode used to be the same value, which is
+// why a still moment mid-workout both mis-tagged and mis-read the HR.
 function hrmSportFor() {
-  if (!(state.streaming && state.workout)) return 0;            // rest → normal
+  if (!(state.streaming && state.workout)) return 0;            // not in a workout → normal
   var t = primed && primed.type;
   if (t === "bike" || t === "cycle" || t === "cycling") return CFG.HRM_SPORT_BIKE;
   return CFG.HRM_SPORT_RUN;
+}
+
+// The Bangle HRM algorithm mode to actually APPLY (Bangle.setOptions hrmSportMode). Sport (motion-tolerant)
+// mode only helps with real motion; when the wrist is still mid-workout it cadence-locks onto noise and
+// reports a confidently-WRONG elevated HR (~119 while sitting) the conf>=90 gate can't catch. So accel-gate
+// it: normal mode when still (true resting HR), the workout's sport profile when moving. HI/LO hysteresis
+// (reusing the workout-detect thresholds) prevents flapping at the boundary. Independent of the frame tag.
+function hrmAlgoModeFor() {
+  var tag = hrmSportFor();
+  if (tag === 0) return 0;                                      // not a workout → normal
+  if (motionEMA > CFG.AUTO_MOTION_HI) return tag;              // clearly moving → motion-tolerant
+  if (motionEMA < CFG.AUTO_MOTION_LO) return 0;                // clearly still → normal (true resting HR)
+  return curAlgoMode || 0;                                     // in-between → hold current (hysteresis)
 }
 
 // ----- Operating-point controller ------------------------------------------
 // The pipeline is fixed; this layer decides HOW HARD to drive it. curOp* hold the point currently
 // applied, so a re-evaluation only power-cycles the HRM when the sample RATE actually changes (no churn).
 var curOpId = null, curSampleRate = 0, curLed = "auto", curPollMs = 0;
+var curAlgoMode = 0;   // the Bangle hrmSportMode we last APPLIED (accel-gated; distinct from the T5 tag)
 
 // Hz → the nearest supported hrmPollInterval (ms ∈ {10,20,40,80,160,200}).
 function hrmPollMs(hz) {
@@ -1320,10 +1339,11 @@ function pickOperatingPoint() {
 function applyOperatingPoint(op, skipRaw) {
   if (!state.streaming) return;
   var pollMs = hrmPollMs(op.sampleRate), rateChanged = (pollMs !== curPollMs);
-  state.hrmSport = hrmSportFor();
+  state.hrmSport = hrmSportFor();         // the T5 FRAME TAG (workout sport for the whole session; phone reads it)
+  curAlgoMode = hrmAlgoModeFor();         // the mode we actually APPLY (accel-gated: normal when still)
   try {
     // "auto" leaves the VC31B adaptive green brightness on; a number forces a fixed current below.
-    Bangle.setOptions({ hrmSportMode: state.hrmSport, hrmPollInterval: pollMs, hrmGreenAdjust: op.ledCurrent === "auto" });
+    Bangle.setOptions({ hrmSportMode: curAlgoMode, hrmPollInterval: pollMs, hrmGreenAdjust: op.ledCurrent === "auto" });
     if (op.ledCurrent !== "auto") { try { Bangle.hrmWr(0x17, op.ledCurrent); } catch (e) {} }
   } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
   // A poll-interval change only takes effect when the VC31 HRM restarts → power-cycle it. Synchronous, so
@@ -1343,7 +1363,10 @@ function applyOperatingPoint(op, skipRaw) {
 // source of truth reconcileHrm — when the CHOSEN point changes, so a stable state never churns power.
 function runController() {
   if (!state.streaming || CFG.forcedOP) return;
-  if (pickOperatingPoint().id !== curOpId) reconcileHrm();
+  // Re-apply when the chosen operating point changes OR — critically during a workout, where the OP stays
+  // WORKOUT the whole time — when the accel-gated HRM mode should flip (still<->moving). Without the second
+  // check the motion-gated sport selection would never take effect mid-workout (the OP id never changes).
+  if (pickOperatingPoint().id !== curOpId || hrmAlgoModeFor() !== curAlgoMode) reconcileHrm();
 }
 
 // Pin / clear a forced OperatingPoint at runtime (experiments — change config, no reflash) + apply it now.
