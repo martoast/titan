@@ -123,6 +123,8 @@ var CFG = {
   // cadence related to heart rate. This distinction is the whole game for lifting/boxing/calisthenics —
   // see hrmAlgoSportFor(). The enum has 26 modes; we use 3 (normal / running / bike / free-training).
   HRM_ALGO_FREE_TRAINING: 0x19,
+  HRM_ALGO_SPINNING: 0x12,           // SPORT_TYPE_SPINNING (algo.h, 动感单车) — the GYM spin bike, which
+                                     // is a different activity from a road ride: no GPS, still wrist.
 
   // --- 24/7 REST HR (continuous, Whoop-like) --------------------------------
   // The VC31 HR algorithm runs in a C interrupt, so the 1 Hz HR (the HRM event) costs only ~1 mA and lets
@@ -1419,7 +1421,15 @@ function hrmSportFor() {
 function hrmAlgoSportFor() {
   if (!(state.streaming && state.workout)) return 0;
   var k = workoutKind() || "", t = (primed && primed.type) || "";   // primed is cleared at endWorkout
-  if (k === "cycle" || t === "bike" || t === "cycle" || t === "cycling") return CFG.HRM_SPORT_BIKE;
+  if (t === "spin" || t === "spinning" || t === "stationary" || t === "stationary_bike")
+    return CFG.HRM_ALGO_SPINNING;
+  if (k === "cycle" || t === "bike" || t === "cycle" || t === "cycling") {
+    // "Bike" is two different activities to this sensor. A road ride is RIDE_BIKE; a gym spin bike is
+    // SPORT_TYPE_SPINNING (0x12, 动感单车) — no GPS, and the wrist sits still on the bars the whole
+    // session, which is the still-but-working case that already fooled the mode gate once. The GPS
+    // prime is the honest discriminator we already carry: an outdoor ride arms GPS, a gym bike doesn't.
+    return (primed && primed.gps) ? CFG.HRM_SPORT_BIKE : CFG.HRM_ALGO_SPINNING;
+  }
   // Cadence IS informative: a stride paces the arms and the effort together.
   if (k === "run" || k === "walk" || k === "hike" ||
       t === "run" || t === "walk" || t === "hike") return CFG.HRM_SPORT_RUN;
