@@ -64,7 +64,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.alexmartos.titan
         MARKETING_VERSION: "1.1.0"
-        CURRENT_PROJECT_VERSION: "9"
+        CURRENT_PROJECT_VERSION: "10"
         TARGETED_DEVICE_FAMILY: "1"            # iPhone
         SWIFT_VERSION: "5.9"
         ENABLE_PREVIEWS: YES

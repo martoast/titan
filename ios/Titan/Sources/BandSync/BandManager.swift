@@ -50,6 +50,7 @@ public final class BandManager: NSObject {
     // stranger's band (the anti-cross-connect guard in didDiscover).
     private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int, code: String, name: String)] = [:]
     private var pairTimeout: DispatchSourceTimer?
+    private var scanStopTimer: DispatchSourceTimer?   // bounds the reconnect discovery scan (battery)
 
     // MARK: reconnect backoff (H4)
     // A flapping peer must not be hammered: after an unexpected drop / connect failure we re-arm with a
@@ -268,10 +269,9 @@ public final class BandManager: NSObject {
                 if let p = self.central.retrievePeripherals(withIdentifiers: [id]).first {
                     self.band = p; p.delegate = self; self.reconnect(p)
                 }
-                // Background scans return NOTHING unless the service UUID is explicit (iOS requirement), so
-                // filter on the band's Nordic UART service — this is what re-finds a band that dropped while
-                // we were backgrounded.
-                self.central.scanForPeripherals(withServices: [Self.NUS_SERVICE])
+                // A bounded scan catches an address rotation; the standing connect() above handles the
+                // ordinary out-of-range case (no all-day scan). See startBoundedScan.
+                self.startBoundedScan()
             }
         }
     }
@@ -291,9 +291,7 @@ public final class BandManager: NSObject {
             if let p = self.central.retrievePeripherals(withIdentifiers: [id]).first {
                 self.band = p; p.delegate = self; self.reconnect(p)
             }
-            // Explicit service UUID so the scan works when backgrounded (nil scans return nothing there);
-            // didDiscover only accepts our bound id anyway.
-            self.central.scanForPeripherals(withServices: [Self.NUS_SERVICE])
+            self.startBoundedScan()   // bounded — connect() above covers the common reconnect case
         }
     }
 
@@ -378,8 +376,7 @@ public final class BandManager: NSObject {
             if let p = self.central.retrievePeripherals(withIdentifiers: [id]).first {
                 self.band = p; p.delegate = self; self.reconnect(p)
             }
-            // Explicit service UUID so the scan works when backgrounded; didDiscover only accepts our bound id.
-            self.central.scanForPeripherals(withServices: [Self.NUS_SERVICE])
+            self.startBoundedScan()   // user "Reconnect" → a fresh bounded discovery scan
         }
     }
 
@@ -397,12 +394,44 @@ public final class BandManager: NSObject {
         central.connect(p, options: opts)
     }
 
-    /// Re-arm a reconnect with exponential backoff (H4) — for the UNSOLICITED failure/disconnect paths
-    /// (didFailToConnect, an unexpected drop). Delays grow 0 → 1 → 2 → 4 → 8 s (capped ~8 s) and reset to
-    /// 0 on a successful connect. A newer scheduled reconnect (token bump) supersedes an older one.
+    /// Start a BOUNDED discovery scan, then stop it after `seconds`. The standing no-timeout `connect()`
+    /// already re-establishes the link the instant the band comes back in range, so a scan adds nothing for
+    /// the ordinary out-of-range case — its only real value is catching a BLE-ADDRESS ROTATION after a
+    /// watch reboot/reflash (where `retrievePeripherals(boundId)` is a dead handle and only a fresh advert
+    /// can recover). Running a service-filtered scan 24/7 for every out-of-range period to catch that rare
+    /// event is a steady background battery drain; bounding it keeps the payoff without the all-day cost
+    /// (foreground/ensureConnected + the Reconnect button restart it, so a rotation still recovers). Must be
+    /// filtered on the service UUID (a background scan returns nothing otherwise); pairing uses its own scan.
+    private func startBoundedScan(_ seconds: TimeInterval = 30) {
+        central.scanForPeripherals(withServices: [Self.NUS_SERVICE])
+        scanStopTimer?.cancel()
+        let t = DispatchSource.makeTimerSource(queue: bleQueue)
+        t.schedule(deadline: .now() + seconds)
+        t.setEventHandler { [weak self] in
+            guard let self, !self.pairing, self.band?.state != .connected else { return }
+            self.central.stopScan()
+        }
+        scanStopTimer = t
+        t.resume()
+    }
+
+    /// Re-arm a reconnect for the UNSOLICITED failure/disconnect paths (didFailToConnect, an unexpected
+    /// drop where the OS isn't auto-reconnecting for us).
+    ///
+    /// CRITICAL for true always-on: we issue the no-timeout `connect()` IMMEDIATELY. A pending `connect()`
+    /// is the CoreBluetooth-level primitive that lets iOS relaunch a TERMINATED app the instant the band
+    /// reappears. Relying on the bleQueue backoff timer alone (as this used to) is NOT enough — that
+    /// closure is frozen when the app suspends and lost when it's jetsammed, so during the backoff window
+    /// nothing is armed at the CB level and the band would silently stop syncing until a manual reopen.
+    /// `connect()` is no-timeout, so arming it now never "hammers" a peer — it just waits.
+    ///
+    /// The exponential backoff (0 → 1 → 2 → 4 → 8 s, reset on connect) now only PACES an additional
+    /// re-issue as insurance; re-issuing a still-pending connect is a cheap no-op (CoreBluetooth dedups).
     private func scheduleReconnect(_ p: CBPeripheral) {
+        reconnect(p)   // arm the standing pending connection NOW (survives suspend + termination)
         let delay = reconnectBackoff
         reconnectBackoff = reconnectBackoff == 0 ? 1 : min(reconnectBackoff * 2, 8)
+        guard delay > 0 else { return }   // first drop: the immediate connect() above is the arming
         reconnectWorkToken += 1
         let token = reconnectWorkToken
         bleQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
@@ -427,6 +456,7 @@ public final class BandManager: NSObject {
     private func handleConnected(_ p: CBPeripheral) {
         central.stopScan()   // we're connected — stop the discovery scan (a connected band never re-advertises,
                              // so didDiscover can't stop it; without this a scan ran all session)
+        scanStopTimer?.cancel(); scanStopTimer = nil   // connected before the bounded-scan window elapsed
         // Back-fill a missing bound name now that we're connected (p.name resolves over GATT). Repairs any
         // binding made before we captured the advertised name, so the address-rotation guard has a real
         // name to match instead of falling through to the unsafe service-only path.
@@ -462,9 +492,9 @@ extension BandManager: CBCentralManagerDelegate {
             if p.state == .connected { return }
             reconnect(p)
         }
-        // Not connected → scan so we catch the band the moment it advertises. MUST filter on the service
-        // UUID — a `nil` scan returns nothing while backgrounded (iOS rule); didDiscover only accepts our id.
-        c.scanForPeripherals(withServices: [Self.NUS_SERVICE])
+        // Not connected → a BOUNDED discovery scan (catches an address rotation); the always-on connect()
+        // re-armed above handles the ordinary out-of-range reconnect without an all-day scan.
+        startBoundedScan()
     }
 
     /// FIRST callback when iOS relaunches a terminated app for a BLE event.
