@@ -28,6 +28,26 @@ final class FrameDecoderTests: XCTestCase {
         }
     }
 
+    // Regression: a corrupted/uninitialized-RTC frame can carry an epoch near UInt64.max. The per-sample
+    // time reconstruction (epoch + relT) must NOT trap — a trapping `+` there crashes the frame-router
+    // queue (i.e. the app) on ordinary BLE corruption. Verify it wraps instead of crashing.
+    func testT1HugeEpochDoesNotOverflowTrap() {
+        var b: [UInt8] = [0, 0]
+        func u16(_ v: UInt16) { for i in 0..<2 { b.append(UInt8((v >> (8*UInt16(i))) & 0xff)) } }
+        func u32(_ v: UInt32) { for i in 0..<4 { b.append(UInt8((v >> (8*UInt32(i))) & 0xff)) } }
+        func u64(_ v: UInt64) { for i in 0..<8 { b.append(UInt8((v >> (8*UInt64(i))) & 0xff)) } }
+        b = []
+        b.append(0); b.append(0)          // ver, rsvd
+        u16(1)                            // count = 1
+        u64(UInt64.max)                   // epoch near the top of the range
+        u32(0)                            // header padding to 16 B
+        u32(1000)                         // sample relT = 1000 → epoch &+ 1000 wraps to 999
+        u16(0); u16(0); u16(0); u16(0)    // ppg, ax, ay, az
+        let f = FrameDecoder.decodeT1(Data(b).base64EncodedString())
+        XCTAssertEqual(f.samples.count, 1)
+        XCTAssertEqual(f.samples.first?.t, UInt64.max &+ 1000)   // wrapped, not crashed
+    }
+
     func testT4() {   // v4 (20 B): no coords → lat/lon decode to nil
         let f = FrameDecoder.decodeT4("AQniBEDpI3SXAQAA0gQAAAAAAAA=")
         XCTAssertEqual(f, GpsFix(t: 1750000200000, sats: 9, speedKmh: 12.5, alt: 123.4, lat: nil, lon: nil))

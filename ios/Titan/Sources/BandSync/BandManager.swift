@@ -44,7 +44,11 @@ public final class BandManager: NSObject {
     private var boundName: String?
     /// True only during a fresh pair: collect nearby bands so the user picks theirs by code.
     private var pairing = false
-    private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int, code: String)] = [:]
+    // Carry the advertised `name` too: during pairing the phone only SCANS the band (never connects), so
+    // `CBPeripheral.name` is still nil — the advertised name captured here is the only name we have to
+    // persist as `boundName`, which is what stops a later address-rotation re-bind from adopting a
+    // stranger's band (the anti-cross-connect guard in didDiscover).
+    private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int, code: String, name: String)] = [:]
     private var pairTimeout: DispatchSourceTimer?
 
     // MARK: reconnect backoff (H4)
@@ -190,7 +194,9 @@ public final class BandManager: NSObject {
             self.pairing = false
             self.pairTimeout?.cancel(); self.pairTimeout = nil
             self.boundId = id
-            self.boundName = c.peripheral.name
+            // Prefer the advertised name captured at discovery — c.peripheral.name is still nil here
+            // (we only scanned, never connected), which is exactly why boundName used to persist as nil.
+            self.boundName = c.name.isEmpty ? c.peripheral.name : c.name
             UserDefaults.standard.set(id.uuidString, forKey: Self.boundKey)
             if let n = self.boundName { UserDefaults.standard.set(n, forKey: Self.boundNameKey) }
             else { UserDefaults.standard.removeObject(forKey: Self.boundNameKey) }
@@ -403,6 +409,13 @@ public final class BandManager: NSObject {
     private func handleConnected(_ p: CBPeripheral) {
         central.stopScan()   // we're connected — stop the discovery scan (a connected band never re-advertises,
                              // so didDiscover can't stop it; without this a scan ran all session)
+        // Back-fill a missing bound name now that we're connected (p.name resolves over GATT). Repairs any
+        // binding made before we captured the advertised name, so the address-rotation guard has a real
+        // name to match instead of falling through to the unsafe service-only path.
+        if boundName == nil, let n = p.name, !n.isEmpty {
+            boundName = n
+            UserDefaults.standard.set(n, forKey: Self.boundNameKey)
+        }
         reconnectBackoff = 0
         reconnectWorkToken += 1     // supersede any pending scheduled reconnect
         wedgeRecovering = false
@@ -424,10 +437,14 @@ extension BandManager: CBCentralManagerDelegate {
         // the known peripheral (works in the background, no scan).
         if let p = c.retrievePeripherals(withIdentifiers: [id]).first {
             band = p; p.delegate = self
-            if p.state != .connected { reconnect(p) }
+            // Already connected (e.g. restored live by willRestoreState) → do NOT scan. A connected band
+            // never re-advertises, so didDiscover would never fire to stopScan() and the scan would run
+            // 24/7 alongside a healthy link — a real all-day battery drain (StrapManager guards this too).
+            if p.state == .connected { return }
+            reconnect(p)
         }
-        // Also scan so we catch the band the moment it advertises. MUST filter on the service UUID — a
-        // `nil` scan returns nothing while backgrounded (iOS rule); didDiscover only accepts our bound id.
+        // Not connected → scan so we catch the band the moment it advertises. MUST filter on the service
+        // UUID — a `nil` scan returns nothing while backgrounded (iOS rule); didDiscover only accepts our id.
         c.scanForPeripherals(withServices: [Self.NUS_SERVICE])
     }
 
@@ -451,7 +468,7 @@ extension BandManager: CBCentralManagerDelegate {
         if pairing {
             let name = p.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? ""
             let code = String(name.replacingOccurrences(of: " ", with: "").suffix(4)).uppercased()
-            candidates[p.identifier] = (p, rssi.intValue, code)
+            candidates[p.identifier] = (p, rssi.intValue, code, name)
             onCandidates?(candidates.values
                 .map { PairCandidate(id: $0.peripheral.identifier, code: $0.code, rssi: $0.rssi) }
                 .sorted { $0.rssi > $1.rssi })
@@ -488,9 +505,9 @@ extension BandManager: CBCentralManagerDelegate {
     /// The OS gave up on a connect attempt (H4). Re-arm with backoff so a peer that's advertising but
     /// refusing (or momentarily gone) isn't hammered.
     public func centralManager(_ c: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
+        guard p.identifier == boundId else { return }   // a stale/other peripheral must not touch live state
         stopLiveWatchdog()
         setLive(false)
-        guard p.identifier == boundId else { return }
         scheduleReconnect(p)
     }
 
@@ -517,13 +534,16 @@ extension BandManager: CBCentralManagerDelegate {
     /// on purpose (unbind). The one exception: a SELF-HEAL cancel (H2) reports nil error but MUST still
     /// reconnect — `forceReconnectAfterCancel` distinguishes it from a deliberate unbind.
     private func handleDisconnect(_ p: CBPeripheral, error: Error?, osIsReconnecting: Bool) {
+        // Identity FIRST: an old/stale peripheral disconnecting (e.g. during a re-pair, while the new bound
+        // band is already streaming) must not flip us not-live, flush the live band's window, or consume the
+        // self-heal flag. All of that belongs only to the bound band's own disconnect.
+        guard p.identifier == boundId else { return }
         stopLiveWatchdog()
         setLive(false)
         router.flush(live: false)
         wedgeRecovering = false
         let forced = forceReconnectAfterCancel
         forceReconnectAfterCancel = false
-        guard p.identifier == boundId else { return }
         // We deliberately cancelled (error == nil, e.g. unbind) → don't fight it — UNLESS this was our
         // wedge self-heal cancel, which wants a reconnect. Otherwise re-arm (with backoff), but only if
         // the OS isn't already handling the reconnect for us (iOS 17 auto-reconnect).

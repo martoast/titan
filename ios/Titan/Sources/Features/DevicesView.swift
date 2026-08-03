@@ -474,7 +474,9 @@ struct DevicesView: View {
 
     private func liveStat(_ value: String, _ label: LocalizedStringKey, _ color: Color) -> some View {
         VStack(spacing: 3) {
-            Text(value).font(Theme.Font.num(20)).foregroundStyle(color).monospacedDigit().contentTransition(.numericText())
+            // No .contentTransition(.numericText()) here: the "samples" stat changes ~10×/sec while the
+            // band streams, and an animated digit-morph at that rate is a continuous CPU/compositor cost.
+            Text(value).font(Theme.Font.num(20)).foregroundStyle(color).monospacedDigit()
             Text(label).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim).textCase(.uppercase)
         }.frame(maxWidth: .infinity)
     }

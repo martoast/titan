@@ -71,7 +71,10 @@ public enum FrameDecoder {
         for i in 0..<count {
             let o = 16 + i * 12
             if o + 12 > r.count { break }
-            out.append(PpgSample(t: epoch + UInt64(r.u32(o)),
+            // Wrapping (&+): epoch comes straight off the wire, so a corrupted/uninitialized-RTC frame can
+            // carry an epoch near UInt64.max where a trapping `+` would CRASH the frame-router queue. A
+            // wrapped (bad) timestamp is survivable — the seal path already tolerates bad clocks.
+            out.append(PpgSample(t: epoch &+ UInt64(r.u32(o)),
                                  ppg: r.i16(o + 4), ax: r.i16(o + 6),
                                  ay: r.i16(o + 8), az: r.i16(o + 10)))
         }
@@ -93,7 +96,7 @@ public enum FrameDecoder {
         for i in 0..<count {
             let o = 20 + i * 2
             if o + 2 > r.count { break }
-            let t = epoch + UInt64((Double(durMs) * Double(i) / Double(denom)).rounded())
+            let t = epoch &+ UInt64((Double(durMs) * Double(i) / Double(denom)).rounded())   // &+: see decodeT1
             out.append(PpgSample(t: t, ppg: r.i16(o), ax: 0, ay: 0, az: 0))   // PPG-only; no accel
         }
         return T1Frame(epoch: epoch, samples: out)
@@ -135,7 +138,7 @@ public enum FrameDecoder {
         for i in 0..<count {
             let o = 16 + i * 6
             if o + 6 > r.count { break }
-            let t = start + UInt64((Double(durMs) * Double(i) / Double(denom)).rounded())
+            let t = start &+ UInt64((Double(durMs) * Double(i) / Double(denom)).rounded())   // &+: see decodeT1
             out.append(AccelSample(t: t, ax: r.i16(o), ay: r.i16(o + 2), az: r.i16(o + 4)))
         }
         return out
@@ -181,8 +184,8 @@ public enum FrameDecoder {
         for i in 0..<count {
             let o = 16 + i * 2
             if o + 2 > r.count { break }
-            out.append(AltSample(t: t0 + UInt64(i) * intervalMs,
-                                 alt: Double(base + Int32(r.i16(o))) / 10))
+            out.append(AltSample(t: t0 &+ UInt64(i) &* intervalMs,
+                                 alt: Double(Int64(base) + Int64(r.i16(o))) / 10))   // Int64 widen: no i32 overflow
         }
         return out
     }

@@ -297,8 +297,10 @@ struct WaveformView: View {
                         i == 0 ? p.move(to: CGPoint(x: x, y: y)) : p.addLine(to: CGPoint(x: x, y: y))
                     }
                 }
+                // No .shadow here: a blurred drop-shadow on a vector path forces an offscreen rasterize +
+                // Gaussian blur EVERY render, and this trace re-strokes ~10×/sec while the band streams —
+                // a continuous GPU load (device heat). The 2pt round stroke reads fine without it.
                 .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                .shadow(color: color.opacity(0.6), radius: 5)
             } else {
                 Text("Waiting for signal…")
                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)

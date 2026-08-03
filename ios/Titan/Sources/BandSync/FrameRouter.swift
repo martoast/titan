@@ -317,7 +317,13 @@ public final class FrameRouter {
         if let w = motionTrend.flush() { submit(.motionTrend(w)) }   // ship the night's trailing motion epochs
         // On a real disconnect, drop any half-received frame — the firmware re-flushes from scratch on
         // reconnect, so stale partial bytes would otherwise corrupt the first frame of the new stream.
-        if !live { rx.removeAll(keepingCapacity: false) }
+        // Also reset the device-time high-water mark: the live-HR display fallback (isLiveForDisplay)
+        // trusts maxDeviceT as the "leading edge", so it must be re-established by a fresh live T1 after
+        // reconnect — otherwise a replayed offline-ring bpm could momentarily flash on the live readout.
+        if !live {
+            rx.removeAll(keepingCapacity: false)
+            maxDeviceT = 0
+        }
     }
 
     /// A frame is "live" if its band timestamp (ms epoch, C2-synced) is within ~60s of now. Replayed
