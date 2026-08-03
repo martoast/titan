@@ -250,7 +250,15 @@ var CFG = {
                               // acquiring state, not a stale number). 90s so a brief look-at-the-watch wrist
                               // move (which drops PPG confidence) doesn't blank it — only a real lost lock.
     motionThreshold: 0.05,    // motionEMA above this = "moving" → off the low-power STILL floor
-    batteryThreshold: 15      // battery % below this biases DOWN to STILL to protect runtime
+    batteryThreshold: 15,     // battery % below this biases DOWN to STILL to protect runtime
+    // ---- dead-PPG watchdog ---------------------------------------------------------------
+    // A workout can lose the raw waveform entirely while the band still looks healthy: accel keeps
+    // streaming, frames keep flowing, and every PPG sample inside them is 0. Nothing noticed for a
+    // whole 21-minute ride (2026-08-03: 2.0 s of signal, then 2879 consecutive zeros, HR held at a
+    // stale 64). These bound how long that can go unanswered before the band hands the LED back to
+    // the VC31B's adaptive loop and restarts the HRM.
+    ppgDeadMs: 12000,             // all-zero / unreadable raw PPG for this long = the sensor is dead
+    ppgRecoverCooldownMs: 60000   // never re-kick more than once per this (a power-cycle isn't free)
   },
   // A full power loss (dead battery) resets the RTC to ~1970. Frames stamped 1970 are poison downstream:
   // the phone drops them as ">60 s stale" (live HR vanishes) and nights land as "phantom 1970". Floor the
@@ -266,7 +274,7 @@ var CFG = {
   // event + hrmPushEnv option are only enabled while this flag is on). When on, appends one compact CSV
   // row per PROFILE_MS to a capped 2-segment rolling Storage file (titan.prof0 / titan.prof1; the oldest
   // half is dropped when full). Row columns:
-  //   timestamp,opId,batteryVoltage,batteryPct,confidence,bpm,motionMag,ledCurrent,sampleRate,rawEnabled,pwrCPU,pwrHRM,pwrLCD,pwrBLE,pwrTotal,env,fifoDepth,dropped
+  //   timestamp,opId,batteryVoltage,batteryPct,confidence,bpm,motionMag,ledCurrent,sampleRate,rawEnabled,pwrCPU,pwrHRM,pwrLCD,pwrBLE,pwrTotal,env,fifoDepth,dropped,ppgRecoveries
   // pwr* are REAL per-device microamp estimates from E.getPowerUsage() (the on-device power meter — directly
   // attributes energy: CPU rises with the raw-callback load, HRM with the LED/AFE, BLE with the link); 0 if a
   // sub-device or the API is absent. env is the last HRM-env ambient-light reading (LED off) — signal-quality
@@ -316,6 +324,7 @@ var state = {
   swMode: "idle",      // Stopwatch face: "idle" | "watch" (plain timer) | "sleep" (logs as a sleep session)
   swStartMs: 0,        // unix-ms the running timer started
   ppgCount: 0,         // samples captured this session (UI counter)
+  ppgRecoveries: 0,    // dead-PPG watchdog kicks this session (0 = the waveform never died)
   framesSent: 0,       // BLE frames emitted/flushed
   logged: 0,           // approx bytes held in the overnight log ring (UI counter)
   lastAccel: { x: 0, y: 0, z: 0 }, // most recent accel reading (g)
@@ -676,12 +685,52 @@ function pushLiveSample(ppg) {
 
 // ----- Sensor event handlers ------------------------------------------------
 
+// Dead-PPG watchdog state. `ppgDeadSinceMs` is when the current all-zero run began (0 = signal alive).
+var ppgDeadSinceMs = 0, lastPpgRecoverMs = 0;
+var ledAdaptiveOverride = false;   // latched by a recovery: stop re-pinning a fixed LED current
+
 function onHRMRaw(e) {
   if (!state.streaming) return;
-  pushSample(extractPPG(e));
+  var v = extractPPG(e);
+  // A zero sample, or an event carrying none of the PPG_FIELDS at all (ppgFieldCode 255), means we are
+  // recording nothing. One is noise; a continuous run of them is a dead sensor that will otherwise be
+  // written straight into the window as a wall of zeros the server can only reject.
+  if (v === 0 || ppgFieldCode === 255) {
+    var nowMs = Math.round(getTime() * 1000);
+    if (!ppgDeadSinceMs) ppgDeadSinceMs = nowMs;
+    else if (nowMs - ppgDeadSinceMs >= CFG.CONTROLLER.ppgDeadMs) recoverDeadPpg(nowMs);
+  } else {
+    ppgDeadSinceMs = 0;
+  }
+  pushSample(v);
+}
+
+// The waveform has been flat-zero for ppgDeadMs. Hand the green LED back to the VC31B's adaptive loop
+// and restart the HRM. WORKOUT is the only operating point that disables that loop and pins a fixed
+// current (0xE0), so an over/under-driven LED is the prime suspect for the sensor going blind — but
+// this recovers the session whatever the cause, which a targeted fix would not. The override latches
+// for the rest of the session so the controller's next pass doesn't immediately re-pin the fixed value.
+function recoverDeadPpg(nowMs) {
+  if (nowMs - lastPpgRecoverMs < CFG.CONTROLLER.ppgRecoverCooldownMs) return;
+  lastPpgRecoverMs = nowMs;
+  ppgDeadSinceMs = 0;
+  ledAdaptiveOverride = true;
+  state.ppgRecoveries = (state.ppgRecoveries | 0) + 1;   // surfaced in the diagnostics CSV
+  try {
+    Bangle.setOptions({ hrmGreenAdjust: true });
+    Bangle.setHRMPower(0, "titan");
+    Bangle.setHRMPower(1, "titan");
+  } catch (e) { state.lastHrmErr = '' + e; }
 }
 
 var lastGoodHrMs = 0;   // epoch-ms of the last conf-gated bpm — bounds the hold-last-good (HR staleness)
+
+// Is the displayed bpm backed by a RECENT confident lock, rather than a held/never-acquired value?
+// Reuses the same staleness bound as the hold-last-good display, so "the UI stopped trusting this
+// number" and "the mode gate stopped trusting this number" can never disagree.
+function hrLockFresh() {
+  return lastGoodHrMs > 0 && (Math.round(getTime() * 1000) - lastGoodHrMs) < CFG.CONTROLLER.holdMaxMs;
+}
 function onHRM(e) {
   // The on-chip 1 Hz averaged bpm. PUBLISH ON CONFIDENCE (Whoop-like): only a solid lock (conf>=gate)
   // updates the displayed bpm AND publishes an HR frame — live T5 when connected, else a banked T5 trend
@@ -1331,7 +1380,18 @@ function hrmAlgoModeFor() {
   // moving/elevated state, so state.bpm is a trustworthy "still working" signal; collapse to normal only
   // once HR has genuinely recovered below the threshold.
   if (motionEMA > CFG.AUTO_MOTION_HI || state.bpm >= CFG.CONTROLLER.stillWorkHrMin) return tag;
-  if (motionEMA < CFG.AUTO_MOTION_LO) return 0;                // still AND HR recovered → normal (true resting HR)
+  // Dropping to normal is only safe when we actually KNOW the HR is low. `state.bpm` is the
+  // HOLD-LAST-GOOD value, so "never acquired" and "stale" look identical to a genuine resting read —
+  // and the comment above ("we enter the still phase FROM a moving state") does not hold for a ride:
+  // the wrist goes still on the bars from the first pedal stroke, bpm never rises, and the gate
+  // LATCHES into normal mode for the whole session. Normal mode then under-reads, which keeps bpm
+  // below stillWorkHrMin, which keeps us in normal mode — the bad reading prevents the mode that
+  // would fix it. So require a FRESH confident lock before trusting bpm to mean "at rest"; with no
+  // trustworthy HR, honour the workout's own declared intent (the sport tag) instead.
+  // Cost of being wrong each way is asymmetric: staying in sport mode while genuinely resting costs a
+  // slightly noisy resting HR for one workout; dropping to normal while working costs the whole session.
+  if (!hrLockFresh()) return tag;
+  if (motionEMA < CFG.AUTO_MOTION_LO) return 0;                // still AND HR genuinely recovered → normal
   return curAlgoMode || 0;                                     // in-between → hold current (hysteresis)
 }
 
@@ -1370,10 +1430,13 @@ function applyOperatingPoint(op, skipRaw) {
   var pollMs = hrmPollMs(op.sampleRate), rateChanged = (pollMs !== curPollMs);
   state.hrmSport = hrmSportFor();         // the T5 FRAME TAG (workout sport for the whole session; phone reads it)
   curAlgoMode = hrmAlgoModeFor();         // the mode we actually APPLY (accel-gated: normal when still)
+  // A dead-PPG recovery latches the LED back to adaptive for the rest of the session; without this the
+  // controller's very next pass would re-pin the fixed current and blind the sensor again.
+  var adaptive = (op.ledCurrent === "auto") || ledAdaptiveOverride;
   try {
     // "auto" leaves the VC31B adaptive green brightness on; a number forces a fixed current below.
-    Bangle.setOptions({ hrmSportMode: curAlgoMode, hrmPollInterval: pollMs, hrmGreenAdjust: op.ledCurrent === "auto" });
-    if (op.ledCurrent !== "auto") { try { Bangle.hrmWr(0x17, op.ledCurrent); } catch (e) {} }
+    Bangle.setOptions({ hrmSportMode: curAlgoMode, hrmPollInterval: pollMs, hrmGreenAdjust: adaptive });
+    if (!adaptive) { try { Bangle.hrmWr(0x17, op.ledCurrent); } catch (e) {} }
   } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
   // A poll-interval change only takes effect when the VC31 HRM restarts → power-cycle it. Synchronous, so
   // HR stays continuous (it ends powered on before the next event/tick — no observable blackout).
@@ -1592,7 +1655,8 @@ function profileTick() {
     pTotal,                            // pwrTotal (µA) — whole-device estimate
     state.hrmEnv || 0,                 // env (last HRM-env ambient-light reading; 0 if none)
     fifoDepth,                         // fifoDepth — current VC31B FIFO fill (reg 0x03, bottom 6 bits; 0 if unreadable)
-    profDropped                        // dropped — best-effort FIFO overflow/gap counter (0 if not derivable)
+    profDropped,                       // dropped — best-effort FIFO overflow/gap counter (0 if not derivable)
+    state.ppgRecoveries | 0            // ppgRecoveries — dead-PPG watchdog kicks this session (0 = waveform never died)
   ].join(",");
   profRows.push(row);
   if (profRows.length >= CFG.PROFILE_FLUSH_ROWS) profFlush();   // batched flash write (keeps the measured second flash-free)
@@ -1636,6 +1700,9 @@ function startStreaming() {
   if (state.streaming) return;
   state.streaming = true;
   setStreamPref(true);
+  // Fresh capture → fresh watchdog. The adaptive-LED latch is deliberately per-session: a new session
+  // gets the configured operating point back, and re-earns the override only if the sensor dies again.
+  ppgDeadSinceMs = 0; lastPpgRecoverMs = 0; ledAdaptiveOverride = false;
   resetFrame();
   // reconcileHrm() powers the VC31 LED+AFE continuously (the cheap 1 Hz HR algorithm) and registers the
   // raw waveform listener only where HRV/analysis needs it (workout / sleep bursts). Without power no HRM fires.
