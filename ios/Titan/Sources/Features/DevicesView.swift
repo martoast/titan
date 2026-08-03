@@ -64,7 +64,24 @@ struct DevicesView: View {
                 GlassCard {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
                         SectionHeader(title: String(localized: "Live signal"), trailing: model.liveHz > 0 ? "\(model.liveHz) Hz" : nil)
-                        WaveformView(samples: model.waveform)
+                        // Raw PPG (the waveform) only streams during a workout / sleep burst — at rest the band
+                        // sends 1 Hz heart rate but no raw waveform (firmware, to save battery). So show the
+                        // trace when it's flowing, else an HONEST resting state (not a broken "Waiting…").
+                        if model.waveform.count > 1 {
+                            WaveformView(samples: model.waveform)
+                        } else {
+                            HStack(spacing: Theme.Space.s) {
+                                Image(systemName: "heart.fill").foregroundStyle(Theme.Palette.pink)
+                                    .symbolEffect(.pulse, options: .repeating)
+                                Text(model.liveBpm != nil
+                                     ? "Resting — heart rate is live. The waveform streams during a workout."
+                                     : "Connecting to your band's sensor…")
+                                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                        }
                         HStack(spacing: Theme.Space.m) {
                             liveStat("\(model.syncedSamples)", "samples", Theme.Palette.cyan)
                             divider
@@ -164,9 +181,7 @@ struct DevicesView: View {
         }
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         .titanScreen(String(localized: "Band"), glow: model.bandConnected ? Theme.Palette.mint : Theme.Palette.indigo)
-        // Stream the live trace only while this screen is up (heat), and make sure the Bluetooth card is right.
-        .onAppear { model.liveSignalAppeared(); model.refreshBluetooth() }
-        .onDisappear { model.liveSignalDisappeared() }
+        .onAppear { model.refreshBluetooth() }   // make sure the Bluetooth card reflects the current state
     }
 
     /// Shown when Bluetooth is off or the app's Bluetooth permission is denied — an actionable card

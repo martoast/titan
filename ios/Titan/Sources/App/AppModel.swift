@@ -308,23 +308,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: live-trace UI gating (heat)
-    // The band streams ~50 Hz PPG whenever connected; republishing the live waveform through this app-wide
-    // model re-renders the whole UI. Only run that feed while a live trace is actually on screen. Tracked as
-    // a SET of visible screens (not a counter): two screens show it (the Band screen + the Daily "Heart"
-    // card), and SwiftUI onAppear/onDisappear aren't guaranteed balanced — a set is idempotent, so a stray
-    // disappear from one screen can't switch the feed off while the other is still up (the counter bug that
-    // left the Band screen showing "Waiting for signal…" with the band connected).
-    private var liveScreens: Set<String> = []
-    func liveSignalAppeared(_ id: String = "band") {
-        liveScreens.insert(id)
-        router?.setLiveUI(true)
-    }
-    func liveSignalDisappeared(_ id: String = "band") {
-        liveScreens.remove(id)
-        if liveScreens.isEmpty { router?.setLiveUI(false) }
-    }
-
     /// Re-read Bluetooth availability (the connection screen opening) so the card is correct even if the
     /// one-shot didUpdateState fired before the callback was wired.
     func refreshBluetooth() { startBandIfPaired(); band?.refreshState() }
@@ -675,10 +658,6 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.pairCandidates = list }
         }
         self.syncQueue = queue; self.router = router; self.band = band
-        // A fresh router defaults its live-UI gate OFF; re-apply the current on-screen state so the live
-        // feed works immediately if a live screen is already open (e.g. the router was built/rebuilt after
-        // the Band screen appeared, or after a re-pair).
-        router.setLiveUI(!liveScreens.isEmpty)
 
         // Phone-side GPS for runs (the band has no GPS chip). Fixes feed the live tracker AND, while a
         // run is active, the same workout assembler the band's GPS would have → the sealed run gets a

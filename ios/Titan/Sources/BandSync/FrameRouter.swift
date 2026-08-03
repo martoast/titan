@@ -67,7 +67,6 @@ public final class FrameRouter {
     private var recentTs: [UInt64] = []
     private var lastSamplesEmit = Date.distantPast   // throttles the live-stats UI feed to ≤10 Hz
     private var lastStepsKey = ""               // dedupe identical step summaries (don't upload while still)
-    private var liveUIActive = false            // only accumulate + emit the live trace while a live screen is up
 
     public init(queue: SyncQueue) { self.queue = queue }
 
@@ -89,22 +88,6 @@ public final class FrameRouter {
         workQueue.async { [weak self] in
             guard let self else { return }
             if let w = self.wa.addStrapHr(bpm: bpm, rr: rr, t: t) { self.submit(.workout(w)) }
-        }
-    }
-
-    /// Turn the live-trace UI feed on/off. When OFF, the ~50 Hz waveform bookkeeping (append + the
-    /// O(240) ring trim) and the 10 Hz `onSamples` republish are skipped entirely — so a band streaming
-    /// while nobody's looking at a live trace stops re-rendering the whole app. The SEAL/upload path
-    /// (`ppg.add`, `wa.addAccel`, window submit) is UNCONDITIONAL and unaffected — data still records +
-    /// uploads in the background. Set from the live screens' onAppear/onDisappear.
-    public func setLiveUI(_ active: Bool) {
-        workQueue.async { [weak self] in
-            guard let self else { return }
-            self.liveUIActive = active
-            if !active {                        // drop the buffer so it rebuilds fresh (and frees memory)
-                self.recentPpg.removeAll(keepingCapacity: true)
-                self.recentTs.removeAll(keepingCapacity: true)
-            }
         }
     }
 
@@ -139,27 +122,23 @@ public final class FrameRouter {
         case "T1":
             let frame = FrameDecoder.decodeT1(payload)
             totalSamples += frame.samples.count
-            // Live stats for the UI (waveform + counters) — ONLY while a live screen is visible. The band
-            // streams T1 continuously whenever connected, so doing this array bookkeeping + republishing
-            // the waveform through the app-wide AppModel (which invalidates the whole SwiftUI tree) all day,
-            // even off-screen, was the idle-connection heat/battery drain. The seal/upload path below runs
-            // regardless, so background recording is unaffected.
-            if liveUIActive {
-                for s in frame.samples { recentPpg.append(s.ppg); recentTs.append(s.t) }
-                if recentPpg.count > 240 {
-                    recentPpg.removeFirst(recentPpg.count - 240)
-                    recentTs.removeFirst(recentTs.count - 240)
-                }
-                var hz = 0
-                if recentTs.count > 1, let f = recentTs.first, let l = recentTs.last, l > f {
-                    hz = Int((Double(recentTs.count) * 1000 / Double(l - f)).rounded())
-                }
-                // Throttle the live UI feed to ≤10 Hz — smooth for a trace without a per-frame republish.
-                let now = Date()
-                if now.timeIntervalSince(lastSamplesEmit) >= 0.1 {
-                    lastSamplesEmit = now
-                    onSamples?(totalSamples, recentPpg, hz)
-                }
+            // Live stats for the UI (waveform + counters). UNCONDITIONAL: the visibility-gated version could
+            // leave the live feed blank while the band was connected — reliability of the live signal wins
+            // over the idle-connection heat micro-opt (revisit that separately, off the god ObservableObject).
+            for s in frame.samples { recentPpg.append(s.ppg); recentTs.append(s.t) }
+            if recentPpg.count > 240 {
+                recentPpg.removeFirst(recentPpg.count - 240)
+                recentTs.removeFirst(recentTs.count - 240)
+            }
+            var hz = 0
+            if recentTs.count > 1, let f = recentTs.first, let l = recentTs.last, l > f {
+                hz = Int((Double(recentTs.count) * 1000 / Double(l - f)).rounded())
+            }
+            // Throttle the live UI feed to ≤10 Hz — smooth for a trace without a per-frame republish.
+            let now = Date()
+            if now.timeIntervalSince(lastSamplesEmit) >= 0.1 {
+                lastSamplesEmit = now
+                onSamples?(totalSamples, recentPpg, hz)
             }
             for w in ppg.add(frame.samples) { submit(.ppg(w)) }
             wa.addAccel(frame.samples)                    // buffered only if a workout is open
@@ -189,11 +168,12 @@ public final class FrameRouter {
             }
         case "T5":
             if let hr = FrameDecoder.decodeT5(payload) {
-                // The LIVE bpm readout must reflect only the CURRENT reading. On reconnect/sync the band
-                // replays its offline ring as T5 lines carrying OLD bpm values; feeding those to the live
-                // display made it jitter (live 100 vs replayed 125/127). Show only live frames. The window
-                // builder + 24/7 trend below still ingest the backlog (that's how offline data is sealed).
-                if isLiveForDisplay(hr.t) { onBpm?(hr.bpm) }
+                // Show the bpm for EVERY T5 while connected. A clock/leading-edge gate here made the live
+                // readout depend on the band's RTC being sane — which left it stuck on "—" when it wasn't.
+                // Worst case now is a few seconds of the replayed-ring bpm settling to live right after a
+                // connect/sync; a briefly-jittery number beats a permanently blank one. (The window builder
+                // + 24/7 trend below keep their wall-clock gate, so SEAL correctness is unchanged.)
+                onBpm?(hr.bpm)
                 onHr?(hr)   // ingestLiveHr applies the same liveness gate for the run/lift state machine
                 // A sport-tagged reading OPENS/extends a workout — this is how a connected indoor
                 // session (no GPS, no T6) becomes a sealable workout window. Live frames feed the live
@@ -337,13 +317,7 @@ public final class FrameRouter {
         if let w = motionTrend.flush() { submit(.motionTrend(w)) }   // ship the night's trailing motion epochs
         // On a real disconnect, drop any half-received frame — the firmware re-flushes from scratch on
         // reconnect, so stale partial bytes would otherwise corrupt the first frame of the new stream.
-        // Also reset the device-time high-water mark: the live-HR display fallback (isLiveForDisplay)
-        // trusts maxDeviceT as the "leading edge", so it must be re-established by a fresh live T1 after
-        // reconnect — otherwise a replayed offline-ring bpm could momentarily flash on the live readout.
-        if !live {
-            rx.removeAll(keepingCapacity: false)
-            maxDeviceT = 0
-        }
+        if !live { rx.removeAll(keepingCapacity: false) }
     }
 
     /// A frame is "live" if its band timestamp (ms epoch, C2-synced) is within ~60s of now. Replayed
@@ -353,19 +327,6 @@ public final class FrameRouter {
         if t == 0 { return true }
         let nowMs = UInt64(Date().timeIntervalSince1970 * 1000)
         return nowMs <= t || nowMs - t <= 60_000
-    }
-
-    /// Liveness for the on-screen bpm READOUT only (never the seal/workout paths). Adds a clock-agnostic
-    /// fallback so a band whose RTC is unset/wrong — the same bad-clock condition the server re-anchors
-    /// ("phantom 1970 nights") — still shows a live HR instead of a blank dash. The wall-clock gate
-    /// (frameIsLive) fails on such a band because its frame timestamps aren't real epoch-ms; here we also
-    /// accept a frame sitting at the LEADING EDGE of the band's own timeline (`maxDeviceT`, advanced by the
-    /// continuous live T1 PPG stream). A replayed offline-ring frame carries an old device time far below
-    /// maxDeviceT, so it stays excluded and the anti-jitter guarantee holds. Only ever admits MORE current
-    /// frames than frameIsLive — never fewer.
-    private func isLiveForDisplay(_ t: UInt64) -> Bool {
-        if Self.frameIsLive(t) { return true }
-        return maxDeviceT > 0 && t + 60_000 >= maxDeviceT
     }
 
     private func submit(_ w: AnyWindow) { Task { await queue.submit(w) } }
