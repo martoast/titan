@@ -689,6 +689,19 @@ function pushLiveSample(ppg) {
 var ppgDeadSinceMs = 0, lastPpgRecoverMs = 0;
 var ledAdaptiveOverride = false;   // latched by a recovery: stop re-pinning a fixed LED current
 
+// Re-arm the watchdog. Called wherever a fresh capture context begins — a new capture session, and every
+// workout. The LED override MUST be re-earned per workout, not per capture session: capture is effectively
+// permanent (the titan.run pref restores it at boot and every phone connect ensures it), so a session-scoped
+// latch would survive until a reboot — silently running every later workout on the adaptive LED and making
+// the pinned-current failure impossible to reproduce. Per-workout scoping also makes ppgRecoveries in the
+// diagnostics CSV read as "did the sensor die during THIS session" rather than a since-boot total.
+function resetPpgWatchdog() {
+  ppgDeadSinceMs = 0;
+  lastPpgRecoverMs = 0;
+  ledAdaptiveOverride = false;
+  state.ppgRecoveries = 0;
+}
+
 function onHRMRaw(e) {
   if (!state.streaming) return;
   var v = extractPPG(e);
@@ -711,16 +724,25 @@ function onHRMRaw(e) {
 // this recovers the session whatever the cause, which a targeted fix would not. The override latches
 // for the rest of the session so the controller's next pass doesn't immediately re-pin the fixed value.
 function recoverDeadPpg(nowMs) {
-  if (nowMs - lastPpgRecoverMs < CFG.CONTROLLER.ppgRecoverCooldownMs) return;
+  // Still cooling down: RE-ARM the window rather than leaving it satisfied. Left set, this function would
+  // be re-entered on every zero sample (24-50 Hz) for the rest of the cooldown, each one re-reading the
+  // clock inside the hot raw callback.
+  if (nowMs - lastPpgRecoverMs < CFG.CONTROLLER.ppgRecoverCooldownMs) { ppgDeadSinceMs = nowMs; return; }
   lastPpgRecoverMs = nowMs;
   ppgDeadSinceMs = 0;
   ledAdaptiveOverride = true;
   state.ppgRecoveries = (state.ppgRecoveries | 0) + 1;   // surfaced in the diagnostics CSV
-  try {
-    Bangle.setOptions({ hrmGreenAdjust: true });
-    Bangle.setHRMPower(0, "titan");
-    Bangle.setHRMPower(1, "titan");
-  } catch (e) { state.lastHrmErr = '' + e; }
+  // Power-cycle OUT of the HRM-raw callback: we are currently inside an event from the very device we are
+  // about to restart, and re-entering the driver from its own handler is the one part of this path that
+  // can't be reasoned about from the docs. A 0 ms timeout costs nothing and sidesteps it entirely.
+  setTimeout(function () {
+    if (!state.streaming) return;   // capture stopped while queued → the HRM is off by design
+    try {
+      Bangle.setOptions({ hrmGreenAdjust: true });
+      Bangle.setHRMPower(0, "titan");
+      Bangle.setHRMPower(1, "titan");
+    } catch (e) { state.lastHrmErr = '' + e; }
+  }, 0);
 }
 
 var lastGoodHrMs = 0;   // epoch-ms of the last conf-gated bpm — bounds the hold-last-good (HR staleness)
@@ -1020,6 +1042,7 @@ function startWorkout(manual) {
   state.workoutManual = !!manual;
   state.woStartMs = Math.round(getTime() * 1000);   // the session's real start epoch (the seal envelope's [start])
   state.woKind = workoutKind() || "";               // known now for a manual run/lift; "" for an auto (resolved later)
+  resetPpgWatchdog();                               // this session starts on the configured LED and its own recovery count
   saveWorkoutPref();                                // survive a reboot mid-workout (the workout equivalent of titan.sleep)
   // Try for outdoor pace (dropped after GPS_FIX_TIMEOUT if no fix) — unless the primed activity
   // explicitly declines GPS (a lift/swim), so starting one never flicker-powers the receiver.
@@ -1475,6 +1498,12 @@ function setRawCapture(on) {
   on = !!on;
   if (on === rawCaptureOn) return;   // idempotent: never stack (or drop the wrong) duplicate listeners
   rawCaptureOn = on;
+  // The dead-PPG run is only meaningful across a CONTIGUOUS capture window. Sleep duty-cycles this listener
+  // every period and workouts drop it at the end, so a run left open at the close of one burst would keep
+  // accumulating across the (minutes-long) gap in wall-clock — and the first zero sample of the next burst,
+  // exactly when a freshly re-registered AFE is most likely to emit one while settling, would satisfy
+  // ppgDeadMs instantly and power-cycle a healthy sensor. Start every capture window with a clean run.
+  if (on) ppgDeadSinceMs = 0;
   try {
     if (on) Bangle.on("HRM-raw", onHRMRaw);
     else Bangle.removeListener("HRM-raw", onHRMRaw);
@@ -1700,9 +1729,7 @@ function startStreaming() {
   if (state.streaming) return;
   state.streaming = true;
   setStreamPref(true);
-  // Fresh capture → fresh watchdog. The adaptive-LED latch is deliberately per-session: a new session
-  // gets the configured operating point back, and re-earns the override only if the sensor dies again.
-  ppgDeadSinceMs = 0; lastPpgRecoverMs = 0; ledAdaptiveOverride = false;
+  resetPpgWatchdog();   // fresh capture → fresh watchdog (and the configured operating point back)
   resetFrame();
   // reconcileHrm() powers the VC31 LED+AFE continuously (the cheap 1 Hz HR algorithm) and registers the
   // raw waveform listener only where HRV/analysis needs it (workout / sleep bursts). Without power no HRM fires.
@@ -2634,6 +2661,7 @@ try {
       state.workoutManual = !!wp.manual;
       state.woStartMs = wp.start;
       state.woKind = wp.kind || "";
+      resetPpgWatchdog();   // resumed session: same fresh-watchdog contract as startWorkout()
       if (wp.kind === "run") { runActive = true; runStartMs = wp.start; runDistM = 0; primed = { type: "run", gps: true, accelHz: 12.5 }; }
       else if (wp.kind === "strength" || wp.kind === "lift") { liftActive = true; liftStartMs = wp.start; primed = { type: "lift", gps: false, accelHz: 25 }; }
       if (!state.streaming) startStreaming();
