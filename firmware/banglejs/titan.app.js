@@ -240,7 +240,14 @@ var CFG = {
   // The controller's decision thresholds — EVERY gate is a config number (no literals in the code).
   // (The old bare `conf>=90` publish gate + the motion gates now live here as tunable knobs.)
   CONTROLLER: {
-    confidenceTarget: 90,     // conf below this at rest = raise acquisition (was the hardcoded `conf>=90`)
+    confidenceTarget: 90,     // publish gate at rest (also: conf below this at rest raises acquisition)
+    publishConfWorkout: 60,   // LOWER publish gate during a workout — in motion the VC31 rarely reaches 90,
+                              // so the strict gate starved offline sessions of HR entirely and froze the
+                              // Lift face; the conf byte travels so the server/app can down-weight instead.
+    stillWorkHrMin: 100,      // a STILL wrist but HR >= this mid-workout = "still working" (plank, wall-sit,
+                              // heavy static hold, steady cycling) → keep sport/bike mode, don't drop to normal.
+    holdMaxMs: 45000,         // stop showing the held last-good bpm as "live" after this long with no lock
+                              // (honest "--" instead of a stale number; also stops it biasing restHr).
     motionThreshold: 0.05,    // motionEMA above this = "moving" → off the low-power STILL floor
     batteryThreshold: 15      // battery % below this biases DOWN to STILL to protect runtime
   },
@@ -668,8 +675,9 @@ function onHRMRaw(e) {
   pushSample(extractPPG(e));
 }
 
+var lastGoodHrMs = 0;   // epoch-ms of the last conf-gated bpm — bounds the hold-last-good (HR staleness)
 function onHRM(e) {
-  // The on-chip 1 Hz averaged bpm. PUBLISH ON CONFIDENCE (Whoop-like): only a solid lock (conf>=90)
+  // The on-chip 1 Hz averaged bpm. PUBLISH ON CONFIDENCE (Whoop-like): only a solid lock (conf>=gate)
   // updates the displayed bpm AND publishes an HR frame — live T5 when connected, else a banked T5 trend
   // point (publishHr). A low-confidence reading HOLDS the last good bpm (no jitter to a bad value) and
   // publishes nothing; the 5 s TB heartbeat keeps the link "live" through those gaps. HR streams
@@ -677,9 +685,17 @@ function onHRM(e) {
   var bpm = e.bpm | 0, conf = e.confidence | 0;
   state.conf = conf;
   bankMotionEpoch();   // continuous overnight motion (Lever 1) — NOT gated on conf, so the sleep movement strip stays dense
-  if (conf >= 90 && bpm > 0) {
+  // Publish gate (config knob, not a literal): lower during a workout — in motion the VC31 rarely reaches
+  // 90, and the strict gate left offline sessions with no HR series and froze the Lift face; the conf byte
+  // travels so the server/app can down-weight low-confidence in-motion readings rather than getting nothing.
+  var gate = state.workout ? CFG.CONTROLLER.publishConfWorkout : CFG.CONTROLLER.confidenceTarget;
+  var nowMs = Math.round(getTime() * 1000);
+  if (conf >= gate && bpm > 0) {
     state.bpm = bpm;
+    lastGoodHrMs = nowMs;
     if (state.streaming) publishHr();
+  } else if (lastGoodHrMs && (nowMs - lastGoodHrMs) > CFG.CONTROLLER.holdMaxMs) {
+    state.bpm = 0;   // lock lost too long — show an honest "--" instead of a stale value read as live
   }
   if (uiVisible) drawUI();
 }
@@ -1301,8 +1317,13 @@ function hrmSportFor() {
 function hrmAlgoModeFor() {
   var tag = hrmSportFor();
   if (tag === 0) return 0;                                      // not a workout → normal
-  if (motionEMA > CFG.AUTO_MOTION_HI) return tag;              // clearly moving → motion-tolerant
-  if (motionEMA < CFG.AUTO_MOTION_LO) return 0;                // clearly still → normal (true resting HR)
+  // Keep sport/bike mode when MOVING or when HR is still ELEVATED. A still wrist alone doesn't mean rest
+  // mid-workout — a plank, wall-sit, heavy static hold, or steady cycling is still-but-hard, and forcing
+  // normal mode there under-reads HR (normal "sits flat under exertion"). We enter the still phase FROM a
+  // moving/elevated state, so state.bpm is a trustworthy "still working" signal; collapse to normal only
+  // once HR has genuinely recovered below the threshold.
+  if (motionEMA > CFG.AUTO_MOTION_HI || state.bpm >= CFG.CONTROLLER.stillWorkHrMin) return tag;
+  if (motionEMA < CFG.AUTO_MOTION_LO) return 0;                // still AND HR recovered → normal (true resting HR)
   return curAlgoMode || 0;                                     // in-between → hold current (hysteresis)
 }
 
