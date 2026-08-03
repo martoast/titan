@@ -251,6 +251,11 @@ var CFG = {
     motionThreshold: 0.05,    // motionEMA above this = "moving" → off the low-power STILL floor
     batteryThreshold: 15      // battery % below this biases DOWN to STILL to protect runtime
   },
+  // A full power loss (dead battery) resets the RTC to ~1970. Frames stamped 1970 are poison downstream:
+  // the phone drops them as ">60 s stale" (live HR vanishes) and nights land as "phantom 1970". Floor the
+  // clock to a recent epoch on boot so every timestamp is at least plausible; C2/GPS corrects to real time
+  // on the next sync and the server re-anchors the offset. Bump on major re-flashes to keep it "recent".
+  CLOCK_FLOOR: 1767225600,   // 2026-01-01 UTC
   // Pin a specific OperatingPoint to BYPASS the controller (this is what makes A/B + sweep experiments
   // config-only — no reflash). null = the closed-loop controller runs. Set via setForcedOP({...}) or C7.
   forcedOP: null,
@@ -2398,7 +2403,14 @@ Bluetooth.on("data", function (d) {
       try {
         var c = JSON.parse(line.substr(3));       // { t: unixSeconds (UTC), tz: hoursOffset }
         if (typeof c.tz === "number") E.setTimeZone(c.tz);
-        if (typeof c.t === "number") setTime(c.t);
+        // Apply the clock correction only when IDLE. Every *StartMs (woStartMs / runStartMs / liftStartMs /
+        // swStartMs) is getTime()*1000 used as a monotonic delta; jumping the clock mid-session makes the
+        // seal compute a phantom duration (forward jump) or silently drop the workout via the endSec>startSec
+        // guard (backward jump). The phone re-sends C2 on every connect + periodically, so a deferred
+        // correction lands as soon as the session ends; within a session the clock stays self-consistent and
+        // the server re-anchors its absolute time.
+        var busy = state.workout || runActive || liftActive || sleepModeActive();
+        if (typeof c.t === "number" && !busy) setTime(c.t);
         if (page === CLOCK_PAGE) drawUI();
       } catch (err) { /* malformed — ignore */ }
     } else if (line.substr(0, 2) === "C3") {      // "sync now" — flush the overnight ring on demand
@@ -2502,6 +2514,11 @@ stepLoad();
 
 // One-time: reclaim the legacy single-file log from pre-ring firmware (superseded by titan.l0..N).
 try { require("Storage").open(CFG.LOG_FILE, "r").erase(); } catch (e) {}
+
+// Clock sanity FIRST — before any timestamp is taken below (streaming, sleep/workout resume). If the RTC
+// reset on a full power loss it reads ~1970; floor it to a recent epoch so nothing gets stamped 1970 (see
+// CFG.CLOCK_FLOOR). C2 (phone) or a GPS fix corrects it to real time; the server re-anchors the offset.
+try { if (getTime() < CFG.CLOCK_FLOOR) setTime(CFG.CLOCK_FLOOR); } catch (e) {}
 
 // 24/7 capture by default (Whoop-style): the band should sense HR the moment it's worn, no toggle.
 // On FIRST boot (no pref saved yet) we turn capture ON and persist it; on later boots we honour the
