@@ -486,6 +486,11 @@ struct ChatMessage: Identifiable, Equatable {
     var imageData: Data? = nil      // a locally-attached photo — shown inline (optimistic user bubble)
     var imageURL: String? = nil     // a server-stored photo (reconciled history) — loaded via AsyncImage
     var serverId: Int? = nil        // the DB row id — what a background reply is polled by
+    var kind: String? = nil         // "briefing" / "reaction" = the coach spoke unprompted; nil = a reply
+    var at: String? = nil           // local time it was said ("7:36 AM"), server-formatted
+
+    /// Did the coach push this on its own (morning briefing, sleep/workout/meal reaction)?
+    var isProactive: Bool { kind == "briefing" || kind == "reaction" }
 }
 
 /// `POST /api/coach[/{id}]/send-async` → the durable send. Persists the turn + queues generation and
@@ -504,13 +509,41 @@ struct CoachMessageState: Codable {
     let status: String?     // pending | streaming | complete | failed | nil(=done)
 }
 
-/// `GET /api/coach/{id}/messages` — history for reconcile-on-reopen.
-struct CoachHistoryResponse: Codable { let messages: [CoachHistoryMessage] }
+/// `GET /api/coach/{id}/messages` — history for reconcile-on-reopen, and for opening a past day.
+/// The server tolerates a stale id by falling back to today, so this never comes back empty just
+/// because the cached conversation was deleted.
+struct CoachHistoryResponse: Codable {
+    let messages: [CoachHistoryMessage]
+    var day: String? = nil          // YYYY-MM-DD of the day being shown
+    var day_label: String? = nil    // "Today" | "Yesterday" | "Wed, Jul 30"
+    var day_full: String? = nil     // "Wednesday, July 30, 2026"
+    var read_only: Bool? = nil      // true for a past day — the composer is hidden
+}
+
 struct CoachHistoryMessage: Codable, Identifiable {
     let id: Int
     let role: String
     let content: String
     let status: String?
+    /// nil = an ordinary chat turn; "briefing" / "reaction" = the coach spoke unprompted.
+    var kind: String? = nil
+    /// Local time it was said, pre-formatted by the server ("7:36 AM").
+    var at: String? = nil
+}
+
+/// `GET /api/coach/days` — the chat history as a list of days, newest first (the day picker).
+struct CoachDaysResponse: Codable {
+    let today: String
+    let days: [CoachDay]
+}
+
+struct CoachDay: Codable, Identifiable, Equatable {
+    let id: Int
+    let day: String?
+    let label: String
+    let full: String
+    let message_count: Int
+    let is_today: Bool
 }
 
 /// `POST /api/coach/transcribe` → { ok, text } — Whisper transcription of a recorded voice clip.

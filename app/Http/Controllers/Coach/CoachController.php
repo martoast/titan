@@ -118,6 +118,65 @@ class CoachController extends Controller
     }
 
     /**
+     * The profile's chat history as a list of DAYS (newest first) — what the native app's day
+     * picker renders. Empty days are omitted: a day exists only once something was actually said.
+     */
+    public function days(Request $request): JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $days = $profile->conversations()
+            ->days()
+            ->withCount(['messages as message_count' => fn ($q) => $q->whereIn('role', ['user', 'assistant'])])
+            ->get()
+            ->filter(fn (Conversation $c) => $c->message_count > 0)
+            ->map(fn (Conversation $c) => [
+                'id' => $c->id,
+                'day' => $c->day?->toDateString(),
+                'label' => $c->dayLabel(),
+                'full' => $c->dayFull(),
+                'message_count' => $c->message_count,
+                'is_today' => $c->isToday(),
+            ])->values();
+
+        return response()->json([
+            'today' => Conversation::today()->toDateString(),
+            'days' => $days,
+        ]);
+    }
+
+    /**
+     * Messages by conversation id for the NATIVE app, resolved by hand rather than by route-model
+     * binding so a stale id degrades to today's chat instead of a 404.
+     *
+     * The app caches the last conversation it was in; if that conversation is gone (deleted, or
+     * belonging to another profile) the old binding 404'd, `loadHistory`'s `try?` swallowed it, and
+     * the user was left staring at an empty coach with no way back. Falling back to today is both
+     * more useful and what they almost certainly wanted.
+     */
+    public function apiMessages(Request $request, int $id): JsonResponse
+    {
+        $profile = $request->user()->ensureProfile();
+
+        $conversation = $profile->conversations()->whereKey($id)->first()
+            ?? $profile->conversations()->whereDate('day', Conversation::today()->toDateString())->first();
+
+        if (! $conversation) {
+            return response()->json([
+                'day' => Conversation::today()->toDateString(),
+                'day_label' => 'Today',
+                'day_full' => Conversation::today()->format('l, F j, Y'),
+                'read_only' => false,
+                'messages' => [],
+                'has_more' => false,
+                'oldest_id' => null,
+            ]);
+        }
+
+        return $this->messages($request, $conversation);
+    }
+
+    /**
      * One message as the chat renders it. `kind` marks the coach's proactive messages (briefing /
      * reaction) so they're styled as pushes rather than replies, and `at` carries the local
      * timestamp so every message shows when it was said.

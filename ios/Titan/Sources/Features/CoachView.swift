@@ -10,6 +10,19 @@ final class CoachViewModel: ObservableObject {
     @Published var transcribing = false        // voice clip uploading → text
     @Published var pendingImage: Data?         // photo staged in the composer, awaiting send
 
+    // MARK: day-scoped chats
+    // The chat is one conversation PER DAY. `conversationId` is the LIVE thread (today's) — the one
+    // sends and reply-polling belong to. `viewingDayId` is which day is on screen; nil means the
+    // live one. Keeping them apart is what stops browsing an old day from re-pointing the composer
+    // at the past.
+    @Published var days: [CoachDay] = []       // newest first, empty days already omitted
+    @Published var dayLabel = String(localized: "Today")
+    @Published var dayFull = ""
+    @Published var readOnly = false            // viewing a past day: look, don't type
+    @Published var loadingDay = false
+
+    private var viewingDayId: Int?
+
     // The active thread — persisted so a cold relaunch can reload it and surface any reply that
     // finished while the app was away.
     private let convKey = "coach.conversationId"
@@ -43,6 +56,9 @@ final class CoachViewModel: ObservableObject {
     func submit(api: APIClient, text overrideText: String? = nil) {
         let text = (overrideText ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
         let image = pendingImage
+        // A past day is a record. The server would route the message to today anyway, but sending
+        // from a day you're only reading would silently drop it into a thread you can't see.
+        guard !readOnly else { return }
         guard (!text.isEmpty || image != nil), !sending else { return }
         Haptic.tap()
         input = ""; pendingImage = nil; sending = true
@@ -100,6 +116,10 @@ final class CoachViewModel: ObservableObject {
     /// thread from the server (so a reply finished while away is just there); otherwise it resumes
     /// polling a reply that was still generating when we last backgrounded.
     func reconcile(api: APIClient) {
+        // Browsing an old day is a deliberate state — don't yank the user back to the live thread
+        // just because they switched apps.
+        guard !isViewingPastDay else { return }
+
         if messages.isEmpty, conversationId != nil {
             pollTask?.cancel()
             pollTask = Task { await loadHistory(api: api) }
@@ -112,17 +132,82 @@ final class CoachViewModel: ObservableObject {
     func pause() { pollTask?.cancel() }
 
     private func loadHistory(api: APIClient) async {
-        guard let cid = conversationId, let rows = try? await api.coachHistory(conversationId: cid) else { return }
-        messages = rows.filter { $0.role == "user" || $0.role == "assistant" }.map { r in
+        guard let cid = conversationId, let res = try? await api.coachDay(conversationId: cid) else { return }
+        // The server resolves a stale id to today's chat, so adopt whatever day it actually gave us
+        // rather than trusting the cached one.
+        apply(res, live: true)
+        resumePendingPoll(api: api)
+    }
+
+    /// Render one day's payload into the transcript.
+    private func apply(_ res: CoachHistoryResponse, live: Bool) {
+        messages = Self.bubbles(from: res.messages)
+        dayLabel = res.day_label ?? String(localized: "Today")
+        dayFull = res.day_full ?? ""
+        readOnly = res.read_only ?? false
+        if live { viewingDayId = nil }
+    }
+
+    private static func bubbles(from rows: [CoachHistoryMessage]) -> [ChatMessage] {
+        rows.filter { $0.role == "user" || $0.role == "assistant" }.map { r in
             let (body, url) = Self.splitPhoto(r.content)
             var m = ChatMessage(role: r.role == "user" ? .user : .assistant, text: body)
             m.imageURL = url
             m.serverId = r.id
             m.streaming = (r.status == "pending" || r.status == "streaming")
+            m.kind = r.kind
+            m.at = r.at
             return m
         }
-        resumePendingPoll(api: api)
     }
+
+    // MARK: day picker
+
+    /// Refresh the list of days behind the picker. Cheap and best-effort — a failure just leaves
+    /// the previous list in place rather than emptying the picker.
+    func loadDays(api: APIClient) async {
+        if let res = try? await api.coachDays() { days = res.days }
+    }
+
+    /// Open one day. A past day is read-only; picking today rejoins the live thread.
+    func openDay(api: APIClient, _ day: CoachDay) async {
+        guard !loadingDay else { return }
+        loadingDay = true
+        defer { loadingDay = false }
+
+        guard let res = try? await api.coachDay(conversationId: day.id) else { return }
+
+        // Cancel any reply polling: it belongs to the live thread, and its updates would otherwise
+        // land in the transcript of whatever day is now on screen.
+        pollTask?.cancel()
+        toolStatus = nil
+
+        apply(res, live: day.is_today)
+        if day.is_today {
+            conversationId = day.id
+        } else {
+            viewingDayId = day.id
+        }
+        Haptic.soft()
+    }
+
+    /// Back to the live thread. Falls back to an empty today when nothing has been said yet, so the
+    /// composer always comes back even on a brand-new day.
+    func goToday(api: APIClient) async {
+        if let today = days.first(where: { $0.is_today }) {
+            await openDay(api: api, today)
+            return
+        }
+        pollTask?.cancel()
+        messages = []
+        viewingDayId = nil
+        readOnly = false
+        dayLabel = String(localized: "Today")
+        dayFull = ""
+    }
+
+    /// Is a past day on screen? Reconcile must not clobber it with the live thread.
+    var isViewingPastDay: Bool { viewingDayId != nil }
 
     private func resumePendingPoll(api: APIClient) {
         guard let m = messages.last, m.role == .assistant, m.streaming, let sid = m.serverId else { return }
@@ -180,6 +265,7 @@ struct CoachView: View {
     @State private var pulse = false
     @State private var cardBreathe: BreathPattern?   // a card tap that launches the breathing intervention
     @State private var cardNight: SleepNightRef?     // a Sleep Week night tap → that night's hero
+    @State private var showDays = false              // the day picker
     @Environment(\.scenePhase) private var scenePhase
 
     /// Dispatch a tap on an interactive card (COACH CARDS v2). Prompt → a canned coach turn; intent →
@@ -209,10 +295,11 @@ struct CoachView: View {
                 Theme.Grad.glow(Theme.Palette.indigo).frame(height: 280).opacity(0.5).ignoresSafeArea(edges: .top)
 
                 VStack(spacing: 0) {
+                    if vm.readOnly { pastDayBanner }
                     ScrollViewReader { proxy in
                         ScrollView {
                             LazyVStack(spacing: Theme.Space.s) {
-                                if vm.messages.isEmpty { empty }
+                                if vm.messages.isEmpty && !vm.readOnly { empty }
                                 ForEach(vm.messages) { Bubble(msg: $0).id($0.id) }
                                 if let tool = vm.toolStatus { toolPill(tool).id("tool") }
                                 Color.clear.frame(height: 4).id("bottom")
@@ -228,17 +315,47 @@ struct CoachView: View {
                         .onChange(of: vm.messages.last?.text) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) } }
                         .onChange(of: vm.toolStatus) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
                     }
-                    if recorder.isRecording { recordingBar }
-                    composer
+                    if vm.readOnly {
+                        backToTodayBar
+                    } else {
+                        if recorder.isRecording { recordingBar }
+                        composer
+                    }
                 }
+
+                if vm.loadingDay { dayLoadingOverlay }
             }
             .navigationTitle("Coach")
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Haptic.tap()
+                        showDays = true
+                        Task { await vm.loadDays(api: model.api) }
+                    } label: {
+                        Image(systemName: "calendar")
+                    }
+                    .tint(Theme.Palette.textDim)
+                    .accessibilityLabel("Browse chats by day")
+                }
+            }
+            .sheet(isPresented: $showDays) {
+                CoachDayPicker(days: vm.days, activeLabel: vm.dayLabel) { day in
+                    showDays = false
+                    Task { await vm.openDay(api: model.api, day) }
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
             .fullScreenCover(item: $cardBreathe) { BreathingView(pattern: $0) }
             .fullScreenCover(item: $cardNight) { SleepNightSheet(date: $0.date) }
             // Surface a reply that generated while away: reload the thread on open, resume any
             // still-cooking reply when returning to the foreground, pause polling in the background.
-            .task { vm.reconcile(api: model.api) }
+            .task {
+                vm.reconcile(api: model.api)
+                await vm.loadDays(api: model.api)
+            }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .active: vm.reconcile(api: model.api)
@@ -255,6 +372,49 @@ struct CoachView: View {
                 Text("Enable the microphone in Settings to dictate messages to your coach.")
             }
         }
+    }
+
+    /// Which day you're reading, pinned above the transcript so it stays answered while scrolling.
+    private var pastDayBanner: some View {
+        HStack(spacing: Theme.Space.xs) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.Palette.cyan)
+            Text(vm.dayFull.isEmpty ? vm.dayLabel : vm.dayFull)
+                .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+        }
+        .padding(.vertical, Theme.Space.xs)
+        .frame(maxWidth: .infinity)
+        .background(Theme.Palette.bg2.opacity(0.9))
+        .overlay(Rectangle().frame(height: 0.5).foregroundStyle(Theme.Palette.cardStroke), alignment: .bottom)
+    }
+
+    /// A past day is read-only — the composer is replaced by the way back.
+    private var backToTodayBar: some View {
+        Button {
+            Haptic.tap()
+            Task { await vm.goToday(api: model.api) }
+        } label: {
+            HStack(spacing: Theme.Space.s) {
+                Image(systemName: "arrow.uturn.forward").font(.system(size: 14, weight: .bold))
+                Text("Back to today").font(Theme.Font.body.weight(.semibold))
+            }
+            .foregroundStyle(Theme.Palette.text)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Theme.Palette.card, in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                .strokeBorder(Theme.Palette.cardStroke))
+        }
+        .buttonStyle(.plain)
+        .padding(Theme.Space.m)
+    }
+
+    private var dayLoadingOverlay: some View {
+        ZStack {
+            Theme.Palette.bg.opacity(0.6).ignoresSafeArea()
+            ProgressView().tint(Theme.Palette.indigo).scaleEffect(1.2)
+        }
+        .transition(.opacity)
     }
 
     private var empty: some View {
@@ -402,6 +562,9 @@ private struct Bubble: View {
         HStack {
             if isUser { Spacer(minLength: 44) }
             VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
+                // A proactive push (briefing / sleep / workout / meal) is labelled, so it doesn't
+                // read as an answer to something you asked.
+                if msg.isProactive { proactiveTag }
                 if let data = msg.imageData, let ui = UIImage(data: data) {
                     Image(uiImage: ui).resizable().scaledToFill()
                         .frame(maxWidth: 220, maxHeight: 260)
@@ -432,10 +595,28 @@ private struct Bubble: View {
                         }
                     }
                 }
+                // When it was said — turns a day you scrolled back to into a readable timeline.
+                if let at = msg.at {
+                    Text(at).font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                        .padding(.horizontal, 4)
+                }
             }
             if !isUser { Spacer(minLength: 44) }
         }
         .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .opacity))
+    }
+
+    private var proactiveTag: some View {
+        HStack(spacing: 4) {
+            Image(systemName: msg.kind == "briefing" ? "sun.horizon.fill" : "bell.fill")
+                .font(.system(size: 9, weight: .bold))
+            Text(msg.kind == "briefing" ? "Briefing" : "Coach update")
+                .font(Theme.Font.micro)
+        }
+        .foregroundStyle(Theme.Palette.cyan)
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(Theme.Palette.cyan.opacity(0.12), in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.Palette.cyan.opacity(0.22)))
     }
 
     // The user's own bubble: their typed text is almost always plain, so inline markdown is enough.
@@ -679,5 +860,130 @@ private struct FlowChips: View {
                 }.buttonStyle(PressCard())
             }
         }.padding(.horizontal, Theme.Space.xl)
+    }
+}
+
+// MARK: - Day picker
+
+/// The chat history as a list of days, newest first — the native counterpart of the web sidebar.
+///
+/// The chat is one conversation per calendar day, so the date IS the thread's identity: there are
+/// no titles to show and nothing to name. Days with no messages never reach here (the server omits
+/// them), so every row is something that actually happened.
+struct CoachDayPicker: View {
+    let days: [CoachDay]
+    let activeLabel: String
+    let onPick: (CoachDay) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    /// Group by month so a long history stays navigable ("August 2026", "July 2026", …).
+    private var sections: [(title: String, days: [CoachDay])] {
+        var order: [String] = []
+        var buckets: [String: [CoachDay]] = [:]
+        for d in days {
+            let key = Self.monthTitle(d)
+            if buckets[key] == nil { order.append(key) }
+            buckets[key, default: []].append(d)
+        }
+        return order.map { ($0, buckets[$0] ?? []) }
+    }
+
+    private static func monthTitle(_ d: CoachDay) -> String {
+        guard let iso = d.day else { return "" }
+        let parser = DateFormatter()
+        parser.dateFormat = "yyyy-MM-dd"
+        parser.timeZone = TimeZone(identifier: "UTC")
+        guard let date = parser.date(from: iso) else { return "" }
+        let f = DateFormatter()
+        f.dateFormat = "LLLL yyyy"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: date)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+
+                if days.isEmpty {
+                    VStack(spacing: Theme.Space.s) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 30, weight: .semibold)).foregroundStyle(Theme.Palette.textFaint)
+                        Text("No chats yet").font(Theme.Font.title).foregroundStyle(Theme.Palette.text)
+                        Text("Say something to your coach and today's chat starts.")
+                            .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(Theme.Space.xl)
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: Theme.Space.s, pinnedViews: [.sectionHeaders]) {
+                            ForEach(sections, id: \.title) { section in
+                                Section {
+                                    ForEach(section.days) { day in
+                                        row(day)
+                                    }
+                                } header: {
+                                    Text(section.title)
+                                        .font(Theme.Font.label).foregroundStyle(Theme.Palette.textFaint)
+                                        .textCase(.uppercase)
+                                        .padding(.horizontal, Theme.Space.m)
+                                        .padding(.vertical, Theme.Space.xs)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Theme.Palette.bg)
+                                }
+                            }
+                        }
+                        .padding(Theme.Space.m)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+            }
+            .navigationTitle("Your chats")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }.tint(Theme.Palette.textDim)
+                }
+            }
+        }
+    }
+
+    private func row(_ day: CoachDay) -> some View {
+        let isActive = day.label == activeLabel
+        return Button {
+            Haptic.tap()
+            onPick(day)
+        } label: {
+            HStack(spacing: Theme.Space.m) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(day.label)
+                        .font(Theme.Font.body.weight(.semibold))
+                        .foregroundStyle(Theme.Palette.text)
+                    Text(day.message_count == 1 ? "1 message" : "\(day.message_count) messages")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
+                }
+                Spacer()
+                if day.is_today {
+                    Text("LIVE").font(Theme.Font.micro).foregroundStyle(Theme.Palette.mint)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Theme.Palette.mint.opacity(0.14), in: Capsule())
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.Palette.textFaint)
+            }
+            .padding(Theme.Space.m)
+            .background(
+                isActive ? Theme.Palette.indigo.opacity(0.14) : Theme.Palette.card,
+                in: RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .strokeBorder(isActive ? Theme.Palette.indigo.opacity(0.4) : Theme.Palette.cardStroke)
+            )
+        }
+        .buttonStyle(PressCard())
     }
 }

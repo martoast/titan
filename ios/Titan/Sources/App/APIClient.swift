@@ -526,7 +526,20 @@ final class APIClient {
 
     /// Conversation history (for reconcile-on-reopen): the latest page, oldest→newest, with statuses.
     func coachHistory(conversationId: Int) async throws -> [CoachHistoryMessage] {
-        try await send(request("api/coach/\(conversationId)/messages"), as: CoachHistoryResponse.self).messages
+        try await coachDay(conversationId: conversationId).messages
+    }
+
+    /// One day's chat, with the day's own label and whether it is still writable. A stale id is
+    /// resolved to today by the server rather than 404-ing, so this is safe to call with whatever
+    /// conversation the app last cached.
+    func coachDay(conversationId: Int) async throws -> CoachHistoryResponse {
+        try await send(request("api/coach/\(conversationId)/messages"), as: CoachHistoryResponse.self)
+    }
+
+    /// The chat history as a list of days (newest first) — the day picker. Days with no messages
+    /// are omitted server-side.
+    func coachDays() async throws -> CoachDaysResponse {
+        try await send(request("api/coach/days"), as: CoachDaysResponse.self)
     }
 
     // MARK: coach — voice + photo (mirror the web app's mic + snap-to-coach)

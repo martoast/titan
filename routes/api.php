@@ -181,7 +181,11 @@ Route::prefix('devices')->group(function () {
 // Coach — native-app access to the same CoachController the web UI uses (the web keeps its own
 // session routes in routes/titan/coach.php). Bearer-token or session via auth.any.
 Route::middleware('auth.any')->prefix('coach')->group(function () {
-    Route::get('/{conversation}/messages', [\App\Http\Controllers\Coach\CoachController::class, 'messages']);
+    // The chat history as a list of days — the native day picker.
+    Route::get('/days', [\App\Http\Controllers\Coach\CoachController::class, 'days']);
+    // Resolved by hand (not route-model binding) so a stale cached conversation id falls back to
+    // today's chat rather than 404-ing the app into an empty screen.
+    Route::get('/{id}/messages', [\App\Http\Controllers\Coach\CoachController::class, 'apiMessages'])->whereNumber('id');
     // Durable, background send (native app): persists + queues generation, returns immediately. Poll
     // the pending message for its growing reply. This is the path that survives the phone suspending.
     Route::post('/send-async', [\App\Http\Controllers\Coach\CoachController::class, 'sendAsync']);
