@@ -1007,6 +1007,22 @@ struct RunSummary: Codable, Equatable, Identifiable {
     let map_thumb_url: String?
 
     var isLift: Bool { activity_type == "strength" }
+
+    // Defensive decode: only `id` is truly required. A missing / null / wrong-typed `title` or `has_route`
+    // must NOT fail the WHOLE runs-list decode (the exact bug HrZones already got burned by) — which would
+    // also silently swallow the post-run catch-up summary (checkForSyncedWorkout uses try?).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        title = (try? c.decode(String.self, forKey: .title)) ?? "Workout"
+        activity_type = try? c.decode(String.self, forKey: .activity_type)
+        started_at = try? c.decode(String.self, forKey: .started_at)
+        duration_min = try? c.decode(Int.self, forKey: .duration_min)
+        distance_km = try? c.decode(Double.self, forKey: .distance_km)
+        avg_pace_s_per_km = try? c.decode(Int.self, forKey: .avg_pace_s_per_km)
+        has_route = (try? c.decode(Bool.self, forKey: .has_route)) ?? false
+        map_thumb_url = try? c.decode(String.self, forKey: .map_thumb_url)
+    }
 }
 
 struct RunsResponse: Codable, Equatable {

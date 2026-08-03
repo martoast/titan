@@ -1302,7 +1302,10 @@ final class AppModel: ObservableObject {
         }
         runLastLat = lat; runLastLon = lon
         runTrack.append(CGPoint(x: lon, y: lat))
-        if runTrack.count > 3000 { runTrack.removeFirst(runTrack.count - 3000) }
+        // Amortize the trim: removeFirst is O(n), so trimming on EVERY fix past 3000 was an O(3000) array
+        // shift + full @Published republish each second on a long run. Let it grow a little, then drop a
+        // batch — so the shift runs ~once per 600 fixes instead of every fix.
+        if runTrack.count > 3600 { runTrack.removeFirst(runTrack.count - 3000) }
         recomputePace()
     }
 
@@ -1420,7 +1423,10 @@ final class AppModel: ObservableObject {
                 self.band?.sendRunDistance(self.runDistanceKm * 1000)   // mirror distance to the watch Run face
 
                 if let last = self.runLastSignal, Date().timeIntervalSince(last) > self.runEndGapSec {
-                    self.endRun()
+                    // A 90 s signal gap almost always means the phone left BLE range while the WATCH keeps
+                    // recording — the C0 can't reach a disconnected band, and on reconnect the watch's own
+                    // TW envelope is the source of truth. So don't try to end the band here.
+                    self.endRun(notifyBand: false)
                 }
             }
         }
@@ -1462,12 +1468,21 @@ final class AppModel: ObservableObject {
             // the real session (a 33-min lift showed 11 — review). The sealed duration_min replaces this
             // within seconds.
             let prelimSec = runStartedAt.map { max(runElapsedSec, Int(Date().timeIntervalSince($0))) } ?? runElapsedSec
-            workoutSummary = WorkoutSummaryState(
+            let summary = WorkoutSummaryState(
                 kind: workoutKind, distanceKm: runDistanceKm, elapsedSec: prelimSec,
                 maxBpm: runMaxBpm, startedAt: runStartedAt, hasGps: runHasGps)
-            // Mark this workout seen so the catch-up path never re-pops the one we just showed live.
+            // Mark this workout seen NOW so the catch-up path never re-pops the one we're about to show.
             if let s = runStartedAt { lastSeenWorkoutAt = max(lastSeenWorkoutAt, s) }
-            fetchSealedSummary(startedAt: runStartedAt)
+            let started = runStartedAt
+            // Present the summary on the NEXT runloop — showLiveRunSheet=false above is dismissing the live
+            // fullScreenCover, and presenting a .sheet in the SAME frame a cover animates away silently
+            // swallows it (the run "occasionally showed no summary"). Let the cover clear first.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard let self else { return }
+                self.workoutSummary = summary
+                self.fetchSealedSummary(startedAt: started)
+            }
         }
         workoutKind = "run"   // reset to the default for the next workout (TA overrides on a real lift)
     }
@@ -1610,7 +1625,10 @@ final class AppModel: ObservableObject {
         }
         runLastLat = lat; runLastLon = lon; runLastFixAt = loc.timestamp
         runTrack.append(CGPoint(x: lon, y: lat))
-        if runTrack.count > 3000 { runTrack.removeFirst(runTrack.count - 3000) }
+        // Amortize the trim: removeFirst is O(n), so trimming on EVERY fix past 3000 was an O(3000) array
+        // shift + full @Published republish each second on a long run. Let it grow a little, then drop a
+        // batch — so the shift runs ~once per 600 fixes instead of every fix.
+        if runTrack.count > 3600 { runTrack.removeFirst(runTrack.count - 3000) }
         recomputePace()
         let t = UInt64(max(0, loc.timestamp.timeIntervalSince1970) * 1000)
         router?.ingestPhoneGps(GpsFix(t: t, sats: 0, speedKmh: max(0, loc.speed) * 3.6,

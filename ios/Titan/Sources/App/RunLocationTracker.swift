@@ -80,6 +80,10 @@ final class RunLocationTracker: NSObject, CLLocationManagerDelegate {
         // chord is long — tripping the run's spike guard. We do NOT drop coarse fixes here (the app layer
         // shows the dot live and applies the route-quality gate); only invalid (≤0) and stale ones go.
         for loc in locs where loc.horizontalAccuracy > 0 && loc.timestamp.timeIntervalSinceNow > -15 {
+            // Drop invalid / Null-Island coordinates before they reach the app: a transient (0,0) fix with a
+            // positive accuracy would otherwise fling the live dot to the Gulf of Guinea for a frame.
+            let c = loc.coordinate
+            guard CLLocationCoordinate2DIsValid(c), abs(c.latitude) > 0.0001 || abs(c.longitude) > 0.0001 else { continue }
             onFix?(loc)
         }
     }
