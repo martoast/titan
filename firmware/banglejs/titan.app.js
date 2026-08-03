@@ -116,8 +116,13 @@ var CFG = {
   // for 20-40 ms. Sport modes: -1 auto, 0 normal, 1 running (general motion), 2 biking.
   HRM_MS_REST: 40,                   // 25 Hz — overnight HRV's validated rate
   HRM_MS_WORKOUT: 20,                // 50 Hz — finer raw PPG for the server in-motion HR estimator
-  HRM_SPORT_RUN: 1,                  // general motion-tolerant sport profile (lifting, running, etc.)
+  HRM_SPORT_RUN: 1,                  // RUNNING profile — motion-tolerant BY TRACKING CADENCE (see below)
   HRM_SPORT_BIKE: 2,                 // biking sport profile (steadier wrist, different artifact band)
+  // SPORT_TYPE_FREE_TRAINING from the VC31 proprietary algorithm's own enum (libs/misc/vc31_binary/algo.h:
+  // 0x19 "自由训练"). The gym/free-training model: motion-tolerant WITHOUT assuming the wrist moves at a
+  // cadence related to heart rate. This distinction is the whole game for lifting/boxing/calisthenics —
+  // see hrmAlgoSportFor(). The enum has 26 modes; we use 3 (normal / running / bike / free-training).
+  HRM_ALGO_FREE_TRAINING: 0x19,
 
   // --- 24/7 REST HR (continuous, Whoop-like) --------------------------------
   // The VC31 HR algorithm runs in a C interrupt, so the 1 Hz HR (the HRM event) costs only ~1 mA and lets
@@ -1402,9 +1407,26 @@ function hrmSportFor() {
 // reports a confidently-WRONG elevated HR (~119 while sitting) the conf>=90 gate can't catch. So accel-gate
 // it: normal mode when still (true resting HR), the workout's sport profile when moving. HI/LO hysteresis
 // (reusing the workout-detect thresholds) prevents flapping at the boundary. Independent of the frame tag.
+// WHICH sport profile the algorithm should model, as opposed to WHEN to apply it (hrmAlgoModeFor).
+// We used to send RUNNING for every non-bike workout — including strength. That is actively harmful for
+// lifting/boxing/calisthenics: the running model is motion-tolerant precisely BECAUSE it uses wrist
+// cadence as evidence about heart rate, so rhythmic arm movement at 2-3 Hz reads as a confident
+// 120-180 bpm. Measured 2026-08-03: 2 minutes of light shadow boxing produced a 58->159 bpm ramp at
+// confidence 100, rising ~1.7 bpm/s and recovering 54 bpm in ~70 s — both far outside real cardiac
+// kinetics, i.e. the algorithm was tracking punches, not pulse. FREE_TRAINING is the vendor's model for
+// exactly this case. Runs and rides keep their dedicated profiles, where cadence really is informative.
+function hrmAlgoSportFor() {
+  if (!(state.streaming && state.workout)) return 0;
+  var k = workoutKind(), t = primed && primed.type;
+  if (k === "cycle" || t === "bike" || t === "cycle" || t === "cycling") return CFG.HRM_SPORT_BIKE;
+  if (k === "run" || t === "run") return CFG.HRM_SPORT_RUN;
+  if (k === "strength" || t === "lift") return CFG.HRM_ALGO_FREE_TRAINING;
+  return CFG.HRM_SPORT_RUN;   // auto-detected / unclassified → the vendor's documented fallback (algo.h)
+}
+
 function hrmAlgoModeFor() {
-  var tag = hrmSportFor();
-  if (tag === 0) return 0;                                      // not a workout → normal
+  if (hrmSportFor() === 0) return 0;                            // not a workout → normal
+  var tag = hrmAlgoSportFor();                                  // the PROFILE to model (not the T5 frame tag)
   // Keep sport/bike mode when MOVING or when HR is still ELEVATED. A still wrist alone doesn't mean rest
   // mid-workout — a plank, wall-sit, heavy static hold, or steady cycling is still-but-hard, and forcing
   // normal mode there under-reads HR (normal "sits flat under exertion"). We enter the still phase FROM a
