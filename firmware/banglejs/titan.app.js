@@ -1415,13 +1415,18 @@ function hrmSportFor() {
 // confidence 100, rising ~1.7 bpm/s and recovering 54 bpm in ~70 s — both far outside real cardiac
 // kinetics, i.e. the algorithm was tracking punches, not pulse. FREE_TRAINING is the vendor's model for
 // exactly this case. Runs and rides keep their dedicated profiles, where cadence really is informative.
+// The question each branch answers is "is wrist cadence informative about heart rate here?".
 function hrmAlgoSportFor() {
   if (!(state.streaming && state.workout)) return 0;
-  var k = workoutKind(), t = primed && primed.type;
+  var k = workoutKind() || "", t = (primed && primed.type) || "";   // primed is cleared at endWorkout
   if (k === "cycle" || t === "bike" || t === "cycle" || t === "cycling") return CFG.HRM_SPORT_BIKE;
-  if (k === "run" || t === "run") return CFG.HRM_SPORT_RUN;
-  if (k === "strength" || t === "lift") return CFG.HRM_ALGO_FREE_TRAINING;
-  return CFG.HRM_SPORT_RUN;   // auto-detected / unclassified → the vendor's documented fallback (algo.h)
+  // Cadence IS informative: a stride paces the arms and the effort together.
+  if (k === "run" || k === "walk" || k === "hike" ||
+      t === "run" || t === "walk" || t === "hike") return CFG.HRM_SPORT_RUN;
+  // Anything else we actually KNOW about — lift/strength, boxing, HIIT, yoga, row, swim — is work whose
+  // limb rhythm is unrelated to heart rate. That is the FREE_TRAINING case.
+  if (k || t) return CFG.HRM_ALGO_FREE_TRAINING;
+  return CFG.HRM_SPORT_RUN;   // auto-detected, nothing declared → the vendor's documented fallback (algo.h)
 }
 
 function hrmAlgoModeFor() {
@@ -1877,6 +1882,17 @@ function tabTitle(t, col) {
   g.drawString(t, g.getWidth() / 2, 38);
 }
 
+// A one-line "what is this face FOR" hint, drawn only on the IDLE state of a workout face — the moment
+// you are actually choosing one. This matters far more than it looks: the face you pick selects the HR
+// ALGORITHM MODEL (see hrmAlgoSportFor), not merely whether GPS runs. Start shadow boxing on the RUN
+// face and the running model treats your 2-3 Hz arm cadence as evidence about heart rate and reports a
+// confident, badly wrong ~150 bpm. Naming the ACTIVITIES is the only way the wearer can pick correctly.
+// ASCII only — the 6x8 bitmap font has no glyph for '·'.
+function faceHint(t, y) {
+  g.setFont("6x8", 1); g.setFontAlign(0, 0); g.setColor(C.dim);
+  g.drawString(t, g.getWidth() / 2, y === undefined ? 130 : y);
+}
+
 // THE one interaction affordance. The whole model now: swipe to move, press the SIDE BUTTON to act —
 // so nothing can fire while you're swiping across a face. Each actionable face draws this footer to
 // say what the button does: a filled dot = one click, two dots = a double-click. The verb turns RED
@@ -2119,6 +2135,7 @@ function drawRun() {
   if (!runActive) {
     g.setColor(C.dim); g.setFont("Vector", 34); g.setFontAlign(0, 0);
     g.drawString("0.00 km", cx, 104);
+    faceHint("RUN / WALK / HIKE");        // cadence-tracking HR + GPS
     drawAction("START", false, null, C.mint);
     return;
   }
@@ -2171,16 +2188,20 @@ function finishRun() {
   if (uiVisible) drawUI();
 }
 
-// Page — LIFT: a no-GPS gym/lifting workout you start from the watch (the counterpart to the Run face).
+// Page — GYM (internally still "lift"): a no-GPS gym workout started from the watch — weights, boxing,
+// HIIT, calisthenics. Titled GYM rather than LIFT because the choice is NOT about equipment: it selects
+// the free-training HR model, and "LIFT" reads as weights-only, so shadow boxing or HIIT looks like it
+// belongs on the Run face — where the running model would lock onto arm cadence and invent ~150 bpm.
 // Click to start (a manual workout pinned as "strength", GPS OFF); the live timer + HR show here, and
 // the app/server seal it as a strength session (HR zones / VO₂max / sets), never a run. Click to finish.
 function drawLift() {
   var W = g.getWidth(), cx = W / 2;
   topBar();
-  tabTitle("LIFT", C.amber);
+  tabTitle("GYM", C.amber);
   if (!liftActive) {
     g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
     g.drawString("0:00", cx, 104);
+    faceHint("LIFT / BOX / HIIT");        // free-training HR, no GPS
     drawAction("START", false, null, C.amber);
     return;
   }
