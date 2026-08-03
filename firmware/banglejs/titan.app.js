@@ -414,7 +414,8 @@ var STOPWATCH_PAGE = 3;   // button 1×: plain timer (sleep is now its own face,
 var SLEEP_PAGE = 4;       // button 1×: start / wake a sleep session (its own face, like Run + Lift)
 var RUN_PAGE = 5;         // button 1×: start/finish a GPS-tracked RUN → the app's route map
 var LIFT_PAGE = 6;        // button 1×: start/finish a no-GPS LIFTING workout → the app's strength summary
-var PAGES = 7;            // 0 Heart · 1 Clock · 2 Steps · 3 Stopwatch · 4 Counter · 5 Run · 6 Lift
+var SPIN_PAGE = 7;        // button 1×: start/finish a stationary-bike session → sealed as CYCLE, not strength
+var PAGES = 8;            // 0 Heart · 1 Clock · 2 Steps · 3 Stopwatch · 4 Counter · 5 Run · 6 Gym · 7 Spin
 var page = 0;             // current face (swipe to change)
 // Run face state — a GPS-tracked run started from the watch; the workout's T4 coords build the route.
 var runActive = false;    // a run is being tracked
@@ -433,6 +434,9 @@ var RUN_PAUSE_GAP_S = 5;  // no step for this long → auto-pause (a stumble/pho
 var liftActive = false;   // a lifting workout is being tracked from the Lift face (no GPS)
 var liftStartMs = 0;      // lift start (device ms)
 var liftTimer = null;     // 1 Hz repaint while the lift face is live (so the timer ticks)
+var spinActive = false;   // a stationary-bike session is being tracked from the Spin face (no GPS)
+var spinStartMs = 0;      // spin start (device ms)
+var spinTimer = null;     // 1 Hz repaint while the spin face is live
 var clockTickTimer = null; // minute-boundary redraw for the clock face
 
 // Default timezone so the clock reads correctly out of the box without a phone: Tijuana / Baja
@@ -1011,6 +1015,11 @@ function updateAutoDetect() {
 function workoutKind() {
   if (runActive) return "run";
   if (liftActive) return "strength";                          // Lift face → strength, never a route
+  // Spin face → "cycle". This is the whole point of the face: confirmedActivityType() maps
+  // lift/strength/hiit/yoga → strength and passes everything else through, so declaring "cycle" is what
+  // keeps a stationary-bike session out of the strength log (20 of the first 21 sessions sealed as
+  // strength because the gym face was the only no-GPS option). No route — a spin bike has no GPS.
+  if (spinActive) return "cycle";
   if (!state.workoutManual) return null;                       // auto-started → let the server classify
   var t = primed && primed.type;
   if (t === "run" || t === "walk" || t === "hike" || t === "row" || t === "swim") return t;
@@ -1125,6 +1134,14 @@ function endWorkout() {
   reconcileHrm();          // back to rest: HR continuous, drop the raw waveform listener
   applyAccelRate();
   if (!(flushTimer || flushSf)) setConnRest();   // workout over → relax the link (unless a drain still wants it fast)
+  // A workout can end by a path that never ran finishRun/finishLift/finishSpin — stopStreaming() closing
+  // capture, or the auto-lull. Those left the face flag set, so the face went on showing FINISH over a
+  // ticking timer for a session that was already sealed, and only self-healed when you pressed it again.
+  // Safe here: woKind was resolved at the top, and the finish* paths clear these before calling in.
+  runActive = liftActive = spinActive = false;
+  if (runTimer) { clearInterval(runTimer); runTimer = null; }
+  if (liftTimer) { clearInterval(liftTimer); liftTimer = null; }
+  if (spinTimer) { clearInterval(spinTimer); spinTimer = null; }
   if (uiVisible) drawUI();
 }
 
@@ -2251,6 +2268,58 @@ function finishLift() {
   if (uiVisible) drawUI();
 }
 
+// Page — SPIN: the gym's stationary bike. Deliberately its OWN face rather than a mode of GYM, because
+// it differs from lifting in both directions that matter: the session must seal as CYCLE (cardio with
+// pace/VO₂max) instead of strength, and the HR algorithm wants SPORT_TYPE_SPINNING (0x12) — the model
+// built for a still wrist resting on handlebars, which is exactly the posture that latched the mode gate
+// on 2026-08-03. It is NOT a road ride: no GPS, no route, so it shares the Gym face's layout, not Run's.
+function drawSpin() {
+  var W = g.getWidth(), cx = W / 2;
+  topBar();
+  tabTitle("SPIN", C.cyan);
+  if (!spinActive) {
+    g.setColor(C.dim); g.setFont("Vector", 40); g.setFontAlign(0, 0);
+    g.drawString("0:00", cx, 104);
+    faceHint("STATIONARY BIKE");
+    drawAction("START", false, null, C.cyan);
+    return;
+  }
+  var sec = (getTime() * 1000 - spinStartMs) / 1000;
+  g.setColor(C.white); g.setFont("Vector", 44); g.setFontAlign(0, 0);
+  g.drawString(fmtMMSS(sec), cx, 88);
+  var bpm = state.bpm || 0;
+  g.setColor(bpm ? C.heart : C.dim); g.setFont("Vector", 26);
+  g.drawString((bpm || "--") + " bpm", cx, 128);
+  drawAction("FINISH", true, null, C.cyan, 158);
+}
+
+// Button on the Spin face. Mirrors liftTap with no GPS, but primes type "spin" so hrmAlgoSportFor picks
+// SPINNING and workoutKind() declares "cycle".
+function spinTap() {
+  if (spinActive) finishSpin();
+  else {
+    spinActive = true;
+    spinStartMs = Math.round(getTime() * 1000);
+    primed = { type: "spin", gps: false, accelHz: 25 };   // no GPS on a bike that doesn't move
+    if (!state.streaming) startStreaming();     // capture it offline too
+    startWorkout(true);                         // manual workout → emits TA kind "cycle", buzzes its ack
+    powerGps(false);                            // override startWorkout's default GPS power-on
+    if (spinTimer) clearInterval(spinTimer);
+    spinTimer = setInterval(function () { if (page === SPIN_PAGE) drawUI(); }, 1000);
+    if (uiVisible) drawUI();
+  }
+}
+
+// Finish the active spin — from the Spin-face button OR the C0 the app sends when you tap "End".
+function finishSpin() {
+  if (!spinActive) return;
+  spinActive = false;
+  if (spinTimer) { clearInterval(spinTimer); spinTimer = null; }
+  endWorkout();
+  try { Bangle.buzz(60); } catch (e) {}
+  if (uiVisible) drawUI();
+}
+
 // Dispatcher: clears, draws the current page + page dots. All sensor-event drawUI() calls
 // just repaint whichever face you're on.
 function drawUI() {
@@ -2264,6 +2333,7 @@ function drawUI() {
   else if (page === SLEEP_PAGE) drawSleep();
   else if (page === RUN_PAGE) drawRun();
   else if (page === LIFT_PAGE) drawLift();
+  else if (page === SPIN_PAGE) drawSpin();
   else drawHeart();
   if (state.linkLost) drawLinkLost();   // persistent "phone off" overlay on whatever face you're on
   pageDots();
@@ -2457,6 +2527,7 @@ function handleTaps(n) {
   else if (page === SLEEP_PAGE) sleepTap();                          // start / wake a sleep session
   else if (page === RUN_PAGE) runTap();                             // start / finish the run
   else if (page === LIFT_PAGE) liftTap();                            // start / finish the lift
+  else if (page === SPIN_PAGE) spinTap();                            // start / finish the spin session
   else { try { Bangle.buzz(20); } catch (e) {} }                     // info face → nothing to do
 }
 
@@ -2572,6 +2643,7 @@ Bluetooth.on("data", function (d) {
       primed = null;
       if (runActive) finishRun();                  // a Run-face run → finish it (also ends the workout)
       else if (liftActive) finishLift();           // a Lift-face workout → finish it
+      else if (spinActive) finishSpin();           // a Spin-face session → finish it
       else if (state.workout && state.workoutManual) endWorkout();
     } else if (line.substr(0, 3) === "C2:") {     // set time + timezone from the phone
       try {
@@ -2583,7 +2655,7 @@ Bluetooth.on("data", function (d) {
         // guard (backward jump). The phone re-sends C2 on every connect + periodically, so a deferred
         // correction lands as soon as the session ends; within a session the clock stays self-consistent and
         // the server re-anchors its absolute time.
-        var busy = state.workout || runActive || liftActive || sleepModeActive();
+        var busy = state.workout || runActive || liftActive || spinActive || sleepModeActive();
         if (typeof c.t === "number" && !busy) setTime(c.t);
         if (page === CLOCK_PAGE) drawUI();
       } catch (err) { /* malformed — ignore */ }
@@ -2741,6 +2813,7 @@ try {
       resetPpgWatchdog();   // resumed session: same fresh-watchdog contract as startWorkout()
       if (wp.kind === "run") { runActive = true; runStartMs = wp.start; runDistM = 0; primed = { type: "run", gps: true, accelHz: 12.5 }; }
       else if (wp.kind === "strength" || wp.kind === "lift") { liftActive = true; liftStartMs = wp.start; primed = { type: "lift", gps: false, accelHz: 25 }; }
+      else if (wp.kind === "cycle") { spinActive = true; spinStartMs = wp.start; primed = { type: "spin", gps: false, accelHz: 25 }; }
       if (!state.streaming) startStreaming();
       reconcileHrm();      // continuous motion-tolerant sport-mode HR again
       applyAccelRate();    // 25 Hz accel for the classifier
