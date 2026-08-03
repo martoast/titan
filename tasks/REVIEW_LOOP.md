@@ -125,6 +125,12 @@ several round trips.
   It nearly recurred on 2026-08-03 when Alex pushed from his Mac during an edit here.
 - **Agent fleets exhausted the session budget (2026-07-10).** ~15–20 subagents per review pass, twice.
   → Rule 3 for Henry.
+- **A review committed onto a detached HEAD (2026-08-03).** Reviewing the range meant
+  `git checkout <sha>`; the review was then committed there, `git push` said *"Everything
+  up-to-date"*, and the review existed only as a dangling local commit — invisible to the dev agent,
+  while looking completely successful. → Review with `git show` / `git diff <range>`, never
+  `git checkout`. `henry-reviewed.sh` now refuses to advance the marker unless the commit is an
+  ancestor of `origin/master`, and prints the cherry-pick recovery.
 - **Two timestamp conventions, one wrong fix (2026-08-03).** `activity_sessions` stores UTC
   wall-clock; `device_ingestions` stores app-local. Both are deliberate and documented in their own
   files. Henry "fixed" the first to match the second, broke the guaranteed-write/late-window merge,
