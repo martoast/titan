@@ -173,7 +173,7 @@ public final class FrameRouter {
                 // replays its offline ring as T5 lines carrying OLD bpm values; feeding those to the live
                 // display made it jitter (live 100 vs replayed 125/127). Show only live frames. The window
                 // builder + 24/7 trend below still ingest the backlog (that's how offline data is sealed).
-                if Self.frameIsLive(hr.t) { onBpm?(hr.bpm) }
+                if isLiveForDisplay(hr.t) { onBpm?(hr.bpm) }
                 onHr?(hr)   // ingestLiveHr applies the same liveness gate for the run/lift state machine
                 // A sport-tagged reading OPENS/extends a workout — this is how a connected indoor
                 // session (no GPS, no T6) becomes a sealable workout window. Live frames feed the live
@@ -327,6 +327,19 @@ public final class FrameRouter {
         if t == 0 { return true }
         let nowMs = UInt64(Date().timeIntervalSince1970 * 1000)
         return nowMs <= t || nowMs - t <= 60_000
+    }
+
+    /// Liveness for the on-screen bpm READOUT only (never the seal/workout paths). Adds a clock-agnostic
+    /// fallback so a band whose RTC is unset/wrong — the same bad-clock condition the server re-anchors
+    /// ("phantom 1970 nights") — still shows a live HR instead of a blank dash. The wall-clock gate
+    /// (frameIsLive) fails on such a band because its frame timestamps aren't real epoch-ms; here we also
+    /// accept a frame sitting at the LEADING EDGE of the band's own timeline (`maxDeviceT`, advanced by the
+    /// continuous live T1 PPG stream). A replayed offline-ring frame carries an old device time far below
+    /// maxDeviceT, so it stays excluded and the anti-jitter guarantee holds. Only ever admits MORE current
+    /// frames than frameIsLive — never fewer.
+    private func isLiveForDisplay(_ t: UInt64) -> Bool {
+        if Self.frameIsLive(t) { return true }
+        return maxDeviceT > 0 && t + 60_000 >= maxDeviceT
     }
 
     private func submit(_ w: AnyWindow) { Task { await queue.submit(w) } }
