@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\ChatMessage;
+use App\Models\Conversation;
 use App\Models\SleepLog;
 use App\Services\Notifications\NotificationService;
 use App\Support\Reminders;
@@ -70,8 +72,8 @@ class ReactToSleepLogged implements ShouldQueue
 
         $notifications->notify($profile, $title, $push, '/coach', 'sleep');
 
-        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
-        $convo->messages()->create(['role' => 'assistant', 'content' => $body]);
+        $convo = Conversation::forDay($profile);
+        $convo->messages()->create(['role' => 'assistant', 'kind' => ChatMessage::KIND_REACTION, 'content' => $body]);
 
         $settings = $profile->settings ?? [];
         $settings['sleep_reacted'] = $night;

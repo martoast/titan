@@ -38,7 +38,7 @@ class SleepReactionTest extends TestCase
 
     private function briefingBody(Profile $profile): ?string
     {
-        return $profile->conversations()->where('title', 'Daily Briefings')->first()
+        return $profile->conversations()->days()->first()
             ?->messages()->latest('id')->first()?->content;
     }
 
@@ -93,7 +93,7 @@ class SleepReactionTest extends TestCase
         $this->fireSleep($profile);
         $this->fireSleep($profile->fresh());
 
-        $count = $profile->conversations()->where('title', 'Daily Briefings')->first()->messages()->count();
+        $count = $profile->conversations()->days()->first()->messages()->count();
         $this->assertSame(1, $count);
     }
 }

@@ -40,7 +40,7 @@ class SleepSummaryTest extends TestCase
 
         ReactToSleepConfirmed::dispatchSync($log->id);
 
-        $convo = $profile->conversations()->where('title', 'Daily Briefings')->first();
+        $convo = $profile->conversations()->days()->first();
         $this->assertNotNull($convo);
         $msg = $convo->messages()->where('role', 'assistant')->get();
         $this->assertCount(1, $msg);

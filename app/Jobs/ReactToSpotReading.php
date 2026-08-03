@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\ChatMessage;
+use App\Models\Conversation;
 use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Services\Notifications\NotificationService;
@@ -111,7 +113,7 @@ class ReactToSpotReading implements ShouldQueue
 
     private function post(Profile $profile, string $content): void
     {
-        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
-        $convo->messages()->create(['role' => 'assistant', 'content' => $content]);
+        $convo = Conversation::forDay($profile);
+        $convo->messages()->create(['role' => 'assistant', 'kind' => ChatMessage::KIND_REACTION, 'content' => $content]);
     }
 }

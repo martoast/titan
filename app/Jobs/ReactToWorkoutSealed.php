@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\ActivitySession;
+use App\Models\ChatMessage;
+use App\Models\Conversation;
 use App\Services\Notifications\NotificationService;
 use App\Support\WorkoutCoach;
 use Illuminate\Bus\Queueable;
@@ -45,8 +47,8 @@ class ReactToWorkoutSealed implements ShouldQueue
         // opening the coach so the note is right there.
         $notifications->notify($profile, $msg['title'], $msg['push'], '/coach', 'workout', email: true);
 
-        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
-        $convo->messages()->create(['role' => 'assistant', 'content' => $msg['body']]);
+        $convo = Conversation::forDay($profile);
+        $convo->messages()->create(['role' => 'assistant', 'kind' => ChatMessage::KIND_REACTION, 'content' => $msg['body']]);
 
         $settings = $profile->settings ?? [];
         $settings['workout_reacted'] = $log->id;

@@ -35,7 +35,10 @@ class CoachController extends Controller
         protected ScanService $scans,
     ) {}
 
-    /** The chat page -- opens the requested conversation, else the most recent, else a fresh one. */
+    /**
+     * The chat page. Opens the requested day (`?c=` id or `?d=` YYYY-MM-DD), else today's chat.
+     * A PAST day is read-only -- you can look back at it, but anything you send belongs to today.
+     */
     public function index(Request $request): View
     {
         $profile = $request->user()->ensureProfile();
@@ -43,17 +46,25 @@ class CoachController extends Controller
         $conversation = null;
         if ($request->filled('c')) {
             $conversation = $profile->conversations()->whereKey($request->integer('c'))->first();
+        } elseif ($request->filled('d')) {
+            $conversation = $profile->conversations()
+                ->whereNotNull('day')
+                ->whereDate('day', $request->string('d')->toString())
+                ->first();
         }
-        // Default to the latest CHAT thread, not the "Daily Briefings" thread -- the
-        // briefing already has its own card up top, so chats shouldn't land in it.
-        $conversation ??= $profile->conversations()
-            ->where(fn ($q) => $q->whereNull('title')->orWhere('title', '!=', 'Daily Briefings'))
-            ->latest('id')->first();
 
-        // Briefings thread is shown via the card, not the conversation switcher.
+        // Default to today. Resolved WITHOUT creating it -- an empty day chat should exist only
+        // once something is actually said, so merely opening the page doesn't litter the list.
+        $conversation ??= $profile->conversations()
+            ->whereDate('day', Conversation::today()->toDateString())
+            ->first();
+
         $conversations = $profile->conversations()
-            ->where(fn ($q) => $q->whereNull('title')->orWhere('title', '!=', 'Daily Briefings'))
-            ->latest('id')->get();
+            ->days()
+            ->withCount(['messages as message_count' => fn ($q) => $q->whereIn('role', ['user', 'assistant'])])
+            ->get()
+            ->filter(fn (Conversation $c) => $c->message_count > 0)
+            ->values();
 
         // Only the most recent page of messages renders up front -- older ones load as you scroll up.
         $page = $conversation ? $this->messagePage($conversation) : ['messages' => collect(), 'has_more' => false, 'oldest_id' => null];
@@ -65,9 +76,22 @@ class CoachController extends Controller
             'messages' => $page['messages'],
             'hasMore' => $page['has_more'],
             'oldestId' => $page['oldest_id'],
+            'readOnly' => $conversation !== null && ! $conversation->isToday(),
+            'todayLabel' => Conversation::today()->format('l, F j, Y'),
             'starters' => CoachService::startersFor($profile),
             'aiOffline' => ! app(\App\Services\Ai\AiService::class)->configured(),
         ]);
+    }
+
+    /**
+     * Every send lands in TODAY's chat, whatever conversation the client thought it was in.
+     * The day is the thread's identity, so a message typed at 00:01 belongs to the new day even
+     * if the browser tab has been sitting open on yesterday since last night -- and viewing an
+     * old day can never append to it. Creates today's chat on first use.
+     */
+    private function todayFor(Request $request): Conversation
+    {
+        return Conversation::forDay($request->user()->ensureProfile());
     }
 
     /**
@@ -83,15 +107,33 @@ class CoachController extends Controller
         $page = $this->messagePage($conversation, $request->integer('before') ?: null);
 
         return response()->json([
-            'messages' => $page['messages']->map(fn (ChatMessage $m) => [
-                'id' => $m->id,
-                'role' => $m->role,
-                'content' => (string) $m->content,
-                'status' => $m->status,   // null|pending|streaming|complete|failed (for the reconcile-on-reopen client)
-            ])->values(),
+            'day' => $conversation->day?->toDateString(),
+            'day_label' => $conversation->dayLabel(),
+            'day_full' => $conversation->dayFull(),
+            'read_only' => ! $conversation->isToday(),
+            'messages' => $page['messages']->map(fn (ChatMessage $m) => $this->messagePayload($m))->values(),
             'has_more' => $page['has_more'],
             'oldest_id' => $page['oldest_id'],
         ]);
+    }
+
+    /**
+     * One message as the chat renders it. `kind` marks the coach's proactive messages (briefing /
+     * reaction) so they're styled as pushes rather than replies, and `at` carries the local
+     * timestamp so every message shows when it was said.
+     *
+     * @return array<string,mixed>
+     */
+    private function messagePayload(ChatMessage $m): array
+    {
+        return [
+            'id' => $m->id,
+            'role' => $m->role,
+            'kind' => $m->kind,
+            'content' => (string) $m->content,
+            'at' => $m->created_at?->timezone(Conversation::tz())->format('g:i A'),
+            'status' => $m->status,   // null|pending|streaming|complete|failed (for the reconcile-on-reopen client)
+        ];
     }
 
     /**
@@ -121,8 +163,6 @@ class CoachController extends Controller
      */
     public function sendAsync(Request $request, ?Conversation $conversation = null): JsonResponse
     {
-        $profile = $request->user()->ensureProfile();
-
         $data = $request->validate([
             'message' => ['nullable', 'string', 'max:4000'],
             'photo' => ['nullable', 'image', 'max:12288'],   // ≤ 12 MB
@@ -135,9 +175,7 @@ class CoachController extends Controller
             return response()->json(['ok' => false, 'error' => 'Send a message or a photo.'], 422);
         }
 
-        if (! $conversation || $conversation->profile_id !== $profile->id) {
-            $conversation = $profile->conversations()->create();
-        }
+        $conversation = $this->todayFor($request);
 
         // Bank the photo while the request is alive (the upload must land now); the job reads it later.
         $imagePath = null;
@@ -210,13 +248,13 @@ class CoachController extends Controller
         return redirect('/coach')->with('status', 'Fresh briefing ready.');
     }
 
-    /** Start a fresh conversation and open it. */
+    /**
+     * There is no "new chat" any more -- the day is the thread. Kept so an old bookmark, a cached
+     * page's form post, or the native app hitting POST /coach lands somewhere sensible: today.
+     */
     public function store(Request $request): RedirectResponse
     {
-        $profile = $request->user()->ensureProfile();
-        $conversation = $profile->conversations()->create();
-
-        return redirect('/coach?c='.$conversation->id);
+        return redirect('/coach?c='.$this->todayFor($request)->id);
     }
 
     /**
@@ -232,10 +270,7 @@ class CoachController extends Controller
             'message' => ['required', 'string', 'max:4000'],
         ]);
 
-        // Resolve (and authorize) the target conversation, creating one if absent.
-        if (! $conversation || $conversation->profile_id !== $profile->id) {
-            $conversation = $profile->conversations()->create();
-        }
+        $conversation = $this->todayFor($request);
 
         $wantsJson = $request->expectsJson() || $request->boolean('ajax');
 
@@ -283,9 +318,7 @@ class CoachController extends Controller
             'message' => ['required', 'string', 'max:4000'],
         ]);
 
-        if (! $conversation || $conversation->profile_id !== $profile->id) {
-            $conversation = $profile->conversations()->create();
-        }
+        $conversation = $this->todayFor($request);
 
         // Release the session lock so this long-lived request doesn't block the user's
         // other tabs/requests while the stream is open. The native app authenticates with a
@@ -369,9 +402,7 @@ class CoachController extends Controller
         }
         $caption = trim((string) ($validator->validated()['message'] ?? ''));
 
-        if (! $conversation || $conversation->profile_id !== $profile->id) {
-            $conversation = $profile->conversations()->create();
-        }
+        $conversation = $this->todayFor($request);
 
         // Bank the photo while the request is alive (the upload must land now).
         $path = $request->file('photo')->store('coach/scans', 'public');

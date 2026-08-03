@@ -129,7 +129,7 @@ class BehaviorInsightsTest extends TestCase
 
         $this->artisan('insights:behavior', ['--profile' => $profile->id])->assertExitCode(0);
 
-        $convo = $profile->conversations()->where('title', 'Daily Briefings')->first();
+        $convo = $profile->conversations()->days()->first();
         $this->assertNotNull($convo);
         $this->assertStringContainsStringIgnoringCase('alcohol', $convo->messages()->latest('id')->first()->content);
 

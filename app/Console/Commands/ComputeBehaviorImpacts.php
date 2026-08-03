@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\BehaviorImpact;
 use App\Models\BehaviorLog;
+use App\Models\ChatMessage;
+use App\Models\Conversation;
 use App\Models\Profile;
 use App\Services\Notifications\NotificationService;
 use App\Support\BehaviorCorrelations;
@@ -66,9 +68,10 @@ class ComputeBehaviorImpacts extends Command
 
         $notifications->notify($profile, $title, $body, '/coach', 'insight');
 
-        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
+        $convo = Conversation::forDay($profile);
         $convo->messages()->create([
             'role' => 'assistant',
+            'kind' => ChatMessage::KIND_REACTION,
             'content' => "🔍 **I found a pattern in your data.** {$body}\n\nAsk me \"what affects my recovery?\" for the full picture.",
         ]);
 

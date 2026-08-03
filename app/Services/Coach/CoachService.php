@@ -90,6 +90,7 @@ class CoachService
     private const COMPACT_AFTER = 28;   // condense once the unsummarised tail exceeds this…
     private const KEEP_RECENT = 12;     // …keeping this many recent turns verbatim
     private const HISTORY_CAP = 40;     // hard ceiling on replayed turns, summary aside
+    private const HISTORY_DAYS = 14;    // how far back the cross-day replay window reaches
 
     /** Injected only on a photo turn — tells the coach it can see the attached image + when to log it. */
     private const PHOTO_NOTE = 'The user attached a photo to their latest message and you CAN SEE it. Look at it and address what they asked. If it is a meal / food / nutrition-facts label or a bloodwork / lab sheet they want recorded, call scan_photo to log it accurately. For anything else — a gym machine, their form, "what is this" — just answer from the image. Never say you cannot see images.';
@@ -107,10 +108,7 @@ class CoachService
             'content' => $userText,
         ]);
 
-        // Auto-title the conversation from its first user message.
-        if (blank($conversation->title)) {
-            $conversation->update(['title' => Str::limit($userText, 48)]);
-        }
+        $this->autoTitle($conversation, $userText);
 
         $this->compactIfNeeded($conversation);
 
@@ -153,9 +151,7 @@ class CoachService
 
         $conversation->messages()->create(['role' => 'user', 'content' => $userText]);
 
-        if (blank($conversation->title)) {
-            $conversation->update(['title' => Str::limit($userText, 48)]);
-        }
+        $this->autoTitle($conversation, $userText);
 
         $this->compactIfNeeded($conversation);
 
@@ -197,9 +193,7 @@ class CoachService
     {
         $userText = trim($userText);
 
-        if (blank($conversation->title)) {
-            $conversation->update(['title' => Str::limit($userText !== '' ? $userText : 'Photo', 48)]);
-        }
+        $this->autoTitle($conversation, $userText !== '' ? $userText : 'Photo');
 
         $this->compactIfNeeded($conversation);
 
@@ -290,37 +284,131 @@ class CoachService
     }
 
     /**
-     * Build the OpenAI message history from stored messages. Only user + assistant
-     * turns are replayed (tool turns were transient to a previous reply's loop).
+     * Build the OpenAI message history. Only user + assistant turns are replayed (tool turns were
+     * transient to a previous reply's loop).
+     *
+     * The chat is split into one conversation PER DAY, but the coach's memory must not reset at
+     * midnight -- so the replay window ROLLS ACROSS recent days rather than stopping at the current
+     * conversation. Each day's block is introduced by a dated divider, which is what lets the coach
+     * answer "what did we decide on Tuesday?" from its own context instead of guessing.
+     *
+     * Bounded two ways: at most HISTORY_CAP turns, drawn from at most HISTORY_DAYS of days.
      *
      * @return array<int,array<string,string>>
      */
     private function history(Conversation $conversation): array
     {
-        $out = [];
-
-        // Condensed older context (everything up to summary_through_id) rides in as one system note.
-        if (filled($conversation->summary)) {
-            $out[] = ['role' => 'system', 'content' => "Summary of the earlier part of this conversation (older turns were condensed to keep context manageable -- treat it as established context):\n".$conversation->summary];
+        $window = $this->historyWindow($conversation);
+        if ($window->isEmpty()) {
+            return [];
         }
 
-        $q = $conversation->messages()->whereIn('role', ['user', 'assistant'])
-            // Never count/replay an in-flight background placeholder (empty/partial content).
-            // NULL status = legacy/done, so keep it (SQL `NOT IN` would drop NULLs).
+        // Newest HISTORY_CAP turns across those days, minus anything a day's own summary already
+        // covers, minus in-flight background placeholders (empty/partial content). NULL status =
+        // legacy/done, so it must survive (a SQL `NOT IN` would drop NULLs).
+        $q = ChatMessage::query()
+            ->whereIn('conversation_id', $window->keys())
+            ->whereIn('role', ['user', 'assistant'])
             ->where(fn ($w) => $w->whereNull('status')
                 ->orWhereNotIn('status', [ChatMessage::STATUS_PENDING, ChatMessage::STATUS_STREAMING]));
-        if ($conversation->summary_through_id) {
-            $q->where('id', '>', $conversation->summary_through_id);
+
+        $summarised = $window->filter(fn (Conversation $c) => $c->summary_through_id !== null);
+        if ($summarised->isNotEmpty()) {
+            $q->where(function ($w) use ($summarised, $window) {
+                foreach ($summarised as $id => $c) {
+                    $w->orWhere(fn ($x) => $x->where('conversation_id', $id)->where('id', '>', $c->summary_through_id));
+                }
+                $unsummarised = $window->keys()->diff($summarised->keys());
+                if ($unsummarised->isNotEmpty()) {
+                    $w->orWhereIn('conversation_id', $unsummarised);
+                }
+            });
         }
 
-        // Safety net: even if compaction never ran, never replay more than the recent window.
-        // reorder() clears the relation's default id-asc order so we take the NEWEST rows.
-        $rows = $q->reorder('id', 'desc')->limit(self::HISTORY_CAP)->get()->reverse()->values();
+        $rows = $q->orderByDesc('id')->limit(self::HISTORY_CAP)->get()->reverse()->values();
+
+        $out = [];
+        $currentDay = null;
         foreach ($rows as $m) {
-            $out[] = ['role' => $m->role, 'content' => (string) $m->content];
+            $convo = $window->get($m->conversation_id);
+
+            // A dated divider whenever the day changes, so every message carries its date in context.
+            if ($convo && $convo->id !== $currentDay) {
+                $currentDay = $convo->id;
+                $out[] = ['role' => 'system', 'content' => $this->dayDivider($convo)];
+
+                // That day's condensed earlier turns, if it ever grew long enough to compact.
+                if (filled($convo->summary)) {
+                    $out[] = ['role' => 'system', 'content' => "Earlier that day, condensed (treat as established context):\n".$convo->summary];
+                }
+            }
+
+            $out[] = ['role' => $m->role, 'content' => $this->replayContent($m)];
         }
 
         return $out;
+    }
+
+    /**
+     * Label a LEGACY (dayless) thread from its first user message. A day chat is identified by its
+     * date and never takes a title — titling it would put a stale first-message label on the day.
+     */
+    private function autoTitle(Conversation $conversation, string $userText): void
+    {
+        if ($conversation->day === null && blank($conversation->title)) {
+            $conversation->update(['title' => Str::limit($userText, 48)]);
+        }
+    }
+
+    /**
+     * The day-chats whose turns the coach may replay: this conversation plus the HISTORY_DAYS
+     * before it, oldest first, keyed by id. A legacy (dayless) thread stands alone.
+     *
+     * @return \Illuminate\Support\Collection<int,Conversation>
+     */
+    private function historyWindow(Conversation $conversation): \Illuminate\Support\Collection
+    {
+        if ($conversation->day === null) {
+            return collect([$conversation->id => $conversation]);
+        }
+
+        // Compared with whereDate, not a plain range: the `date` cast hands the driver a full
+        // datetime, so on SQLite "2026-08-01 00:00:00" sorts ABOVE a "2026-08-01" upper bound and
+        // the current day drops out of its own window.
+        return Conversation::query()
+            ->where('profile_id', $conversation->profile_id)
+            ->whereNotNull('day')
+            ->whereDate('day', '>=', $conversation->day->copy()->subDays(self::HISTORY_DAYS)->toDateString())
+            ->whereDate('day', '<=', $conversation->day->toDateString())
+            ->orderBy('day')
+            ->get()
+            ->keyBy('id');
+    }
+
+    /** The dated header that opens a day's block of replayed turns. */
+    private function dayDivider(Conversation $convo): string
+    {
+        $label = $convo->isToday() ? 'TODAY — '.$convo->dayFull() : $convo->dayFull();
+
+        return '=== '.$label.' ===';
+    }
+
+    /**
+     * A message as the model should re-read it. Proactive coach messages are tagged, because the
+     * coach DID say them but was never asked -- without the tag it reads its own briefing as if the
+     * user had prompted it, and thanks them for a question they never posed.
+     */
+    private function replayContent(ChatMessage $m): string
+    {
+        if (! $m->isProactive()) {
+            return (string) $m->content;
+        }
+
+        $tag = $m->kind === ChatMessage::KIND_BRIEFING
+            ? '[briefing you pushed to them, unprompted]'
+            : '[update you pushed to them, unprompted]';
+
+        return $tag."\n".$m->content;
     }
 
     /**

@@ -53,7 +53,7 @@ class ReactToDeviceSyncTest extends TestCase
         (new ReactToDeviceSync($p->id))->handle(app(NotificationService::class));
 
         $this->assertDatabaseHas('notifications', ['profile_id' => $p->id, 'type' => 'sync']);
-        $brief = $p->conversations()->where('title', 'Daily Briefings')->first();
+        $brief = $p->conversations()->days()->first();
         $this->assertNotNull($brief);
         $msg = $brief->messages()->where('role', 'assistant')->latest('id')->first();
         $this->assertStringContainsString('synced', $msg->content);

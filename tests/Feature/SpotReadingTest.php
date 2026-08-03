@@ -70,7 +70,7 @@ class SpotReadingTest extends TestCase
         $this->assertTrue($refs['spot'] ?? false);
         $this->assertSame(48, $refs['hrv_ms']);
         // …and the reaction posted the interpreted spot card to chat.
-        $msg = $p->conversations()->where('title', 'Daily Briefings')->first()?->messages()->latest('id')->first()?->content;
+        $msg = $p->conversations()->days()->first()?->messages()->latest('id')->first()?->content;
         $this->assertStringContainsString('"type":"spot"', (string) $msg);
         $this->assertStringContainsString('"hrv_ms":48', (string) $msg);
     }
@@ -86,7 +86,7 @@ class SpotReadingTest extends TestCase
         (new ReactToSpotReading($p->id, 72, 54, true))->handle(app(NotificationService::class));
 
         $this->assertDatabaseHas('notifications', ['profile_id' => $p->id, 'type' => 'spot']);
-        $msg = $p->conversations()->where('title', 'Daily Briefings')->first()->messages()->latest('id')->first()->content;
+        $msg = $p->conversations()->days()->first()->messages()->latest('id')->first()->content;
         $this->assertStringContainsString('titan-card', $msg);
         $this->assertStringContainsString('"type":"spot"', $msg);
         $this->assertStringContainsString('"verdict":"high"', $msg);
@@ -99,7 +99,7 @@ class SpotReadingTest extends TestCase
 
         (new ReactToSpotReading($p->id, null, null, false))->handle(app(NotificationService::class));
 
-        $msg = $p->conversations()->where('title', 'Daily Briefings')->first()->messages()->latest('id')->first()->content;
+        $msg = $p->conversations()->days()->first()->messages()->latest('id')->first()->content;
         $this->assertStringContainsString("couldn't", strtolower($msg));
         $this->assertStringNotContainsString('titan-card', $msg);   // no card on a failed read
     }

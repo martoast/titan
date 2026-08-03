@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\ChatMessage;
+use App\Models\Conversation;
 use App\Models\Profile;
 use App\Models\SleepLog;
 use App\Services\Notifications\NotificationService;
@@ -92,9 +94,10 @@ class ReactToDeviceSync implements ShouldQueue
             $notifications->notify($profile, __('🌅 Your recovery is in'), $body, '/coach', 'sync');
 
             // Drop it into the Daily Briefings thread so it's waiting in the coach UI.
-            $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
+            $convo = Conversation::forDay($profile);
             $convo->messages()->create([
                 'role' => 'assistant',
+                'kind' => ChatMessage::KIND_REACTION,
                 'content' => "🌅 **Your band just synced your overnight data.**\n\n{$body}\n\nAsk me how to make the most of today.",
             ]);
 

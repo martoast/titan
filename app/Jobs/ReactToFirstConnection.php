@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\ChatMessage;
+use App\Models\Conversation;
 use App\Models\WearableConnection;
 use App\Services\Notifications\NotificationService;
 use App\Support\DeviceStatus;
@@ -58,9 +60,10 @@ class ReactToFirstConnection implements ShouldQueue
         \Illuminate\Support\Facades\App::setLocale(\App\Support\Lang::locale($profile->primary_language));
         $notifications->notify($profile, __('🎉 Your :source is live!', ['source' => $source]), $body, '/coach', 'band_live');
 
-        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
+        $convo = Conversation::forDay($profile);
         $convo->messages()->create([
             'role' => 'assistant',
+            'kind' => ChatMessage::KIND_REACTION,
             'content' => "🎉 **Your {$source} is live!**\n\n{$body}\n\nFrom here I'll watch your recovery, sleep and strain automatically -- no need to log them by hand. Ask me anything once your first numbers settle.",
         ]);
 

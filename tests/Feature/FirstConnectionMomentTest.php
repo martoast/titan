@@ -73,7 +73,7 @@ class FirstConnectionMomentTest extends TestCase
         (new ReactToFirstConnection($conn->id))->handle(app(\App\Services\Notifications\NotificationService::class));
 
         $this->assertDatabaseHas('notifications', ['profile_id' => $p->id, 'type' => 'band_live']);
-        $convo = $p->conversations()->where('title', 'Daily Briefings')->first();
+        $convo = $p->conversations()->days()->first();
         $this->assertNotNull($convo);
         $this->assertStringContainsString('is live', $convo->messages()->latest('id')->first()->content);
         $this->assertContains($conn->id, $p->refresh()->settings['bands_announced']);

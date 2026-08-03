@@ -26,7 +26,13 @@ use Illuminate\Support\Str;
  */
 class CoachBriefingService
 {
-    /** The title of the per-profile conversation that holds all proactive briefings. */
+    /**
+     * The title of the pre-day-chats thread that used to hold every proactive briefing. Briefings
+     * now land in the day's own chat; this survives only so the backfill command can recognise the
+     * old thread.
+     *
+     * @deprecated Use {@see \App\Models\Conversation::forDay()}.
+     */
     public const BRIEFINGS_TITLE = 'Daily Briefings';
 
     public function __construct(protected AiService $ai) {}
@@ -421,32 +427,33 @@ class CoachBriefingService
 
     // ---- Persistence ----------------------------------------------------------
 
-    /** Append the briefing as an assistant message in the profile's Daily Briefings thread. */
+    /** Append the briefing as an assistant message in the day's chat, where the user will see it. */
     private function persist(Profile $profile, string $content): ChatMessage
     {
         return $this->briefingsConversation($profile)
             ->messages()
-            ->create(['role' => 'assistant', 'content' => $content]);
+            ->create([
+                'role' => 'assistant',
+                'kind' => ChatMessage::KIND_BRIEFING,
+                'content' => $content,
+            ]);
     }
 
-    /** Find-or-create the dedicated "Daily Briefings" conversation for this profile. */
+    /** The conversation a briefing belongs in: this profile's chat for the current local day. */
     public function briefingsConversation(Profile $profile): Conversation
     {
-        return $profile->conversations()->firstOrCreate(
-            ['title' => self::BRIEFINGS_TITLE],
-        );
+        return Conversation::forDay($profile);
     }
 
     /** The latest stored briefing for the coach UI card, or null if none yet. */
     public function latestBriefing(Profile $profile): ?ChatMessage
     {
-        $conversation = $profile->conversations()
-            ->where('title', self::BRIEFINGS_TITLE)
+        return ChatMessage::query()
+            ->whereIn('conversation_id', $profile->conversations()->select('id'))
+            ->where('role', 'assistant')
+            ->where('kind', ChatMessage::KIND_BRIEFING)
+            ->latest('id')
             ->first();
-
-        return $conversation
-            ? $conversation->messages()->where('role', 'assistant')->latest('id')->first()
-            : null;
     }
 
     // ---- Shared tone + core-memory (mirrors CoachService) ----------------------

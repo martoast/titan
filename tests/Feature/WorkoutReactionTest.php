@@ -32,7 +32,7 @@ class WorkoutReactionTest extends TestCase
 
         ReactToWorkoutSealed::dispatchSync($session->id);
 
-        $convo = $profile->conversations()->where('title', 'Daily Briefings')->first();
+        $convo = $profile->conversations()->days()->first();
         $this->assertNotNull($convo, 'a briefings conversation should hold the coach note');
         $msg = $convo->messages()->where('role', 'assistant')->get();
         $this->assertCount(1, $msg);

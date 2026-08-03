@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\ChatMessage;
+use App\Models\Conversation;
 use App\Models\Meal;
 use App\Services\Notifications\NotificationService;
 use App\Support\Macros;
@@ -109,8 +111,8 @@ class ReactToMealLogged implements ShouldQueue
     {
         $notifications->notify($profile, $title, $push, '/coach', 'protein');
 
-        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
-        $convo->messages()->create(['role' => 'assistant', 'content' => $body]);
+        $convo = Conversation::forDay($profile);
+        $convo->messages()->create(['role' => 'assistant', 'kind' => ChatMessage::KIND_REACTION, 'content' => $body]);
 
         $settings = $profile->settings ?? [];
         $settings[$flag] = $today;

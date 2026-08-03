@@ -44,7 +44,7 @@ class MealProteinNudgeTest extends TestCase
 
     private function briefingBody(Profile $profile): ?string
     {
-        $convo = $profile->conversations()->where('title', 'Daily Briefings')->first();
+        $convo = $profile->conversations()->days()->first();
 
         return $convo?->messages()->latest('id')->first()?->content;
     }
@@ -57,7 +57,7 @@ class MealProteinNudgeTest extends TestCase
         $this->fireNudge($profile);
 
         $body = $this->briefingBody($profile);
-        $this->assertNotNull($body, 'expected a protein nudge in Daily Briefings');
+        $this->assertNotNull($body, "expected a protein nudge in today's chat");
         $this->assertStringContainsString('80g', $body);
         $this->assertStringContainsString('200g', $body);
         $this->assertSame('2026-06-24', data_get($profile->fresh()->settings, 'protein_nudged'));
@@ -71,7 +71,7 @@ class MealProteinNudgeTest extends TestCase
         $this->fireNudge($profile);
 
         $body = $this->briefingBody($profile);
-        $this->assertNotNull($body, 'expected a protein win in Daily Briefings');
+        $this->assertNotNull($body, "expected a protein win in today's chat");
         $this->assertStringContainsString('locked in', $body);
         $this->assertStringContainsString('200g', $body);
         $this->assertSame('2026-06-24', data_get($profile->fresh()->settings, 'protein_won'));
@@ -105,7 +105,7 @@ class MealProteinNudgeTest extends TestCase
         $this->fireNudge($profile);
         $this->fireNudge($profile->fresh());   // a second meal/log later the same evening
 
-        $count = $profile->conversations()->where('title', 'Daily Briefings')->first()->messages()->count();
+        $count = $profile->conversations()->days()->first()->messages()->count();
         $this->assertSame(1, $count);
     }
 

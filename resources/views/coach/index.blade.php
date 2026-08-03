@@ -3,6 +3,8 @@
         $coachName = $profile->display_name ?: (auth()->user()?->name ?? 'you');
         $initialMessages = $messages->map(fn ($m) => [
             'role' => $m->role,
+            'kind' => $m->kind,
+            'at' => $m->created_at?->timezone(\App\Models\Conversation::tz())->format('g:i A'),
             'content' => (string) $m->content,
         ])->values();
         $sendUrl = $conversation ? "/coach/{$conversation->id}/send" : '/coach/send';
@@ -24,31 +26,35 @@
             conversationId: {{ $conversation?->id ?? 'null' }},
             hasMore: {{ ($hasMore ?? false) ? 'true' : 'false' }},
             oldestId: {{ $oldestId ?? 'null' }},
+            dayLabel: {{ Illuminate\Support\Js::from($conversation?->dayLabel() ?? 'Today') }},
+            dayFull: {{ Illuminate\Support\Js::from($conversation?->dayFull() ?? $todayLabel) }},
+            todayFull: {{ Illuminate\Support\Js::from($todayLabel) }},
+            readOnly: {{ ($readOnly ?? false) ? 'true' : 'false' }},
+            tz: {{ Illuminate\Support\Js::from(\App\Models\Conversation::tz()) }},
             aiOffline: {{ $aiOffline ? 'true' : 'false' }},
         })">
 
-        {{-- Conversations sidebar — desktop only --}}
+        {{-- Days sidebar — desktop only. One chat per day; the date IS the thread. --}}
         <aside class="hidden lg:flex lg:flex-col rounded-2xl border border-white/5 bg-white/[0.03] overflow-hidden">
             <div class="p-3 border-b border-white/5">
-                <form method="POST" action="/coach">
-                    @csrf
-                    <button type="submit"
-                            class="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-500/15 text-indigo-300 active:bg-indigo-500/25 px-3 py-2.5 text-sm font-medium transition">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                        New chat
-                    </button>
-                </form>
+                <button type="button" @click="goToday()"
+                        class="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-500/15 text-indigo-300 active:bg-indigo-500/25 px-3 py-2.5 text-sm font-medium transition">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
+                    Today
+                </button>
             </div>
             <nav class="flex-1 overflow-y-auto p-2 space-y-1">
                 @forelse ($conversations as $c)
                     <a href="/coach?c={{ $c->id }}"
                        @click.prevent="openChat({{ $c->id }})"
-                       class="block truncate rounded-lg px-3 py-2 text-sm transition"
+                       title="{{ $c->dayFull() }}"
+                       class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition"
                        :class="activeId === {{ $c->id }} ? 'bg-white/10 text-gray-100' : 'text-gray-400 hover:text-gray-100 hover:bg-white/5'">
-                        {{ $c->displayTitle() }}
+                        <span class="truncate">{{ $c->dayLabel() }}</span>
+                        <span class="shrink-0 text-[11px] tabular-nums text-gray-600">{{ $c->message_count }}</span>
                     </a>
                 @empty
-                    <p class="px-3 py-2 text-xs text-gray-600">No conversations yet.</p>
+                    <p class="px-3 py-2 text-xs text-gray-600">No chats yet — say something and today's chat starts.</p>
                 @endforelse
             </nav>
         </aside>
@@ -72,13 +78,13 @@
                 </div>
             </div>
 
-            {{-- Mobile: conversation switcher + new chat (collapses the sidebar) --}}
+            {{-- Mobile: day picker + jump-to-today (collapses the sidebar) --}}
             <div class="lg:hidden flex items-center gap-2 p-2.5 border-b border-white/5"
                  x-data="{ open: false }" @click.outside="open = false">
                 <div class="relative flex-1 min-w-0">
                     <button type="button" @click="open = !open"
                             class="w-full flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-gray-950/40 h-11 px-3 text-sm text-gray-200 active:bg-white/5">
-                        <span class="truncate">{{ $conversation?->displayTitle() ?? 'New conversation' }}</span>
+                        <span class="truncate" x-text="dayLabel"></span>
                         <svg class="h-4 w-4 shrink-0 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                     </button>
                     <div x-show="open" x-cloak x-transition.origin.top
@@ -86,22 +92,20 @@
                         @forelse ($conversations as $c)
                             <a href="/coach?c={{ $c->id }}"
                                @click.prevent="openChat({{ $c->id }}); open = false"
-                               class="block truncate rounded-lg px-3 py-2.5 text-sm transition"
+                               class="flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm transition"
                                :class="activeId === {{ $c->id }} ? 'bg-white/10 text-gray-100' : 'text-gray-300 active:bg-white/5'">
-                                {{ $c->displayTitle() }}
+                                <span class="truncate">{{ $c->dayLabel() }}</span>
+                                <span class="shrink-0 text-[11px] tabular-nums text-gray-600">{{ $c->message_count }}</span>
                             </a>
                         @empty
-                            <p class="px-3 py-2 text-xs text-gray-600">No conversations yet.</p>
+                            <p class="px-3 py-2 text-xs text-gray-600">No chats yet.</p>
                         @endforelse
                     </div>
                 </div>
-                <form method="POST" action="/coach" class="shrink-0">
-                    @csrf
-                    <button type="submit" title="New chat"
-                            class="h-11 w-11 grid place-items-center rounded-xl bg-indigo-500/15 text-indigo-300 active:bg-indigo-500/25 transition">
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                    </button>
-                </form>
+                <button type="button" @click="goToday()" title="Jump to today"
+                        class="shrink-0 h-11 w-11 grid place-items-center rounded-xl bg-indigo-500/15 text-indigo-300 active:bg-indigo-500/25 transition">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
+                </button>
             </div>
 
             @if ($aiOffline)
@@ -134,12 +138,27 @@
                     </div>
                 </template>
 
+                {{-- Which day you're reading. Sticks to the top so it stays answered while you scroll. --}}
+                <div x-show="messages.length > 0" x-cloak class="sticky top-0 z-10 -mx-4 -mt-4 mb-1 px-4 py-2 bg-[#0c0e12]/80 backdrop-blur">
+                    <p class="text-center text-[11px] font-medium uppercase tracking-wider text-gray-500" x-text="dayFull"></p>
+                </div>
+
                 {{-- Conversation --}}
                 <template x-for="(m, i) in messages" :key="i">
-                    <div :class="m.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                    <div :class="m.role === 'user' ? 'flex flex-col items-end' : 'flex flex-col items-start'">
+                        {{-- A proactive push (briefing / sleep / workout / meal) — the coach spoke first,
+                             so it's labelled rather than passed off as a reply to something you asked. --}}
+                        <template x-if="m.kind">
+                            <span class="mb-1 inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 border border-cyan-400/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cyan-300">
+                                <svg class="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.6l-1.4 2.1A1 1 0 003.4 15h13.2a1 1 0 00.8-1.3L16 11.6V8a6 6 0 00-6-6zM8 17a2 2 0 004 0H8z"/></svg>
+                                <span x-text="m.kind === 'briefing' ? 'Briefing' : 'Coach update'"></span>
+                            </span>
+                        </template>
                         <div :class="m.role === 'user'
                                 ? 'max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-500/20 border border-indigo-500/30 px-4 py-2.5 text-sm text-gray-100'
-                                : 'max-w-[85%] rounded-2xl rounded-bl-sm bg-gray-800/60 border border-white/5 px-4 py-2.5 text-sm text-gray-200'">
+                                : (m.kind
+                                    ? 'max-w-[85%] rounded-2xl rounded-bl-sm bg-cyan-500/[0.07] border border-cyan-400/15 px-4 py-2.5 text-sm text-gray-200'
+                                    : 'max-w-[85%] rounded-2xl rounded-bl-sm bg-gray-800/60 border border-white/5 px-4 py-2.5 text-sm text-gray-200')">
                             {{-- Attached image (rendered natively — the markdown sanitizer strips blob: URLs) --}}
                             <template x-if="m.image">
                                 <img :src="m.image" alt="Attached photo" loading="lazy"
@@ -149,6 +168,8 @@
                             </template>
                             <div class="coach-prose leading-relaxed break-words" x-html="render(m.content)" x-show="m.content"></div>
                         </div>
+                        {{-- When it was said — so a day you scroll back to reads as a timeline. --}}
+                        <span x-show="m.at" x-cloak class="mt-1 px-1 text-[10px] tabular-nums text-gray-600" x-text="m.at"></span>
                     </div>
                 </template>
 
@@ -206,8 +227,17 @@
                 </div>
             </div>
 
+            {{-- A past day is a record, not a place to write: anything you send belongs to today. --}}
+            <div x-show="readOnly" x-cloak class="border-t border-white/5 p-3">
+                <button type="button" @click="goToday()"
+                        class="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-gray-300 active:bg-white/10 transition">
+                    <svg class="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+                    <span>You're reading <span class="text-gray-400" x-text="dayLabel"></span> — go to today to send</span>
+                </button>
+            </div>
+
             {{-- Composer — sits at the end of the flex column, above the bottom tab bar --}}
-            <div class="border-t border-white/5 p-3">
+            <div x-show="!readOnly" class="border-t border-white/5 p-3">
                 {{-- Attached photo preview: pick a photo, add "this is what I ate", then send --}}
                 <div x-show="pendingPreview" x-cloak class="mb-2 flex items-center gap-3">
                     <div class="relative shrink-0">
@@ -309,10 +339,28 @@
                 get recTime() { const s = this.recSecs; return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); },
 
                 activeId: cfg.conversationId || null,
-                loadingChat: false,    // switching to another conversation
+                loadingChat: false,    // switching to another day
                 loadingMore: false,    // fetching older messages (scroll up)
                 hasMore: cfg.hasMore || false,
                 oldestId: cfg.oldestId || null,
+
+                // ---- which day is open ----
+                dayLabel: cfg.dayLabel || 'Today',
+                dayFull: cfg.dayFull || cfg.todayFull,
+                todayFull: cfg.todayFull,
+                readOnly: cfg.readOnly || false,   // a past day: readable, not writable
+                tz: cfg.tz,
+
+                // Stamp a just-sent message the way the server will stamp it on reload. Uses the APP
+                // timezone, not the device's — otherwise a message reads one time now and a different
+                // time after a refresh whenever the two zones disagree.
+                nowLabel() {
+                    try {
+                        return new Date().toLocaleTimeString('en-US', { timeZone: this.tz, hour: 'numeric', minute: '2-digit' });
+                    } catch (e) {
+                        return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    }
+                },
 
                 showJump: false,
 
@@ -325,7 +373,7 @@
                     }, { passive: true });
                 },
 
-                // Switch to another conversation without a full page reload — load its latest page.
+                // Switch to another day without a full page reload — load its latest page.
                 async openChat(id) {
                     if (!id || id === this.activeId || this.loadingChat) return;
                     this.loadingChat = true; this.suggestions = []; this.draft = '';
@@ -333,10 +381,13 @@
                         const res = await fetch('/coach/' + id + '/messages', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
                         if (!res.ok) throw new Error('load failed');
                         const d = await res.json();
-                        this.messages = d.messages.map(m => ({ role: m.role, content: m.content }));
+                        this.messages = d.messages.map(m => ({ role: m.role, kind: m.kind, at: m.at, content: m.content }));
                         this.oldestId = d.oldest_id;
                         this.hasMore = d.has_more;
                         this.activeId = id;
+                        this.dayLabel = d.day_label;
+                        this.dayFull = d.day_full;
+                        this.readOnly = d.read_only;
                         this.sendUrl = '/coach/' + id + '/send';
                         this.streamUrl = '/coach/' + id + '/stream';
                         this.scanUrl = '/coach/' + id + '/scan';
@@ -349,6 +400,14 @@
                     this.loadingChat = false;
                 },
 
+                // Back to today's chat. A full navigation, because today may not exist as a row yet
+                // (an empty day is created on the first message, not on page view) — and the server is
+                // the only thing that knows which row that is.
+                goToday() {
+                    if (!this.readOnly && this.dayLabel === 'Today') { this.scrollDown(); return; }
+                    window.location = '/coach';
+                },
+
                 // Prepend the previous page of messages when the user scrolls to the top.
                 async loadOlder() {
                     if (!this.hasMore || this.loadingMore || this.loadingChat || !this.activeId || !this.oldestId) return;
@@ -358,7 +417,7 @@
                     try {
                         const res = await fetch('/coach/' + this.activeId + '/messages?before=' + this.oldestId, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
                         const d = await res.json();
-                        const older = d.messages.map(m => ({ role: m.role, content: m.content }));
+                        const older = d.messages.map(m => ({ role: m.role, kind: m.kind, at: m.at, content: m.content }));
                         if (older.length) {
                             this.messages = older.concat(this.messages);
                             this.oldestId = d.oldest_id || this.oldestId;
@@ -466,7 +525,7 @@
                     const preview = this.pendingPreview;   // the bubble keeps this object URL
                     this.suggestions = [];
                     // Render the photo natively in the bubble via `image` — markdown's sanitizer drops blob: URLs.
-                    this.messages.push({ role: 'user', content: caption, image: preview });
+                    this.messages.push({ role: 'user', at: this.nowLabel(), content: caption, image: preview });
                     this.draft = '';
                     this.pendingPhoto = null;
                     this.pendingPreview = '';          // ownership passed to the bubble; don't revoke it
@@ -487,11 +546,11 @@
                             body: fd,
                         });
                         const data = await res.json();
-                        this.messages.push({ role: 'assistant', content: (data && data.reply) || "Couldn't read that photo — try again." });
+                        this.messages.push({ role: 'assistant', at: this.nowLabel(), content: (data && data.reply) || "Couldn't read that photo — try again." });
                         this.$nextTick(() => { this.enhance(); this.scrollDown(); });
                         if (data && data.conversation_id) this.bindConversation(data.conversation_id);
                     } catch (e) {
-                        this.messages.push({ role: 'assistant', content: "Couldn't upload that photo. Check your connection and try again." });
+                        this.messages.push({ role: 'assistant', at: this.nowLabel(), content: "Couldn't upload that photo. Check your connection and try again." });
                         this.$nextTick(() => { this.enhance(); this.scrollDown(); });
                     } finally {
                         this.finishSend();
@@ -625,7 +684,7 @@
                     const text = (preset !== undefined ? preset : this.draft).trim();
                     if (!text || this.loading) return;
 
-                    this.messages.push({ role: 'user', content: text });
+                    this.messages.push({ role: 'user', at: this.nowLabel(), content: text });
                     this.draft = '';
                     this.suggestions = [];
                     this.loading = true;
@@ -635,7 +694,7 @@
 
                     // The assistant bubble we stream into — created lazily on the first token.
                     let idx = null;
-                    const target = () => { if (idx === null) idx = this.messages.push({ role: 'assistant', content: '' }) - 1; return idx; };
+                    const target = () => { if (idx === null) idx = this.messages.push({ role: 'assistant', at: this.nowLabel(), content: '' }) - 1; return idx; };
 
                     let res;
                     try {
@@ -659,7 +718,7 @@
                     // Rejected before streaming (CSRF/validation) → message wasn't saved; safe fallback.
                     if (!res.ok) { await this.sendFallback(text); this.finishSend(); return; }
                     if (!res.body) {
-                        this.messages.push({ role: 'assistant', content: "Couldn't stream a reply — please try again." });
+                        this.messages.push({ role: 'assistant', at: this.nowLabel(), content: "Couldn't stream a reply — please try again." });
                         this.$nextTick(() => this.scrollDown());
                         this.finishSend();
                         return;
@@ -706,7 +765,7 @@
                     } catch (e) {
                         // Mid-stream drop: keep whatever streamed; otherwise show a generic error.
                         if (idx === null) {
-                            this.messages.push({ role: 'assistant', content: "Couldn't reach your coach. Check your connection and try again." });
+                            this.messages.push({ role: 'assistant', at: this.nowLabel(), content: "Couldn't reach your coach. Check your connection and try again." });
                             this.$nextTick(() => this.scrollDown());
                         } else {
                             this.$nextTick(() => this.enhance());
@@ -732,11 +791,11 @@
                         const data = await res.json();
                         const reply = (data && data.reply) || "Something went wrong — please try again.";
                         const wasNear = this.nearBottom();
-                        this.messages.push({ role: 'assistant', content: reply });
+                        this.messages.push({ role: 'assistant', at: this.nowLabel(), content: reply });
                         this.$nextTick(() => { this.enhance(); if (wasNear) this.scrollDown(); else this.showJump = true; });
                         if (data && data.conversation_id) this.bindConversation(data.conversation_id);
                     } catch (e) {
-                        this.messages.push({ role: 'assistant', content: "Couldn't reach your coach. Check your connection and try again." });
+                        this.messages.push({ role: 'assistant', at: this.nowLabel(), content: "Couldn't reach your coach. Check your connection and try again." });
                         this.$nextTick(() => { this.enhance(); this.scrollDown(); });
                     }
                 },

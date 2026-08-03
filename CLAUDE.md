@@ -112,6 +112,14 @@ docker compose -f docker-compose.prod.yml exec mysql sh -c 'mysqldump -u titan -
 - **Raw storage** can move to any S3 (DigitalOcean Spaces, etc.): point the `MINIO_*` vars at it and remove the `minio`/`minio-init` services.
 - The biosignal `app/models/*.joblib` files are committed and baked into its image at build — no separate model download needed.
 
+## Before touching the coach chat — read the day-chats doc
+
+Coach chats are **one conversation per local day** (`conversations.day`), and the coach's proactive
+briefings/reactions land inline in that day rather than in a hidden thread.
+**[docs/COACH_DAY_CHATS.md](docs/COACH_DAY_CHATS.md)** is required reading before changing
+`CoachController`, `CoachService::history()`, `Conversation`, or any `ReactTo*` job — it covers the
+cross-day memory window and the two date/timezone traps that bite every time.
+
 ## Before touching the seal — read the architecture doc
 
 The band **duty-cycles** (samples in short bursts to save battery), so a night/workout arrives as dozens of

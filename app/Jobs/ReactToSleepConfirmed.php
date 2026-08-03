@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\ChatMessage;
+use App\Models\Conversation;
 use App\Models\SleepLog;
 use App\Services\Notifications\NotificationService;
 use App\Support\CoachReaction;
@@ -81,8 +83,8 @@ class ReactToSleepConfirmed implements ShouldQueue
         }
         $body = CoachReaction::ground($profile, "last night's sleep", $facts, $msg['body'], $card);
 
-        $convo = $profile->conversations()->firstOrCreate(['title' => 'Daily Briefings']);
-        $convo->messages()->create(['role' => 'assistant', 'content' => $body]);
+        $convo = Conversation::forDay($profile);
+        $convo->messages()->create(['role' => 'assistant', 'kind' => ChatMessage::KIND_REACTION, 'content' => $body]);
 
         if ($night) {
             $settings = $profile->settings ?? [];
