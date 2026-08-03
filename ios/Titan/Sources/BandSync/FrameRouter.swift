@@ -67,6 +67,7 @@ public final class FrameRouter {
     private var recentTs: [UInt64] = []
     private var lastSamplesEmit = Date.distantPast   // throttles the live-stats UI feed to ≤10 Hz
     private var lastStepsKey = ""               // dedupe identical step summaries (don't upload while still)
+    private var liveUIActive = false            // only accumulate + emit the live trace while a live screen is up
 
     public init(queue: SyncQueue) { self.queue = queue }
 
@@ -88,6 +89,22 @@ public final class FrameRouter {
         workQueue.async { [weak self] in
             guard let self else { return }
             if let w = self.wa.addStrapHr(bpm: bpm, rr: rr, t: t) { self.submit(.workout(w)) }
+        }
+    }
+
+    /// Turn the live-trace UI feed on/off. When OFF, the ~50 Hz waveform bookkeeping (append + the
+    /// O(240) ring trim) and the 10 Hz `onSamples` republish are skipped entirely — so a band streaming
+    /// while nobody's looking at a live trace stops re-rendering the whole app. The SEAL/upload path
+    /// (`ppg.add`, `wa.addAccel`, window submit) is UNCONDITIONAL and unaffected — data still records +
+    /// uploads in the background. Set from the live screens' onAppear/onDisappear.
+    public func setLiveUI(_ active: Bool) {
+        workQueue.async { [weak self] in
+            guard let self else { return }
+            self.liveUIActive = active
+            if !active {                        // drop the buffer so it rebuilds fresh (and frees memory)
+                self.recentPpg.removeAll(keepingCapacity: true)
+                self.recentTs.removeAll(keepingCapacity: true)
+            }
         }
     }
 
@@ -121,25 +138,28 @@ public final class FrameRouter {
         switch tag {
         case "T1":
             let frame = FrameDecoder.decodeT1(payload)
-            // Live stats for the UI (waveform + counters).
             totalSamples += frame.samples.count
-            for s in frame.samples { recentPpg.append(s.ppg); recentTs.append(s.t) }
-            if recentPpg.count > 240 {
-                recentPpg.removeFirst(recentPpg.count - 240)
-                recentTs.removeFirst(recentTs.count - 240)
-            }
-            var hz = 0
-            if recentTs.count > 1, let f = recentTs.first, let l = recentTs.last, l > f {
-                hz = Int((Double(recentTs.count) * 1000 / Double(l - f)).rounded())
-            }
-            // Throttle the live UI feed to ≤10 Hz. The band streams T1 continuously while connected, and
-            // republishing the waveform/stats through the app-wide AppModel on EVERY frame (on the main
-            // thread) invalidates the whole SwiftUI tree + spawns a Task each time — the "High energy +
-            // steadily climbing memory" seen while just sitting connected. 10 Hz is smooth for a live trace.
-            let now = Date()
-            if now.timeIntervalSince(lastSamplesEmit) >= 0.1 {
-                lastSamplesEmit = now
-                onSamples?(totalSamples, recentPpg, hz)
+            // Live stats for the UI (waveform + counters) — ONLY while a live screen is visible. The band
+            // streams T1 continuously whenever connected, so doing this array bookkeeping + republishing
+            // the waveform through the app-wide AppModel (which invalidates the whole SwiftUI tree) all day,
+            // even off-screen, was the idle-connection heat/battery drain. The seal/upload path below runs
+            // regardless, so background recording is unaffected.
+            if liveUIActive {
+                for s in frame.samples { recentPpg.append(s.ppg); recentTs.append(s.t) }
+                if recentPpg.count > 240 {
+                    recentPpg.removeFirst(recentPpg.count - 240)
+                    recentTs.removeFirst(recentTs.count - 240)
+                }
+                var hz = 0
+                if recentTs.count > 1, let f = recentTs.first, let l = recentTs.last, l > f {
+                    hz = Int((Double(recentTs.count) * 1000 / Double(l - f)).rounded())
+                }
+                // Throttle the live UI feed to ≤10 Hz — smooth for a trace without a per-frame republish.
+                let now = Date()
+                if now.timeIntervalSince(lastSamplesEmit) >= 0.1 {
+                    lastSamplesEmit = now
+                    onSamples?(totalSamples, recentPpg, hz)
+                }
             }
             for w in ppg.add(frame.samples) { submit(.ppg(w)) }
             wa.addAccel(frame.samples)                    // buffered only if a workout is open

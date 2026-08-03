@@ -7,9 +7,13 @@ struct DevicesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
+    private var btUnavailable: Bool { model.bluetooth == .off || model.bluetooth == .denied }
+
     var body: some View {
         VStack(spacing: Theme.Space.m) {
             hero.padding(.top, Theme.Space.s)
+
+            if btUnavailable { bluetoothCard }
 
             if model.isBandPaired {
                 Button { Haptic.rigid(); model.syncBand() } label: {
@@ -22,8 +26,11 @@ struct DevicesView: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 14)
                     .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
                     .foregroundStyle(.white)
-                }.disabled(model.bandSyncing)
-                if let t = model.lastBandSyncAt {
+                }.disabled(model.bandSyncing || btUnavailable)
+                if model.bandSyncFailed {
+                    Text("Couldn't reach your band. Make sure it's on and nearby, then try again.")
+                        .font(Theme.Font.micro).foregroundStyle(Theme.Palette.amber).multilineTextAlignment(.center)
+                } else if let t = model.lastBandSyncAt {
                     Text("Last synced \(t.formatted(.relative(presentation: .named)))")
                         .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textFaint)
                 } else {
@@ -32,7 +39,7 @@ struct DevicesView: View {
                 }
 
                 // Stuck on "Searching…"? Force a fresh BLE attempt without losing the pairing.
-                if !model.bandConnected {
+                if !model.bandConnected && !btUnavailable {
                     Button { Haptic.rigid(); model.reconnectBand() } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "arrow.clockwise")
@@ -134,8 +141,8 @@ struct DevicesView: View {
                                 Text("Pair Titan band").font(Theme.Font.body.weight(.semibold))
                                     .frame(maxWidth: .infinity).padding(.vertical, 14)
                                     .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
-                                    .foregroundStyle(.white)
-                            }
+                                    .foregroundStyle(.white).opacity(btUnavailable ? 0.5 : 1)
+                            }.disabled(btUnavailable)
                         }
                     }
                 }
@@ -157,6 +164,38 @@ struct DevicesView: View {
         }
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         .titanScreen(String(localized: "Band"), glow: model.bandConnected ? Theme.Palette.mint : Theme.Palette.indigo)
+        // Stream the live trace only while this screen is up (heat), and make sure the Bluetooth card is right.
+        .onAppear { model.liveSignalAppeared(); model.refreshBluetooth() }
+        .onDisappear { model.liveSignalDisappeared() }
+    }
+
+    /// Shown when Bluetooth is off or the app's Bluetooth permission is denied — an actionable card
+    /// instead of a forever-"Searching…" dead end (with the pair/reconnect/sync actions disabled above).
+    private var bluetoothCard: some View {
+        let denied = model.bluetooth == .denied
+        return GlassCard {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                HStack(spacing: Theme.Space.s) {
+                    Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.Palette.amber)
+                    Text(denied ? "Allow Bluetooth for Titan" : "Bluetooth is off")
+                        .font(Theme.Font.body.weight(.semibold)).foregroundStyle(Theme.Palette.text)
+                }
+                Text(denied
+                     ? "Titan needs Bluetooth to reach your band. Turn it on for Titan in Settings."
+                     : "Turn on Bluetooth to connect your band.")
+                    .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+                if denied {
+                    Button {
+                        Haptic.tap()
+                        if let u = URL(string: UIApplication.openSettingsURLString) { openURL(u) }
+                    } label: {
+                        Text("Open Settings").font(Theme.Font.micro.weight(.semibold)).foregroundStyle(Theme.Palette.cyan)
+                    }
+                }
+            }
+        }
     }
 
     // Run GPS test. The band has no GPS chip — runs are mapped by the PHONE — so this proves, on the spot,

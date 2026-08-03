@@ -144,6 +144,24 @@ public final class BandManager: NSObject {
     public var onPaired: ((Bool) -> Void)?
     /// Live list of nearby bands during pairing (closest first) for the picker UI.
     public var onCandidates: (([PairCandidate]) -> Void)?
+    /// Bluetooth radio/permission availability → an actionable card instead of a forever-"Searching…".
+    public var onState: ((BluetoothAvailability) -> Void)?
+
+    private static func availability(_ s: CBManagerState) -> BluetoothAvailability {
+        switch s {
+        case .poweredOn: return .ok
+        case .poweredOff: return .off
+        case .unauthorized: return .denied
+        case .unsupported: return .unsupported
+        default: return .unknown   // .resetting / .unknown — transient, treat as "still figuring it out"
+        }
+    }
+
+    /// Re-report the current Bluetooth state (e.g. when the connection screen opens) so the UI is correct
+    /// even if the one-shot `didUpdateState` fired before the callback was wired.
+    public func refreshState() {
+        bleQueue.async { [weak self] in guard let self else { return }; self.onState?(Self.availability(self.central.state)) }
+    }
 
     public init(router: FrameRouter) {
         self.router = router
@@ -430,6 +448,7 @@ public final class BandManager: NSObject {
 
 extension BandManager: CBCentralManagerDelegate {
     public func centralManagerDidUpdateState(_ c: CBCentralManager) {
+        onState?(Self.availability(c.state))   // surface off/denied/unsupported to the UI
         guard c.state == .poweredOn else { return }
         if pairing { c.scanForPeripherals(withServices: nil); return }   // pairing scan stays unfiltered (foreground)
         guard let id = boundId else { return }           // not paired yet — wait for startPairing()

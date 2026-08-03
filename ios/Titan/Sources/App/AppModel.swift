@@ -25,6 +25,10 @@ final class InMemoryWindowStore: WindowStore {
     func bumpAttempt(id: Int64) throws { /* in-memory: nothing to persist */ }
 }
 
+/// Radio/permission state for the band's Bluetooth, so the connection screen can show an actionable
+/// card ("turn on Bluetooth" / "allow it in Settings") instead of a forever-"Searching…" dead end.
+public enum BluetoothAvailability { case unknown, ok, off, denied, unsupported }
+
 /// Top-level app state + dependency wiring: auth/session, the dashboard data, and the live band
 /// (CoreBluetooth → decode → window → signed upload). Injected into the SwiftUI environment.
 @MainActor
@@ -50,6 +54,8 @@ final class AppModel: ObservableObject {
     @Published var bandIdle = false        // power-saving: we released the live link, band is duty-cycling
     @Published var bandBattery: Int?       // band battery % (BLE Battery Service), last-known
     @Published var waveform: [Double] = []  // recent PPG for the live trace
+    @Published var bluetooth: BluetoothAvailability = .unknown   // radio/permission state, for an actionable card
+    @Published var bandSyncFailed = false  // the last manual "Sync now" couldn't reach the band (no data arrived)
     // Chest-strap (workout HR): a separate BLE device from the band; both run at once.
     @Published var strapPaired = false
     @Published var strapConnected = false
@@ -282,14 +288,43 @@ final class AppModel: ObservableObject {
     func syncBand() {
         startBandIfPaired()        // ensure the BandManager exists
         bandIdle = false
+        bandSyncFailed = false
         band?.syncNow()
         bandSyncing = true
+        // Honesty: only claim "synced" if data actually arrived. Snapshot the counters that advance on a
+        // real frame/upload, then check them after the window — otherwise a Sync-now with Bluetooth off or
+        // the band out of range would still stamp "Last synced just now" and the user would trust a no-op.
+        let samplesBefore = syncedSamples
+        let uploadedBefore = windowsUploaded
         Task {
             try? await Task.sleep(nanoseconds: 8_000_000_000)
             bandSyncing = false
-            lastBandSyncAt = Date()
+            let gotData = bandConnected || syncedSamples > samplesBefore || windowsUploaded > uploadedBefore
+            if gotData {
+                lastBandSyncAt = Date()
+            } else {
+                bandSyncFailed = true
+            }
         }
     }
+
+    // MARK: live-trace UI gating (heat)
+    // The band streams ~50 Hz PPG whenever connected; republishing the live waveform through this app-wide
+    // model re-renders the whole UI. Only run that feed while a live trace is actually on screen. Refcounted
+    // because two screens show it (the Band screen + the Daily "Heart" card); the feed is on iff either is up.
+    private var liveConsumers = 0
+    func liveSignalAppeared() {
+        liveConsumers += 1
+        if liveConsumers == 1 { router?.setLiveUI(true) }
+    }
+    func liveSignalDisappeared() {
+        liveConsumers = max(0, liveConsumers - 1)
+        if liveConsumers == 0 { router?.setLiveUI(false) }
+    }
+
+    /// Re-read Bluetooth availability (the connection screen opening) so the card is correct even if the
+    /// one-shot didUpdateState fired before the callback was wired.
+    func refreshBluetooth() { startBandIfPaired(); band?.refreshState() }
 
     // MARK: always-on connection policy (Whoop-style)
     // The band is the ONLY data pipeline, so we hold a persistent 24/7 BLE link — foreground AND
@@ -624,6 +659,7 @@ final class AppModel: ObservableObject {
         // + service discovery + the first frame didn't all land inside the 8 s confirm window (H6).
         band.onLinkUp = { [weak self] in Task { @MainActor in self?.handleLinkRestored() } }
         band.onBattery = { [weak self] pct in Task { @MainActor in self?.bandBattery = pct } }
+        band.onState = { [weak self] a in Task { @MainActor in self?.bluetooth = a } }
         band.onPaired = { [weak self] ok in
             Task { @MainActor in
                 self?.pairing = false
