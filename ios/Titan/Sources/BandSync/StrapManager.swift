@@ -26,6 +26,11 @@ public final class StrapManager: NSObject {
     private var pairing = false
     private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int, name: String)] = [:]
     private var pairTimeout: Timer?
+    // Reconnect backoff (mirrors BandManager): a strap with a dying battery can connect→drop→connect in a
+    // tight loop; re-arming instantly would hammer connect() and drain the phone. 0→1→2→4→8s, reset on a
+    // successful connect. A bumped token cancels any pending scheduled reconnect (e.g. after unbind).
+    private var reconnectBackoff: TimeInterval = 0
+    private var reconnectToken = 0
 
     /// A nearby strap shown in the pairing picker.
     public struct StrapCandidate: Identifiable, Equatable {
@@ -105,6 +110,21 @@ public final class StrapManager: NSObject {
         ])
     }
 
+    /// Re-arm a reconnect with exponential backoff (first drop is immediate; repeats slow down). A drop
+    /// between workouts reconnects at once; only a flapping strap accumulates delay. connect() itself has
+    /// no timeout, so this just paces how often we (re)issue it.
+    private func scheduleReconnect(_ p: CBPeripheral) {
+        reconnectToken += 1
+        let token = reconnectToken
+        let delay = reconnectBackoff
+        reconnectBackoff = reconnectBackoff == 0 ? 1 : min(8, reconnectBackoff * 2)
+        if delay == 0 { reconnect(p); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, token == self.reconnectToken, self.boundId == p.identifier else { return }
+            self.reconnect(p)
+        }
+    }
+
     /// Parse a Heart Rate Measurement (0x2A37): flags byte, then 8- or 16-bit HR, optional energy-
     /// expended (2 B), then optional RR intervals (uint16, 1/1024 s). Returns (bpm, RR in ms). RR is
     /// empty when the strap doesn't include it — keeps the strap usable for HR alone.
@@ -172,6 +192,8 @@ extension StrapManager: CBCentralManagerDelegate {
     }
 
     public func centralManager(_ c: CBCentralManager, didConnect p: CBPeripheral) {
+        reconnectBackoff = 0        // healthy link → reset the backoff
+        reconnectToken += 1         // supersede any pending scheduled reconnect
         c.stopScan()   // connected — stop the (background-honored) HR-service scan; a connected strap won't
                        // re-advertise, so didDiscover can't stop it. Reconnect uses connect(), not a scan.
         onConnectionChange?(true)
@@ -180,7 +202,7 @@ extension StrapManager: CBCentralManagerDelegate {
 
     public func centralManager(_ c: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         onConnectionChange?(false)
-        if p.identifier == boundId { reconnect(p) }   // straps drop between workouts; re-arm
+        if p.identifier == boundId { scheduleReconnect(p) }   // straps drop between workouts; re-arm (backed off)
     }
 }
 

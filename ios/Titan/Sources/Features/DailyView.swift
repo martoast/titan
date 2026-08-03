@@ -623,8 +623,8 @@ private struct HrSection: View {
         }
         .animation(Theme.Motion.snappy, value: model.liveBpm)
         // Keep the live PPG feed running while this live card is on screen (paused otherwise — heat).
-        .onAppear { model.liveSignalAppeared() }
-        .onDisappear { model.liveSignalDisappeared() }
+        .onAppear { model.liveSignalAppeared("heart") }
+        .onDisappear { model.liveSignalDisappeared("heart") }
     }
 
     private func stat(_ v: String, _ l: LocalizedStringKey, _ c: Color) -> some View {
