@@ -235,7 +235,12 @@ var CFG = {
   OP: {
     REST:    { id: "REST",    sampleRate: 25,   ledCurrent: "auto", analysisDepth: "hr" },   // light motion / weak lock at rest
     STILL:   { id: "STILL",   sampleRate: 25,   ledCurrent: "auto", analysisDepth: "hr" },   // dead-still desk / quiet sleep → low power (25 Hz/40 ms: 12.5 Hz/80 ms sits below the FIR's 50 Hz design point + the 20-40 ms sweet spot)
-    WORKOUT: { id: "WORKOUT", sampleRate: 50,   ledCurrent: 0xE0,   analysisDepth: "full" }  // in-motion: fast raw + bright LED
+    // WORKOUT used to pin ledCurrent:0xE0 (hrmGreenAdjust:false). That is what killed the waveform on the
+    // 2026-08-03 ride: with the adaptive loop off, the driver's slot-exceed flags freeze and wear-detect
+    // disables the PPG slots (see applyOperatingPoint). The bright fixed LED was never validated as a
+    // signal-quality win anyway — the sweep in tasks/hr-power/ measured power, not lock quality — so the
+    // workout gets the same adaptive brightness that works at rest, and only the raw rate/depth change.
+    WORKOUT: { id: "WORKOUT", sampleRate: 50,   ledCurrent: "auto", analysisDepth: "full" }  // in-motion: fast raw, adaptive LED
   },
   // The controller's decision thresholds — EVERY gate is a config number (no literals in the code).
   // (The old bare `conf>=90` publish gate + the motion gates now live here as tunable knobs.)
@@ -738,9 +743,12 @@ function recoverDeadPpg(nowMs) {
   setTimeout(function () {
     if (!state.streaming) return;   // capture stopped while queued → the HRM is off by design
     try {
-      Bangle.setOptions({ hrmGreenAdjust: true });
+      // Restart FIRST: hrm_sensor_on() resets vcInfo.isWearing=true and re-enables the SLOT0+1 PPG slots,
+      // which is what actually un-sticks a wear-detect latch. Then restore the adaptive loop — options set
+      // before the restart are reset by it (Espruino docs) so the order here is not cosmetic.
       Bangle.setHRMPower(0, "titan");
       Bangle.setHRMPower(1, "titan");
+      Bangle.setOptions({ hrmGreenAdjust: true, hrmWearDetect: true });
     } catch (e) { state.lastHrmErr = '' + e; }
   }, 0);
 }
@@ -1456,17 +1464,33 @@ function applyOperatingPoint(op, skipRaw) {
   // A dead-PPG recovery latches the LED back to adaptive for the rest of the session; without this the
   // controller's very next pass would re-pin the fixed current and blind the sensor again.
   var adaptive = (op.ledCurrent === "auto") || ledAdaptiveOverride;
+  // ORDER MATTERS, and it is the opposite of what it looks like. Per the Espruino docs, hrmPollInterval
+  // "must be called BEFORE Bangle.setHRMPower - calling when the HRM is already on will not affect the
+  // poll rate", while hrmGreenAdjust / hrmWearDetect / hrmPushEnv are "reset when the HRM is initialised
+  // with Bangle.setHRMPower". And hrm_sensor_on() reprograms the VC31B's registers, so a hrmWr(0x17,...)
+  // LED write issued before a power-cycle is simply erased. So: poll interval FIRST, power-cycle, then
+  // every other option — otherwise the operating point we think we applied is not the one running.
   try {
-    // "auto" leaves the VC31B adaptive green brightness on; a number forces a fixed current below.
-    Bangle.setOptions({ hrmSportMode: curAlgoMode, hrmPollInterval: pollMs, hrmGreenAdjust: adaptive });
-    if (!adaptive) { try { Bangle.hrmWr(0x17, op.ledCurrent); } catch (e) {} }
-  } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
+    Bangle.setOptions({ hrmPollInterval: pollMs });
+  } catch (e) { state.lastHrmErr = '' + e; }
   // A poll-interval change only takes effect when the VC31 HRM restarts → power-cycle it. Synchronous, so
   // HR stays continuous (it ends powered on before the next event/tick — no observable blackout).
+  // The restart also resets vcInfo.isWearing=true and re-enables the PPG slots — see the wear-detect trap below.
   if (rateChanged) {
     try { Bangle.setHRMPower(0, "titan"); Bangle.setHRMPower(1, "titan"); } catch (e) {}
     curPollMs = pollMs;
   }
+  try {
+    // "auto" leaves the VC31B adaptive green brightness on; a number forces a fixed current below.
+    // hrmWearDetect is forced OFF whenever we pin the LED, and it is NOT optional — it defuses a latch
+    // in the driver itself (libs/misc/hrm_vc31.c): slot0/1EnvIsExceedFlag are cleared ONLY inside
+    // vc31b_adjust(), which runs only when allowGreenAdjust is true. Disable green adjust and those flags
+    // freeze; vc31b_wearstatus() keeps reading them, concludes the watch is off-wrist, and disables
+    // SLOT0+1 — the PPG slots. Every sample then reads 0 while accel streams on, and it does not recover.
+    // That is exactly the 2026-08-03 ride: 2.0 s of signal, then 2879 consecutive zeros.
+    Bangle.setOptions({ hrmSportMode: curAlgoMode, hrmGreenAdjust: adaptive, hrmWearDetect: adaptive });
+    if (!adaptive) { try { Bangle.hrmWr(0x17, op.ledCurrent); } catch (e) {} }
+  } catch (e) { state.lastHrmErr = '' + e; }   // surface (don't spam) so a future option bug isn't invisible
   // (FIFO batching via VC31B reg 0x13 was trialled here and RETIRED — on-device it raised pwrCPU and pushed the
   // FIFO toward overflow instead of cutting per-sample wakeups; see tasks/hr-power/. The raw LISTENER gate below
   // — analysisDepth — is the real per-sample-cost lever.)
