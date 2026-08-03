@@ -246,8 +246,9 @@ var CFG = {
                               // Lift face; the conf byte travels so the server/app can down-weight instead.
     stillWorkHrMin: 100,      // a STILL wrist but HR >= this mid-workout = "still working" (plank, wall-sit,
                               // heavy static hold, steady cycling) → keep sport/bike mode, don't drop to normal.
-    holdMaxMs: 45000,         // stop showing the held last-good bpm as "live" after this long with no lock
-                              // (honest "--" instead of a stale number; also stops it biasing restHr).
+    holdMaxMs: 90000,         // stop showing the held last-good bpm after this long with no lock (honest
+                              // acquiring state, not a stale number). 90s so a brief look-at-the-watch wrist
+                              // move (which drops PPG confidence) doesn't blank it — only a real lost lock.
     motionThreshold: 0.05,    // motionEMA above this = "moving" → off the low-power STILL floor
     batteryThreshold: 15      // battery % below this biases DOWN to STILL to protect runtime
   },
@@ -1245,11 +1246,13 @@ function onConnect() {
   onLinkUp();                    // clear any "phone off" indicator + a subtle reconnect confirm
   // Paired! If the pairing code was on screen, drop it and show the now-linked Heart face.
   if (pairTimer) exitPairing();
-  // NOTE: connecting NO LONGER force-starts REC. Recording is the user's choice (Heart face: 2 clicks =
-  // capture on/off) and persists across reboots via the titan.run pref — so turning it off STAYS off.
-  // Auto-starting on every connect meant a stray gym session kept logging and then tried to dump it all
-  // on connect, freezing the watch.
-  if (state.streaming) reconcileHrm();   // already recording → HR continuous (raw on only for workout/sleep); low-conf gaps are covered by the TB heartbeat below
+  // A connected band should be RECORDING so the app has live data the moment it opens — an idle (not
+  // streaming) band on connect shows "nothing" in the app. Auto-starting on connect used to freeze the
+  // watch (it dumped a whole stray offline session in one blocking flush), but that's fixed — the log is a
+  // capped ring drained in CHUNKS (setTimeout(flushLog) below), so this can't fill flash or block. So
+  // ensure capture is on whenever a phone connects.
+  if (!state.streaming) startStreaming();
+  reconcileHrm();   // HR continuous (raw on only for workout/sleep); low-conf gaps are covered by the TB heartbeat below
   // Flush any pending offline workout-accel to flash so the morning sync includes it.
   if (woAccel.length) writeWorkoutAccelFrame();
   // Sync today's step total right away (captures a walk taken while the phone was left behind).
