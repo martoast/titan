@@ -63,6 +63,24 @@ class ActivityPriming
         'pilates' => 'yoga', 'mobility' => 'yoga', 'stretch' => 'yoga', 'stretching' => 'yoga',
     ];
 
+    /**
+     * The activity_type a session should be STORED as, for a given priming type.
+     *
+     * These are two different vocabularies and conflating them was a bug. The PRIMING type drives the
+     * band's sensors and HR model and is finer-grained than what the rest of the app reasons about: a
+     * gym bike primes `spin` so the firmware picks SPORT_TYPE_SPINNING and leaves the GPS off — but it
+     * is still a ride everywhere else. Storing `spin` made {@see \App\Models\ActivitySession::title()}
+     * fall through to "Workout" instead of "Ride", and split one activity across two buckets depending
+     * on whether it started from the watch's SPIN face (which declares `cycle`) or from the coach.
+     */
+    public static function sessionType(string $primingType): string
+    {
+        return match ($primingType) {
+            'spin' => 'cycle',
+            default => $primingType,
+        };
+    }
+
     public static function normalize(string $raw): string
     {
         $key = strtolower(trim($raw));

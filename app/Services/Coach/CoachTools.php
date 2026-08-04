@@ -1369,7 +1369,10 @@ class CoachTools
         $session = $this->profile->activitySessions()->create([
             'source' => 'coach',
             'started_at' => $now,
-            'activity_type' => $type,
+            // The band is primed with $type (finer-grained: it picks the HR model); the SESSION is
+            // stored in the vocabulary the rest of the app knows, so a spin bike reads as a Ride and
+            // matches what the watch's SPIN face declares. See ActivityPriming::sessionType().
+            'activity_type' => \App\Support\ActivityPriming::sessionType($type),
             'updated_via' => 'coach',
         ]);
 

@@ -62,7 +62,15 @@ class SpinBikePrimingTest extends TestCase
 
         $this->assertTrue($res['ok']);
         $this->assertFalse($res['sampling']['gps'], 'spin must prime with GPS off — that is the firmware discriminator');
-        $this->assertSame('spin', $p->activitySessions()->first()->activity_type);
+
+        // The band is PRIMED as spin (so the firmware picks SPORT_TYPE_SPINNING), but the SESSION is
+        // stored as `cycle` — the vocabulary the rest of the app knows, and what the watch's own SPIN
+        // face declares. Storing `spin` would make ActivitySession::title() read "Workout" instead of
+        // "Ride" and split one activity across two buckets by how it was started.
+        $this->assertSame('spin', $p->settings['active_activity']['type'], 'the BAND must be primed as spin');
+        $this->assertSame('cycle', $p->fresh()->activitySessions()->first()->activity_type,
+            'the SESSION must store the known vocabulary, matching the SPIN face');
+        $this->assertSame('Ride', $p->fresh()->activitySessions()->first()->title());
     }
 
     public function test_a_road_ride_is_unaffected(): void
