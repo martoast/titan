@@ -127,6 +127,50 @@ class SleepLowCoverageTrustTest extends TestCase
         $this->assertFalse($this->isLowConfidence(['coverage' => 0.99, 'deep_min' => 90, 'rem_min' => 100, 'light_min' => 250], 0.9));
     }
 
+    public function test_physiologically_impossible_split_flags_despite_strong_coverage(): void
+    {
+        // Tester B 2026-08-04, the night that started this: 219 min deep (40% of sleep) in ONE unbroken 119.5-min
+        // block, REM 6.8%, coverage 0.991 and every window valid. It clears the >5% REM trigger, no stage
+        // reaches 70%, and the high coverage suppresses the soft tier anyway — so it sealed low_confidence=0
+        // and the coach told her she was well rested. The impossibility tier is ungated and must catch it.
+        $vel = [
+            'coverage' => 0.991, 'deep_min' => 219, 'rem_min' => 37, 'light_min' => 296,
+            'hypnogram_30s' => array_merge(array_fill(0, 239, 'deep'), array_fill(0, 887, 'light')),
+        ];
+        $this->assertTrue($this->isLowConfidence($vel, 1.0), '40% deep in one 2h block is not a real night');
+
+        // The BOUT ceiling stands on its own: 100 min unbroken deep inside an otherwise healthy 8h night is
+        // only 21% deep overall, so no fraction rule would ever see it.
+        $oneBlock = [
+            'coverage' => 0.99, 'deep_min' => 100, 'rem_min' => 90, 'light_min' => 290,
+            'hypnogram_30s' => array_merge(array_fill(0, 200, 'deep'), array_fill(0, 760, 'light')),
+        ];
+        $this->assertTrue($this->isLowConfidence($oneBlock, 1.0), 'a 100-min unbroken deep bout is an artifact');
+
+        // ...and a normal night whose deep arrives in real-length bouts stays CONFIDENT — the whole point is
+        // not to re-caveat every well-measured night (the 2026-07-14 regression this must not repeat).
+        $healthy = [
+            'coverage' => 0.99, 'deep_min' => 90, 'rem_min' => 100, 'light_min' => 250,
+            'hypnogram_30s' => array_merge(
+                ...array_fill(0, 6, array_merge(array_fill(0, 30, 'deep'), array_fill(0, 60, 'light'), array_fill(0, 20, 'rem'))),
+            ),
+        ];
+        $this->assertFalse($this->isLowConfidence($healthy, 1.0), 'normal architecture must stay confident');
+    }
+
+    public function test_deep_fraction_ceiling_exempts_short_naps_but_the_bout_ceiling_does_not(): void
+    {
+        // A 40-min recovery nap that is a third deep is a REAL nap — judging it by a whole-night norm would
+        // be a false positive (it would have wrongly flagged sleep_log #55).
+        $nap = ['coverage' => 0.99, 'deep_min' => 15, 'rem_min' => 5, 'light_min' => 25,
+            'hypnogram_30s' => array_merge(array_fill(0, 30, 'deep'), array_fill(0, 60, 'light'))];
+        $this->assertFalse($this->isLowConfidence($nap, 1.0), 'a third-deep nap is plausible');
+
+        // A missing hypnogram leaves only the fraction rule — it must not crash or silently pass a bad night.
+        $noHyp = ['coverage' => 0.99, 'deep_min' => 250, 'rem_min' => 40, 'light_min' => 300];
+        $this->assertTrue($this->isLowConfidence($noHyp, 1.0), 'fraction rule stands without a timeline');
+    }
+
     public function test_null_coverage_and_degenerate_sliver_flag_low_confidence(): void
     {
         // Review 2026-07-12: a staged night with NULL coverage must flag (NULL slipped the < 0.5 gate and

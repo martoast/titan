@@ -87,6 +87,55 @@ def test_stages_low_confidence_flags_implausible_splits_only():
     assert staging._summarize(tiny, t0)["stages_low_confidence"] is False
 
 
+def test_stages_impossible_catches_what_the_soft_split_rule_misses():
+    t0 = staging._parse_ts("2026-06-14T05:00:00Z")
+    # Tester B 2026-08-04 in miniature: 40% deep, REM at 6.8%, no stage over 70% — it clears BOTH soft triggers,
+    # which is exactly how it sealed as a confident night. 9h of sleep so the deep fraction is judgeable.
+    n = 1100
+    deep, rem = int(n * 0.40), int(n * 0.068)
+    vel = (["deep"] * deep + ["rem"] * rem + ["light"] * (n - deep - rem))
+    soft = staging._summarize(vel, t0)
+    assert soft["stages_impossible"] is True
+    assert soft["stages_low_confidence"] is True          # the hard tier feeds the soft flag too
+    # A long night at a NORMAL deep fraction, with its deep broken into real-length bouts, stays clean.
+    cycle = ["deep"] * 60 + ["light"] * 120 + ["rem"] * 40
+    ok = staging._summarize(cycle * 6, t0)
+    assert ok["stages_impossible"] is False
+    assert ok["stages_low_confidence"] is False
+    # The BOUT ceiling fires on its own, even when the totals look ordinary: 100 min unbroken deep inside an
+    # otherwise healthy 8h night is 17% deep overall, which no fraction rule would ever catch.
+    one_block = ["deep"] * 200 + (["light"] * 40 + ["rem"] * 20) * 13
+    assert staging._summarize(one_block, t0)["stages_impossible"] is True
+    # A short recovery nap that is a third deep is REAL — the fraction rule must not judge it.
+    nap = ["deep"] * 30 + ["light"] * 50 + ["rem"] * 10
+    assert staging._summarize(nap, t0)["stages_impossible"] is False
+
+
+def test_coverage_sampled_reports_real_readings_not_bridged_ones():
+    # 20 real samples spread every 6th epoch across 120 epochs: hold-bridging fills the gaps, so `coverage`
+    # reads ~1.0 while only 1 epoch in 6 was actually measured. The two numbers must not be conflated.
+    n_epochs = 120
+    epochs = list(range(0, n_epochs, 6))
+    accel = [2.0] * len(epochs)
+    hr = [60.0] * len(epochs)
+    out = staging.stage_night(
+        accel_counts=accel, hr_bpm=hr, sample_epochs=epochs,
+        start="2026-06-14T05:00:00Z", end="2026-06-14T06:00:00Z",
+    )
+    assert out["coverage"] > 0.9
+    assert out["coverage_sampled"] == round(len(epochs) / n_epochs, 3)
+    assert out["coverage_sampled"] < 0.2
+    # Duplicate/replayed bursts share an epoch and must not inflate it.
+    dup = staging.stage_night(
+        accel_counts=accel + accel, hr_bpm=hr + hr, sample_epochs=epochs + epochs,
+        start="2026-06-14T05:00:00Z", end="2026-06-14T06:00:00Z",
+    )
+    assert dup["coverage_sampled"] == out["coverage_sampled"]
+    # The dense path measured every epoch, so there the two numbers agree.
+    dense = staging.stage_night(accel_counts=[2.0] * 120, hr_bpm=[60.0] * 120)
+    assert dense["coverage_sampled"] == dense["coverage"]
+
+
 def test_viterbi_path_follows_strong_evidence_and_handles_empty():
     log_emit = np.vstack([np.tile([0.0, -8.0], (20, 1)), np.tile([-8.0, 0.0], (20, 1))])
     log_trans = np.log(np.array([[0.95, 0.05], [0.05, 0.95]]))

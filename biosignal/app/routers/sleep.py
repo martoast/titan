@@ -38,7 +38,15 @@ class SleepMetrics(BaseModel):
     bedtime: str
     wake_time: str
     quality: int
-    coverage: float = 1.0    # fraction of the night actually sampled (rest are NODATA holes)
+    coverage: float = 1.0    # fraction of the night covered, counting hold-BRIDGED epochs (rest are NODATA holes)
+    # Real, unbridged sampling. On the duty-cycled band `coverage` is ~1.0 while this is ~0.17 — a caller
+    # deciding "was this night well measured?" wants THIS number.
+    coverage_sampled: float = 1.0
+    # The stager's own doubt about the SPLIT. These were computed in staging.py but had no field here, so
+    # pydantic dropped them from every response and Laravel never saw them (it only worked because PHP
+    # re-implements the same checks). Declared so the stager's verdict actually reaches the caller.
+    stages_low_confidence: bool = False
+    stages_impossible: bool = False
     hypnogram_30s: List[str]
 
 

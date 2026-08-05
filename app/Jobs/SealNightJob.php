@@ -8,6 +8,7 @@ use App\Models\Profile;
 use App\Models\RecoveryLog;
 use App\Models\SleepLog;
 use App\Services\Wearables\BiosignalClient;
+use App\Support\SleepPlausibility;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Database\QueryException;
@@ -1348,7 +1349,15 @@ class SealNightJob implements ShouldQueue
         // Only a genuinely degenerate sliver flags regardless of coverage.
         $stageDoubt = (bool) ($metrics['stages_low_confidence'] ?? false) || $this->stageSplitImplausible($metrics);
 
-        return $this->degenerateNight($metrics) || (! $signalStrong && $stageDoubt);
+        // The IMPOSSIBLE tier is never gated. `$signalStrong` exists so a well-measured but odd night isn't
+        // permanently caveated — sound reasoning for a skewed split, wrong for a physically impossible one:
+        // no amount of coverage makes a 2-hour unbroken deep bout a real night. Worse, `$cov` here is
+        // BRIDGED coverage, which the duty-cycle sample-and-hold inflates to ~0.99 off ~17% real sampling —
+        // so the number certifying "the signal was strong" is the one the holes inflate. Until staging
+        // itself stops reading the hold as deep sleep, this tier is what keeps the app honest.
+        return $this->degenerateNight($metrics)
+            || SleepPlausibility::impossible($metrics)
+            || (! $signalStrong && $stageDoubt);
     }
 
     /** A degenerate "night": almost no sleep but sealed as a full night (a 6-min wrist-on sliver — 7 min

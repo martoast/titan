@@ -48,6 +48,17 @@ WAKE, LIGHT, DEEP, REM, NODATA = "wake", "light", "deep", "rem", "nodata"
 # = 8 min ≈ 2–3 duty periods.
 FILL_GAP_MAX_EPOCHS = 16
 
+# PHYSIOLOGICAL IMPOSSIBILITIES (as opposed to the merely-unusual splits the soft flag catches).
+# Adult N3 runs ~13-23% of a night; even a deep-heavy night stays under a third. And N3 arrives in
+# discrete bouts — 20-40 min is typical, an hour is already long — so an unbroken multi-hour "deep"
+# block is a stager artifact, never a real night. Both are impossible REGARDLESS of how well the
+# night was sampled, which is why the caller must not gate them behind a coverage check the way it
+# gates the soft flag. Deep FRACTION is only judged over a full night: a short recovery nap really
+# can be a third deep, so judging a 40-min nap by a whole-night norm is a false positive.
+MAX_PLAUSIBLE_DEEP_FRAC = 0.35
+MAX_PLAUSIBLE_DEEP_BOUT_MIN = 90
+MIN_SLEEP_FOR_DEEP_FRAC_MIN = 240
+
 # Trained classifier (HistGradientBoosting on motion + HR features). This is the DEFAULT
 # stager, controlled by SLEEP_MODEL_ENABLED (set it to 0 to force the physiology HMM /
 # heuristic fallback instead -- e.g. for debugging or HR-less streams). The shipped model is
@@ -265,7 +276,10 @@ def stage_night(
         t0 = _parse_ts(start) or datetime.now(timezone.utc)
 
     hole_mask: Optional[np.ndarray] = None
+    sampled_count: Optional[int] = None
     if sample_epochs is not None and len(sample_epochs) == accel.size and n_epochs > 1:
+        # DISTINCT in-range epochs — replayed/duplicate bursts share a slot and must not inflate this.
+        sampled_count = len({int(e) for e in sample_epochs if 0 <= int(e) < n_epochs})
         # Sparse duty-cycle reconstruction: place each burst at its real epoch, hold short gaps, hole long.
         accel_grid, covered = _reconstruct(accel, sample_epochs, n_epochs)
         hole_mask = ~covered
@@ -341,7 +355,7 @@ def stage_night(
         # Overwrite the coverage holes AFTER smoothing so a long unsampled gap reads as NODATA, never as
         # fabricated sleep or wake. Isolated held-gaps (short) stay their inferred stage.
         hypnogram = [NODATA if hole_mask[i] else s for i, s in enumerate(hypnogram)]
-    return _summarize(hypnogram, t0)
+    return _summarize(hypnogram, t0, sampled_count)
 
 
 def _clean_floats(seq) -> np.ndarray:
@@ -415,7 +429,18 @@ def _smooth_hypnogram(hyp: list[str], min_run: int = 4) -> list[str]:
     return out
 
 
-def _summarize(hyp: list[str], t0: datetime) -> dict:
+def _longest_run(hyp: list[str], stage: str) -> int:
+    """Longest unbroken run of ``stage`` (in epochs). Stage TOTALS can look ordinary while the way they
+    are laid out is impossible, so the bout length is its own check — a night can hold a normal-ish deep
+    total in one continuous multi-hour block that no real sleeper produces."""
+    best = run = 0
+    for s in hyp:
+        run = run + 1 if s == stage else 0
+        best = max(best, run)
+    return best
+
+
+def _summarize(hyp: list[str], t0: datetime, sampled_epochs: Optional[int] = None) -> dict:
     n = len(hyp)
     counts = {WAKE: 0, LIGHT: 0, DEEP: 0, REM: 0, NODATA: 0}
     for s in hyp:
@@ -433,6 +458,9 @@ def _summarize(hyp: list[str], t0: datetime) -> dict:
     # distinguish a real thin night ("you barely wore it") from a well-covered one, and refuse to headline
     # a mostly-hole "night".
     coverage = round((n - counts[NODATA]) / max(n, 1), 3)
+    # Real (unbridged) sampling. Falls back to `coverage` when the caller didn't say — the dense path
+    # really did measure every epoch, so there the two are the same number.
+    coverage_sampled = round(min(sampled_epochs, n) / max(n, 1), 3) if sampled_epochs is not None else coverage
 
     # bedtime / wake_time from first and last ASLEEP epoch (never a hole or a wake epoch).
     sleep_idx = [i for i, s in enumerate(hyp) if s not in (WAKE, NODATA)]
@@ -470,6 +498,18 @@ def _summarize(hyp: list[str], t0: datetime) -> dict:
         dominant_frac = max(counts[DEEP], counts[REM], counts[LIGHT]) / asleep_epochs
         stages_low_confidence = bool(rem_frac < 0.05 or dominant_frac > 0.70)
 
+    # ...and the HARD tier: splits that aren't merely skewed but physiologically impossible. The soft
+    # flag above misses these — a night can be 40% deep with REM at 7% and no single stage over 70%,
+    # passing both of its triggers (Tester B 2026-08-04: 219 min deep, one unbroken 119.5-min "deep" bout,
+    # sealed confident). Kept separate from the soft flag because the caller gates that one behind a
+    # coverage check: good coverage makes an ODD night believable, but it cannot make an IMPOSSIBLE
+    # one real, so this tier must never be gated.
+    deep_bout_min = _longest_run(hyp, DEEP) * epoch_min
+    stages_impossible = bool(deep_bout_min > MAX_PLAUSIBLE_DEEP_BOUT_MIN)
+    if asleep_min >= MIN_SLEEP_FOR_DEEP_FRAC_MIN and deep_min / asleep_min > MAX_PLAUSIBLE_DEEP_FRAC:
+        stages_impossible = True
+    stages_low_confidence = bool(stages_low_confidence or stages_impossible)
+
     return {
         "duration_min": duration_min,
         "deep_min": deep_min,
@@ -480,7 +520,13 @@ def _summarize(hyp: list[str], t0: datetime) -> dict:
         "wake_time": wake_time.isoformat(),
         "quality": quality,
         "coverage": coverage,
+        # Fraction of the grid carrying a REAL reading, before any hold-bridging. `coverage` above counts
+        # bridged epochs too, so on this duty-cycled band it sits near 1.0 while only ~1 epoch in 6 was
+        # actually measured — a caller that reads `coverage` as "how well was this night measured" is
+        # reading the bridging, not the signal. Surfaced so it can gate on the honest number.
+        "coverage_sampled": coverage_sampled,
         "stages_low_confidence": stages_low_confidence,
+        "stages_impossible": stages_impossible,
         "hypnogram_30s": hyp,
     }
 
