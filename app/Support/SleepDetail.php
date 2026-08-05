@@ -149,6 +149,10 @@ class SleepDetail
             'stage_status' => $last->stage_status,
             // Low-signal night → the app shows the read as an estimate + a fit-check hint, not a hard number.
             'low_confidence' => (bool) $last->low_confidence,
+            // Distinct doubt: the night measured fine, but its deep/REM/light split didn't read (an
+            // impossible layout). The app should caveat the STAGE chart while still showing the duration
+            // as a real number — flagging the whole night would drop a genuine 9h out of debt and streak.
+            'stages_low_confidence' => (bool) $last->stages_low_confidence,
             // "The story of your night" — the per-night narrative (onset, deep distribution, wakes, REM
             // cycles, one takeaway) that frames the hypnogram. Shared by app + web + coach. Null while
             // computing or without a hypnogram.

@@ -23,12 +23,44 @@ class SleepStoryTest extends TestCase
         return $out;
     }
 
-    private function night(array $hyp, int $deep, int $rem, int $light, bool $low = false): SleepLog
+    private function night(array $hyp, int $deep, int $rem, int $light, bool $low = false, bool $stagesLow = false): SleepLog
     {
         return new SleepLog([
             'hypnogram' => $hyp, 'bedtime' => '23:00:00', 'low_confidence' => $low,
+            'stages_low_confidence' => $stagesLow,
             'deep_min' => $deep, 'rem_min' => $rem, 'light_min' => $light,
         ]);
+    }
+
+    public function test_an_unreadable_stage_split_withholds_stage_claims_but_keeps_the_duration(): void
+    {
+        // Tester B 2026-08-04 shape: a long, well-measured night whose split is an artifact (40% deep in one
+        // block). The story must still speak to the hours — that part is real — and must NOT narrate deep
+        // distribution, REM periods, or land on the "well-built night" win.
+        $hyp = $this->hyp([['wake', 4], ['deep', 239], ['light', 300], ['rem', 20], ['light', 300]]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 219, rem: 37, light: 296, stagesLow: true), 8.0);
+
+        $this->assertTrue($story['stages_low_confidence']);
+        $this->assertStringContainsStringIgnoringCase('stage', $story['takeaway']);
+        $this->assertStringNotContainsStringIgnoringCase('well-built', $story['takeaway']);
+        $this->assertStringNotContainsStringIgnoringCase('solid deep and REM', $story['takeaway']);
+        // No stage-derived claims anywhere in the narrative.
+        $this->assertStringNotContainsStringIgnoringCase('deep sleep came', $story['text']);
+        $this->assertStringNotContainsStringIgnoringCase('REM period', $story['text']);
+        // ...but the duration IS stated, because it's trustworthy.
+        $this->assertStringContainsString((string) $story['asleep_h'], $story['text']);
+        // And it must NOT be confused with a thin-signal night — no band-fit advice.
+        $this->assertStringNotContainsStringIgnoringCase('band fit', $story['takeaway']);
+    }
+
+    public function test_a_thin_signal_night_still_leads_with_the_fit_check(): void
+    {
+        // low_confidence (the sensor problem) keeps its own, different framing — the split's own flag must
+        // not have displaced it.
+        $hyp = $this->hyp([['wake', 4], ['deep', 30], ['light', 200], ['rem', 20]]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 15, rem: 10, light: 100, low: true), 8.0);
+
+        $this->assertStringContainsStringIgnoringCase('band fit', $story['takeaway']);
     }
 
     public function test_a_short_but_well_built_night_reads_as_SHORT_not_textbook(): void

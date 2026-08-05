@@ -21,10 +21,14 @@ use Illuminate\Console\Command;
  * so the grid would shift by a few minutes and the stage numbers would move for no reason. Re-judging the
  * stored metrics is exactly what a reseal would conclude, without perturbing the data it concluded it from.
  *
- * STRICTLY MONOTONIC: this only ever raises `low_confidence` 0 → 1. It never clears the flag, because a
- * stored row doesn't carry the other inputs the seal weighed (the stager's own doubt, the valid-window
- * fraction), and re-deriving the full verdict from a partial picture could silently un-flag a night that
- * was correctly caveated for a reason invisible here.
+ * It sets `stages_low_confidence`, NOT `low_confidence`. A misread stage layout says nothing about whether
+ * the night was measured — Tester B's was measured fine and she really slept 9h12m — so the night keeps counting
+ * toward debt, the weekly score and her streak while only the breakdown is presented as an estimate.
+ *
+ * STRICTLY MONOTONIC: it only ever raises the flag, never clears one, because a stored row doesn't carry
+ * the other inputs the seal weighed (the stager's own doubt, the valid-window fraction), and re-deriving a
+ * full verdict from a partial picture could silently un-flag a night that was correctly caveated for a
+ * reason invisible here.
  */
 class RecheckSleepConfidence extends Command
 {
@@ -75,8 +79,8 @@ class RecheckSleepConfidence extends Command
                 SleepPlausibility::longestDeepBoutMin($metrics),
             );
 
-            if ($log->low_confidence) {
-                $this->line("  profile #{$log->profile_id} {$log->slept_at?->toDateString()}: already low_confidence — {$reason}");
+            if ($log->stages_low_confidence) {
+                $this->line("  profile #{$log->profile_id} {$log->slept_at?->toDateString()}: already flagged — {$reason}");
 
                 continue;
             }
@@ -86,12 +90,12 @@ class RecheckSleepConfidence extends Command
 
             if ($apply) {
                 // Only the flag. The stage minutes stay exactly as sealed — this command judges a night, it
-                // does not restage one.
-                $log->forceFill(['low_confidence' => true])->save();
+                // does not restage one — and `low_confidence` is untouched, so the duration keeps counting.
+                $log->forceFill(['stages_low_confidence' => true])->save();
             }
         }
 
-        $this->info("recheck-confidence: {$flagged} night(s) ".($apply ? 'flagged low_confidence' : 'would be flagged [dry run]').'.');
+        $this->info("recheck-confidence: {$flagged} night(s) ".($apply ? 'flagged stages_low_confidence' : 'would be flagged [dry run]').'.');
 
         return self::SUCCESS;
     }

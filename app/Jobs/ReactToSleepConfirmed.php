@@ -62,6 +62,7 @@ class ReactToSleepConfirmed implements ShouldQueue
                 'light' => $log->light_min, 'awake' => $log->awake_min,
             ], fn ($v) => $v !== null),
             'low_confidence' => (bool) $log->low_confidence ?: null,
+            'stages_low_confidence' => (bool) $log->stages_low_confidence ?: null,
         ], fn ($v) => $v !== null && $v !== []);
 
         $facts = 'Confirmed night. '.trim(($msg['push'] ?? '')).' Assessment: '.($assess['label'] ?? 'n/a')
@@ -80,6 +81,14 @@ class ReactToSleepConfirmed implements ShouldQueue
             $cov = $log->coverage !== null ? ' (only ~'.round($log->coverage * 100).'% of the night had a clean signal)' : '';
             $facts .= " IMPORTANT: this was a LOW-SIGNAL night{$cov} — present the duration/stages as a rough ESTIMATE,"
                 .' not a confident number, and gently suggest they check the band fit (snug, above the wrist bone) so tonight reads cleanly.';
+        } elseif ($log->stages_low_confidence) {
+            // The night measured fine — only the SPLIT is unreadable. Without this the coach narrates the
+            // stage minutes as fact, which is how a 40%-deep artifact became "well rested, performance 100".
+            $facts .= ' IMPORTANT: the DURATION for this night is solid and you should speak to it normally,'
+                .' but the stage breakdown (deep/REM/light) did NOT read reliably — do NOT quote those minutes,'
+                .' do NOT praise or criticise the deep/REM balance, and do NOT call it restorative or well built'
+                .' on the strength of them. Say plainly that the stage read was off tonight. No band-fit advice:'
+                .' the sensor was fine, this is our staging being unsure.';
         }
         $body = CoachReaction::ground($profile, "last night's sleep", $facts, $msg['body'], $card);
 

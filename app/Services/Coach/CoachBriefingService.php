@@ -334,6 +334,9 @@ class CoachBriefingService
             // A low-signal night (poor band contact → mostly NODATA): the briefing must caveat it as an
             // estimate and nudge a fit check, not lead with a confident-but-wrong short duration.
             'low_confidence' => (bool) $s->low_confidence ?: null,
+            // The duration is trustworthy but the stage split isn't — the briefing may speak to hours slept,
+            // and must not draw a conclusion from deep/REM.
+            'stages_low_confidence' => (bool) $s->stages_low_confidence ?: null,
             'coverage_pct' => $s->low_confidence && $s->coverage !== null ? round($s->coverage * 100) : null,
         ], fn ($v) => $v !== null);
     }

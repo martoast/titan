@@ -2288,6 +2288,7 @@ class CoachTools
                 'performance' => $card['performance'],
                 'status' => $card['status'],
                 'low_confidence' => (bool) $last->low_confidence,
+                'stages_low_confidence' => (bool) $last->stages_low_confidence,
                 'bedtime' => $last->bedtime ? \Illuminate\Support\Carbon::parse($last->bedtime)->format('H:i') : null,
                 'epoch_sec' => rescue(fn () => \App\Support\SleepDetail::forProfile($this->profile)['epoch_sec'] ?? null, null, false),
                 'hypnogram' => is_array($last->hypnogram) && count($last->hypnogram) ? $last->hypnogram : null,

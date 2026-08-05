@@ -20,7 +20,7 @@ class SleepLog extends Model
         'profile_id', 'slept_at', 'is_nap', 'session_start', 'duration_min', 'quality',
         'deep_min', 'rem_min', 'light_min', 'awake_min',
         'bedtime', 'wake_time', 'notes', 'updated_via', 'hypnogram', 'hr_series', 'motion_series',
-        'stage_status', 'coverage', 'low_confidence', 'finalized_at',
+        'stage_status', 'coverage', 'low_confidence', 'stages_low_confidence', 'finalized_at',
     ];
 
     protected function casts(): array
@@ -29,6 +29,8 @@ class SleepLog extends Model
             'slept_at' => 'date', 'session_start' => 'datetime', 'is_nap' => 'boolean',
             'hypnogram' => 'array', 'hr_series' => 'array', 'motion_series' => 'array',
             'finalized_at' => 'datetime', 'coverage' => 'float', 'low_confidence' => 'boolean',
+            // Distinct from low_confidence: the night's DURATION is trustworthy, its stage SPLIT isn't.
+            'stages_low_confidence' => 'boolean',
         ];
     }
 

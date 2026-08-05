@@ -38,6 +38,10 @@ class SleepStory
             return null;
         }
         $low = (bool) $log->low_confidence;
+        // Separate doubt: the night was measured fine, but its deep/REM/light SPLIT isn't readable (an
+        // impossible layout — see SleepPlausibility). Duration, onset and awakenings still stand, so only
+        // the stage-derived claims get withheld rather than the whole narrative.
+        $stagesLow = (bool) $log->stages_low_confidence;
 
         // SUFFICIENCY + stage ADEQUACY (not just where the stages sat). Minutes come straight off the log.
         $deepMin = (float) ($log->deep_min ?? 0);
@@ -89,7 +93,7 @@ class SleepStory
         // exactly (review 04e14c5 — the raw REM-run scan on the graph double-counted vs this sentence).
         [$remPeriods, $lastRemLong, $cycleBoundaries] = self::remPeriods($hyp, $asleepMin);
 
-        $ctx = compact('low', 'onsetMin', 'deepDist', 'awakenings', 'remPeriods', 'lastRemLong',
+        $ctx = compact('low', 'stagesLow', 'onsetMin', 'deepDist', 'awakenings', 'remPeriods', 'lastRemLong',
             'asleepH', 'needH', 'shortBy', 'deepLow', 'remLow', 'deepMin', 'remMin');
         [$takeaway, $text] = self::compose($ctx);
 
@@ -105,6 +109,7 @@ class SleepStory
             'takeaway' => $takeaway,
             'text' => $text,
             'low_confidence' => $low,
+            'stages_low_confidence' => $stagesLow,
         ];
     }
 
@@ -205,6 +210,9 @@ class SleepStory
     {
         [$low, $onsetMin, $deepDist, $awakenings, $remPeriods, $lastRemLong, $asleepH, $shortBy] =
             [$c['low'], $c['onsetMin'], $c['deepDist'], $c['awakenings'], $c['remPeriods'], $c['lastRemLong'], $c['asleepH'], $c['shortBy']];
+        // Any stage-derived claim is off the table when the split didn't read — a thin signal already
+        // implies it, so `$low` subsumes it.
+        $stagesLow = $low || ! empty($c['stagesLow']);
         $s = [];
 
         // Onset + how much sleep it actually was (sufficiency, not just architecture).
@@ -217,8 +225,14 @@ class SleepStory
             $s[] = $onset." for {$asleepH}h total";
         }
 
-        // Deep distribution (skip precise framing on a thin night).
-        if (! $low && $deepDist !== null) {
+        // The night measured fine but its split didn't read — say so once, plainly, instead of narrating
+        // deep/REM numbers we know are wrong. The duration above is still a real number.
+        if ($stagesLow && ! $low) {
+            $s[] = "The {$asleepH}h is solid, but the stage breakdown didn't read cleanly — treat the deep/REM split as rough.";
+        }
+
+        // Deep distribution (skip precise framing on a thin night, or an unreadable split).
+        if (! $stagesLow && $deepDist !== null) {
             $s[] = match ($deepDist) {
                 'front' => 'Most of your deep sleep came in the first hours — when the body does its repair work.',
                 'back' => 'Your deep sleep came later than ideal — the body banks its deepest sleep best early on.',
@@ -235,8 +249,8 @@ class SleepStory
             $s[] = 'You woke '.count($awakenings).' times through the night.';
         }
 
-        // REM periods.
-        if (! $low && $remPeriods >= 1) {
+        // REM periods — counted off the hypnogram, so they're only as good as the split.
+        if (! $stagesLow && $remPeriods >= 1) {
             $rem = "You went through {$remPeriods} REM ".($remPeriods === 1 ? 'period' : 'periods');
             $s[] = $lastRemLong ? $rem.', the last a long one right before waking — that\'s normal.' : $rem.'.';
         }
@@ -257,11 +271,19 @@ class SleepStory
         if ($c['low']) {
             return 'Check your band fit tonight so we can read the full picture.';
         }
-        // 1 · SUFFICIENCY — a short night is the headline, however well-built.
+        $stagesLow = ! empty($c['stagesLow']);
+        // 1 · SUFFICIENCY — a short night is the headline, however well-built. Still valid with an unreadable
+        //     split: duration doesn't depend on the staging. Just don't credit "good structure" we can't see.
         if (($c['shortBy'] ?? 0) >= 1.5) {
             $need = $c['needH'] !== null ? ' short of your ~'.rtrim(rtrim(number_format($c['needH'], 1), '0'), '.').'h need' : ' short of your need';
-            $built = $c['deepDist'] === 'front' && ! $c['deepLow'] && ! $c['remLow'] ? 'Good structure, but ' : '';
+            $built = ! $stagesLow && $c['deepDist'] === 'front' && ! $c['deepLow'] && ! $c['remLow'] ? 'Good structure, but ' : '';
             return $built."only {$c['asleepH']}h asleep — well{$need}; that's what's building your sleep debt. The fix isn't the shape of the night, it's more of it: an earlier bedtime.";
+        }
+        // 1b · An unreadable split can't support ANY stage or architecture verdict below — and must never
+        //      reach the "well-built night" win at the end, which is exactly how Tester B got told she was
+        //      well rested off a 40%-deep artifact. Duration was fine, so say that and stop.
+        if ($stagesLow) {
+            return "You got {$c['asleepH']}h in, which is the part that counts — but the stage read was off tonight, so I won't call the deep/REM split either way.";
         }
         // 2 · STAGE ADEQUACY — enough hours, but a stage came up light.
         if ($c['deepLow']) {

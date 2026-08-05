@@ -34,6 +34,8 @@ class MobileSleepController extends Controller
                 // Low-signal night (mostly-NODATA coverage or an implausible stage split): the app shows this
                 // as an ESTIMATE + a fit-check hint, never a confident number.
                 'low_confidence' => (bool) $s->low_confidence,
+                // Stage split unreadable while the night itself measured fine — caveat the breakdown only.
+                'stages_low_confidence' => (bool) $s->stages_low_confidence,
                 'bedtime' => $s->bedtime,
                 'wake_time' => $s->wake_time,
             ])->values();

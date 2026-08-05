@@ -880,6 +880,7 @@ class SealNightJob implements ShouldQueue
                 'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                 'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                 'low_confidence' => $this->isLowConfidence($metrics, $this->validWindowFraction($scoped)),
+                'stages_low_confidence' => $this->stagesLowConfidence($metrics, $this->validWindowFraction($scoped)),
                 'stage_status' => 'final',
                 'finalized_at' => now(),
                 'updated_via' => 'biosignal:sealed-session',
@@ -891,6 +892,9 @@ class SealNightJob implements ShouldQueue
                 'bedtime' => $bedDt->setTimezone($tz)->format('H:i:s'),
                 'wake_time' => $wakeDt->setTimezone($tz)->format('H:i:s'),
                 'low_confidence' => true,
+                // No stages were written at all, so there is no breakdown to doubt — and clearing it stops a
+                // stale `true` from an earlier staged seal outliving the stages it referred to.
+                'stages_low_confidence' => false,
                 'stage_status' => 'final',
                 'finalized_at' => now(),
                 'updated_via' => 'biosignal:sealed-session-marker',
@@ -1315,12 +1319,16 @@ class SealNightJob implements ShouldQueue
     }
 
     /**
-     * Is this night an honest ESTIMATE the app/coach must caveat rather than a confident fact? True when
-     * ANY of: no stages at all (duration-only); low bridged coverage (mostly NODATA); a low FULLY-VALID
-     * ppg_raw fraction (poor contact — the signal-quality gate the span-merge can't mask, measured on the
-     * raw windows); or a physiologically implausible stage split (the stager's d85f377 flag OR a PHP-side
-     * fallback: REM < 5% / any stage > 70%). The `low_confidence` flag it feeds is the trust line: "we
-     * could only confirm part of your night — sensor contact was low, check your fit."
+     * Was this night MEASURED well enough to score at all? True (= an estimate to caveat) when ANY of: no
+     * stages at all (duration-only); low bridged coverage (mostly NODATA); a low FULLY-VALID ppg_raw
+     * fraction (poor contact — the signal-quality gate the span-merge can't mask, measured on the raw
+     * windows); or a degenerate sliver sealed as a night. The `low_confidence` flag it feeds is the trust
+     * line: "we could only confirm part of your night — sensor contact was low, check your fit."
+     *
+     * This is a question about the SIGNAL, not about the stage split. Doubt in the deep/REM/light breakdown
+     * lives on `stagesLowConfidence()`, because SleepDebt and SleepWeek drop a low_confidence night from the
+     * ledger entirely — a price worth paying when we don't know how long someone slept, and the wrong price
+     * for a night we measured perfectly and merely staged badly.
      */
     private function isLowConfidence(?array $metrics, ?float $validFraction = null): bool
     {
@@ -1338,26 +1346,13 @@ class SealNightJob implements ShouldQueue
             return true;
         }
 
-        // On a well-measured night the stager had good data, so a skewed split is a real night — only apply
-        // the crude stage-split doubt when the signal ISN'T already strong (review 2026-07-14).
-        $signalStrong = $cov >= self::HIGH_COVERAGE_CONFIDENCE
-            && ($validFraction === null || $validFraction >= self::MIN_VALID_WINDOW_FRAC);
-
-        // `stages_low_confidence` (staging.py) is the SAME crude distribution heuristic as
-        // stageSplitImplausible (rem_frac<0.05 or dominant_frac>0.70) — NOT a model-uncertainty signal — so
-        // it gets the SAME signal gate (review dc8f1fb corrected my earlier "trust it unconditionally").
-        // Only a genuinely degenerate sliver flags regardless of coverage.
-        $stageDoubt = (bool) ($metrics['stages_low_confidence'] ?? false) || $this->stageSplitImplausible($metrics);
-
-        // The IMPOSSIBLE tier is never gated. `$signalStrong` exists so a well-measured but odd night isn't
-        // permanently caveated — sound reasoning for a skewed split, wrong for a physically impossible one:
-        // no amount of coverage makes a 2-hour unbroken deep bout a real night. Worse, `$cov` here is
-        // BRIDGED coverage, which the duty-cycle sample-and-hold inflates to ~0.99 off ~17% real sampling —
-        // so the number certifying "the signal was strong" is the one the holes inflate. Until staging
-        // itself stops reading the hold as deep sleep, this tier is what keeps the app honest.
-        return $this->degenerateNight($metrics)
-            || SleepPlausibility::impossible($metrics)
-            || (! $signalStrong && $stageDoubt);
+        // STAGE doubt of ANY kind is deliberately absent from here now — it lives on `stagesLowConfidence()`.
+        // This flag governs whether the night is SCORED AT ALL (SleepDebt and SleepWeek drop a
+        // low_confidence night entirely), and how the stages came out says nothing about whether the
+        // duration was measured. Tester B's 2026-08-04 really was 9h12m; unmeasuring it to caveat a bad
+        // breakdown cost her 0.5h of debt payback and her streak to fix a problem that isn't duration's.
+        // What remains is exactly the signal question: enough coverage, enough clean windows, a real night.
+        return $this->degenerateNight($metrics);
     }
 
     /** A degenerate "night": almost no sleep but sealed as a full night (a 6-min wrist-on sliver — 7 min
@@ -1394,6 +1389,37 @@ class SealNightJob implements ShouldQueue
         })->count();
 
         return $valid / $ppg->count();
+    }
+
+    /**
+     * Do we trust the STAGE SPLIT of this night — independent of whether we trust the night?
+     *
+     * Two ways to doubt it. The soft one (the stager's own flag, or `stageSplitImplausible`) keeps the
+     * coverage gate from `isLowConfidence`: on a well-measured night a light-heavy or low-REM split is a
+     * real if unusual night, and caveating every one of them was the 2026-07-14 regression. The hard one —
+     * a layout that isn't a possible night at all — is NEVER gated, because good coverage cannot make a
+     * two-hour unbroken deep bout real, and the coverage being gated on is the bridged number that the
+     * duty-cycle hold inflates in the first place.
+     *
+     * @param  array<string,mixed>|null  $metrics
+     */
+    private function stagesLowConfidence(?array $metrics, ?float $validFraction = null): bool
+    {
+        if ($metrics === null) {
+            return false;   // duration-only row: there are no stages to doubt
+        }
+
+        if (SleepPlausibility::impossible($metrics)) {
+            return true;
+        }
+
+        $cov = $this->clampCoverage($metrics['coverage'] ?? null);
+        $signalStrong = $cov !== null
+            && $cov >= self::HIGH_COVERAGE_CONFIDENCE
+            && ($validFraction === null || $validFraction >= self::MIN_VALID_WINDOW_FRAC);
+
+        return ! $signalStrong
+            && ((bool) ($metrics['stages_low_confidence'] ?? false) || $this->stageSplitImplausible($metrics));
     }
 
     /** The d85f377 stage-plausibility rule, applied PHP-side to the sealed stage minutes as a fallback for
@@ -1502,6 +1528,7 @@ class SealNightJob implements ShouldQueue
                     'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                     'low_confidence' => $this->isLowConfidence($metrics, $this->validWindowFraction($ibiWindows)),
+                    'stages_low_confidence' => $this->stagesLowConfidence($metrics, $this->validWindowFraction($ibiWindows)),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed-ppg',
@@ -1597,6 +1624,7 @@ class SealNightJob implements ShouldQueue
                     'motion_series' => $this->seriesAttr($metrics['motion_series'] ?? null),
                     'coverage' => $this->clampCoverage($metrics['coverage'] ?? null),
                     'low_confidence' => $this->isLowConfidence($metrics, $this->validWindowFraction($sleepWindows)),
+                    'stages_low_confidence' => $this->stagesLowConfidence($metrics, $this->validWindowFraction($sleepWindows)),
                     'stage_status' => 'final',
                     'finalized_at' => now(),
                     'updated_via' => 'biosignal:sealed',
