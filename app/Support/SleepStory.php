@@ -225,10 +225,11 @@ class SleepStory
             $s[] = $onset." for {$asleepH}h total";
         }
 
-        // The night measured fine but its split didn't read — say so once, plainly, instead of narrating
-        // deep/REM numbers we know are wrong. The duration above is still a real number.
-        if ($stagesLow && ! $low) {
-            $s[] = "The {$asleepH}h is solid, but the stage breakdown didn't read cleanly — treat the deep/REM split as rough.";
+        // The night measured fine but its split didn't read. Normally the TAKEAWAY carries this, so adding
+        // it here too just says the same thing twice in one paragraph — only step in when a big shortfall
+        // will win the takeaway instead, which would otherwise leave the bad split unmentioned entirely.
+        if ($stagesLow && ! $low && ($shortBy ?? 0) >= 1.5) {
+            $s[] = "The stage breakdown didn't read cleanly either — treat the deep/REM split as rough.";
         }
 
         // Deep distribution (skip precise framing on a thin night, or an unreadable split).

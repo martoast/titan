@@ -51,6 +51,21 @@ class SleepStoryTest extends TestCase
         $this->assertStringContainsString((string) $story['asleep_h'], $story['text']);
         // And it must NOT be confused with a thin-signal night — no band-fit advice.
         $this->assertStringNotContainsStringIgnoringCase('band fit', $story['takeaway']);
+        // The caveat is made ONCE: the takeaway carries it, so the narrative must not repeat it.
+        $this->assertStringContainsStringIgnoringCase('stage read was off', $story['takeaway']);
+        $this->assertStringNotContainsStringIgnoringCase('treat the deep/REM split as rough', $story['text']);
+    }
+
+    public function test_a_short_night_with_an_unreadable_split_still_leads_with_the_shortfall(): void
+    {
+        // Sufficiency outranks everything, so the takeaway is about the shortfall — which would leave the
+        // bad split unmentioned. The narrative picks it up in that case, so it's never silently dropped.
+        $hyp = $this->hyp([['wake', 4], ['deep', 200], ['light', 100], ['rem', 8]]);
+        $story = SleepStory::forNight($this->night($hyp, deep: 100, rem: 4, light: 50, stagesLow: true), 8.0);
+
+        $this->assertStringContainsStringIgnoringCase('debt', $story['takeaway']);
+        $this->assertStringNotContainsStringIgnoringCase('Good structure', $story['takeaway']);
+        $this->assertStringContainsStringIgnoringCase("didn't read cleanly", $story['text']);
     }
 
     public function test_a_thin_signal_night_still_leads_with_the_fit_check(): void
