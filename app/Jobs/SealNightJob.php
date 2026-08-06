@@ -1703,9 +1703,10 @@ class SealNightJob implements ShouldQueue
         }
     }
 
+    /** The tz bedtime/wake_time are rendered in. Resolution lives on the Profile so this job and
+     *  SleepCalibration (which joins windows by the seal's clock times) can never disagree. */
     private function timezoneFor(Profile $profile): string
     {
-        return $profile->wearableConnections()->whereNotNull('timezone')->value('timezone')
-            ?: config('app.timezone', 'UTC');
+        return $profile->effectiveTimezone();
     }
 }

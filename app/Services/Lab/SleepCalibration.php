@@ -3,8 +3,8 @@
 namespace App\Services\Lab;
 
 use App\Models\DeviceIngestion;
+use App\Models\Profile;
 use App\Models\SleepLog;
-use App\Models\WearableConnection;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
 
@@ -185,11 +185,13 @@ class SleepCalibration
         $nightsWithSignal = 0;
         $nightsDetail = [];
 
-        // The seal writes bedtime/wake in the PROFILE/device timezone (SealNightJob::timezoneFor →
-        // WearableConnection.timezone), NOT app-tz. Resolve that same tz so the clock-time window join lines up;
-        // a UTC misread shifts the overlap window hours off and matches nothing (silent no-op extraction).
-        $tz = WearableConnection::where('profile_id', $profileId)
-            ->whereNotNull('timezone')->value('timezone') ?: config('app.timezone', 'UTC');
+        // The seal writes bedtime/wake in the PROFILE timezone (SealNightJob::timezoneFor →
+        // Profile::effectiveTimezone), NOT app-tz. Resolve through the SAME method so the clock-time window
+        // join lines up; a UTC misread shifts the overlap window hours off and matches nothing (silent no-op
+        // extraction). Resolving it independently here is what let the two drift: both used to scrape
+        // wearable_connections with an unordered `value('timezone')`, so on a profile whose rows disagree
+        // (Alex: 15 × America/Mexico_City + 1 × America/Tijuana) the join could pick the hour the seal didn't.
+        $tz = Profile::find($profileId)?->effectiveTimezone() ?: config('app.timezone', 'UTC');
         // The tz device_ingestions.window_start is STORED in — the Eloquent datetime cast writes/reads in the
         // app timezone, so the clock-overlap bounds must be serialized in this tz (NOT the profile's wearable
         // tz, which may differ, and NOT UTC). Used only to format the window_start query bounds below.

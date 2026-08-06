@@ -49,6 +49,34 @@ class Profile extends Model
         return $this->onboarded_at !== null;
     }
 
+    /**
+     * The timezone this profile's CLOCK FIELDS should be rendered in — bedtime, wake_time, and any
+     * other wall-clock the user reads back.
+     *
+     * The user's declared `settings['timezone']` wins, because the wearable rows are NOT a device
+     * reading: the band/bridge sends no timezone, so `DeviceIngestionController` stamps every BANGLE
+     * connection with `config('app.timezone')` as a DEFAULT. Alex is in America/Tijuana while app-tz
+     * is America/Mexico_City, so his 16 connection rows carry two different zones an hour apart —
+     * 15 of them wrong — and the previous lookup (`->value('timezone')`, no ORDER BY) picked whichever
+     * one MySQL happened to return. That value decides bedtime/wake_time, so a query-plan change alone
+     * could shift a sealed sleep card by an hour with no change in the underlying data.
+     *
+     * Falls back to a DETERMINISTICALLY ordered connection lookup (newest first) for profiles that
+     * never declared one, then to app-tz. An unparseable declared value is ignored rather than thrown,
+     * since callers format with it directly.
+     */
+    public function effectiveTimezone(): string
+    {
+        $declared = $this->settings['timezone'] ?? null;
+        if (is_string($declared) && $declared !== '' && in_array($declared, timezone_identifiers_list(), true)) {
+            return $declared;
+        }
+
+        return $this->wearableConnections()->whereNotNull('timezone')
+            ->orderByDesc('updated_at')->orderByDesc('id')->value('timezone')
+            ?: (string) config('app.timezone', 'UTC');
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
