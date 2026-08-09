@@ -32,6 +32,29 @@ class AiService
         return str_starts_with($m, 'gpt-5') || preg_match('/^o\d/', $m) === 1;
     }
 
+    /**
+     * gpt-5.6-luna refuses function tools unless reasoning is switched off on
+     * the chat/completions endpoint:
+     *
+     *   "Function tools with reasoning_effort are not supported for
+     *    gpt-5.6-luna in /v1/chat/completions. To use function tools, use
+     *    /v1/responses or set reasoning_effort to 'none'."
+     *
+     * Every tool-using call would 400 without this — which reads as "the new
+     * model is broken" rather than "we sent it a parameter it does not take".
+     *
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function withToolDialect(array $payload): array
+    {
+        if (! empty($payload['tools']) && str_contains(strtolower((string) ($payload['model'] ?? '')), 'luna')) {
+            $payload['reasoning_effort'] = 'none';
+        }
+
+        return $payload;
+    }
+
     /** GPT-5 / o-series use `max_completion_tokens`; older models use `max_tokens`. */
     private function tokenLimitParam(string $model): string
     {
@@ -199,6 +222,7 @@ class AiService
             if ($resolvedTools !== []) {
                 $payload['tools'] = $resolvedTools;
                 $payload['tool_choice'] = 'auto';
+                $payload = $this->withToolDialect($payload);
             }
 
             $message = $this->completion($payload);
@@ -270,6 +294,7 @@ class AiService
             if ($resolvedTools !== []) {
                 $payload['tools'] = $resolvedTools;
                 $payload['tool_choice'] = 'auto';
+                $payload = $this->withToolDialect($payload);
             }
 
             $message = $this->streamCompletion($payload, $onDelta);
