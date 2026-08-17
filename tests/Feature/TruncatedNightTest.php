@@ -237,6 +237,46 @@ class TruncatedNightTest extends TestCase
         $this->assertEquals($first, $night->fresh()->updated_at, 'a still-un-synced band re-reports the same power loss');
     }
 
+    // ---- the screen itself ---------------------------------------------------------------------
+
+    public function test_the_sleep_page_does_not_print_the_truncated_duration_as_the_night(): void
+    {
+        // The data half being right is not enough. Before this, the hero rendered `durationLabel()`
+        // unconditionally — a 5xl "4h 45m" — with no reference to low_confidence anywhere in the blade.
+        // That number IS the fake short night, however carefully the paragraph beneath it hedges.
+        $p = $this->profile();
+        $night = $this->night($p);
+        $this->reboot($p, '00:19:00');
+        (new FlagTruncatedNightJob($p->id))->handle();
+
+        $res = $this->actingAs($p->user)->get('/sleep')->assertOk();
+
+        // Assert on the hero specifically — a page-wide search would also match the honest
+        // "it recorded 4h 45m before it stopped" caption, which is fine to show.
+        $this->assertMatchesRegularExpression(
+            '/data-testid="sleep-hero-duration"[^>]*>\s*(&mdash;|—)\s*</u',
+            $res->getContent(),
+            'the hero still prints a duration for a night the band did not finish measuring');
+        $res->assertSee('ran out of battery', false);    // say what happened
+        $res->assertSee('Band stopped', false);          // that timestamp is not a wake time
+        $res->assertDontSee('>Wake<', false);
+    }
+
+    public function test_an_ordinary_night_still_shows_its_duration(): void
+    {
+        $p = $this->profile();
+        $this->night($p, ['duration_min' => 470, 'wake_time' => '08:20:00', 'updated_via' => 'biosignal:sealed-session']);
+
+        $res = $this->actingAs($p->user)->get('/sleep')->assertOk();
+
+        $this->assertMatchesRegularExpression(
+            '/data-testid="sleep-hero-duration"[^>]*>\s*7h 50m\s*</u',
+            $res->getContent(),
+            'an ordinary night must still show its duration in the hero');
+        $res->assertSee('>Wake<', false);
+        $res->assertDontSee('ran out of battery', false);
+    }
+
     // ---- the predicate's own edges -------------------------------------------------------------
 
     public function test_core_sleep_hours_wrap_midnight(): void
