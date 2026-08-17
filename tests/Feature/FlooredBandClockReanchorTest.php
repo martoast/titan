@@ -170,6 +170,45 @@ class FlooredBandClockReanchorTest extends TestCase
         }
     }
 
+    public function test_a_still_unsynced_band_does_not_slide_its_reboot_timestamp_forward(): void
+    {
+        // ONE power loss, however long the band goes on streaming on the broken clock — Tester B's ran seven
+        // hours and was still un-synced a day later. If `last_reboot_at` advanced with each batch it would
+        // eventually move PAST a later, complete night and mark that one truncated. It did: her recovered
+        // 08-17 night (6h57m against an 8h baseline, three minutes inside the shortfall guard) was
+        // condemned by a reboot timestamp that had crept forward to lunchtime.
+        $bandStart = now()->setDate(2026, 1, 1)->setTime(8, 13, 58);
+        $this->send([$this->ppgWindow($bandStart, $bandStart->copy()->addSeconds(30))])->assertStatus(202);
+
+        $conn = \App\Models\WearableConnection::sole();
+        $firstReboot = $conn->last_reboot_at;
+        $this->assertNotNull($firstReboot, 'the power loss should have been recorded');
+
+        // ...the band keeps streaming, still un-synced. Same episode.
+        $this->travel(20)->minutes();
+        $later = $bandStart->copy()->addMinutes(20);
+        $this->send([$this->ppgWindow($later, $later->copy()->addSeconds(30))])->assertStatus(202);
+
+        $this->assertEquals($firstReboot, $conn->fresh()->last_reboot_at,
+            'a band that never went away must not re-report its power loss as a fresh one');
+    }
+
+    public function test_a_band_that_goes_away_and_returns_records_a_new_power_loss(): void
+    {
+        $bandStart = now()->setDate(2026, 1, 1)->setTime(8, 13, 58);
+        $this->send([$this->ppgWindow($bandStart, $bandStart->copy()->addSeconds(30))])->assertStatus(202);
+        $first = \App\Models\WearableConnection::sole()->last_reboot_at;
+
+        // Gone for hours, then back — that is a genuinely new episode, and the night it interrupted is a
+        // different night from the one the first reboot interrupted.
+        $this->travel(9)->hours();
+        $later = $bandStart->copy()->addHours(9);
+        $this->send([$this->ppgWindow($later, $later->copy()->addSeconds(30))])->assertStatus(202);
+
+        $this->assertTrue(\App\Models\WearableConnection::sole()->last_reboot_at->greaterThan($first),
+            'a band that vanished for nine hours and came back has rebooted again');
+    }
+
     public function test_a_genuine_offline_backlog_is_not_mistaken_for_a_bad_clock(): void
     {
         // Store-and-forward is a real feature: the band buffers while unsynced and replays later. The

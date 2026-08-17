@@ -71,11 +71,18 @@ class DeviceIngestionService
             // battery from one which ended in a wake (App\Support\NightTruncation). Recorded once per
             // reconnect — a band that is still streaming on the bad clock keeps the first timestamp,
             // because that is when the power loss became visible, not each subsequent batch.
-            $rebootWasKnown = $connection->last_reboot_at !== null
-                && $connection->last_sync_at !== null
-                && $connection->last_reboot_at->greaterThanOrEqualTo($connection->last_sync_at->subMinutes(self::REBOOT_SAME_EPISODE_MIN));
+            // A NEW episode is one where the band actually went away and came back. Judge that by the gap
+            // since the last sync — NOT by comparing last_reboot_at to last_sync_at, which is the bug this
+            // replaces: a band streaming every 3 minutes on a still-broken clock trips this branch on every
+            // batch, and that comparison went stale after REBOOT_SAME_EPISODE_MIN of *continuous* streaming.
+            // last_reboot_at then slid forward to "now", overtook a later, perfectly good night, and
+            // condemned it. Caught on Tester B's recovered 08-17 night, which is 6h57m against an 8h baseline —
+            // three minutes inside the shortfall guard.
+            $isNewEpisode = $connection->last_reboot_at === null
+                || $connection->last_sync_at === null
+                || $connection->last_sync_at->lessThan(now()->subMinutes(self::REBOOT_SAME_EPISODE_MIN));
 
-            if (! $rebootWasKnown) {
+            if ($isNewEpisode) {
                 $connection->forceFill(['last_reboot_at' => now()])->save();
                 \App\Jobs\FlagTruncatedNightJob::dispatch($connection->profile_id)->afterCommit();
             }
@@ -240,10 +247,14 @@ class DeviceIngestionService
 
     /**
      * A band that reboots keeps streaming on its bad clock for as long as it stays un-synced — Tester B's ran
-     * seven hours. Every one of those batches trips the clock correction, but they are ONE power loss, and
-     * `last_reboot_at` must keep pointing at when it became visible rather than sliding forward with each
-     * batch (a sliding value would eventually overtake the very night it is evidence about). A gap larger
-     * than this between syncs means the band went away and came back — a genuinely new episode.
+     * seven hours, and was still doing so a day later. Every one of those batches trips the clock
+     * correction, but they are ONE power loss, and `last_reboot_at` must keep pointing at when it became
+     * visible rather than sliding forward with each batch. A sliding value eventually moves PAST a later,
+     * complete night and marks that one truncated instead — which is exactly what happened before this
+     * was tightened.
+     *
+     * So the question is whether the band went away and came back, and the only honest measure of that is
+     * the gap since its last sync. A band syncing every three minutes has not been anywhere.
      */
     private const REBOOT_SAME_EPISODE_MIN = 180;
     /** Cap for a re-anchored window's span so a corrupt duration can't invent a huge session. */
