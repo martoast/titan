@@ -36,6 +36,9 @@ class MobileSleepController extends Controller
                 'low_confidence' => (bool) $s->low_confidence,
                 // Stage split unreadable while the night itself measured fine — caveat the breakdown only.
                 'stages_low_confidence' => (bool) $s->stages_low_confidence,
+                // The band's battery died mid-night: duration/wake_time are where recording STOPPED, not
+                // where she woke. The app must not present either as the night.
+                'truncated' => (bool) $s->truncated,
                 'bedtime' => $s->bedtime,
                 'wake_time' => $s->wake_time,
             ])->values();

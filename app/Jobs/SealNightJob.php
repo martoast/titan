@@ -1536,11 +1536,62 @@ class SealNightJob implements ShouldQueue
                 $this->isAuthoritative(),
             );
 
+        // Did the band LOSE POWER before this night ended, rather than the user waking? The seal cannot
+        // tell those apart from the windows alone — both are "samples stop" — so it asks the one thing
+        // that can: whether the band has been seen to reboot since this session's last sample. Runs after
+        // the write because it is a verdict about the sealed row, and it is a no-op on a confirmed seal
+        // (the user's own wake marker outranks any inference). See App\Support\NightTruncation.
+        $this->markTruncatedIfPowerWasLost($profile, $log, $tz);
+
         // The night's data is computed either way; the coach SUMMARY fires only when the user marked
         // awake on the band (confirmed) AND this seal actually wrote the row (no re-narrating a no-op).
         if ($this->confirmed && $this->sleepRowWritten($log)) {
             \App\Jobs\ReactToSleepConfirmed::dispatch($log->id)->afterCommit();
         }
+    }
+
+    /**
+     * Mark a just-sealed night truncated when the band lost power before it ended.
+     *
+     * Covers the ordering where the band died, was charged and reconnected all BEFORE the seal ran, so the
+     * reboot is already on record when the row is written. The other ordering — the reboot only shows up
+     * hours after the night sealed, which is the common one — is handled by FlagTruncatedNightJob. Both
+     * decide with the same predicate so they cannot drift.
+     */
+    private function markTruncatedIfPowerWasLost(Profile $profile, ?SleepLog $log, string $tz): void
+    {
+        if (! $log instanceof SleepLog || $log->truncated) {
+            return;
+        }
+
+        $rebootAt = $profile->wearableConnections()
+            ->whereNotNull('last_reboot_at')
+            ->orderByDesc('last_reboot_at')
+            ->value('last_reboot_at');
+
+        if ($rebootAt === null) {
+            return;
+        }
+
+        $needH = class_exists(\App\Support\SleepCoach::class) ? \App\Support\SleepCoach::baselineFor($profile) : null;
+
+        if (! \App\Support\NightTruncation::applies(
+            $log,
+            CarbonImmutable::parse($rebootAt),
+            \App\Support\NightTruncation::sessionEndOf($log, $tz),
+            $needH,
+        )) {
+            return;
+        }
+
+        $log->forceFill(['truncated' => true, 'low_confidence' => true])->save();
+
+        Log::info('[Sleep] sealed night marked truncated — the band lost power before it ended', [
+            'profile_id' => $profile->id,
+            'sleep_log_id' => $log->id,
+            'slept_at' => $log->slept_at?->toDateString(),
+            'stored_duration_min' => $log->duration_min,
+        ]);
     }
 
     /**

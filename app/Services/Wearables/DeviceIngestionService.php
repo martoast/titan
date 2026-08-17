@@ -65,6 +65,20 @@ class DeviceIngestionService
                 'offset_sec' => $clockOffsetSec,
                 'windows' => count($payload['windows'] ?? []),
             ]);
+
+            // An un-synced clock means the band REBOOTED, and a band only reboots on power loss or a
+            // reflash. Record it: it is the only evidence that tells a night which ended in a dead
+            // battery from one which ended in a wake (App\Support\NightTruncation). Recorded once per
+            // reconnect — a band that is still streaming on the bad clock keeps the first timestamp,
+            // because that is when the power loss became visible, not each subsequent batch.
+            $rebootWasKnown = $connection->last_reboot_at !== null
+                && $connection->last_sync_at !== null
+                && $connection->last_reboot_at->greaterThanOrEqualTo($connection->last_sync_at->subMinutes(self::REBOOT_SAME_EPISODE_MIN));
+
+            if (! $rebootWasKnown) {
+                $connection->forceFill(['last_reboot_at' => now()])->save();
+                \App\Jobs\FlagTruncatedNightJob::dispatch($connection->profile_id)->afterCommit();
+            }
         }
 
         foreach (($payload['windows'] ?? []) as $i => $window) {
@@ -223,6 +237,15 @@ class DeviceIngestionService
      * two orders of magnitude of headroom while still catching a floored/free-running clock by ~7×.
      */
     private const CLOCK_STALE_MAX_SEC = 30 * 86400;
+
+    /**
+     * A band that reboots keeps streaming on its bad clock for as long as it stays un-synced — Tester B's ran
+     * seven hours. Every one of those batches trips the clock correction, but they are ONE power loss, and
+     * `last_reboot_at` must keep pointing at when it became visible rather than sliding forward with each
+     * batch (a sliding value would eventually overtake the very night it is evidence about). A gap larger
+     * than this between syncs means the band went away and came back — a genuinely new episode.
+     */
+    private const REBOOT_SAME_EPISODE_MIN = 180;
     /** Cap for a re-anchored window's span so a corrupt duration can't invent a huge session. */
     private const REANCHOR_MAX_SPAN_SEC = 21600; // 6h
     /** Span cap when re-anchoring a SLEEP marker — a real night outruns 6h; mirrors SealNightJob::MAX_SESSION_MIN. */

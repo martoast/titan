@@ -153,6 +153,10 @@ class SleepDetail
             // impossible layout). The app should caveat the STAGE chart while still showing the duration
             // as a real number — flagging the whole night would drop a genuine 9h out of debt and streak.
             'stages_low_confidence' => (bool) $last->stages_low_confidence,
+            // Third, distinct doubt: the band STOPPED RECORDING before the night ended (a dead battery),
+            // so `duration_min` is a floor rather than the night. Clients must not render it as a wake
+            // time or a sleep total — see App\Support\NightTruncation.
+            'truncated' => (bool) $last->truncated,
             // "The story of your night" — the per-night narrative (onset, deep distribution, wakes, REM
             // cycles, one takeaway) that frames the hypnogram. Shared by app + web + coach. Null while
             // computing or without a hypnogram.

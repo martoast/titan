@@ -20,7 +20,7 @@ class WearableConnection extends Model
     protected $fillable = [
         'profile_id', 'provider', 'source', 'device_token_hash', 'device_id',
         'timezone', 'terra_user_id', 'scopes', 'status',
-        'last_webhook_at', 'last_sync_at', 'last_payload_type', 'battery_pct', 'firmware', 'pending_commands',
+        'last_webhook_at', 'last_sync_at', 'last_reboot_at', 'last_payload_type', 'battery_pct', 'firmware', 'pending_commands',
     ];
 
     protected $hidden = ['device_token_hash'];
@@ -32,6 +32,10 @@ class WearableConnection extends Model
             'pending_commands' => 'array',
             'last_webhook_at' => 'datetime',
             'last_sync_at' => 'datetime',
+            // When the band was last seen to REBOOT (it came back with an un-synced clock). A band only
+            // reboots on power loss or a reflash, so this is the evidence a night ended in a dead battery
+            // rather than a wake — see App\Support\NightTruncation.
+            'last_reboot_at' => 'datetime',
         ];
     }
 

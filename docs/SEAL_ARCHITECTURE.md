@@ -253,6 +253,8 @@ Before you merge a change to a seal or a reader, confirm:
 | `NAP_MAX_MIN = 240` | SealNightJob | shorter ⇒ nap (keyed on `session_start`), else night (`slept_at`) |
 | `MAX_SESSION_MIN = 16h` | SealNightJob | absurd-span clamp |
 | `POST_SAMPLE_SLEEP_GRACE_S = 3h` | SealNightJob | presume sleep past a dead band's last sample |
+| `CLOCK_STALE_MAX_SEC = 30d` | DeviceIngestionService | staler than the band's ring can hold => broken clock, re-anchor |
+| `SHORTFALL_MIN = 60`, core hours 22-09 | NightTruncation | when a power loss means the night was cut short |
 | `MIN_SLEEP_MIN = 20` | SealNightJob | floor for a real sleep |
 | `MAX_SEAL_ATTEMPTS = 4` | SealNightJob | deterministic-failure cap (poison guard) |
 | `STAGE_COLUMNS` | SealNightJob | nulled on a force write to avoid chimera rows |
@@ -278,6 +280,43 @@ Tracked in `tasks/reviews/2026-07-09-review-sleep-seal-and-workout.md`:
 - **Persisted `is_training` flag** so streaks don't depend on the length heuristic (which excludes force-sealed
   1–4 min workouts and admits ≥5 min stray-motion blobs).
 - **S-5 grace is time-based, not awake-state-aware; S-6 auto nights seal after the morning briefing.**
+
+---
+
+## Truncated nights - "the band stopped" vs "the user woke" (2026-08-17)
+
+The seal cannot distinguish these from the windows alone: both are *samples stop arriving*. Until this was
+addressed, a dead battery sealed as a real short night. Tester B's 2026-08-16 became a believed 4.8h, and because
+duration was trusted (only the stages were caveated) that single artifact was her **entire** sleep debt
+(0.2h -> 3.3h "moderate") plus a coaching line telling her to go to bed earlier.
+
+**The evidence is a reboot.** A band only reboots on power loss or a reflash, and since the ingest's clock
+guard it is visible - the band comes back with an un-synced clock, which
+`DeviceIngestionService::batchClockOffsetSec` detects and records as
+`wearable_connections.last_reboot_at`.
+
+**What was rejected, and why it matters.** The intuitive signal - *"the band never contacted us again after
+the night ended"* - was measured against real nights on this box before being adopted, and is worthless:
+post-wake contact gaps on ordinary, complete nights ran from **+1 minute to +6.5 days** (Alex routinely goes
+100-390 min). It would have condemned most of the history. Measure a proposed signal against real nights
+before trusting it.
+
+`App\Support\NightTruncation` holds the rule and is the ONLY place it lives, because two entry points apply
+it and they must not drift:
+
+- **at seal time** (`SealNightJob::markTruncatedIfPowerWasLost`) - the band died, was charged and
+  reconnected before the night sealed, so the reboot is already on record;
+- **retroactively** (`FlagTruncatedNightJob`) - the usual ordering, and the one Tester B hit: the night sealed at
+  10:00 and the band did not reveal the power loss until 00:19 the *next* morning.
+
+All four conditions must hold: no confirmed wake marker (her own word outranks inference), the session ended
+inside core sleep hours (09:30 is a wake), the reboot follows that session's last sample, and the night is
+more than an hour under baseline (a full-length night loses nothing by being believed).
+
+`sleep_logs.truncated` travels **with** `low_confidence = 1`, so every existing reader already excludes it -
+but it is a separate column because the app must say *why* ("your band ran out of battery", not "check your
+band fit") and must refuse to print the stored duration as the night. A 5xl duration in the hero is the fake
+short night no matter how carefully the paragraph under it hedges.
 
 ---
 

@@ -93,7 +93,12 @@ class SleepStory
         // exactly (review 04e14c5 — the raw REM-run scan on the graph double-counted vs this sentence).
         [$remPeriods, $lastRemLong, $cycleBoundaries] = self::remPeriods($hyp, $asleepMin);
 
-        $ctx = compact('low', 'stagesLow', 'onsetMin', 'deepDist', 'awakenings', 'remPeriods', 'lastRemLong',
+        // The band stopped recording before the night ended — the stored duration is a floor, not the
+        // night, so every sufficiency claim below it is void. Carried into compose() rather than folded
+        // into $low because the two need different words (App\Support\NightTruncation).
+        $truncated = (bool) $log->truncated;
+
+        $ctx = compact('low', 'stagesLow', 'truncated', 'onsetMin', 'deepDist', 'awakenings', 'remPeriods', 'lastRemLong',
             'asleepH', 'needH', 'shortBy', 'deepLow', 'remLow', 'deepMin', 'remMin');
         [$takeaway, $text] = self::compose($ctx);
 
@@ -105,11 +110,12 @@ class SleepStory
             'cycle_boundaries' => $cycleBoundaries,
             'asleep_h' => $asleepH,
             'need_h' => $needH,
-            'short_by_h' => $shortBy !== null && $shortBy > 0 ? $shortBy : null,
+            'short_by_h' => (! $truncated && $shortBy !== null && $shortBy > 0) ? $shortBy : null,
             'takeaway' => $takeaway,
             'text' => $text,
             'low_confidence' => $low,
             'stages_low_confidence' => $stagesLow,
+            'truncated' => $truncated,
         ];
     }
 
@@ -216,6 +222,18 @@ class SleepStory
         $s = [];
 
         // Onset + how much sleep it actually was (sufficiency, not just architecture).
+        // A TRUNCATED night is a different apology from a thin one, and saying the wrong one is its own
+        // small lie: "check your band fit" blames the wearer for a flat battery. It also must never state
+        // the duration — the whole point is that the number is where the recording stopped, not where she
+        // woke — so it returns immediately rather than falling through to the shortfall lines below.
+        if (! empty($c['truncated'])) {
+            return [
+                'Your band stopped recording partway through — its battery ran out, so we only caught part of this night.',
+                'Your band stopped recording partway through the night — the battery ran out before morning, '
+                    ."so I can't say how long you actually slept. Nothing to read into the numbers here; "
+                    .'a charge before bed and tonight will measure properly.',
+            ];
+        }
         if ($low) {
             $s[] = 'Signal was thin overnight, so this is an estimate — read it as the shape of your night, not exact numbers.';
         } else {

@@ -20,7 +20,7 @@ class SleepLog extends Model
         'profile_id', 'slept_at', 'is_nap', 'session_start', 'duration_min', 'quality',
         'deep_min', 'rem_min', 'light_min', 'awake_min',
         'bedtime', 'wake_time', 'notes', 'updated_via', 'hypnogram', 'hr_series', 'motion_series',
-        'stage_status', 'coverage', 'low_confidence', 'stages_low_confidence', 'finalized_at',
+        'stage_status', 'coverage', 'low_confidence', 'stages_low_confidence', 'truncated', 'finalized_at',
     ];
 
     protected function casts(): array
@@ -31,6 +31,8 @@ class SleepLog extends Model
             'finalized_at' => 'datetime', 'coverage' => 'float', 'low_confidence' => 'boolean',
             // Distinct from low_confidence: the night's DURATION is trustworthy, its stage SPLIT isn't.
             'stages_low_confidence' => 'boolean',
+            // Distinct again: the band STOPPED RECORDING mid-night, so duration is a floor, not the night.
+            'truncated' => 'boolean',
         ];
     }
 

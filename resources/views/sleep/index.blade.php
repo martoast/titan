@@ -31,10 +31,23 @@
             </div>
 
             @if ($latest)
-                {{-- Hero duration --}}
+                {{-- Hero duration. A TRUNCATED night must never print its stored duration as the answer:
+                     the band stopped recording partway through, so that number is where the battery died,
+                     not when she woke. Showing "4h 45m" in 5xl type is the fake short night itself, no
+                     matter how carefully the paragraph below it hedges. --}}
                 <div class="mb-5">
                     <div class="text-[11px] uppercase tracking-wide text-gray-500">Duration</div>
-                    <div class="font-display text-5xl font-bold nums text-gray-100 leading-none mt-1">{{ $latest->durationLabel() }}</div>
+                    @if ($latest->truncated)
+                        <div class="font-display text-5xl font-bold nums text-gray-500 leading-none mt-1">—</div>
+                        <div class="mt-2 flex items-start gap-2 text-xs text-amber-300/90">
+                            <svg class="w-4 h-4 shrink-0 mt-px" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
+                            </svg>
+                            <span>Your band ran out of battery during the night, so this one wasn&rsquo;t measured. It recorded {{ $latest->durationLabel() }} before it stopped.</span>
+                        </div>
+                    @else
+                        <div class="font-display text-5xl font-bold nums text-gray-100 leading-none mt-1">{{ $latest->durationLabel() }}</div>
+                    @endif
                 </div>
 
                 {{-- Secondary stats --}}
@@ -48,8 +61,10 @@
                         <div class="font-display text-xl font-bold nums text-gray-100">{{ $latest->bedtime ? \Illuminate\Support\Carbon::parse($latest->bedtime)->format('g:i A') : '—' }}</div>
                     </div>
                     <div>
-                        <div class="text-[11px] uppercase tracking-wide text-gray-500">Wake</div>
-                        <div class="font-display text-xl font-bold nums text-gray-100">{{ $latest->wake_time ? \Illuminate\Support\Carbon::parse($latest->wake_time)->format('g:i A') : '—' }}</div>
+                        {{-- On a truncated night this is when the BAND stopped, not when she woke — so it
+                             is labelled for what it is rather than presented as a wake time. --}}
+                        <div class="text-[11px] uppercase tracking-wide text-gray-500">{{ $latest->truncated ? 'Band stopped' : 'Wake' }}</div>
+                        <div class="font-display text-xl font-bold nums {{ $latest->truncated ? 'text-gray-400' : 'text-gray-100' }}">{{ $latest->wake_time ? \Illuminate\Support\Carbon::parse($latest->wake_time)->format('g:i A') : '—' }}</div>
                     </div>
                 </div>
 
