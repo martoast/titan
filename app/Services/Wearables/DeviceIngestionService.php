@@ -54,6 +54,19 @@ class DeviceIngestionService
         $summariesWritten = 0;
 
         // --- Shapes A/B: raw windows → MinIO + ledger + queue ---
+        // One clock correction for the whole batch, measured before any window is stored, so the night's
+        // internal spacing survives it (see batchClockOffsetSec).
+        $clockOffsetSec = $this->batchClockOffsetSec($payload['windows'] ?? []);
+        if ($clockOffsetSec !== 0) {
+            Log::warning('[Ingest] band clock is wrong — re-anchoring the batch', [
+                'profile_id' => $connection->profile_id,
+                'source' => $connection->source,
+                'batch_uid' => $batchUid,
+                'offset_sec' => $clockOffsetSec,
+                'windows' => count($payload['windows'] ?? []),
+            ]);
+        }
+
         foreach (($payload['windows'] ?? []) as $i => $window) {
             if (! is_array($window)) {
                 continue;
@@ -79,7 +92,7 @@ class DeviceIngestionService
                 ? $batchUid.'-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT)
                 : $batchUid;
 
-            $this->persistRawWindow($connection, $windowUid, $window, $tz);
+            $this->persistRawWindow($connection, $windowUid, $window, $tz, $clockOffsetSec);
             $windowsQueued++;
         }
 
@@ -136,7 +149,7 @@ class DeviceIngestionService
      *
      * @param  array<string,mixed>  $window
      */
-    private function persistRawWindow(WearableConnection $connection, string $windowUid, array $window, string $tz): DeviceIngestion
+    private function persistRawWindow(WearableConnection $connection, string $windowUid, array $window, string $tz, int $clockOffsetSec = 0): DeviceIngestion
     {
         // Already ledgered? Don't rewrite the blob or re-queue (idempotency).
         if ($existing = DeviceIngestion::where('batch_uid', $windowUid)->first()) {
@@ -146,6 +159,12 @@ class DeviceIngestionService
         $kind = (string) ($window['kind'] ?? 'ibi');
         $start = isset($window['start']) ? CarbonImmutable::parse($window['start']) : now()->toImmutable();
         $end = isset($window['end']) ? CarbonImmutable::parse($window['end']) : $start;
+        // Batch-wide clock correction first (keeps the spacing between windows); the per-window re-anchor
+        // stays as the backstop for a single-window batch and is a no-op once the offset has landed.
+        if ($clockOffsetSec !== 0) {
+            $start = $start->addSeconds($clockOffsetSec);
+            $end = $end->addSeconds($clockOffsetSec);
+        }
         [$start, $end] = $this->reanchorIfClockBad($start, $end);
         $date = $end->setTimezone($tz)->toDateString();
 
@@ -185,6 +204,25 @@ class DeviceIngestionService
     private const CLOCK_FLOOR = '2020-01-01T00:00:00Z';
     /** Grace for a band clock running slightly ahead of the phone before we call it broken. */
     private const CLOCK_AHEAD_TOLERANCE_SEC = 7200; // 2h
+
+    /**
+     * How stale a sample may be before we call the band's clock wrong rather than its data buffered.
+     *
+     * The absolute CLOCK_FLOOR above is NOT enough on its own, and the reason is a guard collision that
+     * cost Tester B a whole night (2026-08-17). The firmware floors its RTC on a dead-battery boot to keep
+     * frames "at least plausible" — `CFG.CLOCK_FLOOR` in firmware/banglejs/titan.app.js, currently
+     * 2026-01-01 — and its comment promises "the server re-anchors the offset". But that floored value
+     * sits ABOVE this server's 2020 floor, so the re-anchor never fired: the firmware moved the bad
+     * timestamp from a value we caught (1970) to one we ignored, and 144 windows of a real night were
+     * filed as 2026-01-01 with a rock-steady 227.7-day offset. Bumping the firmware floor "to keep it
+     * recent" makes that worse, not better.
+     *
+     * So the invariant is RELATIVE, not a date: a band cannot hold data it does not have room for. The
+     * log ring is 6 × 700 KB ≈ 4.1 MB and evicts the oldest segment (~16 h of overnight PPG), so no
+     * genuine store-and-forward replay is anywhere near this old. 30 days leaves that legitimate case
+     * two orders of magnitude of headroom while still catching a floored/free-running clock by ~7×.
+     */
+    private const CLOCK_STALE_MAX_SEC = 30 * 86400;
     /** Cap for a re-anchored window's span so a corrupt duration can't invent a huge session. */
     private const REANCHOR_MAX_SPAN_SEC = 21600; // 6h
     /** Span cap when re-anchoring a SLEEP marker — a real night outruns 6h; mirrors SealNightJob::MAX_SESSION_MIN. */
@@ -206,13 +244,9 @@ class DeviceIngestionService
      */
     private function reanchorIfClockBad(CarbonImmutable $start, CarbonImmutable $end, int $maxSpanSec = self::REANCHOR_MAX_SPAN_SEC): array
     {
-        $floor = CarbonImmutable::parse(self::CLOCK_FLOOR);
         $now = now()->toImmutable();
-        $ahead = $now->addSeconds(self::CLOCK_AHEAD_TOLERANCE_SEC);
 
-        $bad = $start->lessThan($floor) || $start->greaterThan($ahead)
-            || $end->lessThan($floor) || $end->greaterThan($ahead);
-        if (! $bad) {
+        if (! $this->clockIsBad($start, $end, $now)) {
             return [$start, $end];
         }
 
@@ -221,6 +255,69 @@ class DeviceIngestionService
         $span = min($span, $maxSpanSec);
 
         return [$now->subSeconds($span), $now];
+    }
+
+    /**
+     * Is this [start,end] off the band's own clock untrustworthy? Three ways: before the absolute floor
+     * (a ~1970 un-synced RTC), in the future beyond the ahead-tolerance, or staler than any ring buffer
+     * could hold (a floored / free-running clock — see CLOCK_STALE_MAX_SEC).
+     */
+    private function clockIsBad(CarbonImmutable $start, CarbonImmutable $end, CarbonImmutable $now): bool
+    {
+        $floor = CarbonImmutable::parse(self::CLOCK_FLOOR);
+        $ahead = $now->addSeconds(self::CLOCK_AHEAD_TOLERANCE_SEC);
+        $stale = $now->subSeconds(self::CLOCK_STALE_MAX_SEC);
+
+        return $start->lessThan($floor) || $start->greaterThan($ahead)
+            || $end->lessThan($floor) || $end->greaterThan($ahead)
+            || $end->lessThan($stale);
+    }
+
+    /**
+     * The seconds to ADD to every timestamp in this batch to put it back on real time, or 0 if the band's
+     * clock is trustworthy.
+     *
+     * Why a batch-wide OFFSET rather than re-anchoring each window on its own: a per-window re-anchor
+     * hangs each one off `now()`, which is right for a single marker but collapses a multi-window batch
+     * onto one instant — it preserves each window's length and destroys the spacing BETWEEN them, which
+     * is the only thing a night's hypnogram is built from. A single offset preserves relative timing
+     * exactly, for a live stream and a buffered dump alike, and is precisely what the firmware's own
+     * CLOCK_FLOOR comment already assumes the server does.
+     *
+     * The offset is taken from the NEWEST window in the batch, which was recorded moments before the
+     * upload — so `now - newest_end` is the clock error. On Tester B's night that estimator was stable to
+     * ±1 s across 128 consecutive windows.
+     *
+     * @param  array<int,mixed>  $windows
+     */
+    private function batchClockOffsetSec(array $windows): int
+    {
+        $now = now()->toImmutable();
+        $newest = null;
+
+        foreach ($windows as $window) {
+            if (! is_array($window)) {
+                continue;
+            }
+            $raw = $window['end'] ?? $window['start'] ?? null;
+            if ($raw === null) {
+                continue;
+            }
+            try {
+                $end = CarbonImmutable::parse($raw);
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($newest === null || $end->greaterThan($newest)) {
+                $newest = $end;
+            }
+        }
+
+        if ($newest === null || ! $this->clockIsBad($newest, $newest, $now)) {
+            return 0;
+        }
+
+        return (int) $newest->diffInSeconds($now, false);
     }
 
     /**
