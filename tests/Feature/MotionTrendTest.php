@@ -60,7 +60,12 @@ class MotionTrendTest extends TestCase
             'provider' => 'device', 'source' => 'titan-band', 'status' => 'connected',
             'timezone' => 'Pacific/Kiritimati',   // +14 — almost certainly ≠ the test's app tz
         ]);
-        $t = Carbon::create(2026, 7, 10, 3, 30, 0, 'UTC')->timestamp;
+        // RELATIVE, deliberately. This case is about the tz FRAME recorded_at is stored in, not about
+        // how old the sample is — but the ingest now re-anchors a sample staler than any band ring could
+        // hold (DeviceIngestionService::CLOCK_STALE_MAX_SEC), so a hardcoded literal here silently rots
+        // into a clock-correction test the day it drifts past that bound. It did: the old
+        // `2026-07-10 03:30 UTC` was 38 days stale by 2026-08-17 and started failing on the shift.
+        $t = Carbon::now('UTC')->subHours(2)->startOfMinute()->timestamp;
         app(DeviceIngestionService::class)->ingest($conn, [
             'summaries' => [['kind' => 'motion_trend', 'samples' => [['t' => $t, 'motion' => 200]]]],
         ]);

@@ -131,6 +131,45 @@ class FlooredBandClockReanchorTest extends TestCase
             'a good clock must pass through untouched');
     }
 
+    public function test_the_hr_and_motion_trend_points_are_corrected_too(): void
+    {
+        // The T5/T10 trend points carried the band's epoch through with NO clock guard at all, and they
+        // are the FIRST thing a rebooted band dumps (it banks them to the ring while offline). On Tester B's
+        // night that put 1,240 samples on 1970/Jan-1 dates, covering hours no PPG window reached.
+        $bandNow = now()->setDate(2026, 1, 1)->setTime(15, 0, 0);
+        $body = json_encode([
+            'batch_uid' => substr(hash('sha256', 'trend'.microtime()), 0, 32),
+            'summaries' => [
+                ['kind' => 'hr_trend', 'samples' => [
+                    ['t' => $bandNow->copy()->subMinutes(1)->timestamp, 'bpm' => 58, 'conf' => 90],
+                    ['t' => $bandNow->timestamp, 'bpm' => 61, 'conf' => 92],
+                ]],
+                ['kind' => 'motion_trend', 'samples' => [
+                    ['t' => $bandNow->copy()->subMinutes(1)->timestamp, 'motion' => 12],
+                    ['t' => $bandNow->timestamp, 'motion' => 30],
+                ]],
+            ],
+        ]);
+        $t = (string) time();
+        $v1 = hash_hmac('sha256', $t.'.'.$body, $this->sharedKey);
+        $this->call('POST', '/api/devices/ingest', [], [], [], [
+            'HTTP_X_DEVICE_ID' => 'band-1',
+            'HTTP_X_TITAN_SIGNATURE' => "t={$t},v1={$v1}",
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], $body)->assertStatus(202);
+
+        foreach ([\App\Models\HrSample::class, \App\Models\MotionSample::class] as $model) {
+            $rows = $model::orderBy('recorded_at')->get();
+            $this->assertCount(2, $rows, $model.': both points must land');
+            $this->assertNotSame('2026-01-01', $rows->last()->recorded_at->toDateString(),
+                $model.": a floored band clock wrote a Jan-1 sample");
+            $this->assertTrue($rows->last()->recorded_at->diffInMinutes(now()) < 5, $model.': newest point should be ~now');
+            // ...and the 1-minute spacing between the two points survives the correction.
+            $this->assertSame(60, (int) $rows[0]->recorded_at->diffInSeconds($rows[1]->recorded_at));
+        }
+    }
+
     public function test_a_genuine_offline_backlog_is_not_mistaken_for_a_bad_clock(): void
     {
         // Store-and-forward is a real feature: the band buffers while unsynced and replays later. The

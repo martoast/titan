@@ -56,7 +56,7 @@ class DeviceIngestionService
         // --- Shapes A/B: raw windows → MinIO + ledger + queue ---
         // One clock correction for the whole batch, measured before any window is stored, so the night's
         // internal spacing survives it (see batchClockOffsetSec).
-        $clockOffsetSec = $this->batchClockOffsetSec($payload['windows'] ?? []);
+        $clockOffsetSec = $this->batchClockOffsetSec($payload);
         if ($clockOffsetSec !== 0) {
             Log::warning('[Ingest] band clock is wrong — re-anchoring the batch', [
                 'profile_id' => $connection->profile_id,
@@ -102,7 +102,7 @@ class DeviceIngestionService
             if (! is_array($summary)) {
                 continue;
             }
-            if ($this->writeSummary($connection, $summary, $tz)) {
+            if ($this->writeSummary($connection, $summary, $tz, $clockOffsetSec)) {
                 $summariesWritten++;
                 if (($summary['kind'] ?? '') === 'recovery') {
                     $recoveryLanded = true;
@@ -284,18 +284,28 @@ class DeviceIngestionService
      * exactly, for a live stream and a buffered dump alike, and is precisely what the firmware's own
      * CLOCK_FLOOR comment already assumes the server does.
      *
-     * The offset is taken from the NEWEST window in the batch, which was recorded moments before the
-     * upload — so `now - newest_end` is the clock error. On Tester B's night that estimator was stable to
-     * ±1 s across 128 consecutive windows.
+     * The offset is taken from the NEWEST timestamp in the batch, which was recorded moments before the
+     * upload — so `now - newest` is the clock error. On Tester B's night that estimator was stable to ±1 s
+     * across 128 consecutive windows.
      *
-     * @param  array<int,mixed>  $windows
+     * It reads the T5/T10 TREND points as well as the raw windows, and both are corrected by the result.
+     * Those points carry the band's epoch straight through with no clock guard of their own, and they are
+     * the FIRST thing a rebooted band dumps (it banks them to the ring while offline) — so on Tester B's night
+     * they landed 1,240 samples on 1970/Jan-1 dates even for the hours no PPG window covered.
+     *
+     * @param  array<string,mixed>  $payload
      */
-    private function batchClockOffsetSec(array $windows): int
+    private function batchClockOffsetSec(array $payload): int
     {
         $now = now()->toImmutable();
         $newest = null;
+        $consider = function (?CarbonImmutable $t) use (&$newest): void {
+            if ($t !== null && ($newest === null || $t->greaterThan($newest))) {
+                $newest = $t;
+            }
+        };
 
-        foreach ($windows as $window) {
+        foreach (($payload['windows'] ?? []) as $window) {
             if (! is_array($window)) {
                 continue;
             }
@@ -304,12 +314,21 @@ class DeviceIngestionService
                 continue;
             }
             try {
-                $end = CarbonImmutable::parse($raw);
+                $consider(CarbonImmutable::parse($raw));
             } catch (\Throwable) {
+                // unparseable — WindowSanity rejects it downstream; it must not anchor the batch
+            }
+        }
+
+        foreach (($payload['summaries'] ?? []) as $summary) {
+            if (! is_array($summary) || ! is_array($summary['samples'] ?? null)) {
                 continue;
             }
-            if ($newest === null || $end->greaterThan($newest)) {
-                $newest = $end;
+            foreach ($summary['samples'] as $s) {
+                $t = is_array($s) ? (int) ($s['t'] ?? 0) : 0;
+                if ($t > 0) {
+                    $consider(CarbonImmutable::createFromTimestamp($t, 'UTC'));
+                }
             }
         }
 
@@ -415,7 +434,7 @@ class DeviceIngestionService
         return true;
     }
 
-    private function writeSummary(WearableConnection $connection, array $summary, string $tz): bool
+    private function writeSummary(WearableConnection $connection, array $summary, string $tz, int $clockOffsetSec = 0): bool
     {
         $kind = (string) ($summary['kind'] ?? '');
         $pid = $connection->profile_id;
@@ -450,10 +469,10 @@ class DeviceIngestionService
             // SCOPED to the envelope — guaranteed even when the accel windows are thin/late/offline.
             'workout_session' => $this->triggerWorkoutSummary($connection, $summary),
             // The 24/7 HR trend (≈1 point/minute) → time-series rows for the all-day HR graph.
-            'hr_trend' => $this->writeHrTrend($connection, $summary, $tz),
+            'hr_trend' => $this->writeHrTrend($connection, $summary, $tz, $clockOffsetSec),
             // The continuous overnight motion channel (≈1 point/30s, T10) → per-epoch rows the night
             // seal prefers over the sparse HRV-burst proxy for the sleep-timeline movement strip.
-            'motion_trend' => $this->writeMotionTrend($connection, $summary, $tz),
+            'motion_trend' => $this->writeMotionTrend($connection, $summary, $tz, $clockOffsetSec),
             'body' => (bool) BodyMetric::create(array_filter([
                 'profile_id' => $pid,
                 'taken_at' => $this->dateOf($summary['taken_at'] ?? null, $tz),
@@ -489,7 +508,7 @@ class DeviceIngestionService
      *
      * @param  array<string,mixed>  $summary
      */
-    private function writeHrTrend(WearableConnection $connection, array $summary, string $tz): bool
+    private function writeHrTrend(WearableConnection $connection, array $summary, string $tz, int $clockOffsetSec = 0): bool
     {
         $samples = $summary['samples'] ?? null;
         if (! is_array($samples) || count($samples) === 0) {
@@ -507,6 +526,7 @@ class DeviceIngestionService
             if ($t <= 0 || $bpm <= 0 || $bpm > 255) {
                 continue;   // garbage point — skip, don't poison the series
             }
+            $t += $clockOffsetSec;   // batch-wide band-clock correction (see batchClockOffsetSec)
             $conf = isset($s['conf']) ? max(0, min(100, (int) $s['conf'])) : null;
             $rows[] = [
                 'profile_id' => $connection->profile_id,
@@ -542,7 +562,7 @@ class DeviceIngestionService
      *
      * @param  array<string,mixed>  $summary
      */
-    private function writeMotionTrend(WearableConnection $connection, array $summary, string $tz): bool
+    private function writeMotionTrend(WearableConnection $connection, array $summary, string $tz, int $clockOffsetSec = 0): bool
     {
         $samples = $summary['samples'] ?? null;
         if (! is_array($samples) || count($samples) === 0) {
@@ -560,6 +580,7 @@ class DeviceIngestionService
             if ($t <= 0) {
                 continue;   // unstamped point — skip, don't poison the series
             }
+            $t += $clockOffsetSec;   // batch-wide band-clock correction (see batchClockOffsetSec)
             $motion = (int) ($s['motion'] ?? 0);
             $motion = max(0, min(65535, $motion));   // clamp to the wire's uint16 range (column is smallint)
             $rows[] = [
