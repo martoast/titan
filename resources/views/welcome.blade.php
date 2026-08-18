@@ -4,19 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Titan — Understand your body. Own your data.</title>
-    <meta name="description" content="Titan is the open-source, subscription-free health platform: a wearable you own, recovery / sleep / strain you can act on, and an AI coach that knows your body. No monthly fees. Ever.">
+    <meta name="description" content="Titan is the open-source, subscription-free health platform: bring your own wearable, get recovery / sleep / strain you can act on, and an AI coach that knows your body. No monthly fees. Ever.">
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
 
     <meta property="og:title" content="Titan — Understand your body. Own your data.">
-    <meta property="og:description" content="The open, subscription-free health OS. A wearable you own, an AI coach that knows you, and your data that stays yours. Forever.">
+    <meta property="og:description" content="The open, subscription-free health OS. Bring your own wearable, an AI coach that knows you, and your data that stays yours. Forever.">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="{{ asset('images/og-card.png') }}">
-    <meta property="og:image:width" content="1424">
-    <meta property="og:image:height" content="752">
-    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Titan — Understand your body. Own your data.">
-    <meta name="twitter:description" content="The open, subscription-free health OS. A wearable you own, an AI coach that knows you, your data that stays yours.">
-    <meta name="twitter:image" content="{{ asset('images/og-card.png') }}">
+    <meta name="twitter:description" content="The open, subscription-free health OS. Bring your own wearable, an AI coach that knows you, your data that stays yours.">
     <meta name="theme-color" content="#06070A">
 
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -73,18 +69,14 @@
         .hero { position: relative; padding-top: 68px; min-height: 100vh; display: flex; align-items: center; overflow: hidden; }
         .hero-bg { position: absolute; inset: 0; z-index: 0; background-image: url('/images/hero-bg.png'); background-size: cover; background-position: center; opacity: 0.62; }
         .hero-bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,7,10,0.55) 0%, rgba(6,7,10,0.2) 35%, rgba(6,7,10,0.85) 85%, var(--ink) 100%); }
-        .hero-grid { position: relative; z-index: 2; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 2rem; align-items: center; width: 100%; padding: 4rem 0; }
+        .hero-grid { position: relative; z-index: 2; display: grid; grid-template-columns: 1fr; gap: 2rem; align-items: center; width: 100%; max-width: 820px; padding: 4rem 0; }
         .hero h1 { font-size: clamp(2.2rem, 4.4vw, 3.4rem); font-weight: 900; white-space: nowrap; letter-spacing: -0.025em; }
         .hero .lead { margin-top: 1.4rem; max-width: 33ch; }
         .hero-cta { margin-top: 2.2rem; display: flex; gap: 0.9rem; flex-wrap: wrap; }
         .pillrow { margin-top: 2.4rem; display: flex; gap: 1.4rem; flex-wrap: wrap; align-items: center; }
         .pill { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
         .pill .dot { width: 7px; height: 7px; border-radius: 999px; }
-
-        .band-stage { position: relative; height: clamp(360px, 52vw, 600px); }
         .band-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; }
-        .band-stage canvas, .hw-stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; z-index: 2; }
-        .band-glow { position: absolute; inset: 2% 4%; z-index: 0; background: radial-gradient(circle at 50% 44%, rgba(99,102,241,0.34), transparent 58%), radial-gradient(circle at 56% 64%, rgba(34,211,238,0.2), transparent 60%); filter: blur(42px); }
         .band-cap { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); font-size: 0.72rem; color: var(--faint); letter-spacing: 0.04em; }
 
         /* ---- section scaffolding ---- */
@@ -133,9 +125,7 @@
         .cmp-foot { text-align: center; margin-top: 1.7rem; color: var(--muted); font-size: clamp(1rem, 1.6vw, 1.18rem); }
 
         /* ---- floating product image (replaces the 3D canvas) ---- */
-        .band-hero-img { position: relative; z-index: 1; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 30px 60px rgba(0,0,0,0.55)); animation: floaty 6s ease-in-out infinite; }
         @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
-        @media (prefers-reduced-motion: reduce) { .band-hero-img { animation: none; } }
 
         /* ---- score cards (data viz) ---- */
         .scores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin-top: 3rem; }
@@ -230,9 +220,7 @@
 
         /* ---- hardware ---- */
         .hw { background: var(--ink-2); border-top: 1px solid var(--line); }
-        .hw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center; }
-        .hw-stage { position: relative; height: clamp(340px, 44vw, 500px); }
-        .hw-stage canvas { width: 100% !important; height: 100% !important; }
+        .hw-grid { display: grid; grid-template-columns: 1fr; gap: 3rem; align-items: center; max-width: 820px; }
         .specs { display: flex; flex-direction: column; gap: 1.1rem; margin-top: 2rem; }
         .spec { display: flex; gap: 1rem; padding: 1.1rem 1.2rem; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
         .spec .sd { width: 9px; height: 9px; border-radius: 999px; margin-top: 7px; flex-shrink: 0; }
@@ -288,7 +276,6 @@
             .hero-grid { grid-template-columns: 1fr; gap: 1rem; text-align: center; }
             .hero .lead { margin-left: auto; margin-right: auto; }
             .hero-cta, .pillrow { justify-content: center; }
-            .band-stage { order: -1; height: clamp(300px, 70vw, 420px); }
             .cmp, .coach-grid, .hw-grid, .host-grid, .cycle-grid { grid-template-columns: 1fr; }
             .cycle-grid .cycle-wheel-wrap { order: -1; }
             .snap-demo { grid-template-columns: 1fr; gap: 1.1rem; }
@@ -296,7 +283,6 @@
             .scores { grid-template-columns: repeat(2, 1fr); }
             .every { grid-template-columns: 1fr; }
             .coach-grid .chat { order: -1; }
-            .hw-stage { order: -1; }
         }
         @media (max-width: 640px) {
             .hero h1 { white-space: normal; }
@@ -359,10 +345,6 @@
                     <span class="pill"><span class="dot" style="background:var(--cyan)"></span> Personal AI coach</span>
                     <span class="pill"><span class="dot" style="background:var(--indigo)"></span> Open &amp; yours forever</span>
                 </div>
-            </div>
-            <div class="band-stage rv">
-                <div class="band-glow"></div>
-                <img class="band-hero-img" src="{{ asset('images/band-hero.png') }}" alt="A recovery score of 92% shown on a wrist wearable" fetchpriority="high">
             </div>
         </div>
     </header>
@@ -551,10 +533,6 @@
     <!-- BAND / HARDWARE -->
     <section class="sec hw" id="band">
         <div class="wrap hw-grid">
-            <div class="hw-stage rv">
-                <div class="band-glow" style="inset:14% 16%;"></div>
-                <img class="band-hero-img" src="{{ asset('images/band.png') }}" alt="A wrist wearable running Titan" loading="lazy">
-            </div>
             <div class="rv">
                 <span class="eyebrow kicker">The wearable</span>
                 <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">Bring your own wearable.</h2>
