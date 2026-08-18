@@ -114,7 +114,7 @@ struct OnboardingView: View {
         case .intensity: return "Your coach, all day?"
         case .meals: return "How many meals a day?"
         case .cycle: return "Track your cycle?"
-        case .wearable: return "Got your Titan band?"
+        case .wearable: return "Got your band?"
         }
     }
 
@@ -194,7 +194,7 @@ struct OnboardingView: View {
             }
         case .wearable:
             VStack(spacing: Theme.Space.m) {
-                Toggle("My Titan band is in hand", isOn: $form.hasWearable).tint(Theme.Palette.mint)
+                Toggle("My band is in hand", isOn: $form.hasWearable).tint(Theme.Palette.mint)
                     .font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                 Text(wearableNote)
                     .font(Theme.Font.micro).foregroundStyle(Theme.Palette.textDim)

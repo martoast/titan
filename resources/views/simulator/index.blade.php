@@ -27,7 +27,7 @@
         {{-- ===== 3D band render ===== --}}
         <div class="relative rounded-2xl border border-white/5 bg-gradient-to-b from-white/[0.04] to-transparent overflow-hidden">
             <div class="absolute left-4 top-4 z-10">
-                <div class="text-[11px] uppercase tracking-wide text-gray-500">Titan Band</div>
+                <div class="text-[11px] uppercase tracking-wide text-gray-500">Band</div>
                 <div class="font-display text-sm font-bold text-gray-200">Digital Twin</div>
             </div>
             {{-- live state pill --}}

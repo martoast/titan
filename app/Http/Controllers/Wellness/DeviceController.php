@@ -17,7 +17,7 @@ class DeviceController extends Controller
 {
     /** Sources a user can pair from the UI. (Terra has its own connect widget.) */
     private const PAIRABLE = [
-        'titan_band' => 'Titan Band',
+        'titan_band' => 'Band',
         'bangle' => 'Bangle.js',
         'polar' => 'Polar',
         'apple_health' => 'Apple Health',

@@ -1,7 +1,7 @@
 <x-titan-layout title="Devices" subtitle="Connect a band — your biosignals, your server">
     @php
         $sourceMeta = [
-            'titan_band'   => ['Titan Band', 'from-indigo-500 to-cyan-400'],
+            'titan_band'   => ['Band', 'from-indigo-500 to-cyan-400'],
             'bangle'       => ['Bangle.js', 'from-emerald-500 to-teal-400'],
             'polar'        => ['Polar', 'from-rose-500 to-orange-400'],
             'apple_health' => ['Apple Health', 'from-gray-400 to-gray-200'],

@@ -155,7 +155,7 @@ struct DevicesView: View {
                                 Haptic.rigid()
                                 Task { await model.pairBand() }
                             } label: {
-                                Text("Pair Titan band").font(Theme.Font.body.weight(.semibold))
+                                Text("Pair your band").font(Theme.Font.body.weight(.semibold))
                                     .frame(maxWidth: .infinity).padding(.vertical, 14)
                                     .background(Theme.Grad.brand, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
                                     .foregroundStyle(.white).opacity(btUnavailable ? 0.5 : 1)
@@ -499,7 +499,7 @@ struct DevicesView: View {
     }
     private var statusSub: String {
         if model.bandConnected { return String(localized: "Live — syncing in real time.") }
-        if !model.isBandPaired { return String(localized: "Pair your Titan band to begin.") }
+        if !model.isBandPaired { return String(localized: "Pair your band to begin.") }
         return model.bandIdle
             ? String(localized: "Band's on its own, saving battery. It syncs in bursts and the moment you open the app.")
             : String(localized: "Reconnects automatically when it's near.")

@@ -75,7 +75,7 @@
             supplements, blood-test markers you enter, and menstrual-cycle data if you choose to track it.</li>
         <li><strong>Photos</strong> — meal photos (for automatic calorie/macro estimates) and progress/physique
             photos, if you add them.</li>
-        <li><strong>Wearable biosignals</strong> — if you connect the optional Titan band, its raw
+        <li><strong>Wearable biosignals</strong> — if you connect the optional band, its raw
             optical-sensor and motion data is sent to the service to compute heart rate, HRV, sleep and activity.</li>
         <li><strong>Location</strong> — only while you are actively recording a run, to map your route and
             measure distance and pace. It is not collected in the background otherwise.</li>

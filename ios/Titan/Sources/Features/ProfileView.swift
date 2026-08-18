@@ -54,7 +54,7 @@ struct ProfileView: View {
             Button { Haptic.tap(); showBand = true } label: {
                 GlassCard {
                     HStack {
-                        Label("Your Titan band", systemImage: "applewatch").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
+                        Label("Your band", systemImage: "applewatch").font(Theme.Font.body).foregroundStyle(Theme.Palette.text)
                         Spacer()
                         HStack(spacing: 7) {
                             PulseDot(on: model.bandConnected)

@@ -162,7 +162,7 @@ class CoachTools
             $tools[] = $this->fn('device_status', "The wearable's own state → `device` card: paired? connected/syncing? last sync, battery, firmware, what's flowing. For 'is my band connected / synced / battery', and check it when expected data is missing.", [], []);
             $tools[] = $this->fn('buzz_band', "Make the band BUZZ so they can find it (it vibrates on its next check-in). For 'find my band / where's my watch / make it buzz'.", [], []);
             $tools[] = $this->fn('request_sync', "Ask the band to sync now — it pushes fresh data on its next check-in. For 'sync now / pull my latest data'.", [], []);
-            $tools[] = $this->fn('pair_band', "Start chat-guided pairing of the Titan band — issues a one-time pairing link that opens the bridge with credentials loaded. Returns a `pairing` card. Use for 'connect / pair / set up my band', or proactively when they have a band but none is paired.", [], []);
+            $tools[] = $this->fn('pair_band', "Start chat-guided pairing of the user's band — issues a one-time pairing link that opens the bridge with credentials loaded. Returns a `pairing` card. Use for 'connect / pair / set up my band', or proactively when they have a band but none is paired.", [], []);
             $tools[] = $this->fn('spot_reading', "Take a LIVE on-demand HRV reading now — the band captures ~60s, then you interpret the result (a `spot` card lands when ready). For 'take a reading / check my HRV now / how recovered am I right now'. Not daily_summary (that's the morning's recovery).", [], []);
         }
 
@@ -854,7 +854,7 @@ class CoachTools
             'ok' => true,
             'card' => [
                 'type' => 'pairing',
-                'source' => 'Titan Band',
+                'source' => 'Band',
                 'bridge_url' => "/devices/bridge?pair={$token}",
                 'steps' => [
                     'Charge your band and keep it next to this phone.',

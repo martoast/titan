@@ -37,7 +37,7 @@ class DeviceStatusTest extends TestCase
         $this->assertTrue($s['paired']);
         $this->assertTrue($s['connected']);
         $this->assertSame('live', $s['verdict']);
-        $this->assertSame('Titan band', $s['source']);
+        $this->assertSame('Band', $s['source']);
         $this->assertSame(72, $s['battery_pct']);
         $this->assertContains('recovery', $s['streams']);
         $this->assertContains('sleep', $s['streams']);

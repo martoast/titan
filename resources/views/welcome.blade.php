@@ -362,7 +362,7 @@
             </div>
             <div class="band-stage rv">
                 <div class="band-glow"></div>
-                <img class="band-hero-img" src="{{ asset('images/band-hero.png') }}" alt="The Titan band — an open, research-grade recovery wearable showing a 92% recovery score" fetchpriority="high">
+                <img class="band-hero-img" src="{{ asset('images/band-hero.png') }}" alt="A recovery score of 92% shown on a wrist wearable" fetchpriority="high">
             </div>
         </div>
     </header>
@@ -553,16 +553,16 @@
         <div class="wrap hw-grid">
             <div class="hw-stage rv">
                 <div class="band-glow" style="inset:14% 16%;"></div>
-                <img class="band-hero-img" src="{{ asset('images/band.png') }}" alt="The Titan band hardware" loading="lazy">
+                <img class="band-hero-img" src="{{ asset('images/band.png') }}" alt="A wrist wearable running Titan" loading="lazy">
             </div>
             <div class="rv">
-                <span class="eyebrow kicker">The band</span>
-                <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">Built to be worn 24/7.</h2>
-                <p class="lead" style="margin-top:1rem;">Always-on sensors, a multi-day battery, and a focused, screen-free design — research-grade signal, comfortable enough to forget you're wearing it.</p>
+                <span class="eyebrow kicker">The wearable</span>
+                <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">Bring your own wearable.</h2>
+                <p class="lead" style="margin-top:1rem;">Titan is software. It runs on a <a href="https://www.espruino.com/Bangle.js2" rel="noopener">Bangle.js&nbsp;2</a> — an open-source developer smartwatch you buy yourself — using an open watch app we wrote for it. We don't make or sell hardware.</p>
                 <div class="specs">
-                    <div class="spec"><span class="sd" style="background:var(--green)"></span><div><b>Always-on optical sensor</b><p>Continuous heart rate and whole-night HRV — the same physiology the labs measure, right on your wrist.</p></div></div>
+                    <div class="spec"><span class="sd" style="background:var(--green)"></span><div><b>Always-on optical sensor</b><p>Continuous heart rate and whole-night HRV, read from the watch you already own.</p></div></div>
                     <div class="spec"><span class="sd" style="background:var(--cyan)"></span><div><b>Multi-day battery, screen-free focus</b><p>Wear it for days, charge in minutes. No pings, no distractions — just your body, measured.</p></div></div>
-                    <div class="spec"><span class="sd" style="background:var(--indigo)"></span><div><b>Open hardware, your data</b><p>Every sample is yours to export, self-host, and build on. No walled garden, no lock-in.</p></div></div>
+                    <div class="spec"><span class="sd" style="background:var(--indigo)"></span><div><b>Open platform, your data</b><p>Every sample is yours to export, self-host, and build on. No walled garden, no lock-in.</p></div></div>
                 </div>
             </div>
         </div>

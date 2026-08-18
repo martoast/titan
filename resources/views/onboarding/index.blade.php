@@ -556,7 +556,7 @@
                 <template x-if="current === 'wearable'">
                     <section class="ob-step">
                         <p class="font-display text-sm font-bold uppercase tracking-[0.12em] text-gray-600">Your recovery band</p>
-                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Got your Titan band?</h2>
+                        <h2 class="mt-2 font-display text-[1.9rem] font-extrabold leading-tight tracking-tight">Got your band?</h2>
                         <p class="mt-2 text-sm text-gray-500">If your recovery band is already here, now's the perfect time — connect it and your coach reads your HRV, sleep and recovery from night one.</p>
                         <div class="mt-6 space-y-3">
                             <button type="button" @click="form.has_wearable = true; pickAdvance()"

@@ -3395,13 +3395,13 @@
         }
       }
     },
-    "Got your Titan band?": {
+    "Got your band?": {
       "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
             "state": "translated",
-            "value": "¿Ya tienes tu banda Titan?"
+            "value": "¿Ya tienes tu banda?"
           }
         }
       }
@@ -4878,13 +4878,13 @@
         }
       }
     },
-    "My Titan band is in hand": {
+    "My band is in hand": {
       "extractionState": "stale",
       "localizations": {
         "es-MX": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ya tengo mi banda Titan"
+            "value": "Ya tengo mi banda"
           }
         }
       }
@@ -5516,33 +5516,12 @@
         }
       }
     },
-    "Pair Titan band": {
-      "localizations": {
-        "es-MX": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vincular banda Titan"
-          }
-        }
-      }
-    },
     "Pair a strap": {
       "localizations": {
         "es-MX": {
           "stringUnit": {
             "state": "translated",
             "value": "Vincular una banda de pecho"
-          }
-        }
-      }
-    },
-    "Pair your Titan band to begin.": {
-      "extractionState": "stale",
-      "localizations": {
-        "es-MX": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vincula tu banda Titan para empezar."
           }
         }
       }
@@ -5554,6 +5533,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vincula tu banda"
+          }
+        }
+      }
+    },
+    "Pair your band to begin.": {
+      "extractionState": "stale",
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vincula tu banda para empezar."
           }
         }
       }
@@ -8437,23 +8427,23 @@
         }
       }
     },
-    "Your Titan band": {
-      "extractionState": "stale",
-      "localizations": {
-        "es-MX": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu banda Titan"
-          }
-        }
-      }
-    },
     "Your all-day heart rate. Resting HR is your daily floor — it trends down as you get fitter.": {
       "localizations": {
         "es-MX": {
           "stringUnit": {
             "state": "translated",
             "value": "Tu frecuencia cardiaca de todo el día. La FC en reposo es tu piso diario: baja conforme mejoras tu condición."
+          }
+        }
+      }
+    },
+    "Your band": {
+      "extractionState": "stale",
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu banda"
           }
         }
       }

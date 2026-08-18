@@ -28,7 +28,7 @@ class DeviceStatus
                 'verdict_label' => 'No band paired', 'source' => null,
                 'last_sync_ago' => null, 'battery_pct' => null, 'firmware' => null,
                 'primed' => self::primed($profile), 'streams' => self::streams($profile, $now),
-                'guidance' => 'Pair the Titan band from Devices to start streaming your vitals into the coach.',
+                'guidance' => 'Pair your band from Devices to start streaming your vitals into the coach.',
             ];
         }
 
@@ -74,7 +74,7 @@ class DeviceStatus
         $s = strtolower((string) ($conn->source ?: $conn->provider ?: ''));
 
         return match (true) {
-            str_contains($s, 'titan') => 'Titan band',
+            str_contains($s, 'titan') => 'Band',
             str_contains($s, 'bangle') => 'Bangle.js',
             str_contains($s, 'polar') => 'Polar',
             str_contains($s, 'apple') => 'Apple Health',
