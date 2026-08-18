@@ -1,7 +1,6 @@
 @php
     // ── Edit these for your deployment ────────────────────────────────────────
     $contact = 'support@titan.fullstacklabs.org';   // a reachable support address
-    $repo = 'https://github.com/martoast/titan';
 @endphp
 <!DOCTYPE html>
 <html lang="en">
@@ -69,10 +68,6 @@
         <li><strong>How do I delete my data or account?</strong> From the app under <em>You → Account</em>, or email us and we'll remove it.</li>
         <li><strong>Something's broken or confusing?</strong> Email us with a screenshot — it helps us fix it fast.</li>
     </ul>
-
-    <h2>Open source</h2>
-    <p>Titan is open-source and self-hostable. Report bugs or request features on
-        <a href="{{ $repo }}">GitHub</a>.</p>
 
     <hr>
     <footer>© {{ date('Y') }} Titan · <a href="/privacy">Privacy Policy</a></footer>

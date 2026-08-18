@@ -607,19 +607,14 @@
                 <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">Run the whole thing yourself.</h2>
                 <p class="lead" style="margin-top:1rem;">Every line is open source. Your data never has to leave a server you control. One command brings up the entire platform — the app, the AI coach, the biosignal engine, all of it.</p>
                 <div class="hero-cta">
-                    <a class="btn btn-primary" href="https://github.com/martoast/titan">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.7c-2.78.62-3.37-1.22-3.37-1.22-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 015 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9v2.81c0 .27.18.6.69.49A10.26 10.26 0 0022 12.25C22 6.58 17.52 2 12 2z"/></svg>
-                        Star on GitHub
-                    </a>
-                    <a class="btn btn-ghost" href="https://github.com/martoast/titan/blob/master/DEPLOY.md">Read the deploy guide</a>
+                    <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
                 </div>
             </div>
             <div class="terminal rv">
                 <div class="term-bar"><i style="background:#fb7185"></i><i style="background:#fbbf24"></i><i style="background:#34d399"></i></div>
                 <div class="term-body">
                     <div class="c"># your server, your data, forever</div>
-                    <div><span class="p">$</span> <span class="w">git clone github.com/martoast/titan</span></div>
-                    <div><span class="p">$</span> <span class="w">docker compose -f docker-compose.prod.yml up -d</span></div>
+                                        <div><span class="p">$</span> <span class="w">docker compose -f docker-compose.prod.yml up -d</span></div>
                     <div class="g">✓ app · coach · biosignal · db · live</div>
                     <div class="c" style="margin-top:0.4rem;"># no subscription. no data leaves home.</div>
                 </div>
@@ -634,7 +629,6 @@
             <p class="lead">Real insights from day one — and a coach in your corner for the long run.</p>
             <div class="hero-cta">
                 <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
-                <a class="btn btn-ghost" href="https://github.com/martoast/titan">View the source</a>
             </div>
         </div>
     </section>
@@ -647,7 +641,6 @@
                 <a href="#data">What it sees</a>
                 <a href="#coach">The coach</a>
                 <a href="#band">The band</a>
-                <a href="https://github.com/martoast/titan">GitHub</a>
             </div>
             <div class="fl">Open source · Subscription-free · Made for every body.</div>
         </div>
