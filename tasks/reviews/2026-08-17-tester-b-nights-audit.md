@@ -54,7 +54,7 @@ Sanity check on the recovered night, from the trend series alone: HR 82–86 bpm
 08-16, nothing from 18:00 to 00:19 (band off), then 66 → 60 → 57 → 54 → **53** → 54 → 58. A clean nocturnal
 descent with the trough at 06:00. The data is good; only the label was wrong.
 
-Backups of every touched row: `~/deploy/data-backups/2026-08-17-vel-clock/`.
+Backups of every touched row: `the server's data-backups directory`.
 
 ## 2. FIXED (as data) · A dead battery is being reported as a short night, with coaching attached
 
