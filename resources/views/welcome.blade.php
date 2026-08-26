@@ -605,15 +605,17 @@
             <div class="rv">
                 <span class="eyebrow kicker">Open &amp; self-hostable</span>
                 <h2 class="sec-head" style="font-size:clamp(2rem,4.2vw,3rem)">Run the whole thing yourself.</h2>
-                <p class="lead" style="margin-top:1rem;">Every line is open source. Your data never has to leave a server you control. One command brings up the entire platform — the app, the AI coach, the biosignal engine, all of it.</p>
+                <p class="lead" style="margin-top:1rem;">Every line is open source (AGPL-3.0). Your data never has to leave a server you control. One command brings up the entire platform — the app, the AI coach, the biosignal engine, all of it.</p>
                 <div class="hero-cta">
-                    <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
+                    <a class="btn btn-primary" href="https://github.com/martoast/titan">Star on GitHub</a>
+                    <a class="btn btn-ghost" href="https://github.com/martoast/titan/blob/master/DEPLOY.md">Read the deploy guide</a>
                 </div>
             </div>
             <div class="terminal rv">
                 <div class="term-bar"><i style="background:#fb7185"></i><i style="background:#fbbf24"></i><i style="background:#34d399"></i></div>
                 <div class="term-body">
                     <div class="c"># your server, your data, forever</div>
+                    <div><span class="p">$</span> <span class="w">git clone github.com/martoast/titan</span></div>
                                         <div><span class="p">$</span> <span class="w">docker compose -f docker-compose.prod.yml up -d</span></div>
                     <div class="g">✓ app · coach · biosignal · db · live</div>
                     <div class="c" style="margin-top:0.4rem;"># no subscription. no data leaves home.</div>
@@ -629,6 +631,7 @@
             <p class="lead">Real insights from day one — and a coach in your corner for the long run.</p>
             <div class="hero-cta">
                 <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
+                <a class="btn btn-ghost" href="https://github.com/martoast/titan">View the source</a>
             </div>
         </div>
     </section>
@@ -641,6 +644,7 @@
                 <a href="#data">What it sees</a>
                 <a href="#coach">The coach</a>
                 <a href="#band">The band</a>
+                <a href="https://github.com/martoast/titan">GitHub</a>
             </div>
             <div class="fl">Open source · Subscription-free · Made for every body.</div>
         </div>

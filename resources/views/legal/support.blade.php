@@ -69,6 +69,10 @@
         <li><strong>Something's broken or confusing?</strong> Email us with a screenshot — it helps us fix it fast.</li>
     </ul>
 
+    <h2>Open source</h2>
+    <p>Titan is open-source (AGPL-3.0) and self-hostable. Report bugs or request features on
+        <a href="https://github.com/martoast/titan">GitHub</a>.</p>
+
     <hr>
     <footer>© {{ date('Y') }} Titan · <a href="/privacy">Privacy Policy</a></footer>
 </div>
