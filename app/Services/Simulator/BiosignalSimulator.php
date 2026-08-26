@@ -3,7 +3,7 @@
 namespace App\Services\Simulator;
 
 /**
- * Synthetic physiology engine -- the digital twin of the Titan band's signal output.
+ * Synthetic physiology engine -- the digital twin of the band's signal output.
  *
  * Generates physiologically-plausible heart-rate, beat-to-beat IBI/RR series, HRV
  * (RMSSD), resting HR, accelerometer activity counts and a full night of sleep

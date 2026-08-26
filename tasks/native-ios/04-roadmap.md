@@ -1,6 +1,6 @@
 # 04 — Phased roadmap
 
-Goal: a native iOS app that pairs the Titan band and syncs biosignals **always-on in the
+Goal: a native iOS app that pairs the band and syncs biosignals **always-on in the
 background** (Whoop-parity), with the full Titan experience (coach, recovery, sleep, workouts),
 shipped to the App Store. iPhone-first; Android later.
 

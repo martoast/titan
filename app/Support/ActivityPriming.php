@@ -4,7 +4,7 @@ namespace App\Support;
 
 /**
  * Activity priming: maps a spoken activity ("run", "bike ride", "swim") to a canonical
- * type and the sensing profile the Titan band should switch to for it -- sample rates and
+ * type and the sensing profile the band should switch to for it -- sample rates and
  * whether GPS is worth powering on. The coach writes the active activity onto the profile
  * when the user says they're starting; the band reads it (GET /api/devices/activity) on its
  * next connection and adapts its sampling, instead of running one generic mode all day.

@@ -1,5 +1,5 @@
 {
-  "_comment": "Shape A — a simulated overnight IBI + accel window from the Titan band. ibi_ms are inter-beat intervals (ms); accel_counts are per-minute activity counts (low = still = good HRV window). This is the cheapest, default band payload. Fed through POST /api/devices/ingest by `php artisan devices:simulate`. Window kind=ibi → persisted to the raw disk → ProcessWindowJob → biosignal /process/hrv → recovery_logs.hrv_ms.",
+  "_comment": "Shape A — a simulated overnight IBI + accel window from the band. ibi_ms are inter-beat intervals (ms); accel_counts are per-minute activity counts (low = still = good HRV window). This is the cheapest, default band payload. Fed through POST /api/devices/ingest by `php artisan devices:simulate`. Window kind=ibi → persisted to the raw disk → ProcessWindowJob → biosignal /process/hrv → recovery_logs.hrv_ms.",
   "batch_uid": "01JZ0RAWIBIFIXTURE000000001",
   "device_id": "titan_band_fixture",
   "timezone": "America/Mexico_City",

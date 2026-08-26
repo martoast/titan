@@ -542,7 +542,7 @@ function buildDevice(d) {
 function buildPairing(d) {
     const el = document.createElement('div'); el.className = 'tcard tcard-pairing';
     const head = document.createElement('div'); head.className = 'tcard-pairing-head';
-    head.innerHTML = `<span class="tcard-pairing-spark">◈</span><span>Pair your ${d.source || 'Titan Band'}</span>`;
+    head.innerHTML = `<span class="tcard-pairing-spark">◈</span><span>Pair your ${d.source || 'band'}</span>`;
     el.appendChild(head);
 
     if (Array.isArray(d.steps) && d.steps.length) {

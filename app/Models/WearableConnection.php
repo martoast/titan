@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A profile's connected biosignal source -- device-agnostic. May be a Terra link, the
- * open-source Titan band, a Bangle.js, a Polar account, or an Apple Health export.
+ * open-source band, a Bangle.js, a Polar account, or an Apple Health export.
  *
  * Two resolution paths back to a profile:
  *   - Terra:  webhooks matched via `terra_user_id`.

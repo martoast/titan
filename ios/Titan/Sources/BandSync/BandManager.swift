@@ -1,14 +1,14 @@
 import Foundation
 import CoreBluetooth
 
-/// Always-on background BLE connection to the Titan band (Bangle.js / Nordic UART Service).
+/// Always-on background BLE connection to the user's band (Bangle.js / Nordic UART Service).
 /// Whoop-style pattern: `bluetooth-central` background mode + State Preservation & Restoration
 /// (relaunches a terminated app) + no-timeout reconnect re-armed on every disconnect.
 /// Design + citations: tasks/native-ios/01-background-ble.md.
 ///
 /// Per-device binding: at pair time we lock onto the CLOSEST band (you hold yours to the phone)
 /// and remember its peripheral identifier. Afterward the phone reconnects ONLY to that band — so
-/// two people wearing Titan bands side by side never cross-connect.
+/// two people wearing bands side by side never cross-connect.
 ///
 /// Threading (H5): the central runs on a DEDICATED serial queue (`bleQueue`), so `didUpdateValueFor`
 /// — up to ~50 Hz in a lift — never lands on the main thread. ALL of our own mutable state (band,
@@ -441,7 +441,7 @@ public final class BandManager: NSObject {
         }
     }
 
-    /// True if `adv`/peripheral looks like a Titan band.
+    /// True if `adv`/peripheral looks like a supported band.
     private func looksLikeBand(_ p: CBPeripheral, _ adv: [String: Any]) -> Bool {
         let name = p.name ?? (adv[CBAdvertisementDataLocalNameKey] as? String) ?? ""
         let uuids = adv[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []

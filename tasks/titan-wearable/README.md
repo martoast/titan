@@ -1,5 +1,11 @@
 # Titan Wearable — Open-Source, Subscription-Free Recovery Wearable
 
+> **This is research, not a product.** Titan does not manufacture, sell or supply hardware.
+> This folder is an open reference design so that anyone who wants to can build their own device,
+> in the tradition of OpenAPS and Nightscout (see [`05-opensource-legal.md`](05-opensource-legal.md)).
+> The Titan app itself runs on an off-the-shelf, third-party open-source smartwatch that the user
+> buys and owns.
+
 > **Mission:** anyone, anywhere can build an honest fitness/recovery wearable, keep their own
 > physiological data on their own hardware, and optimize their wellbeing — **no subscription,
 > no data surrender, no one gatekeeping access to your own body's data.**

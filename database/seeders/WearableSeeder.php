@@ -8,7 +8,7 @@ use App\Services\Wearables\DeviceIngestionService;
 use Illuminate\Database\Seeder;
 
 /**
- * Seeds the Titan Wearable platform for profile 1: a paired Titan band + a paired
+ * Seeds the wearable platform for profile 1: a paired band + a paired
  * Apple Health source, and runs the Shape-C summary fixture through the real ingestion
  * service so recovery_logs / sleep_logs / body_metrics gain a wearable-sourced row
  * (updated_via=device:summary) — with NO Python dependency.
@@ -28,7 +28,7 @@ class WearableSeeder extends Seeder
             return;
         }
 
-        // A paired Titan band. device_token_hash = sha256(secret) — the same value the
+        // A paired band. device_token_hash = sha256(secret) — the same value the
         // device signs with (it never sends the plaintext secret). devices:simulate signs
         // the band fixture with sha256('titan-band-fixture-secret').
         WearableConnection::updateOrCreate(

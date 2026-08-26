@@ -74,7 +74,7 @@ feed — and the coach references them. *Now Titan is a Whoop replacement on bor
 | Hardware | Dev-board prototype (**XIAO nRF52840 + MAX30101 + LSM6DSOX**) → custom **PCB Rev A** (Raytac MDBT50Q + MAXM86161 + BMI270 + BQ25120A) → **wearable form factor** (SLA case, dual optical window, 150 mAh, ~2-3 day battery) | 4→8→9 |
 | Firmware | NCS/Zephyr bring-up on DK + real AFE → custom GATT streaming + littlefs buffer → **power optimization** (IMU-gated PPG, burst-and-sleep) → MCUboot OTA + **companion app** (iOS background BLE) → custom-board firmware | 6→7→7→8→9 |
 | Algorithms | **Tuning + multi-night validation** of our sensor vs Polar H10; per-user baseline calibration | 7 |
-**Exit criteria:** both brothers wearing custom Titan bands nightly, metrics validated against the H10, ~2-3
+**Exit criteria:** both testers wearing their bands nightly, metrics validated against the H10, ~2-3
 day battery. *Fork [`uqjwy/whoop-alternative`](https://github.com/uqjwy/whoop-alternative) and
 [HealthyPi Move](https://github.com/Protocentral/healthypi-move-hw) rather than starting from scratch.*
 
