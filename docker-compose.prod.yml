@@ -17,7 +17,9 @@ x-app: &app
     dockerfile: Dockerfile
   env_file: [.env]
   restart: unless-stopped
-  networks: [titan]
+  # `ideasandbugs` reaches the failure hub at ib-hub. Every PHP role inherits
+  # this anchor, and only PHP roles report anything.
+  networks: [titan, ideasandbugs]
 
 services:
   # ── Laravel web app — blue/green slots for zero-downtime deploys ─────────────
@@ -146,6 +148,10 @@ services:
     networks: [titan]
 
 networks:
+  # Reach the Ideas + Bugs hub by its alias, ib-hub.
+  ideasandbugs:
+    external: true
+    name: ideasandbugs_ib
   titan:
 
 volumes:

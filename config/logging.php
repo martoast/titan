@@ -52,6 +52,15 @@ return [
 
     'channels' => [
 
+        // Every warning and above, reported to the Ideas + Bugs hub. A handler
+        // rather than call sites, because the failures that hurt on this box
+        // were never exceptions.
+        'ib' => [
+            'driver' => 'monolog',
+            'handler' => App\Logging\IbLogHandler::class,
+            'level' => 'warning',
+        ],
+
         'stack' => [
             'driver' => 'stack',
             'channels' => explode(',', (string) env('LOG_STACK', 'single')),
