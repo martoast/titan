@@ -137,7 +137,7 @@
                 statusLabel: 'Disconnected',
                 btSupported: !!(navigator.bluetooth && navigator.bluetooth.requestDevice),
                 _device: null, _rx: '', _rxChar: null, _wave: [], waveHasData: false,
-                _samples: [], _trailTimer: null, WINDOW_MS: 120000,
+                _samples: [], _trailTimer: null, _clockTimer: null, WINDOW_MS: 120000,
                 log: [],
                 // ---- auto-sync ----
                 // Keeps the band connected with zero clicks while this tab is open: reconnects
@@ -226,6 +226,15 @@
                         const win = this._wa && this._wa.tick(this._maxDeviceT);
                         if (win) this._ship(win);
                     }, 5000);
+                    // Keep re-pushing C2 while connected: the firmware applies it only when IDLE (a
+                    // workout/sleep in progress — including one resumed right after a dead-battery
+                    // reboot — defers it), so a single attach-time sync can leave the band streaming
+                    // on its floored clock for hours. Its C2 contract expects the phone to re-send
+                    // "on every connect + periodically"; this is the periodic half.
+                    clearInterval(this._clockTimer);
+                    this._clockTimer = setInterval(() => {
+                        this._syncTime().catch(() => {});   // link blip — the next tick retries
+                    }, 300000);
                 },
                 // The band's C2 command: set time + timezone from this device's clock. Format matches
                 // the firmware parser and the iOS companion: {t: unixSeconds UTC, tz: hoursOffset}.
@@ -290,6 +299,7 @@
                 _onDrop() {
                     this.connected = false;
                     clearInterval(this._waTimer);
+                    clearInterval(this._clockTimer);
                     clearTimeout(this._woTrail);
                     this._flushWindow(); // ship whatever PPG samples are accumulated
                     const win = this._wa && this._wa.flush(); // ship any in-progress workout

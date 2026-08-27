@@ -6,6 +6,7 @@ use App\Models\DeviceIngestion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -191,6 +192,39 @@ class FlooredBandClockReanchorTest extends TestCase
 
         $this->assertEquals($firstReboot, $conn->fresh()->last_reboot_at,
             'a band that never went away must not re-report its power loss as a fresh one');
+    }
+
+    public function test_the_bad_clock_warning_reports_once_per_reboot_episode_not_once_per_batch(): void
+    {
+        // Every WARNING ships to the Ideas + Bugs hub (config/logging.php's `ib` channel), so a band
+        // streaming every ~5 minutes on a still-broken clock filed the SAME power loss as a fresh report
+        // ~10×/hour for as long as it stayed un-synced (issue #50: 7 reports in 42 minutes, one band).
+        // The reboot bookkeeping already collapses those batches into one episode — the log line must
+        // follow it: WARN when the power loss becomes visible, stay quiet (info) while it persists.
+        Log::spy();
+
+        $bandStart = now()->setDate(2026, 1, 1)->setTime(8, 13, 58);
+        $this->send([$this->ppgWindow($bandStart, $bandStart->copy()->addSeconds(30))])->assertStatus(202);
+
+        // ...the band keeps streaming on the same broken clock. Same episode, nothing new to report.
+        foreach ([5, 10] as $minutes) {
+            $this->travel(5)->minutes();
+            $later = $bandStart->copy()->addMinutes($minutes);
+            $this->send([$this->ppgWindow($later, $later->copy()->addSeconds(30))])->assertStatus(202);
+        }
+
+        Log::shouldHaveReceived('warning')
+            ->with('[Ingest] band clock is wrong — re-anchoring the batch', \Mockery::type('array'))
+            ->once();
+
+        // Gone for hours and back still broken → a genuinely NEW power loss → one new warning.
+        $this->travel(9)->hours();
+        $later = $bandStart->copy()->addHours(9);
+        $this->send([$this->ppgWindow($later, $later->copy()->addSeconds(30))])->assertStatus(202);
+
+        Log::shouldHaveReceived('warning')
+            ->with('[Ingest] band clock is wrong — re-anchoring the batch', \Mockery::type('array'))
+            ->twice();
     }
 
     public function test_a_band_that_goes_away_and_returns_records_a_new_power_loss(): void
