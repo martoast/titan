@@ -58,14 +58,6 @@ class DeviceIngestionService
         // internal spacing survives it (see batchClockOffsetSec).
         $clockOffsetSec = $this->batchClockOffsetSec($payload);
         if ($clockOffsetSec !== 0) {
-            Log::warning('[Ingest] band clock is wrong — re-anchoring the batch', [
-                'profile_id' => $connection->profile_id,
-                'source' => $connection->source,
-                'batch_uid' => $batchUid,
-                'offset_sec' => $clockOffsetSec,
-                'windows' => count($payload['windows'] ?? []),
-            ]);
-
             // An un-synced clock means the band REBOOTED, and a band only reboots on power loss or a
             // reflash. Record it: it is the only evidence that tells a night which ended in a dead
             // battery from one which ended in a wake (App\Support\NightTruncation). Recorded once per
@@ -82,9 +74,24 @@ class DeviceIngestionService
                 || $connection->last_sync_at === null
                 || $connection->last_sync_at->lessThan(now()->subMinutes(self::REBOOT_SAME_EPISODE_MIN));
 
+            // WARN once per power loss, when it becomes visible; the same episode's follow-up batches say
+            // nothing new, so they log at info. Warnings ship to the Ideas + Bugs hub (the `ib` channel),
+            // and a band streaming every ~5 minutes on a still-broken clock re-reported the SAME reboot
+            // ~10×/hour for as long as it stayed un-synced.
+            $clockContext = [
+                'profile_id' => $connection->profile_id,
+                'source' => $connection->source,
+                'batch_uid' => $batchUid,
+                'offset_sec' => $clockOffsetSec,
+                'windows' => count($payload['windows'] ?? []),
+                'same_episode' => ! $isNewEpisode,
+            ];
             if ($isNewEpisode) {
+                Log::warning('[Ingest] band clock is wrong — re-anchoring the batch', $clockContext);
                 $connection->forceFill(['last_reboot_at' => now()])->save();
                 \App\Jobs\FlagTruncatedNightJob::dispatch($connection->profile_id)->afterCommit();
+            } else {
+                Log::info('[Ingest] band clock is wrong — re-anchoring the batch', $clockContext);
             }
         }
 

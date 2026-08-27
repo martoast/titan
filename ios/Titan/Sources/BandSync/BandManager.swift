@@ -107,6 +107,35 @@ public final class BandManager: NSObject {
         liveWatchdog?.cancel(); liveWatchdog = nil
     }
 
+    // MARK: periodic clock re-sync (C2)
+    // One C2 at connect is NOT enough. The firmware applies C2 only when IDLE — a session in progress
+    // (workout/sleep, including one RESUMED right after a dead-battery reboot) defers it, and its C2
+    // handler's contract is "the phone re-sends C2 on every connect + periodically, so a deferred
+    // correction lands as soon as the session ends". The connect-time write is also .withoutResponse,
+    // which CoreBluetooth may silently drop. Both together are how Tester B's band streamed 7+ hours on
+    // a floored clock over a LIVE connection: the one C2 never landed and nothing ever retried. This
+    // timer is the "periodically" half of that contract — a ~30-byte write every 5 min is noise next to
+    // the inbound PPG stream, and a band that missed or deferred its sync is corrected within minutes
+    // of going idle instead of never.
+    private var clockResync: DispatchSourceTimer?
+    private static let clockResyncInterval: TimeInterval = 300
+
+    private func startClockResync() {
+        clockResync?.cancel()
+        let t = DispatchSource.makeTimerSource(queue: bleQueue)
+        t.schedule(deadline: .now() + Self.clockResyncInterval, repeating: Self.clockResyncInterval)
+        t.setEventHandler { [weak self] in
+            guard let self, self.band?.state == .connected, self.rxChar != nil else { return }
+            self.syncTime()
+        }
+        clockResync = t
+        t.resume()
+    }
+
+    private func stopClockResync() {
+        clockResync?.cancel(); clockResync = nil
+    }
+
     /// One watchdog tick (on `bleQueue`). Connected + a recent frame = LIVE; connected but silent past the
     /// window = STALE; not connected at all = not live. When the link stays STALE past ~2× the window while
     /// CB still insists it's `.connected`, the link is WEDGED — proactively cancel it so the always-on
@@ -247,6 +276,7 @@ public final class BandManager: NSObject {
             UserDefaults.standard.removeObject(forKey: Self.boundNameKey)
             self.reconnectWorkToken += 1          // cancel any pending scheduled reconnect
             self.stopLiveWatchdog()
+            self.stopClockResync()
             self.setLive(false)
             if let b = self.band, b.state != .disconnected { self.central.cancelPeripheralConnection(b) }
             self.band = nil
@@ -556,6 +586,7 @@ extension BandManager: CBCentralManagerDelegate {
     public func centralManager(_ c: CBCentralManager, didFailToConnect p: CBPeripheral, error: Error?) {
         guard p.identifier == boundId else { return }   // a stale/other peripheral must not touch live state
         stopLiveWatchdog()
+        stopClockResync()
         setLive(false)
         scheduleReconnect(p)
     }
@@ -588,6 +619,7 @@ extension BandManager: CBCentralManagerDelegate {
         // self-heal flag. All of that belongs only to the bound band's own disconnect.
         guard p.identifier == boundId else { return }
         stopLiveWatchdog()
+        stopClockResync()
         setLive(false)
         router.flush(live: false)
         wedgeRecovering = false
@@ -615,7 +647,10 @@ extension BandManager: CBPeripheralDelegate {
             if ch.uuid == Self.NUS_RX { rxChar = ch }
             if ch.uuid == Self.BATTERY_LEVEL { p.readValue(for: ch); p.setNotifyValue(true, for: ch) }
         }
-        if rxChar != nil { syncTime() }   // push the phone's local time + timezone to the band
+        if rxChar != nil {
+            syncTime()          // push the phone's local time + timezone to the band
+            startClockResync()  // …and keep re-pushing: a busy band defers C2, a dropped write loses it
+        }
     }
 
     /// Send the phone's current UTC time + timezone offset so the band's clock is always correct
