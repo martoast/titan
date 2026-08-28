@@ -19,6 +19,16 @@ class AiService
     /** Running token usage since the last reset (per model, so cost can be priced). */
     public array $usage = ['prompt' => 0, 'completion' => 0, 'calls' => 0, 'models' => []];
 
+    /**
+     * Reasoning models (gpt-5.x / o-series) bill their hidden reasoning tokens against
+     * `max_completion_tokens` — the same budget callers mean as "visible answer length".
+     * Measured on gpt-5.6-luna, a briefing-sized prompt spends 100-300+ tokens reasoning
+     * before the first visible token, so a tight cap (e.g. 320) can come back as
+     * `finish_reason: "length"` with EMPTY content. This headroom keeps the caller's cap
+     * meaning what they meant.
+     */
+    private const REASONING_TOKEN_HEADROOM = 1024;
+
     public function configured(): bool
     {
         return (bool) config('services.openai.key');
@@ -125,35 +135,54 @@ class AiService
             'messages' => $messages,
         ], $opts, 0.7);
         if (isset($opts['max_tokens'])) {
-            $payload[$this->tokenLimitParam($model)] = $opts['max_tokens'];
+            $limit = (int) $opts['max_tokens'];
+            if ($this->isReasoningModel($model)) {
+                $limit += self::REASONING_TOKEN_HEADROOM;
+            }
+            $payload[$this->tokenLimitParam($model)] = $limit;
         }
         if (! empty($opts['json'])) {
             $payload['response_format'] = ['type' => 'json_object'];
         }
 
-        try {
-            $response = Http::withToken(config('services.openai.key'))
-                ->timeout((int) ($opts['timeout'] ?? config('services.openai.timeout', 60)))
-                ->acceptJson()
-                ->post($this->endpoint('/chat/completions'), $payload);
-        } catch (\Throwable $e) {
-            throw new AiException('Could not reach OpenAI: '.$e->getMessage(), previous: $e);
+        $limitParam = $this->tokenLimitParam($model);
+        for ($attempt = 0; ; $attempt++) {
+            try {
+                $response = Http::withToken(config('services.openai.key'))
+                    ->timeout((int) ($opts['timeout'] ?? config('services.openai.timeout', 60)))
+                    ->acceptJson()
+                    ->post($this->endpoint('/chat/completions'), $payload);
+            } catch (\Throwable $e) {
+                throw new AiException('Could not reach OpenAI: '.$e->getMessage(), previous: $e);
+            }
+
+            if ($response->failed()) {
+                $detail = $response->json('error.message') ?? $response->body();
+                Log::warning('[AI] OpenAI request failed', ['status' => $response->status(), 'detail' => $detail]);
+                throw new AiException('OpenAI request failed: '.$detail);
+            }
+
+            $this->track($response);
+
+            $content = $response->json('choices.0.message.content');
+            if (is_string($content) && $content !== '') {
+                return trim($content);
+            }
+
+            $finish = (string) ($response->json('choices.0.finish_reason') ?? 'unknown');
+            if ($attempt === 0) {
+                // One bounded retry. If the budget starved the answer, quadruple it —
+                // retrying at the same cap would just starve identically.
+                if ($finish === 'length' && isset($payload[$limitParam])) {
+                    $payload[$limitParam] = max(4 * (int) $payload[$limitParam], 4096);
+                }
+                Log::info('[AI] empty completion, retrying once', ['model' => $model, 'finish_reason' => $finish]);
+
+                continue;
+            }
+
+            throw new AiException("OpenAI returned an empty response (finish_reason: {$finish}).");
         }
-
-        if ($response->failed()) {
-            $detail = $response->json('error.message') ?? $response->body();
-            Log::warning('[AI] OpenAI request failed', ['status' => $response->status(), 'detail' => $detail]);
-            throw new AiException('OpenAI request failed: '.$detail);
-        }
-
-        $this->track($response);
-
-        $content = $response->json('choices.0.message.content');
-        if (! is_string($content) || $content === '') {
-            throw new AiException('OpenAI returned an empty response.');
-        }
-
-        return trim($content);
     }
 
     /**
