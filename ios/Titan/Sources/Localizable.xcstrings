@@ -1863,6 +1863,16 @@
         }
       }
     },
+    "Can't reach Titan right now. Check your connection and try again.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No podemos conectar con Titan. Revisa tu conexión e inténtalo de nuevo."
+          }
+        }
+      }
+    },
     "Cancel": {
       "localizations": {
         "es-MX": {
@@ -2258,6 +2268,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "No se pudo conectar con tu coach. Inténtalo de nuevo."
+          }
+        }
+      }
+    },
+    "Couldn't read the server response.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo leer la respuesta del servidor."
           }
         }
       }
@@ -6992,6 +7012,26 @@
         }
       }
     },
+    "Something went wrong on our end. Please try again.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algo salió mal de nuestro lado. Inténtalo de nuevo."
+          }
+        }
+      }
+    },
+    "Something went wrong. Please try again.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algo salió mal. Inténtalo de nuevo."
+          }
+        }
+      }
+    },
     "Soreness": {
       "extractionState": "stale",
       "localizations": {
@@ -7474,6 +7514,16 @@
         }
       }
     },
+    "That email and password don't match. Please try again.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese correo y contraseña no coinciden. Inténtalo de nuevo."
+          }
+        }
+      }
+    },
     "That's the reset. Your nervous system just shifted — notice how you feel.": {
       "localizations": {
         "es-MX": {
@@ -7618,6 +7668,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Titan es un OS de recuperación sin suscripción. Tus datos son tuyos, siempre."
+          }
+        }
+      }
+    },
+    "Titan is temporarily unreachable. Please try again in a moment.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Titan no está disponible por el momento. Inténtalo de nuevo en un momento."
           }
         }
       }
@@ -8601,6 +8661,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tus carreras se mapearán. Fijado a ±%lld m."
+          }
+        }
+      }
+    },
+    "Your session expired — please sign in again.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu sesión expiró. Inicia sesión de nuevo."
           }
         }
       }

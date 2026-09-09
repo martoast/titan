@@ -1159,13 +1159,47 @@ struct SleepSummaryState: Identifiable {
 }
 
 enum APIError: LocalizedError {
-    case http(Int, String), decoding, unauthorized, transport(String)
+    case http(Int, String), decoding, unauthorized, invalidCredentials, transport(String)
+
+    /// True when the failure is about REACHING Titan, not about anything the person did or sent.
+    ///
+    /// 502/503/504 are gateway failures; **520-530 are Cloudflare's own**, and 530 specifically means the
+    /// tunnel to our server is down — the body is then an HTML error page with no JSON `error` field, so
+    /// there is nothing to quote. This is not hypothetical: App Review was shown a raw
+    /// "Server error 530: " on the login screen while the backend was unreachable, and rejected the build
+    /// under Guideline 2.1. A transport failure (no route, DNS, timeout) is the same class of problem.
+    var isOutage: Bool {
+        switch self {
+        case .http(let s, _): return s == 502 || s == 503 || s == 504 || (520...530).contains(s)
+        case .transport: return true
+        default: return false
+        }
+    }
+
     var errorDescription: String? {
         switch self {
-        case .http(let s, let m): return "Server error \(s): \(m)"
-        case .decoding: return "Couldn't read the server response."
-        case .unauthorized: return "Your session expired — please sign in again."
-        case .transport(let m): return m
+        case .invalidCredentials:
+            return String(localized: "That email and password don't match. Please try again.")
+        case .unauthorized:
+            return String(localized: "Your session expired — please sign in again.")
+        case .decoding:
+            return String(localized: "Couldn't read the server response.")
+        case .transport(let m):
+            // URLError's own text is already written for people ("The Internet connection appears to be
+            // offline."), so it is kept — but an empty one must never render as a blank error.
+            return m.isEmpty ? String(localized: "Can't reach Titan right now. Check your connection and try again.") : m
+        case .http(let s, let m):
+            if isOutage {
+                return String(localized: "Titan is temporarily unreachable. Please try again in a moment.")
+            }
+            if s >= 500 {
+                return String(localized: "Something went wrong on our end. Please try again.")
+            }
+            // A real API error carries its own sentence; only fall back to a code when the server said
+            // nothing, and never lead with one.
+            return m.isEmpty
+                ? String(localized: "Something went wrong. Please try again.") + " (\(s))"
+                : m
         }
     }
 }

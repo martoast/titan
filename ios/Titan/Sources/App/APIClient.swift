@@ -70,7 +70,31 @@ final class APIClient {
         return req
     }
 
-    private func send<T: Decodable>(_ req: URLRequest, as type: T.Type) async throws -> T {
+    /// How many EXTRA attempts an outage gets, and how long to wait before each.
+    ///
+    /// Titan's backend sits behind a tunnel, and a tunnel drop is usually seconds long rather than
+    /// permanent — the reconnect is already in flight while the request fails. One failed request should
+    /// therefore not become a failed sign-in. Short and bounded: two retries, under two seconds total, so
+    /// a genuinely dead server still answers quickly instead of hanging the button.
+    private static let outageRetryDelays: [Duration] = [.milliseconds(600), .milliseconds(1200)]
+
+    /// - Parameter retryOnOutage: defaults to true for GET, which is idempotent. A non-GET must opt in,
+    ///   because retrying a write that the server may already have applied duplicates it.
+    private func send<T: Decodable>(_ req: URLRequest, as type: T.Type, retryOnOutage: Bool? = nil) async throws -> T {
+        let mayRetry = retryOnOutage ?? ((req.httpMethod ?? "GET") == "GET")
+        var attempt = 0
+
+        while true {
+            do {
+                return try await sendOnce(req, as: type)
+            } catch let e as APIError where mayRetry && e.isOutage && attempt < Self.outageRetryDelays.count {
+                try? await Task.sleep(for: Self.outageRetryDelays[attempt])
+                attempt += 1
+            }
+        }
+    }
+
+    private func sendOnce<T: Decodable>(_ req: URLRequest, as type: T.Type) async throws -> T {
         do {
             let (data, resp) = try await session.data(for: req)
             let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -88,9 +112,17 @@ final class APIClient {
     // MARK: endpoints
 
     func login(email: String, password: String, deviceName: String) async throws -> LoginResponse {
-        try await send(request("api/login", method: "POST",
-                               json: ["email": email, "password": password, "device_name": deviceName]),
-                       as: LoginResponse.self)
+        do {
+            // Opted into retry despite being a POST: signing in twice only mints a second token, which is
+            // harmless, and a sign-in is exactly where a momentary outage must not look like a dead app.
+            return try await send(request("api/login", method: "POST",
+                                          json: ["email": email, "password": password, "device_name": deviceName]),
+                                  as: LoginResponse.self, retryOnOutage: true)
+        } catch APIError.unauthorized {
+            // On the sign-in screen a 401 means the credentials are wrong — not that a session expired,
+            // which is what `unauthorized` says everywhere else and would read as nonsense here.
+            throw APIError.invalidCredentials
+        }
     }
 
     func logout() async { _ = try? await session.data(for: request("api/logout", method: "POST")) }
