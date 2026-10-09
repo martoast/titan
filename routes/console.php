@@ -73,3 +73,17 @@ Schedule::command('longevity:snapshot')->weeklyOn(1, '05:30')->timezone(config('
 // achievements like 100km-month / streaks land even on a day nothing sealed).
 Schedule::command('community:weekly-recap')->weeklyOn(0, '19:00')->timezone(config('app.timezone'));
 Schedule::command('community:badge-sweep')->dailyAt('04:30')->timezone(config('app.timezone'));
+
+// App Review demo account: `titan:seed-demo` dates every night, meal and recovery score relative
+// to the run, so the account it leaves behind is only "lived-in" for a day or two — then readiness
+// reads null, the home screen shows "No data · Connect a device", and that is what a reviewer sees.
+// It has gone empty on us twice. Refresh it nightly instead of before each submission. Re-seeding
+// keeps the existing password (see SeedDemo::handle), so App Store Connect never goes out of date.
+// Unset DEMO_REVIEWER_EMAIL — the default — schedules nothing, so a self-hosted Titan never grows
+// a reviewer account.
+if (filled($demoReviewer = config('demo.reviewer_email'))) {
+    Schedule::command('titan:seed-demo', [$demoReviewer])
+        ->dailyAt('04:00')
+        ->timezone(config('app.timezone'))
+        ->withoutOverlapping();
+}

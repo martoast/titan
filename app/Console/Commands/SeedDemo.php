@@ -51,12 +51,23 @@ class SeedDemo extends Command
     public function handle(): int
     {
         $email = strtolower(trim((string) $this->argument('email')));
-        $password = (string) ($this->option('password') ?: 'Titan-'.Str::random(10));
         $female = (bool) $this->option('female');
 
         $user = User::firstOrNew(['email' => $email]);
+        $existing = $user->exists;
+
+        // Re-running this to REFRESH the data must not rotate the login. The demo
+        // account's password is pasted into App Store Connect -> App Review
+        // Information, so generating a new one here locks the reviewer out of a
+        // perfectly healthy account, silently, with the command reporting success.
+        // Only a brand-new account gets a generated password; an existing one keeps
+        // its own unless --password is passed explicitly.
+        $password = (string) ($this->option('password') ?: ($existing ? '' : 'Titan-'.Str::random(10)));
+
         $user->name = (string) $this->option('name');
-        $user->password = Hash::make($password);
+        if ($password !== '') {
+            $user->password = Hash::make($password);
+        }
         $user->email_verified_at = $user->email_verified_at ?? now();
         $user->save();
 
@@ -121,10 +132,12 @@ class SeedDemo extends Command
         $this->info('✓ Demo account ready.');
         $this->newLine();
         $this->line('  <comment>Email</comment>    '.$email);
-        $this->line('  <comment>Password</comment> '.$password);
+        $this->line('  <comment>Password</comment> '.($password !== '' ? $password : 'unchanged (existing account)'));
         $this->line('  <comment>Server</comment>   '.config('app.url'));
         $this->newLine();
-        $this->line('Paste the email + password into App Store Connect → App Review Information → Sign-In Required.');
+        $this->line($password !== ''
+            ? 'Paste the email + password into App Store Connect → App Review Information → Sign-In Required.'
+            : 'Data refreshed. The login is unchanged, so App Store Connect needs no edit.');
 
         return self::SUCCESS;
     }
