@@ -89,7 +89,7 @@ class AssistantTools
             ['name' => 'log_cycle', 'description' => 'Log a cycle day: flow, symptoms, mood/energy, basal body temperature.', 'args' => ['flow' => 'none|spotting|light|medium|heavy (optional)', 'symptoms' => '[cramps, headache, bloating, fatigue, mood_swings, tender_breasts, cravings, …] (optional)', 'mood' => '1-5 (optional)', 'energy' => '1-5 (optional)', 'bbt_c' => 'number °C (optional)', 'date' => 'YYYY-MM-DD (optional)', 'notes' => 'string (optional)'], 'write' => true],
             ['name' => 'update_profile', 'description' => 'Update profile basics.', 'args' => ['birthdate' => 'YYYY-MM-DD (optional)', 'sex' => 'M|F (optional)', 'height_cm' => 'number (optional)', 'primary_goal' => 'string (optional)'], 'write' => true],
             ['name' => 'save_knowledge', 'description' => "Save a note to the user's brain. Pin to inject it into every future coach conversation (use sparingly).", 'args' => ['title' => 'string', 'content' => 'markdown', 'pinned' => 'bool (optional)'], 'write' => true],
-            ['name' => 'pair_device', 'description' => 'Pair a Titan wearable and return its device id + one-time secret (show the secret to the user once).', 'args' => ['name' => 'string (optional)'], 'write' => true],
+            ['name' => 'pair_device', 'description' => 'Pair a recovery band and return its device id + one-time secret (show the secret to the user once).', 'args' => ['name' => 'string (optional)'], 'write' => true],
             ['name' => 'unpair_device', 'description' => 'Revoke a paired wearable so it can no longer sync.', 'args' => ['device_id' => 'string'], 'write' => true],
         ];
     }
