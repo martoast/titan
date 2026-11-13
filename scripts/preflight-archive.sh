@@ -45,7 +45,11 @@ echo
 echo "== 3. the build Apple will see =="
 VER="$(grep -oE 'CURRENT_PROJECT_VERSION: *"[0-9]+"' ios/Titan/project.yml | grep -oE '[0-9]+')"
 MKT="$(grep -oE 'MARKETING_VERSION: *"[^"]+"' ios/Titan/project.yml | sed 's/.*"\(.*\)"/\1/')"
-LAST_SUBMITTED=12   # 1.1.0 (12) is the build live in the App Store since 2026-10-22
+LAST_SUBMITTED=12   # 1.1.0 (12) is the build live in the App Store since 2026-10-22.
+# NOTE: the BUILD number is not the whole story. A released marketing version cannot take a new
+# build -- App Store Connect ties a build to its CFBundleShortVersionString and a shipped version
+# record is finished -- so a build at an already-released MARKETING_VERSION can only reach
+# TestFlight. Shipping to users needs MARKETING_VERSION bumped too (1.1.0 -> 1.1.1 on 2026-11-13).
 if [ -z "$VER" ]; then bad "could not read CURRENT_PROJECT_VERSION"
 elif [ "$VER" -le "$LAST_SUBMITTED" ]; then bad "build $VER was already submitted — bump CURRENT_PROJECT_VERSION"
 else ok "version $MKT ($VER)"; fi
