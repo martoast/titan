@@ -16,7 +16,14 @@ use App\Http\Controllers\Api\MobileAuthController;
 use Illuminate\Support\Facades\Route;
 
 // Native iOS app auth — email/password → bearer token (reuses the ApiToken system). Throttled.
+// The throttles below are per CLIENT IP, which only works because bootstrap/app.php trusts the
+// tunnel's proxy headers — without that every visitor is 127.0.0.1 and these become one global
+// bucket shared by the whole user base.
 Route::post('/login', [MobileAuthController::class, 'login'])->middleware('throttle:10,1');
+
+// Sign-up from inside the app. Tighter than login: a real person makes one account, and this
+// writes a row for an unauthenticated caller.
+Route::post('/register', [MobileAuthController::class, 'register'])->middleware('throttle:5,1');
 
 // Assistant / MCP surface + native-app session — personal-API-token auth (Bearer). One generic
 // tool dispatcher gives an external agent full account control; write tools additionally require
@@ -29,6 +36,11 @@ Route::middleware('auth.token')->group(function () {
     // Native-app session management + push registration.
     Route::post('/logout', [MobileAuthController::class, 'logout']);
     Route::post('/devices/push-token', [MobileAuthController::class, 'pushToken']);
+
+    // Account deletion, reachable from inside the app (App Store 5.1.1(v)). Re-asks for the
+    // password: it erases every health record the person has and cannot be undone.
+    Route::delete('/me/account', [MobileAuthController::class, 'destroyAccount'])
+        ->middleware('throttle:5,1');
 });
 
 // Read-only dashboard aggregate for the native app (readiness + recovery + sleep + activity).

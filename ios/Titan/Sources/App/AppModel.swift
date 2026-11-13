@@ -233,12 +233,50 @@ final class AppModel: ObservableObject {
         } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
     }
 
+    /// Create an account and sign straight in. Mirrors `login` so the screen after sign-up is
+    /// onboarding, not a second password prompt.
+    func register(name: String, email: String, password: String) async {
+        loading = true; error = nil; defer { loading = false }
+        do {
+            let res = try await api.register(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                             email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                                             password: password,
+                                             deviceName: deviceName())
+            api.token = res.token
+            Keychain.set(res.token, for: Keychain.userToken)
+            setUser(res.user)
+            onboarded = res.user.onboarded ?? false   // a new account has not onboarded
+            await bootstrap()
+        } catch { self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription }
+    }
+
     func logout() async {
         await api.logout()
         Keychain.delete(Keychain.userToken)
         Keychain.delete(Keychain.userProfile)
         api.token = nil
         user = nil; dashboard = nil
+    }
+
+    /// Erase the account server-side, then clear this device exactly as a sign-out does.
+    /// Returns false and sets `error` if the password was wrong, so the sheet can stay open —
+    /// signing the person out after a failed attempt would look like the deletion happened.
+    @discardableResult
+    func deleteAccount(password: String) async -> Bool {
+        loading = true; error = nil; defer { loading = false }
+        do {
+            try await api.deleteAccount(password: password)
+        } catch {
+            self.error = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+
+        // The account is gone; the token is already dead, so skip the logout round trip.
+        Keychain.delete(Keychain.userToken)
+        Keychain.delete(Keychain.userProfile)
+        api.token = nil
+        user = nil; dashboard = nil
+        return true
     }
 
     /// Set + persist the signed-in user (Keychain-cached JSON), so `init()` can restore it on the next

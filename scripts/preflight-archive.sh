@@ -45,7 +45,7 @@ echo
 echo "== 3. the build Apple will see =="
 VER="$(grep -oE 'CURRENT_PROJECT_VERSION: *"[0-9]+"' ios/Titan/project.yml | grep -oE '[0-9]+')"
 MKT="$(grep -oE 'MARKETING_VERSION: *"[^"]+"' ios/Titan/project.yml | sed 's/.*"\(.*\)"/\1/')"
-LAST_SUBMITTED=11
+LAST_SUBMITTED=12   # 1.1.0 (12) is the build live in the App Store since 2026-10-22
 if [ -z "$VER" ]; then bad "could not read CURRENT_PROJECT_VERSION"
 elif [ "$VER" -le "$LAST_SUBMITTED" ]; then bad "build $VER was already submitted — bump CURRENT_PROJECT_VERSION"
 else ok "version $MKT ($VER)"; fi
@@ -63,7 +63,12 @@ python3 - <<'PY'
 import json,sys,pathlib,re
 c=json.load(open("ios/Titan/Sources/Localizable.xcstrings",encoding="utf-8"))
 keys=c["strings"]
-want=["Your band","Got your band?","Pair your band","Pair your band to begin.","My band is in hand"]
+want=["Your band","Got your band?","Pair your band","Pair your band to begin.","My band is in hand",
+      # Sign-up and account deletion (build 13). A missing key here falls back to English
+      # in SILENCE, and these are the first and last screens a Spanish-speaking user sees.
+      "Create account","Creating account…","New to Titan? Create an account",
+      "Already have an account? Sign in","Delete account","Delete my account",
+      "Delete your account for good?","Delete forever","Keep my account"]
 bad=[]
 for k in want:
     e=keys.get(k)

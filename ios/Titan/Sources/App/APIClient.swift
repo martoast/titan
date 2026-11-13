@@ -125,6 +125,26 @@ final class APIClient {
         }
     }
 
+    /// Create an account. Returns the same shape as `login`, so the app is signed in the moment
+    /// this returns and goes straight into onboarding.
+    ///
+    /// NOT opted into retry, unlike login: signing in twice mints a harmless second token, but
+    /// re-sending a create can mean the first attempt already succeeded while the retry comes
+    /// back "that email is taken" — telling somebody their brand-new account does not exist.
+    func register(name: String, email: String, password: String, deviceName: String) async throws -> LoginResponse {
+        try await send(request("api/register", method: "POST",
+                               json: ["name": name, "email": email,
+                                      "password": password, "device_name": deviceName]),
+                       as: LoginResponse.self, retryOnOutage: false)
+    }
+
+    /// Erase the account and every health record on it. Re-asks for the password server-side.
+    /// Required in-app by App Store Guideline 5.1.1(v) now that the app can create accounts.
+    func deleteAccount(password: String) async throws {
+        _ = try await send(request("api/me/account", method: "DELETE", json: ["password": password]),
+                           as: DeleteAccountResponse.self, retryOnOutage: false)
+    }
+
     func logout() async { _ = try? await session.data(for: request("api/logout", method: "POST")) }
 
     /// Cheap probe that the stored token still authenticates. Throws `APIError.unauthorized` ONLY on a

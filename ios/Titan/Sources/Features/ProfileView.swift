@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject var model: AppModel
     @State private var confirmLogout = false
+    @State private var showDeleteAccount = false
     @State private var showBand = false
     @State private var showEditProfile = false
     @State private var showBody = false
@@ -156,6 +157,17 @@ struct ProfileView: View {
             .confirmationDialog("Sign out?", isPresented: $confirmLogout, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) { Task { await model.logout() } }
             }
+
+            // App Store Guideline 5.1.1(v): an app that can create accounts must let a person
+            // delete theirs from INSIDE the app, and deactivation is explicitly not enough.
+            // Deliberately quiet — a destructive action should be findable, not inviting.
+            Button { Haptic.warning(); showDeleteAccount = true } label: {
+                Text("Delete account").font(Theme.Font.micro.weight(.semibold))
+                    .foregroundStyle(Theme.Palette.textFaint)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+            }
+            .sheet(isPresented: $showDeleteAccount) { DeleteAccountSheet().environmentObject(model) }
+
             Color.clear.frame(height: 8)
         }
         .titanScreen(String(localized: "You"))
@@ -164,5 +176,78 @@ struct ProfileView: View {
     private var initials: String {
         let parts = (model.user?.name ?? "T").split(separator: " ")
         return parts.prefix(2).compactMap { $0.first.map(String.init) }.joined().uppercased()
+    }
+}
+
+/// Confirm-and-erase sheet for account deletion (App Store 5.1.1(v)).
+///
+/// It asks for the password because this cannot be undone and a borrowed or stolen phone must not
+/// be able to wipe somebody's entire health history with two taps. It also states plainly what
+/// goes, since Titan holds sleep, heart rate, cycle and body photos rather than a shopping list.
+struct DeleteAccountSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var confirming = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.bg.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: Theme.Space.m) {
+                    Text("This erases your account and every record in it — sleep, recovery, workouts, meals, photos and your coach history. It cannot be undone.")
+                        .font(Theme.Font.body).foregroundStyle(Theme.Palette.textDim)
+
+                    SecureField("Password", text: $password)
+                        .font(Theme.Font.body).textContentType(.password).focused($focused)
+                        .padding(Theme.Space.m)
+                        .background(Theme.Palette.bg2, in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip)
+                            .strokeBorder(Theme.Palette.cardStroke, lineWidth: 1))
+
+                    if let err = model.error {
+                        Text(err).font(Theme.Font.micro).foregroundStyle(Theme.Palette.pink)
+                    }
+
+                    Button(role: .destructive) {
+                        Haptic.warning()
+                        focused = false
+                        confirming = true
+                    } label: {
+                        HStack {
+                            if model.loading { ProgressView().tint(.white) }
+                            Text(model.loading ? "Deleting…" : "Delete my account").font(Theme.Font.body.weight(.bold))
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 15)
+                        .background(password.isEmpty ? AnyShapeStyle(Theme.Palette.card) : AnyShapeStyle(Theme.Palette.pink),
+                                    in: RoundedRectangle(cornerRadius: Theme.Radius.chip))
+                        .foregroundStyle(.white)
+                    }
+                    .disabled(password.isEmpty || model.loading)
+                    .confirmationDialog("Delete your account for good?", isPresented: $confirming, titleVisibility: .visible) {
+                        Button("Delete forever", role: .destructive) {
+                            Task {
+                                // On success the model clears the session, which swaps the whole
+                                // UI back to LoginView — so only dismiss on failure, where the
+                                // person needs to see why and try again.
+                                if await model.deleteAccount(password: password) { dismiss() }
+                            }
+                        }
+                        Button("Keep my account", role: .cancel) {}
+                    }
+
+                    Spacer()
+                }
+                .padding(Theme.Space.l)
+            }
+            .navigationTitle(String(localized: "Delete account"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { model.error = nil; dismiss() }
+                }
+            }
+        }
+        .onAppear { model.error = nil; focused = true }
     }
 }

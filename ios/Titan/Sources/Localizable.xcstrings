@@ -1143,6 +1143,16 @@
         }
       }
     },
+    "Already have an account? Sign in": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Ya tienes cuenta? Inicia sesión"
+          }
+        }
+      }
+    },
     "Always-on sync": {
       "extractionState": "stale",
       "localizations": {
@@ -2326,6 +2336,26 @@
         }
       }
     },
+    "Create account": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crear cuenta"
+          }
+        }
+      }
+    },
+    "Creating account…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Creando cuenta…"
+          }
+        }
+      }
+    },
     "Cycle": {
       "localizations": {
         "es-MX": {
@@ -2455,12 +2485,62 @@
         }
       }
     },
+    "Delete account": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar cuenta"
+          }
+        }
+      }
+    },
+    "Delete forever": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar definitivamente"
+          }
+        }
+      }
+    },
     "Delete meal": {
       "localizations": {
         "es-MX": {
           "stringUnit": {
             "state": "translated",
             "value": "Eliminar comida"
+          }
+        }
+      }
+    },
+    "Delete my account": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar mi cuenta"
+          }
+        }
+      }
+    },
+    "Delete your account for good?": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Eliminar tu cuenta definitivamente?"
+          }
+        }
+      }
+    },
+    "Deleting…": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminando…"
           }
         }
       }
@@ -3885,6 +3965,16 @@
         }
       }
     },
+    "Keep my account": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conservar mi cuenta"
+          }
+        }
+      }
+    },
     "Keep pushing": {
       "extractionState": "stale",
       "localizations": {
@@ -4971,6 +5061,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nueva foto de progreso"
+          }
+        }
+      }
+    },
+    "New to Titan? Create an account": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Nuevo en Titan? Crea una cuenta"
           }
         }
       }
@@ -7562,6 +7662,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Este dispositivo no puede escanear códigos de barras. Mejor toma una foto de la tabla nutricional."
+          }
+        }
+      }
+    },
+    "This erases your account and every record in it — sleep, recovery, workouts, meals, photos and your coach history. It cannot be undone.": {
+      "localizations": {
+        "es-MX": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esto elimina tu cuenta y todos sus registros: sueño, recuperación, entrenamientos, comidas, fotos y tu historial con el coach. No se puede deshacer."
           }
         }
       }

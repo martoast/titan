@@ -50,6 +50,12 @@ struct LoginResponse: Codable {
     let user: AuthUser
 }
 
+/// `DELETE /api/me/account` — the account and every health record on it are gone.
+struct DeleteAccountResponse: Codable {
+    let ok: Bool?
+    let deleted: Bool?
+}
+
 /// `GET /api/me` — a lightweight identity/token-validity probe (see APIClient.verifyToken).
 struct MeResponse: Codable {
     struct U: Codable { let name: String?; let email: String? }
