@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Titan — Understand your body. Own your data.</title>
     <meta name="description" content="Titan is the open-source, subscription-free health platform: bring your own wearable, get recovery / sleep / strain you can act on, and an AI coach that knows your body. No monthly fees. Ever.">
+    <meta name="apple-itunes-app" content="app-id=6788507809">
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
 
     <meta property="og:title" content="Titan — Understand your body. Own your data.">
@@ -53,6 +54,13 @@
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 40px -8px rgba(34,211,238,0.6); }
         .btn-ghost { background: rgba(255,255,255,0.04); border-color: var(--line-2); color: var(--text); }
         .btn-ghost:hover { background: rgba(255,255,255,0.09); transform: translateY(-2px); }
+
+        /* App Store badge: Apple's black badge, drawn inline */
+        .appstore { display: inline-flex; align-items: center; gap: 0.6rem; background: #000; color: #fff; border: 1px solid rgba(255,255,255,0.35); border-radius: 12px; padding: 0.55rem 1.15rem 0.55rem 0.95rem; line-height: 1; transition: transform .15s ease, border-color .2s ease; }
+        .appstore:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.7); }
+        .appstore svg { width: 26px; height: 26px; }
+        .appstore span { display: flex; flex-direction: column; font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif; font-size: 1.32rem; font-weight: 600; letter-spacing: -0.01em; }
+        .appstore small { font-size: 0.68rem; font-weight: 500; letter-spacing: 0.01em; margin-bottom: 2px; }
 
         /* ---- nav ---- */
         .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; transition: background .3s ease, border-color .3s ease, backdrop-filter .3s ease; border-bottom: 1px solid transparent; }
@@ -323,7 +331,7 @@
             </div>
             <div class="nav-cta">
                 <a class="lnk" href="{{ route('login') }}" style="font-weight:600;">Sign in</a>
-                <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
+                <a class="btn btn-primary" href="https://apps.apple.com/us/app/titan-fitness-ai/id6788507809" rel="noopener">Get the app</a>
             </div>
         </div>
     </nav>
@@ -337,8 +345,11 @@
                 <h1 class="rv" style="margin-top:1.1rem;">Your body,<br><span class="grad-text">fully understood.</span></h1>
                 <p class="lead rv">Snap your meals, read your recovery, see your future self — all coached by one AI that actually knows your body. A wearable you own, no subscription, your data forever.</p>
                 <div class="hero-cta rv">
-                    <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
-                    <a class="btn btn-ghost" href="#data">See how it works</a>
+                    <a class="appstore" href="https://apps.apple.com/us/app/titan-fitness-ai/id6788507809" rel="noopener" aria-label="Download Titan on the App Store">
+                        <svg viewBox="0 0 384 512" aria-hidden="true"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+                        <span><small>Download on the</small>App Store</span>
+                    </a>
+                    <a class="btn btn-ghost" href="{{ route('register') }}">Create your account</a>
                 </div>
                 <div class="pillrow rv">
                     <span class="pill"><span class="dot" style="background:var(--green)"></span> 24/7 monitoring</span>
@@ -630,8 +641,11 @@
             <h2>Start understanding<br><span class="grad-text">your body today.</span></h2>
             <p class="lead">Real insights from day one — and a coach in your corner for the long run.</p>
             <div class="hero-cta">
-                <a class="btn btn-primary" href="{{ route('register') }}">Get started</a>
-                <a class="btn btn-ghost" href="https://github.com/martoast/titan">View the source</a>
+                <a class="appstore" href="https://apps.apple.com/us/app/titan-fitness-ai/id6788507809" rel="noopener" aria-label="Download Titan on the App Store">
+                        <svg viewBox="0 0 384 512" aria-hidden="true"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+                        <span><small>Download on the</small>App Store</span>
+                    </a>
+                <a class="btn btn-ghost" href="{{ route('register') }}">Create your account</a>
             </div>
         </div>
     </section>
