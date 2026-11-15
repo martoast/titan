@@ -12,9 +12,6 @@ name: titan
 
 x-app: &app
   image: titan/app
-  build:
-    context: .
-    dockerfile: Dockerfile
   env_file: [.env]
   restart: unless-stopped
   networks: [titan]
@@ -47,6 +44,11 @@ services:
   # ── Queue worker: ProcessWindowJob (biosignal queue), SealNightJob, coach jobs ─
   queue:
     <<: *app
+    # The ONLY service that builds the image. Every service with `build:` made
+    # compose build and export the same image again (2026-11-15); the rest run it.
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: ["php", "artisan", "queue:work", "redis", "--queue=biosignal,default", "--sleep=1", "--tries=3", "--max-time=3600"]
     # Each worker processes one window at a time; with 1, a night's ~30 windows seal
     # serially (~80s). Run several so windows fan out across the biosignal workers and the
